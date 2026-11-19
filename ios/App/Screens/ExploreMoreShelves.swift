@@ -555,23 +555,38 @@ private struct ComingTile: View {
     let entry: ExploreFeeds.Upcoming
     @Environment(DiaryStore.self) private var store
     @State private var adding = false
+    @State private var confirmRemove = false
 
     var body: some View {
         let saved = store.libraryIdentity(entry.item)
+        // A filled bell takes its reminder back off while the title is still only Planned.
+        let removable = saved.flatMap { store.title($0) }?.status == "planned"
         ZStack(alignment: .topTrailing) {
             Group {
                 if let saved { NavigationLink(value: saved) { poster } } else { NavigationLink(value: entry.item.route) { poster } }
             }.buttonStyle(.springPress).accessibilityIdentifier("explore-coming-" + entry.id)
             // Over the poster, outside the link, so it doesn't open the page.
-            Button { Task { await remind() } } label: {
+            Button { if saved != nil { confirmRemove = true } else { Task { await remind() } } } label: {
                 Group {
                     if adding { ProgressView().controlSize(.small) }
                     else { Image(systemName: saved != nil ? "bell.fill" : "bell").font(.system(size: 13, weight: .semibold)) }
                 }.foregroundStyle(.white).frame(width: 30, height: 30).background(.black.opacity(0.6), in: Circle())
                     .padding(5).frame(minWidth: 44, minHeight: 44)
-            }.buttonStyle(.plain).disabled(saved != nil || adding)
-                .accessibilityLabel(saved != nil ? "Reminder on: in your Planned list" : "Remind me when " + entry.item.name + " is out")
+            }.buttonStyle(.plain).disabled(adding || (saved != nil && !removable))
+                .accessibilityLabel(saved != nil ? "Remove the reminder for " + entry.item.name : "Remind me when " + entry.item.name + " is out")
         }
+        .confirmationDialog("Remove the reminder for \(entry.item.name)?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Remove reminder", role: .destructive) { Task { await unremind() } }
+        } message: { Text("It moves from Planned to Trash.") }
+    }
+    /// Takes it back out of Planned (into Trash, where it can be restored); its alert goes with it.
+    private func unremind() async {
+        guard let id = store.libraryIdentity(entry.item), let title = store.title(id), title.status == "planned" else { return }
+        adding = true
+        defer { adding = false }
+        guard await store.trash(title) else { return }
+        Haptics.play(.light)
+        await ReleaseAlerts.refresh(store: store)
     }
     private var poster: some View {
         StandardPoster(artwork: entry.item.artwork, name: entry.item.name,
