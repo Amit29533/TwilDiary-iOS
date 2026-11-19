@@ -51,7 +51,7 @@ struct StatsView: View {
     var body: some View {
         let data = store.statsProjection(period: period, year: year, at: clock)
         let highlights = store.statsHighlights(data, period: period, year: year, at: clock)
-        let insights = StatsInsights(workspace: store.workspace, now: clock)
+        let insights = store.memoized("stats.insights|" + DiaryDate.day(clock)) { StatsInsights(workspace: store.workspace, now: clock) }
         VStack(spacing: 0) {
             EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 14) {
@@ -326,6 +326,9 @@ struct StatsView: View {
 
     /// Days with a dated watch: all of them, since the first, and this year.
     private var activeDays: (all: Int, elapsed: Int, year: Int) {
+        store.memoized("stats.activeDays|" + DiaryDate.day(clock)) { countActiveDays }
+    }
+    private var countActiveDays: (all: Int, elapsed: Int, year: Int) {
         let calendar = DiaryDate.calendar()
         let days = Set(store.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { calendar.startOfDay(for: $0) } })
         guard let first = days.min() else { return (0, 0, 0) }
@@ -335,6 +338,9 @@ struct StatsView: View {
     }
     /// The first month with a dated watch (where Monthly can go back to).
     private var earliestMonth: Date {
+        store.memoized("stats.earliest|" + DiaryDate.day(clock)) { firstMonth }
+    }
+    private var firstMonth: Date {
         let calendar = DiaryDate.calendar()
         let first = store.activeEvents.compactMap { DiaryDate.parse($0.watchedAt) }.min() ?? clock
         return calendar.date(from: calendar.dateComponents([.year, .month], from: first)) ?? first

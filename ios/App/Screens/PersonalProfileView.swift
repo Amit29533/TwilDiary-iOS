@@ -252,9 +252,10 @@ struct PersonalProfileView: View {
     /// The Statistics tab a card opens (Statistics reads the same key).
     @AppStorage("stats.tab") private var statsTab = StatsView.Tab.overview
     var body: some View {
-        let milestones = ProfileMilestone.make(store.workspace, now: store.now)
-        let insights = StatsInsights(workspace: store.workspace, now: store.now)
-        let overview = StatsOverview(workspace: store.workspace, period: .week, now: store.now)
+        let day = DiaryDate.day(store.now)
+        let milestones = store.memoized("profile.milestones|" + day) { ProfileMilestone.make(store.workspace, now: store.now) }
+        let insights = store.memoized("profile.insights|" + day) { StatsInsights(workspace: store.workspace, now: store.now) }
+        let overview = store.memoized("profile.week|" + day) { StatsOverview(workspace: store.workspace, period: .week, now: store.now) }
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 header
@@ -420,6 +421,9 @@ struct PersonalProfileView: View {
     }
     /// This week (Monday to Sunday): each day's watch time from its titles' runtimes.
     private var week: [(day: Date, minutes: Int)] {
+        store.memoized("profile.weekMinutes|" + DiaryDate.day(store.now)) { weekMinutes }
+    }
+    private var weekMinutes: [(day: Date, minutes: Int)] {
         let calendar = DiaryDate.calendar()
         let today = calendar.startOfDay(for: store.now)
         let monday = calendar.date(byAdding: .day, value: -((calendar.component(.weekday, from: today) + 5) % 7), to: today) ?? today
@@ -763,7 +767,7 @@ struct MilestonesView: View {
         return items.enumerated().sorted { share($0.element) != share($1.element) ? share($0.element) > share($1.element) : $0.offset < $1.offset }.map(\.element)
     }
     var body: some View {
-        let milestones = ProfileMilestone.make(store.workspace, now: store.now)
+        let milestones = store.memoized("profile.milestones|" + DiaryDate.day(store.now)) { ProfileMilestone.make(store.workspace, now: store.now) }
         let earned = milestones.filter(\.earned)
         let upcoming = Self.closestFirst(milestones.filter { !$0.earned })
         let next = upcoming.first

@@ -751,7 +751,7 @@ struct GlanceView: View {
                 }
                 // The title you logged last (or first in the chosen order) gets the large card; the rest
                 // split into Continue (started) and Not started, each with its count.
-                let started = Set(store.activeEvents.map(\.titleId))
+                let started = store.memoized("glance.started") { Set(store.activeEvents.map(\.titleId)) }
                 let rest = Array(ordered.dropFirst())
                 let continuing = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
                 VStack(alignment: .leading, spacing: 8) {

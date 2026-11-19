@@ -53,6 +53,19 @@ import TwilDiaryCore
     @ObservationIgnored private var cachedActive: (titles: [MediaTitle], events: [WatchEvent])?
     @ObservationIgnored private var cachedNewestFirst: [WatchEvent]?
     @ObservationIgnored private var cachedGlanceActivity: (revision: UUID, value: [String: GlanceActivity])?
+    @ObservationIgnored private var memo: [String: (revision: UUID, value: Any)] = [:]
+    /// Something worked out from the whole diary, kept until the diary changes: Profile, Statistics
+    /// and Glance rebuilt milestones, insights, streaks and watch dates on every redraw.
+    func memoized<T>(_ key: String, _ make: () -> T) -> T {
+        let revision = homeWorkspaceRevision
+        if let saved = memo[key], saved.revision == revision, let value = saved.value as? T { return value }
+        let value = make()
+        if memo.count >= 32 { memo.removeAll(keepingCapacity: true) }
+        memo[key] = (revision, value)
+        return value
+    }
+    /// A title's episodes from the index (no pass over every episode in the diary).
+    func titleEpisodes(_ titleID: String) -> [Episode] { episodesBySeason[titleID]?.values.flatMap { $0 } ?? [] }
     /// Each title's newest watch, for Glance's "Recently updated", worked out once per diary change:
     /// Glance parsed the dates of every watch on each redraw.
     var glanceActivity: [String: GlanceActivity] {

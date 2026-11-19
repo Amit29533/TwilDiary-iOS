@@ -105,8 +105,8 @@ struct SeriesRatingCard: View {
         return watched.contains("\(episode.season):\(episode.number)")
     }
     private func watchedPlaces(_ titleID: String) -> Set<String> {
-        let watched = Set(store.workspace.activeEvents.filter { $0.titleId == titleID }.compactMap(\.episodeId))
-        return Set(store.workspace.episodes.filter { $0.titleId == titleID && watched.contains($0.id) }.map { "\($0.season):\($0.number)" })
+        let watched = store.watchedEpisodeIDs(titleID)
+        return Set(store.titleEpisodes(titleID).filter { watched.contains($0.id) }.map { "\($0.season):\($0.number)" })
     }
 
     /// The overall score and each source's, for the show or for the episode being touched.
