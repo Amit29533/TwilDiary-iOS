@@ -394,7 +394,8 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
 
   assert.equal(iosApp.includes('case .calendar: AiringCalendarView()'), true);
   assert.equal(iosApp.includes('case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)'), true);
-  assert.equal(iosApp.includes('case .simkl:'), false, 'Simkl was removed from the app');
+  // Simkl came back as a removable add-on (feat/simkl): its connection page is wired again.
+  assert.equal(iosApp.includes('case .simkl:'), true, 'Simkl is an add-on with its own page');
   assert.equal(iosApp.includes('case .mdblist: ExternalProviderConnectionView(provider: .mdblist)'), true);
   assert.equal(iosSettings.includes('accessibilityIdentifier("settings-calendar")'), true);
   // Logging an aired episode moved from Home to the airing calendar.
@@ -402,12 +403,12 @@ test('UI Consistency, Non-Overlapping Layout Invariants, and Web + iOS UI Wiring
   assert.equal(iosCalendar.includes('store.recordViewing(item.title, episode: item.episode, watchedAt: store.now)'), true);
   assert.equal(iosStats.includes('Fun facts'), false);
   assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.calendar)'), true);
-  // The diary sign-in moved from Profile to Profile → Connections ("Your diary").
+  // Profile → Connections: a plain "Your server" switch (the app's service token; no sign-in, 5f4c3d4).
   const iosConnections = await readFile(
     new URL('../../ios/App/Screens/ConnectionsView.swift', import.meta.url),
     'utf8'
   );
-  assert.equal(iosConnections.includes('showDiaryAccess = true'), true);
+  assert.equal(iosConnections.includes('SettingsGroup(label: "Your server")'), true);
   assert.equal(iosSettings.includes('NavigationLink(value: AppDestination.connections)'), true);
   assert.equal(iosLibrary.includes('@SceneStorage("library.tag")'), true);
   // Community scores: the title page shows them as rating boxes under the poster, each a
