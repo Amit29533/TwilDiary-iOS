@@ -265,7 +265,7 @@ struct PersonalProfileView: View {
                         Image(systemName: "chart.bar.fill").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 48, height: 48).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Statistics").font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.ink)
-                            Text("Watch time, habits, taste and more").font(.system(size: 14)).foregroundStyle(.secondary)
+                            Text("Watch time, habits and taste").font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
                         }
                         Spacer(); DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
                     }.padding(16).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
