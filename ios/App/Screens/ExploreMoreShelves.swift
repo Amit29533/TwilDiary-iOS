@@ -361,8 +361,8 @@ struct ExploreFeedPage: View {
         ExploreBrowsePage(title: title, symbol: symbol, artwork: artwork) {
             LazyVGrid(columns: columns, spacing: 18) {
                 switch route.kind {
-                case .cineMovies: ForEach(feeds.cineMovies.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
-                case .cineShows: ForEach(feeds.cineShows.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
+                case .cineMovies: ForEach(feeds.cineMovies.items.filter { store.libraryIdentity($0) == nil }.map(Keyed.init)) { CatalogTile(item: $0.item) }
+                case .cineShows: ForEach(feeds.cineShows.items.filter { store.libraryIdentity($0) == nil }.map(Keyed.init)) { CatalogTile(item: $0.item) }
                 case .trending: ForEach(feeds.trending.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
                 case .seasonal: ForEach(feeds.seasonal.items) { SeasonalTile(anime: $0, now: store.now) }
                 case .comingMovies: ForEach(feeds.comingMovies.items) { ComingTile(entry: $0) }

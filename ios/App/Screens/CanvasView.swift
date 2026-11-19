@@ -120,7 +120,7 @@ private struct CanvasContent: View {
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("canvas-tab-" + item.rawValue)
             }
-        }.fixedSize()
+        }.fixedSize().haptic(.selection, trigger: tab)
     }
     private var pills: some View {
         ScrollView(.horizontal) {
@@ -168,13 +168,22 @@ private struct CanvasContent: View {
     }
     @ViewBuilder private var titlesContent: some View {
         let items = titles
-        let loading = sort == .recommended ? recommendations.loading : results.loading
+        let loading = sort == .recommended ? (recommendations.loading || !recommendations.checked) : results.loading
         let error = sort == .recommended ? recommendations.error : results.error
         if !items.isEmpty { CanvasMosaic(items: items) { if sort != .recommended { Task { await results.load(query, more: true) } } } }
         if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
         if let error { notice(error) { Task { if sort == .recommended { await recommendations.load(limit: 24, refresh: true) } else { await results.load(query) } } } }
         else if !loading && items.isEmpty {
-            if sort == .recommended && !recommendations.connected { notice("Connect Trakt in More to see your recommendations.") }
+            if sort == .recommended && !recommendations.connected {
+                NavigationLink(value: AppDestination.trakt) {
+                    HStack(spacing: 10) {
+                        BrandLogo(service: .trakt, size: 22)
+                        Text("Connect Trakt for your recommendations").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    }.padding(.horizontal, 14).frame(minHeight: 48).diaryPanel(padding: 0, radius: 14).contentShape(Rectangle())
+                }.buttonStyle(.springPress).accessibilityIdentifier("canvas-connect-trakt")
+            }
             else { notice("No titles match these filters.") }
         }
         if loading && !items.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12) }

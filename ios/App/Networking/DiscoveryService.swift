@@ -167,6 +167,9 @@ extension DiscoveryServing {
     private(set) var items: [CatalogItem] = []
     private(set) var loading = false
     private(set) var connected = false
+    /// Trakt was asked at least once: before that, "Connect Trakt" would be a guess (it flashed for
+    /// people who are connected while the first check was on its way).
+    private(set) var checked = false
     private(set) var error: String?
     init(service: any DiscoveryServing) { self.service = service }
     func load(limit: Int = 8, refresh: Bool = false) async {
@@ -181,6 +184,7 @@ extension DiscoveryServing {
             let account = service.recommendationOwner
             if owner != account { items = []; owner = account }
             connected = available
+            checked = true
             guard available else { items = []; return }
             if let saved = service.cachedRecommendations(limit: limit) { items = saved }
             let retained = items

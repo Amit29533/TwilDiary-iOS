@@ -316,9 +316,9 @@ private struct DiscoveryShelfView: View {
         VStack(alignment: .leading, spacing: 10) {
             ExploreHeading(section: section)
             DiscoveryTrack(items: results.items)
-            if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf) }
+            if (results.loading || results.page == 0) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf) }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await load() } } }
-            else if !results.loading && results.items.isEmpty { DiscoveryNotice(text: "No titles available.") }
+            else if !results.loading && results.page > 0 && results.items.isEmpty { DiscoveryNotice(text: "No titles available.") }
         }.smoothChange(of: results.items.isEmpty).task { if results.page == 0 { await load() } }
     }
     private func load() async { await results.load(DiscoveryFilters(section: section).query(section: section)) }
@@ -362,9 +362,9 @@ private struct RecommendedDiscoveryView: View {
         VStack(alignment: .leading, spacing: 10) {
             ExploreHeading(section: .recommended)
             DiscoveryTrack(items: results.items)
-            if results.loading && results.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf) }
+            if (results.loading || !results.checked) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf) }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await results.load(refresh: true) } } }
-            else if !results.loading && !results.connected {
+            else if !results.loading && results.checked && !results.connected {
                 // A way in, not a dead end: Trakt's settings page connects it.
                 NavigationLink(value: AppDestination.trakt) {
                     HStack(spacing: 10) {
@@ -375,7 +375,7 @@ private struct RecommendedDiscoveryView: View {
                     }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
                 }.buttonStyle(.springPress).accessibilityIdentifier("explore-connect-trakt")
             }
-            else if !results.loading && results.items.isEmpty { DiscoveryNotice(text: "No recommendations yet.") }
+            else if !results.loading && results.checked && results.items.isEmpty { DiscoveryNotice(text: "No recommendations yet.") }
         }.smoothChange(of: results.items.isEmpty).task(id: store.discoveryRevision) { await results.load(limit: section ? 24 : 8) }
     }
 }
@@ -434,7 +434,7 @@ private struct DiscoveryBrowser: View {
         if section != .daily { return DiscoveryGenre.names(type: filters.type) }
         return Set(DiscoveryTools.unwatched(store.workspace).filter { filters.type == "all" || ($0.isSeries ? "tv" : "movie") == filters.type }.flatMap(\.genres)).sorted()
     }
-    private var busy: Bool { section == .recommended ? recommendations.loading : results.loading }
+    private var busy: Bool { section == .recommended ? (recommendations.loading || !recommendations.checked) : results.loading }
     var body: some View {
         let title = filters.label ?? section.label
         let tag = filters.keyword != nil
@@ -527,7 +527,18 @@ private struct DiscoveryBrowser: View {
             if let error = section == .recommended ? recommendations.error : results.error {
                 DiscoveryNotice(text: error) { Task { if section == .recommended { await recommendations.load(limit: 24, refresh: true) } else { await results.load(filters.query(section: section), more: results.page > 0) } } }
             } else if !busy && displayed.isEmpty {
-                if section == .recommended && !recommendations.connected { DiscoveryNotice(text: "Connect Trakt in More to load your recommendations.") }
+                if section == .recommended && !recommendations.connected {
+                    if recommendations.checked {
+                        NavigationLink(value: AppDestination.trakt) {
+                            HStack(spacing: 10) {
+                                BrandLogo(service: .trakt, size: 22)
+                                Text("Connect Trakt for picks made for you").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                            }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
+                        }.buttonStyle(.springPress)
+                    }
+                }
                 else { ContentUnavailableView(section == .daily ? "No unwatched titles in this mix" : "No titles in this mix", systemImage: "sparkles", description: Text("Try another genre, year or rating.")) }
             }
             if !displayed.isEmpty, section.source == "tmdb" ? results.hasMore || busy : localLimit < local.count {
