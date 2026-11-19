@@ -22,7 +22,8 @@ import TwilDiaryCore
     }
     private func movie(_ store: DiaryStore, _ tmdb: Int) async throws -> MediaTitle {
         let details = try JSONDecoder().decode(CatalogDetails.self, from: Data(#"{"id":\#(tmdb),"mediaType":"movie","name":"Film \#(tmdb)","year":2001,"overview":"","posterPath":"/f.jpg","genres":["Drama"],"suggestedCategory":"movie"}"#.utf8))
-        let id = try XCTUnwrap(await store.importTitle(details, category: "movie"), store.error ?? "add failed")
+        let added = await store.importTitle(details, category: "movie")
+        let id = try XCTUnwrap(added, store.error ?? "add failed")
         await store.waitForTitle(id)
         return try XCTUnwrap(store.title(id))
     }
