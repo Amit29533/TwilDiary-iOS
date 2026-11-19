@@ -183,7 +183,7 @@ struct SearchPeopleView: View {
                 }
             }
             if started, loading.isEmpty {
-                if people.count > limit + shown || nextPage.keys.contains(where: { failures[$0] == nil }) {
+                if !people.isEmpty && (people.count > limit + shown || nextPage.keys.contains(where: { failures[$0] == nil })) {
                     Button("More people") {
                         if people.count > limit + shown { shown += 20 }
                         else {

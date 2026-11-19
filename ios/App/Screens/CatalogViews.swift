@@ -144,7 +144,7 @@ struct CatalogSearchView: View {
                 else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
             }
             // Nothing found: the closest spelling ("breking bad" → Breaking Bad).
-            if universal && ready && !isIMDbLookup && kind != .people && completedScope == scope && failure == nil && !loading && ranked.isEmpty
+            if universal && ready && !aiSearch && !isIMDbLookup && kind != .people && completedScope == scope && failure == nil && !loading && ranked.isEmpty
                 && (kind != .all || (peopleMatch?.scope == scope && peopleMatch?.count == 0)) {
                 DidYouMeanView(query: scope.query) { query = $0 }
             }
@@ -180,7 +180,7 @@ struct CatalogSearchView: View {
                     HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
                 }
             }
-            if universal && ready && !isIMDbLookup && (kind == .all || kind == .people) {
+            if universal && ready && !isIMDbLookup && ((kind == .all && !aiSearch) || kind == .people) {
                 SearchPeopleView(query: scope.query, limit: kind == .people ? 40 : 6,
                                  mixed: kind == .all && activeScope == scope ? mixedPeople : nil,
                                  usePreview: kind == .all && !store.isPreview && TMDBDirect.token(store) != nil
@@ -283,6 +283,7 @@ struct CatalogSearchView: View {
         return exact + prefix + other
     }
     private func count(_ item: Kind, counts: [Kind: Int], total: Int) -> Int? {
+        guard !aiSearch else { return nil }
         let peopleCount = peopleMatch.flatMap { $0.scope == searchScope ? $0.count : nil }
         return switch item {
         case .all: total + (peopleCount ?? 0)
@@ -317,7 +318,7 @@ struct CatalogSearchView: View {
                 }.buttonStyle(.springPress).accessibilityIdentifier("search-show-all")
             }
             if loading && !shown.isEmpty { ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Searching online") }
-            if !loading && shown.isEmpty && failure == nil && completedScope == searchScope && !hasMore {
+            if !aiSearch && !loading && shown.isEmpty && failure == nil && completedScope == searchScope && !hasMore {
                 Text("No \(kind == .all ? "titles" : kind.rawValue.lowercased()) match “\(normalized)”.").font(.system(size: 14)).foregroundStyle(.secondary)
             }
         }

@@ -609,7 +609,7 @@ struct SemanticSearchSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // AI looks one way everywhere (owner's request): CineMind's mark and its glow colours.
-            if showsLabel {
+            if showsLabel && !(loading && matches.isEmpty) {
                 HStack(spacing: 8) {
                     CineMindMark(size: 20)
                     Text("FROM YOUR DESCRIPTION").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(CineGlow.linear)
