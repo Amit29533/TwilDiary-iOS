@@ -346,6 +346,7 @@ struct EpisodesPage: View {
                         .confirmationDialog("Mark every aired episode of season \(season) as watched?", isPresented: $confirmSeason, titleVisibility: .visible) {
                             Button("Mark season as watched") {
                                 let count = episodes.filter(aired).count
+                                Haptics.play(.success)
                                 Task { await store.setSeasonProgress(title, season: season, count: count, watchedAt: store.now) }
                             }
                         }
@@ -368,6 +369,7 @@ struct EpisodesPage: View {
             if let episode = selected ?? sheetEpisode { sheet(title, episode: episode, episodes: episodes, watched: watched) }
         }
         .onChange(of: selected) { _, episode in if let episode { sheetEpisode = episode } }
+        .onChange(of: season) { _, _ in revealed = []; selected = nil; openGroups = [] }
         .sheet(isPresented: $showNotes) { TitleNotesSheet(titleID: titleID) }
     }
 
@@ -430,7 +432,9 @@ struct EpisodesPage: View {
         EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
                                 page: { item in
                                     .init(name: name(item, watched: watched), summary: summary(item), artwork: artwork(item, title: title),
-                                          hidden: hidden(item, watched: watched), runtime: details.runtime(item), tmdbScore: score(item), traktScore: nil, watched: watched.contains(item.id))
+                                          hidden: hidden(item, watched: watched), runtime: details.runtime(item), tmdbScore: score(item),
+                                          traktScore: title.tmdbId.flatMap { TraktTitleReads.cachedRatings(show: $0, season: season)[item.number] },
+                                          watched: watched.contains(item.id))
                                 },
                                 onToggleWatched: { toggle($0, title: title, watched: watched) },
                                 onNeighbour: { neighbour(of: episode, forward: $0, episodes: episodes, title: title) },
@@ -459,6 +463,7 @@ struct EpisodesPage: View {
         if details.episodes[episode.id] == nil { Task { await details.load(season) { try await store.revealedSeason(title, number: season) } } }
     }
     private func toggle(_ episode: Episode, title: MediaTitle, watched: Set<String>) {
+        Haptics.play(watched.contains(episode.id) ? .light : .success)
         Task {
             if watched.contains(episode.id) { await store.unwatchEpisode(episode) }
             else { await store.recordViewing(title, episode: episode, watchedAt: store.now) }
@@ -666,8 +671,9 @@ struct PreviewEpisodesPage: View {
                 EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
                                  page: { item in
                                      let source = items.first { $0.number == item.number } ?? source
-                                     return .init(name: source.name.isEmpty ? "Episode \(item.number)" : source.name, summary: source.overview,
-                                                  artwork: artwork(source), hidden: false, tmdbScore: source.communityScore,
+                                     return .init(name: source.name.isEmpty ? "Episode \(item.number)" : source.name,
+                                                  summary: source.overview.isEmpty ? "No episode summary available." : source.overview,
+                                                  artwork: artwork(source), hidden: false, runtime: source.runtimeMinutes, tmdbScore: source.communityScore,
                                                   traktScore: TraktTitleReads.cachedRatings(show: route.id, season: season)[item.number], watched: false)
                                  },
                                  onToggleWatched: { _ in }, onNeighbour: { neighbour(of: number, forward: $0) },
@@ -676,7 +682,7 @@ struct PreviewEpisodesPage: View {
             }
         }
     }
-    private func aired(_ episode: CatalogEpisode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day() } == true }
+    private func aired(_ episode: CatalogEpisode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day(store.now) } == true }
     private func hidden(_ episode: CatalogEpisode) -> Bool { hideSpoilers && !revealed.contains(episode.number) }
     private func state(_ episode: CatalogEpisode) -> EpisodeRowState { aired(episode) ? .notWatched : .notAired }
     private func artwork(_ episode: CatalogEpisode) -> String? { CatalogTools.image(episode.stillPath) ?? details.flatMap { CatalogTools.image($0.backdropPath, size: "w780") } }
