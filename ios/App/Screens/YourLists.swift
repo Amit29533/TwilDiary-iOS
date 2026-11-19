@@ -54,7 +54,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
             username = client.token.username
             let data = try await client.get("/users/me/lists").data
             let rows = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
-            lists = rows.compactMap(Self.list)
+            lists = rows.compactMap { Self.list($0) }
             loaded = true
         } catch { failure = error.localizedDescription }
     }
@@ -326,7 +326,7 @@ struct YourListPage: View {
             if reordering {
                 Button("Done reordering", systemImage: "checkmark") { reordering = false }
             } else {
-                Picker("Sort", selection: Binding(get: { sort }, set: setSort)) {
+                Picker("Sort", selection: Binding(get: { sort }, set: { value in setSort(value) })) {
                     Text("Your order").tag("rank"); Text("Recently added").tag("added"); Text("Name").tag("name"); Text("Year").tag("year"); Text("Rating").tag("rating")
                 }
                 Button("Reorder", systemImage: "arrow.up.arrow.down") { setSort("rank"); reordering = true }
