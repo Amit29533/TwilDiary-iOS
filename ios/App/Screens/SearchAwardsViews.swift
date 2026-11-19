@@ -8,8 +8,10 @@ struct SearchAwardsShelf: View {
             SearchBrowseHeading(shelf: .awards)
             // One row of posters, as the other shelves.
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(SearchAwardCeremony.featured.filter { !SearchAwardCeremony.withoutRecords.contains($0.id) }) { AwardCeremonyLink(ceremony: $0).containerRelativeFrame(.horizontal, count: 3, spacing: 12) }
+                LazyHStack(alignment: .top, spacing: 10) {
+                    ForEach(SearchAwardCeremony.featured.filter { !SearchAwardCeremony.withoutRecords.contains($0.id) }) { ceremony in
+                        AwardCeremonyLink(ceremony: ceremony).containerRelativeFrame(.horizontal) { width, _ in min(164, width * 0.36) }
+                    }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
         }
@@ -64,7 +66,7 @@ private struct SearchAwardGrid<Content: View>: View {
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                  count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 18) {
+                                  count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
             content
         }
     }
@@ -72,23 +74,31 @@ private struct SearchAwardGrid<Content: View>: View {
 
 private struct AwardCeremonyLink: View {
     let ceremony: SearchAwardCeremony
+    @ScaledMetric(relativeTo: .body) private var height: CGFloat = 100
 
     var body: some View {
         NavigationLink(value: SearchBrowseRoute.ceremony(ceremony)) {
-            if let winner = ceremony.winner {
-                // A recent winner's poster, the standard poster size.
-                StandardPoster(artwork: CatalogTools.image(winner.poster, size: "w500"), name: ceremony.displayName, subtitle: winner.caption)
+            if let logo = ceremony.logo, let image = Self.image(logo.file) {
+                // The ceremony's own logo on its own background colour: the Search page's small rectangle.
+                ZStack {
+                    Color(webHex: logo.background)
+                    Image(uiImage: image).resizable().scaledToFit()
+                }.frame(height: height).frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 14)).contentShape(RoundedRectangle(cornerRadius: 14))
+                    .accessibilityElement().accessibilityLabel(ceremony.displayName)
             } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    ZStack {
-                        LinearGradient(colors: [Color(themed: "#3a2f1c"), HomeStyle.card], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        Image(systemName: ceremony.symbol).font(.system(size: 34, weight: .semibold)).foregroundStyle(Color(themed: "#e7ca90"))
-                    }.posterAspect().clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
-                    Text(ceremony.displayName).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-                    Text("Awards ceremony").font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
-                }.accessibilityElement(children: .combine)
+                SearchBrowseArtworkTile(title: ceremony.displayName, symbol: ceremony.symbol, tint: "#8a6a2a", artwork: nil)
             }
         }.buttonStyle(.springPress).accessibilityIdentifier("search-award-ceremony-\(ceremony.id)")
+    }
+
+    /// The bundled logos, read once.
+    private static var images: [String: UIImage] = [:]
+    private static func image(_ file: String) -> UIImage? {
+        if let kept = images[file] { return kept }
+        guard let path = Bundle.main.path(forResource: file, ofType: "jpg"), let image = UIImage(contentsOfFile: path) else { return nil }
+        images[file] = image
+        return image
     }
 }
 
