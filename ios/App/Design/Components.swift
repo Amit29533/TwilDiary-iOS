@@ -555,7 +555,8 @@ struct Artwork: View {
                     bitmap = await PublicArtworkCache.shared.image(request, retrying: true)
                 }
                 guard !Task.isCancelled else { return }
-                loadedRequest = request; loadedArtwork = bitmap
+                // Downloaded just now: a short cross-fade from the placeholder, not a snap.
+                withAnimation(.easeOut(duration: 0.22)) { loadedRequest = request; loadedArtwork = bitmap }
             }
         }.contentShape(Rectangle()).accessibilityHidden(true)
     }

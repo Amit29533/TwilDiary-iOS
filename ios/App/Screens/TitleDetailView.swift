@@ -96,6 +96,7 @@ struct TitleDetailView: View {
                                 }
                                 ParentalGuideSection(extras: extras)
                             }.padding(.horizontal, 16).padding(.bottom, 32)
+                                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: extras == nil)
                                 // The height only matters while the page scrolls itself to notes or files. Tracking it
                                 // always rebuilt the whole page each time a lazy episode row first
                                 // appeared, which stuttered the first scroll through a season.

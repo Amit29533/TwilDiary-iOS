@@ -510,6 +510,7 @@ struct CatalogDetailView: View {
     @State private var criticScores: [MDBListSyncEngine.SourceScore] = []
     /// Tags, companies, status and network from TMDB, as on a saved title's page.
     @State private var extras: TitleExtras?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
@@ -554,6 +555,7 @@ struct CatalogDetailView: View {
                     } else if loading { DiaryLoadingPlaceholder(height: 320, label: "Loading title").padding(16) }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 }.padding(.horizontal, 16).padding(.bottom, 32)
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: extras == nil)
                     .background(alignment: .top) {
                         if let details { TitleArtworkBackdrop(path: CatalogTools.image(details.details.backdropPath, size: "w780"), name: details.details.name, topExtension: geometry.safeAreaInsets.top) }
                     }
@@ -847,6 +849,7 @@ struct CastAndRelated: View {
     @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
     @State private var awardHistoryRoute: CatalogRoute?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var cast: [CastPerson] = []
     @State private var related: [CatalogItem] = []
     @State private var failure: String?
@@ -901,6 +904,9 @@ struct CastAndRelated: View {
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
         }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: cast.isEmpty)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: related.isEmpty)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: awardHistoryRoute)
         .task(id: route) { await load() }
         .task(id: "\(route.kind.rawValue):\(route.id):\(awardsIMDbID ?? "")") {
             guard sourceTitle != nil, awardHistoryRoute != route else { return }
