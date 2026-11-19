@@ -90,7 +90,9 @@ private struct AwardCeremonyLink: View {
                             Image(uiImage: image).resizable().scaledToFit().padding(.vertical, 10)
                             Text(caption).font(.system(size: 13, weight: .semibold, design: .serif)).tracking(1.2)
                                 .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f3d9a0"), Color(webHex: "#c79a4a")], startPoint: .top, endPoint: .bottom))
-                                .lineSpacing(1).minimumScaleFactor(0.7)
+                                // Each word on its own line, never split: smaller type before a word breaks.
+                                .lineSpacing(1).lineLimit(caption.split(separator: "\n").count)
+                                .minimumScaleFactor(0.4).allowsTightening(true).layoutPriority(1)
                         }.padding(.horizontal, 12)
                     } else {
                         Image(uiImage: image).resizable().scaledToFit()

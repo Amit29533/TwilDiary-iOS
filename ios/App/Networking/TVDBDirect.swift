@@ -39,8 +39,14 @@ import TwilDiaryCore
 
     static func awardCatalog(key: String) async throws -> [SearchAwardCeremony] {
         let reply = try await authorized("awards", key: key, as: AwardReply<[SearchAwardCeremony]>.self)
-        var ids = Set<Int>()
-        let catalog = reply.data.filter { $0.id > 0 && !$0.name.isEmpty && ids.insert($0.id).inserted }
+        // TheTVDB lists a few ceremonies twice under different ids (Gemini Awards): one tile each,
+        // the lower id (the original entry) kept.
+        var ids = Set<Int>(), names = Set<String>()
+        let catalog = reply.data.filter { $0.id > 0 && !$0.name.isEmpty }.sorted { $0.id < $1.id }.filter { ceremony in
+            let name = ceremony.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                .replacingOccurrences(of: "’", with: "'").trimmingCharacters(in: .whitespacesAndNewlines)
+            return ids.insert(ceremony.id).inserted && names.insert(name).inserted
+        }
         guard !catalog.isEmpty else { throw APIError.message("TheTVDB returned an empty Awards catalog.") }
         return catalog
     }
