@@ -377,6 +377,7 @@ struct RootView: View {
                 .navigationDestination(for: CanvasListRoute.self) { CanvasListView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: YourListsRoute.self) { _ in YourListsView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: CustomiseRoute.self) { _ in CustomiseView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: JellyFolderRoute.self) { JellyFolderPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: YourListRoute.self) { YourListPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {

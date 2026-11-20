@@ -307,11 +307,18 @@ struct JellyfinClient: Sendable {
         let ProductionYear: Int?
         let ImageTags: [String: String]?
         let Genres: [String]?
-        // JellySpace: an episode's show and number, and the show's poster.
+        // JellySpace: an episode's show and number, the show's poster, folders, length and your progress.
         let SeriesName: String?
         let IndexNumber: Int?
         let SeriesPrimaryImageTag: String?
-        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres, SeriesName, IndexNumber, SeriesPrimaryImageTag }
+        let IsFolder: Bool?
+        let RunTimeTicks: Int64?
+        let UserData: ItemUserData?
+        struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool? }
+        enum CodingKeys: String, CodingKey {
+            case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
+            case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData
+        }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
     struct Server: Decodable { let ServerName: String?; let Version: String? }
@@ -359,6 +366,28 @@ struct JellyfinClient: Sendable {
         components?.queryItems = [URLQueryItem(name: "static", value: "true"), URLQueryItem(name: "api_key", value: key)]
         return components?.url
     }
+    // MARK: Browsing (JellySpace)
+    /// What's directly inside a library, folder, show or season (one level), with your progress.
+    func children(of parent: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Fields", value: "ProviderIds"),
+                     URLQueryItem(name: "SortBy", value: "IsFolder,ParentIndexNumber,IndexNumber,SortName"), URLQueryItem(name: "Limit", value: "500")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+    /// Continue watching: films and episodes you stopped partway through.
+    func resume(user: String) async throws -> [Item] {
+        let page: Page = try await get("UserItems/Resume", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "MediaTypes", value: "Video"),
+                                                           URLQueryItem(name: "Fields", value: "ProviderIds"), URLQueryItem(name: "Limit", value: "20")])
+        return page.Items
+    }
+    /// Next up: the next episode of each show you're watching.
+    func nextUp(user: String) async throws -> [Item] {
+        let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "Fields", value: "ProviderIds"),
+                                                       URLQueryItem(name: "Limit", value: "20")])
+        return page.Items
+    }
+
     // MARK: Playback state (JellySpace): read and written for one user, named in the request (an API
     // key has no user of its own, so the session routes would keep nothing).
     struct UserRow: Decodable, Sendable {
