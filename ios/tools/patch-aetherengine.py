@@ -7,7 +7,9 @@ which still copes. The same bytes are built step by step here, so the function r
 it did. Only this checkout changes (LGPL-3.0: the engine's source, patched, is the public upstream plus
 this file). Idempotent; fails loudly if the upstream code changes, so a stale patch never builds silently.
 """
+import os
 import pathlib
+import stat
 import sys
 
 ROOT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "ios/.spm")
@@ -53,5 +55,7 @@ if MARK in text:
     sys.exit(0)
 if text.count(OLD) != 1:
     sys.exit("patch-aetherengine: the expected code in PerFrameBenchmark.swift changed upstream; review the patch")
+# Package checkouts are read-only: this one file is made writable first.
+os.chmod(TARGET, os.stat(TARGET).st_mode | stat.S_IWUSR)
 TARGET.write_text(text.replace(OLD, NEW), encoding="utf-8")
 print("patch-aetherengine: patched", TARGET)
