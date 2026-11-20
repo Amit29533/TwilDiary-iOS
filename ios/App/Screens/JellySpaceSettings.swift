@@ -8,6 +8,8 @@ import TwilDiaryCore
 enum JellyPrefs {
     static let rowsKey = "jellyspace.home.rows"
     static let hiddenRowsKey = "jellyspace.home.hiddenRows"
+    /// My Media's order: library ids, comma-separated (any library not in it follows, in the server's order).
+    static let mediaOrderKey = "jellyspace.home.mediaOrder"
     static let hiddenKey = "jellyspace.hidden"
     static let countsKey = "jellyspace.posters.counts"
     static let ticksKey = "jellyspace.posters.ticks"
@@ -34,11 +36,34 @@ enum JellyPrefs {
     static let timeModeKey = "jellyspace.timeMode"
     static let subtitleLanguageKey = "jellyspace.subtitleSearchLanguage"
     static let lrclibKey = "jellyspace.lrclib"
+    /// Sound: a dialogue lift in dB (0, 4, 7, 10), night mode, and a volume boost in percent (0, 50, 100, 200).
+    static let dialogueKey = "jellyspace.audio.dialogue"
+    static let nightKey = "jellyspace.audio.night"
+    static let boostKey = "jellyspace.audio.boost"
+    /// Subtitles' look: colour ("white", "yellow"), a box behind them, and how far up they sit (a
+    /// share of the picture's height: 0, 0.06, 0.12).
+    static let subtitleSizeKey = "jellyspace.subtitleSize"
+    static let subtitleColorKey = "jellyspace.subtitle.color"
+    static let subtitleBoxKey = "jellyspace.subtitle.box"
+    static let subtitleRaiseKey = "jellyspace.subtitle.raise"
+    /// "Are you still watching?" after this many episodes played on their own in a row (0: never).
+    static let stillWatchingKey = "jellyspace.stillWatching"
+}
+
+/// The choices the player's menu and Settings offer for sound and subtitles.
+enum JellySound {
+    static let dialogue: [(String, Int)] = [("Off", 0), ("Low", 4), ("Medium", 7), ("High", 10)]
+    static let boost: [(String, Int)] = [("Off", 0), ("+50%", 50), ("+100%", 100), ("+200%", 200)]
+    static let subtitleSizes: [(String, Double)] = [("Small", 0.8), ("Medium", 1.0), ("Large", 1.3), ("Extra large", 1.6)]
+    static let subtitleColors: [(String, String)] = [("White", "white"), ("Yellow", "yellow")]
+    static let subtitleBackgrounds: [(String, Bool)] = [("Outline", false), ("Box", true)]
+    static let subtitlePositions: [(String, Double)] = [("Bottom", 0), ("Higher", 0.06), ("Highest", 0.12)]
+    static let stillWatching: [(String, Int)] = [("Never", 0), ("After 2 episodes", 2), ("After 3 episodes", 3), ("After 4 episodes", 4)]
 }
 
 /// The home's rows, in the order you set; any you turned off are left out.
 enum JellyHomeRow: String, CaseIterable, Identifiable {
-    case hero, resume, media, genres, top10, libraries, gems, tonight, forYou, random, folders, favourites, collections
+    case hero, resume, media, genres, top10, libraries, gems, tonight, forYou, random, favourites, collections
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -52,18 +77,19 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         case .gems: "Hidden gems"
         case .tonight: "Tonight's genre"
         case .random: "Random picks"
-        case .folders: "From your folders"
         case .forYou: "For you"
         case .collections: "Collections"
         }
     }
     static func order(_ raw: String) -> [JellyHomeRow] {
-        // The top poster always leads (it runs under the bar): only the rows below it are ordered.
-        let saved = raw.split(separator: ",").compactMap { JellyHomeRow(rawValue: String($0)) }.filter { $0 != .hero }
-        return saved + allCases.filter { $0 != .hero && !saved.contains($0) }
+        // The top poster and My Media always lead (they sit at the top): only the rows below are ordered.
+        let saved = raw.split(separator: ",").compactMap { JellyHomeRow(rawValue: String($0)) }.filter { !$0.fixedAtTop }
+        return saved + allCases.filter { !$0.fixedAtTop && !saved.contains($0) }
     }
+    /// The top poster, and My Media's chips under the big title: on or off, not moved.
+    var fixedAtTop: Bool { self == .hero || self == .media }
     /// Discover's sections (loaded together, once a session).
-    static let discoverRows: Set<JellyHomeRow> = [.genres, .top10, .gems, .tonight, .random, .folders]
+    static let discoverRows: Set<JellyHomeRow> = [.genres, .top10, .gems, .tonight, .random]
     static func hidden(_ raw: String) -> Set<JellyHomeRow> { Set(raw.split(separator: ",").compactMap { JellyHomeRow(rawValue: String($0)) }) }
 }
 
@@ -89,6 +115,80 @@ enum JellyUpscale: String, CaseIterable {
         case .off: false
         case .auto: frameRate < 49
         case .always: true
+        }
+    }
+}
+
+/// My Media's pills in your order (Settings → JellySpace → My Media); a library not placed yet
+/// (a new one) follows, in the server's order.
+enum JellyMediaOrder {
+    static func sorted(_ libraries: [JellyfinLibrary], _ raw: String) -> [JellyfinLibrary] {
+        let saved = raw.split(separator: ",").map(String.init)
+        let placed = saved.compactMap { id in libraries.first { $0.id == id } }
+        return placed + libraries.filter { library in !placed.contains { $0.id == library.id } }
+    }
+}
+
+/// One section of JellySpace's home: a fixed one (Continue Watching, Top 10…), or one library's
+/// Recently added or Random row. Each has its own place and switch in Settings → JellySpace.
+struct JellyHomeSection: Hashable, Identifiable {
+    enum Kind: Hashable { case fixed(JellyHomeRow), latest(String), random(String) }
+    let kind: Kind
+    let title: String
+    var id: String {
+        switch kind {
+        case .fixed(let row): row.rawValue
+        case .latest(let library): "latest:" + library
+        case .random(let library): "random:" + library
+        }
+    }
+}
+
+extension JellyHomeRow {
+    /// The home's sections below the top poster, in your order. Each library's Recently added row
+    /// stands where "Library rows" stood, each film or show library's Random row where "Random
+    /// picks" stood, and a section that's new since you last arranged them (a new library, say)
+    /// goes in after its neighbour.
+    static func sections(_ raw: String, libraries: [JellyfinLibrary]) -> [JellyHomeSection] {
+        let latest = libraries.map { JellyHomeSection(kind: .latest($0.id), title: "Recently added · " + $0.name) }
+        let random = libraries.filter(JellyDiscover.holdsVideo)
+            .map { JellyHomeSection(kind: .random($0.id), title: "Random from " + $0.name) }
+        let defaults: [JellyHomeSection] = allCases.filter { !$0.fixedAtTop }.flatMap { row -> [JellyHomeSection] in
+            switch row {
+            case .libraries: latest
+            case .random: random
+            default: [JellyHomeSection(kind: .fixed(row), title: row.title)]
+            }
+        }
+        let byID = Dictionary(defaults.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var placed: [JellyHomeSection] = []
+        for id in expand(raw, latest: latest.map(\.id), random: random.map(\.id)) {
+            if let section = byID[id], !placed.contains(section) { placed.append(section) }
+        }
+        for (index, section) in defaults.enumerated() where !placed.contains(section) {
+            if let anchor = defaults[..<index].last(where: { placed.contains($0) }), let at = placed.firstIndex(of: anchor) {
+                placed.insert(section, at: at + 1)
+            } else {
+                placed.insert(section, at: 0)
+            }
+        }
+        return placed
+    }
+    /// The sections switched off, by id. An old "Library rows" or "Random picks" switch covers every
+    /// library's row of that kind.
+    static func hiddenSections(_ raw: String, libraries: [JellyfinLibrary]) -> Set<String> {
+        Set(expand(raw, latest: libraries.map { "latest:" + $0.id },
+                   random: libraries.filter(JellyDiscover.holdsVideo).map { "random:" + $0.id }))
+    }
+    /// A saved list with the old whole-group entries opened out into one per library (kept as they
+    /// were while the libraries aren't known yet).
+    private static func expand(_ raw: String, latest: [String], random: [String]) -> [String] {
+        raw.split(separator: ",").map(String.init).flatMap { token -> [String] in
+            switch token {
+            case JellyHomeRow.libraries.rawValue where !latest.isEmpty: latest
+            case JellyHomeRow.random.rawValue where !random.isEmpty: random
+            default: [token]
+            }
         }
     }
 }
@@ -180,6 +280,7 @@ enum JellySecrets {
 struct JellySpaceSettingsView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(JellyPrefs.rowsKey) private var rowsRaw = ""
+    @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
     @AppStorage(JellyPrefs.hiddenRowsKey) private var hiddenRowsRaw = ""
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @AppStorage(JellyPrefs.countsKey) private var counts = true
@@ -205,6 +306,14 @@ struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
     @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
+    @AppStorage(JellyPrefs.dialogueKey) private var dialogue = 0
+    @AppStorage(JellyPrefs.nightKey) private var night = false
+    @AppStorage(JellyPrefs.boostKey) private var boost = 0
+    @AppStorage(JellyPrefs.subtitleSizeKey) private var subtitleSize = 1.0
+    @AppStorage(JellyPrefs.subtitleColorKey) private var subtitleColor = "white"
+    @AppStorage(JellyPrefs.subtitleBoxKey) private var subtitleBox = false
+    @AppStorage(JellyPrefs.subtitleRaiseKey) private var subtitleRaise = 0.0
+    @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatching = 3
     @State private var seerrKey = JellySecrets.read("seerr-key") ?? ""
     @State private var seerrNotice: String?
     @State private var libraries: [JellyfinLibrary] = []
@@ -219,6 +328,7 @@ struct JellySpaceSettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 account
                 home
+                myMedia
                 hidden
                 SettingsGroup(label: "Posters") {
                     toggleLine("Unwatched counts", $counts)
@@ -296,34 +406,66 @@ struct JellySpaceSettingsView: View {
     // MARK: Home rows and what's hidden
 
     private var home: some View {
-        let order = JellyHomeRow.order(rowsRaw), off = JellyHomeRow.hidden(hiddenRowsRaw)
+        let shown = libraries.filter { JellyHidden.decode(hiddenRaw)[$0.id] == nil }
+        let order = JellyHomeRow.sections(rowsRaw, libraries: shown)
+        let off = JellyHomeRow.hiddenSections(hiddenRowsRaw, libraries: shown)
         return SettingsGroup(label: "Home") {
-            toggleLine(JellyHomeRow.hero.title, Binding(get: { !off.contains(.hero) }, set: { on in
-                var next = off
-                if on { next.remove(.hero) } else { next.insert(.hero) }
-                hiddenRowsRaw = next.map(\.rawValue).sorted().joined(separator: ",")
-            }))
-            ForEach(Array(order.enumerated()), id: \.element) { position, row in
+            ForEach([JellyHomeRow.hero, .media]) { row in
+                if row == .media { SettingsDivider() }
+                toggleLine(row.title, Binding(get: { !off.contains(row.rawValue) }, set: { on in
+                    setHidden(row.rawValue, hidden: !on, in: off)
+                }))
+            }
+            ForEach(Array(order.enumerated()), id: \.element.id) { position, section in
                 SettingsDivider()
                 HStack(spacing: 10) {
-                    Text(row.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text(section.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                     Spacer(minLength: 8)
-                    moveButton("chevron.up", label: "Move \(row.title) up", disabled: position == 0) { move(row, by: -1, in: order) }
-                    moveButton("chevron.down", label: "Move \(row.title) down", disabled: position == order.count - 1) { move(row, by: 1, in: order) }
-                    Toggle("", isOn: Binding(get: { !off.contains(row) }, set: { on in
-                        var next = off
-                        if on { next.remove(row) } else { next.insert(row) }
-                        hiddenRowsRaw = next.map(\.rawValue).sorted().joined(separator: ",")
-                    })).labelsHidden().tint(theme.accent).accessibilityLabel(row.title)
+                    moveButton("chevron.up", label: "Move \(section.title) up", disabled: position == 0) { move(section, by: -1, in: order) }
+                    moveButton("chevron.down", label: "Move \(section.title) down", disabled: position == order.count - 1) { move(section, by: 1, in: order) }
+                    Toggle("", isOn: Binding(get: { !off.contains(section.id) }, set: { on in
+                        setHidden(section.id, hidden: !on, in: off)
+                    })).labelsHidden().tint(theme.accent).accessibilityLabel(section.title)
                 }.padding(.horizontal, 16).frame(minHeight: 50)
             }
         }
     }
-    private func move(_ row: JellyHomeRow, by step: Int, in order: [JellyHomeRow]) {
-        guard let at = order.firstIndex(of: row), order.indices.contains(at + step) else { return }
+    /// My Media: the libraries shown on the home, in the order of their pills, each moved with ▲ ▼.
+    @ViewBuilder private var myMedia: some View {
+        let order = JellyMediaOrder.sorted(libraries.filter { JellyHidden.decode(hiddenRaw)[$0.id] == nil }, mediaOrderRaw)
+        if !order.isEmpty {
+            SettingsGroup(label: "My Media") {
+                ForEach(Array(order.enumerated()), id: \.element.id) { position, library in
+                    if position > 0 { SettingsDivider() }
+                    HStack(spacing: 10) {
+                        Label(library.name, systemImage: JellySpace.symbol(library.type))
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Spacer(minLength: 8)
+                        moveButton("chevron.up", label: "Move \(library.name) up", disabled: position == 0) { moveLibrary(library, by: -1, in: order) }
+                        moveButton("chevron.down", label: "Move \(library.name) down", disabled: position == order.count - 1) { moveLibrary(library, by: 1, in: order) }
+                    }.padding(.horizontal, 16).frame(minHeight: 50).accessibilityIdentifier("jellyspace-media-order-" + library.id)
+                }
+            }
+        }
+    }
+    private func moveLibrary(_ library: JellyfinLibrary, by step: Int, in order: [JellyfinLibrary]) {
+        guard let at = order.firstIndex(where: { $0.id == library.id }), order.indices.contains(at + step) else { return }
         var next = order
         next.swapAt(at, at + step)
-        rowsRaw = next.map(\.rawValue).joined(separator: ",")
+        // Hidden libraries keep their places for when they're shown again.
+        let kept = mediaOrderRaw.split(separator: ",").map(String.init).filter { id in !next.contains { $0.id == id } }
+        mediaOrderRaw = (next.map(\.id) + kept).joined(separator: ",")
+    }
+    private func setHidden(_ id: String, hidden: Bool, in off: Set<String>) {
+        var next = off
+        if hidden { next.insert(id) } else { next.remove(id) }
+        hiddenRowsRaw = next.sorted().joined(separator: ",")
+    }
+    private func move(_ section: JellyHomeSection, by step: Int, in order: [JellyHomeSection]) {
+        guard let at = order.firstIndex(of: section), order.indices.contains(at + step) else { return }
+        var next = order
+        next.swapAt(at, at + step)
+        rowsRaw = next.map(\.id).joined(separator: ",")
     }
     private func moveButton(_ symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -382,6 +524,8 @@ struct JellySpaceSettingsView: View {
             if autoplay {
                 SettingsDivider()
                 choiceLine("Countdown", $countdown, [("5 seconds", 5), ("10 seconds", 10), ("15 seconds", 15)])
+                SettingsDivider()
+                choiceLine("Ask if still watching", $stillWatching, JellySound.stillWatching)
             }
             SettingsDivider()
             toggleLine("Resume where you stopped", $resume)
@@ -395,6 +539,20 @@ struct JellySpaceSettingsView: View {
             choiceLine("Upscaling", $upscale, JellyUpscale.allCases.map { ($0.title, $0) })
             SettingsDivider()
             toggleLine("Remember audio and subtitles", $rememberTracks)
+            SettingsDivider()
+            choiceLine("Dialogue boost", $dialogue, JellySound.dialogue)
+            SettingsDivider()
+            toggleLine("Night mode", $night)
+            SettingsDivider()
+            choiceLine("Volume boost", $boost, JellySound.boost)
+            SettingsDivider()
+            choiceLine("Subtitle size", $subtitleSize, JellySound.subtitleSizes)
+            SettingsDivider()
+            choiceLine("Subtitle colour", $subtitleColor, JellySound.subtitleColors)
+            SettingsDivider()
+            choiceLine("Subtitle background", $subtitleBox, JellySound.subtitleBackgrounds)
+            SettingsDivider()
+            choiceLine("Subtitle position", $subtitleRaise, JellySound.subtitlePositions)
         }
     }
 

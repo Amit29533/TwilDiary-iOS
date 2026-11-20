@@ -1,27 +1,34 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// A list across the libraries: a person's films and shows, a genre, your favourites, or collections.
+/// A list across the libraries: a person's films and shows, a genre or studio, your favourites, or
+/// collections. A genre or studio opened from a library's Genres or Studios keeps to that library.
 struct JellyListRoute: Hashable {
-    enum Kind: String, Hashable { case person, genre, favourites, collections, artist }
+    enum Kind: String, Hashable { case person, genre, favourites, collections, artist, studio }
     let kind: Kind
     var id: String? = nil
     let name: String
+    var library: String? = nil
 }
 
 /// One JellyListRoute as a poster grid, with Sort and Unwatched; a person's page starts with their
 /// photo and biography.
 struct JellyListPage: View {
     let route: JellyListRoute
-    /// Posters or landscape cards, remembered for this list (a genre, a person, favourites).
-    @AppStorage private var landscape: Bool
+    /// Posters, landscape cards or Canvas, remembered for this list (a genre, a person, favourites).
+    @AppStorage private var layout: JellyGridLayout
+    /// Sort, order and the watched filter, remembered for this list.
+    @AppStorage private var optionsRaw: String
     init(route: JellyListRoute) {
         self.route = route
-        _landscape = AppStorage(wrappedValue: false, JellyLayout.key("list." + route.kind.rawValue + "." + (route.id ?? "")))
+        let section = "list." + route.kind.rawValue + "." + (route.id ?? "") + (route.library.map { "." + $0 } ?? "")
+        _layout = JellyLayout.storage(section)
+        _optionsRaw = AppStorage(wrappedValue: "", JellyBrowseOptions.key(section))
     }
-    @AppStorage("jellyspace.sort") private var sortRaw = JellyfinClient.Sort.name.rawValue
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
-    @State private var unwatched = false
+    private var optionsBinding: Binding<JellyBrowseOptions> {
+        Binding(get: { JellyBrowseOptions.decode(optionsRaw) }, set: { optionsRaw = $0.encoded })
+    }
     @State private var items: [JellyfinClient.Item] = []
     @State private var person: JellyfinClient.Detail?
     @State private var loading = true
@@ -36,16 +43,19 @@ struct JellyListPage: View {
                     if route.kind == .person, let person { personHeader(person, client: client).padding(.horizontal, 6) }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                     else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
-                    else if items.isEmpty { Text("Nothing here.").font(.subheadline).foregroundStyle(.secondary) }
-                    JellyGrid(items: items, client: client, playing: $playing, landscape: landscape)
+                    else if items.isEmpty {
+                        Text(JellyBrowseOptions.decode(optionsRaw).filtering ? "Nothing matches these filters." : "Nothing here.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    JellyGrid(items: items, client: client, playing: $playing, layout: layout)
                 }
             }.padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 110)
         }
         .diaryScreenBackground()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched, landscape: $landscape) } }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { JellyBrowseMenu(options: optionsBinding, layout: $layout) } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
-        .task(id: sortRaw + String(unwatched) + hiddenRaw) { await load() }
+        .task(id: optionsRaw + hiddenRaw) { await load() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
     }
 
@@ -71,24 +81,28 @@ struct JellyListPage: View {
         loading = true; failure = nil
         defer { loading = false }
         let user = await JellyfinUser.id(client)
-        let sort = JellyfinClient.Sort(rawValue: sortRaw) ?? .name
+        let options = JellyBrowseOptions.decode(optionsRaw)
         let titles = URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series")
         var extra: [URLQueryItem] = []
-        var filters = unwatched ? ["IsUnplayed"] : []
+        var filters = options.showFilter.map { [$0] } ?? []
         switch route.kind {
         case .person:
             extra = [titles, URLQueryItem(name: "PersonIds", value: route.id)]
             if person == nil, let id = route.id { person = try? await client.detail(id, user: user) }
         case .genre: extra = [titles, URLQueryItem(name: "GenreIds", value: route.id)]
+        case .studio: extra = [titles, URLQueryItem(name: "StudioIds", value: route.id)]
         case .favourites:
             extra = [URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode")]
             filters.append("IsFavorite")
         case .collections: extra = [URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")]
         case .artist: extra = [URLQueryItem(name: "IncludeItemTypes", value: "MusicAlbum"), URLQueryItem(name: "AlbumArtistIds", value: route.id)]
         }
+        // From a library's Genres or Studios: that library only.
+        if let library = route.library { extra.append(URLQueryItem(name: "ParentId", value: library)) }
         do {
             let hidden = JellyHidden.decode(hiddenRaw)
-            items = try await client.items(extra, filters: filters, user: user, sort: sort).filter { hidden[$0.Id] == nil }
+            items = try await client.items(extra, filters: Array(Set(filters)), user: user, sort: options.sort, ascending: options.isAscending)
+                .filter { hidden[$0.Id] == nil }
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
         }

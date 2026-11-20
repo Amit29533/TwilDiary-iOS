@@ -35,6 +35,8 @@ struct JellyFolderRoute: Hashable {
 struct JellySpaceView: View {
     @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     @AppStorage(JellyPrefs.rowsKey) private var rowsRaw = ""
+    /// My Media's order (Settings → JellySpace → My Media).
+    @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
     @AppStorage(JellyPrefs.hiddenRowsKey) private var hiddenRowsRaw = ""
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @State private var seerrResults: [JellySeerr.Result] = []
@@ -50,7 +52,7 @@ struct JellySpaceView: View {
     @State private var nextUp: [JellyfinClient.Item] = []
     /// Jellyfin's picks from what you've watched.
     @State private var forYou: JellyForYou?
-    /// Discover: genres, the Top 10, hidden gems, tonight's genre, random shelves, your folders.
+    /// Discover: genres, the Top 10, hidden gems, tonight's genre, and every library's random shelf.
     @State private var discover: JellyDiscover?
     @State private var query = ""
     @State private var searching = false
@@ -61,6 +63,9 @@ struct JellySpaceView: View {
     @State private var playing: JellyPlayback?
     /// "JellySpace" in the top bar once the page has scrolled (the big poster gone under the bar).
     @State private var header = CompactHeaderState()
+    /// The status bar and top bar's height: the big title sits in the bar's row, My Media under it.
+    @State private var topInset: CGFloat = 0
+    @Environment(AppRouter.self) private var router
 
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
     /// at Explore's sizes.
@@ -74,9 +79,13 @@ struct JellySpaceView: View {
                     // The first load: the page's own shape (the top poster, its title and Play, the first
                     // rows) under the bar, instead of a shelf of blanks behind the top buttons.
                     let firstLoad = loading && !loaded && !showsResults && failure == nil
-                    if firstLoad { JellyHomeSkeleton() }
-                    else if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client, playing: $playing) }
+                    if firstLoad {
+                        JellyHomeSkeleton().overlay(alignment: .top) { homeHeader(onPoster: false) }
+                    } else if !picks.isEmpty {
+                        JellyHeroCarousel(items: picks, client: client, playing: $playing).overlay(alignment: .top) { homeHeader(onPoster: true) }
+                    }
                     VStack(alignment: .leading, spacing: 22) {
+                        if !showsResults && !firstLoad && picks.isEmpty { homeHeader(onPoster: false, inline: true) }
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
                         if showsResults {
                             if results.isEmpty && !searchRunning { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
@@ -86,16 +95,18 @@ struct JellySpaceView: View {
                             EmptyView()
                         } else {
                             // Your order and choice of rows (Settings → JellySpace).
-                            let off = JellyHomeRow.hidden(hiddenRowsRaw)
-                            ForEach(JellyHomeRow.order(rowsRaw).filter { !off.contains($0) }) { row in homeRow(row, client: client) }
+                            // Each section in your order (Settings → JellySpace), each library's rows on their own.
+                            let off = JellyHomeRow.hiddenSections(hiddenRowsRaw, libraries: visibleLibraries)
+                            ForEach(JellyHomeRow.sections(rowsRaw, libraries: visibleLibraries).filter { !off.contains($0.id) }) { section in
+                                homeSection(section, client: client)
+                            }
                         }
                     }
-                    // The rows' top edge: just under the big poster when there is one, else where the
-                    // first heading starts.
+                    // Search results: the bar's title follows their top edge (the big title is away).
                     .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
-                        header.update(ScrollLinkedBarTitle.progress(headingBottom: picks.isEmpty ? top + 58 : top - 22))
+                        if showsResults { header.update(ScrollLinkedBarTitle.progress(headingBottom: top + 58)) }
                     }
-                    .padding(.horizontal, 14).padding(.top, showsResults ? 64 : picks.isEmpty && !firstLoad ? 72 : 0)
+                    .padding(.horizontal, 14).padding(.top, showsResults ? 64 : 0)
                 } else {
                     NavigationLink(value: AppDestination.jellyfin) {
                         HStack(spacing: 10) {
@@ -108,6 +119,7 @@ struct JellySpaceView: View {
                 }
             }.padding(.bottom, 110)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
         .diaryScreenBackground()
         // The search field floats on glass just under the top bar's buttons, over the page (which
         // stays as it is until something's typed).
@@ -119,7 +131,7 @@ struct JellySpaceView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .principal) { ScrollLinkedBarTitle(resting: "", scrolled: "JellySpace", state: header) }
+            ToolbarItem(placement: .principal) { JellySpaceBarTitle(state: header) }
             if JellySpace.client != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(searching ? "Close search" : "Search", systemImage: searching ? "xmark" : "magnifyingglass") {
@@ -160,10 +172,29 @@ struct JellySpaceView: View {
         return items.filter { hidden[$0.Id] == nil && ($0.SeriesId.map { hidden[$0] == nil } ?? true) }
     }
 
+    /// One section: a fixed row, a library's Recently added row, or its Random row.
+    @ViewBuilder private func homeSection(_ section: JellyHomeSection, client: JellyfinClient) -> some View {
+        switch section.kind {
+        case .fixed(let row):
+            homeRow(row, client: client)
+        case .latest(let id):
+            if let library = visibleLibraries.first(where: { $0.id == id }) {
+                let items = shown(latest[id] ?? [])
+                if !items.isEmpty {
+                    tileRow("Recently added · " + library.name, items: items, client: client,
+                            more: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder", type: library.type))
+                }
+            }
+        case .random(let id):
+            if let shelf = discover?.random.first(where: { $0.library?.id == id }), !shown(shelf.items).isEmpty {
+                shuffledRow(shelf, client: client, wide: shelf.wide)
+            }
+        }
+    }
     @ViewBuilder private func homeRow(_ row: JellyHomeRow, client: JellyfinClient) -> some View {
         switch row {
-        case .hero: EmptyView()
-        case .media: if !visibleLibraries.isEmpty { myMedia() }
+        // The poster and My Media's chips are at the top, not among the rows.
+        case .hero, .media: EmptyView()
         case .resume: if !continueItems.isEmpty { continueRow(client) }
         case .favourites:
             let items = shown(favourites)
@@ -189,10 +220,8 @@ struct JellySpaceView: View {
             if let tonight = discover?.tonight, !shown(tonight.items).isEmpty { tonightRow(tonight, client: client) }
         case .random:
             ForEach(discover?.random ?? []) { shelf in
-                if !shown(shelf.items).isEmpty { shuffledRow(shelf, client: client, wide: false) }
+                if !shown(shelf.items).isEmpty { shuffledRow(shelf, client: client, wide: shelf.wide) }
             }
-        case .folders:
-            if let folders = discover?.folders, !shown(folders.items).isEmpty { shuffledRow(folders, client: client, wide: true) }
         case .collections:
             let items = shown(collections)
             if !items.isEmpty { tileRow("Collections", items: items, client: client, more: JellyListRoute(kind: .collections, name: "Collections")) }
@@ -276,23 +305,67 @@ struct JellySpaceView: View {
     }
 
     /// Your libraries as small pills (each library's newest have a row of their own further down).
-    private func myMedia() -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            heading("My Media")
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(visibleLibraries) { library in
-                        NavigationLink(value: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder", type: library.type)) {
-                            Label(library.name, systemImage: JellySpace.symbol(library.type))
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                                .padding(.horizontal, 14).frame(height: 36).background(Color.primary.opacity(0.09), in: Capsule()).contentShape(Capsule())
+    /// The top of the home: "JellySpace" with Jellyfin's logo, large, in the top bar's row (the search
+    /// button beside it), and My Media's libraries under it as text on glass, in your order (Settings →
+    /// JellySpace → My Media). White over the poster; the page's own colour without one.
+    private func homeHeader(onPoster: Bool, inline: Bool = false) -> some View {
+        let ink = onPoster ? Color.white : HomeStyle.primary
+        let chips = JellyHomeRow.hidden(hiddenRowsRaw).contains(.media) ? [] : JellyMediaOrder.sorted(visibleLibraries, mediaOrderRaw)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 9) {
+                Image("jellyfin-mark").resizable().scaledToFit().frame(width: 30, height: 30).accessibilityHidden(true)
+                Text("JellySpace").font(.system(size: 30, weight: .bold)).tracking(-0.5).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .shadow(color: .black.opacity(onPoster ? 0.35 : 0), radius: 8, y: 1)
+            .frame(height: 44)
+            .padding(.horizontal, inline ? 0 : 16)
+            .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            .allowsHitTesting(false)
+            if !chips.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(chips) { library in
+                            NavigationLink(value: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder", type: library.type)) {
+                                chip(Text(library.name), ink: ink)
+                            }
+                            .buttonStyle(.springPress).accessibilityIdentifier("jellyspace-library-" + library.id)
+                            .contextMenu { Button("Hide library", systemImage: "eye.slash") { JellyHidden.hide(library.id, name: library.name) } }
                         }
-                        .buttonStyle(.springPress).accessibilityIdentifier("jellyspace-library-" + library.id)
-                        .contextMenu { Button("Hide library", systemImage: "eye.slash") { JellyHidden.hide(library.id, name: library.name) } }
+                        // Categories: every genre, each opening its list.
+                        if let genres = discover?.genres, !genres.isEmpty {
+                            Menu {
+                                ForEach(genres, id: \.Id) { genre in
+                                    Button(genre.Name ?? "Genre") {
+                                        router.paths[router.selectedTab, default: NavigationPath()]
+                                            .append(JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre"))
+                                    }
+                                }
+                            } label: {
+                                chip(Text("Categories \(Image(systemName: "chevron.down"))"), ink: ink)
+                            }
+                            .buttonStyle(.springPress).accessibilityLabel("Categories").accessibilityIdentifier("jellyspace-categories")
+                        }
                     }
                 }
-            }.scrollIndicators(.hidden).scrollClipDisabled()
+                .scrollIndicators(.hidden).scrollClipDisabled()
+                .contentMargins(.horizontal, inline ? 0 : 16, for: .scrollContent)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The bar's small "JellySpace" fades in as this one goes under the bar.
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
+            header.update(ScrollLinkedBarTitle.progress(headingBottom: bottom + (chips.isEmpty ? 46 : 0)))
+        }
+        .padding(.top, max(0, topInset - 44))
+        .padding(.bottom, inline ? 4 : 0)
+    }
+
+    /// One of the chips under the title, as Netflix has them: the name in a thin outline, nothing behind it.
+    private func chip(_ label: Text, ink: Color) -> some View {
+        label.font(.system(size: 14, weight: .medium)).foregroundStyle(ink).lineLimit(1)
+            .padding(.horizontal, 14).frame(height: 32)
+            .overlay { Capsule().strokeBorder(ink.opacity(0.55), lineWidth: 1) }
+            .contentShape(Capsule())
     }
 
     /// Continue Watching: what you stopped partway through, then the next episode of each show you're
@@ -320,20 +393,14 @@ struct JellySpaceView: View {
         return started.map { JellyContinueEntry(item: $0, nextUp: false) } + following.map { JellyContinueEntry(item: $0, nextUp: true) }
     }
 
-    /// A row of posters (a library's newest, your favourites, collections), with See all.
+    /// A row of posters (a library's newest, your favourites, collections), with the app's round ›
+    /// to the whole list.
     private func tileRow<Route: Hashable>(_ title: String, items: [JellyfinClient.Item], client: JellyfinClient, more: Route) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 heading(title)
                 Spacer(minLength: 8)
-                NavigationLink(value: more) {
-                    HStack(spacing: 3) {
-                        Text("See all")
-                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
-                    }
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.secondary).fixedSize().contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).accessibilityLabel("See all " + title).accessibilityIdentifier("jellyspace-more-" + title)
+                SectionMoreLink(label: "View more " + title, value: more, identifier: "jellyspace-more-" + title)
             }
             posterShelf(items, client: client)
         }
@@ -413,15 +480,15 @@ struct JellySpaceView: View {
             }.scrollIndicators(.hidden).scrollClipDisabled()
         }
     }
-    /// "Tonight: Romance": wide cards from one genre, with See all.
+    /// "Tonight: Romance": wide cards from one genre, with the app's round › to the whole genre.
     private func tonightRow(_ shelf: JellyShelf, client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 heading(shelf.title)
                 Spacer(minLength: 8)
                 if let genre = shelf.genre {
-                    NavigationLink(value: JellyListRoute(kind: .genre, id: String(shelf.id.dropFirst("tonight-".count)), name: genre)) { seeAll }
-                        .buttonStyle(.plain).accessibilityLabel("See all " + genre).accessibilityIdentifier("jellyspace-tonight-all")
+                    SectionMoreLink(label: "View more " + genre, value: JellyListRoute(kind: .genre, id: String(shelf.id.dropFirst("tonight-".count)), name: genre),
+                                    identifier: "jellyspace-tonight-all")
                 }
             }
             wideShelf(shown(shelf.items), client: client, width: posterSize.homeWidth * 2.1)
@@ -451,12 +518,6 @@ struct JellySpaceView: View {
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
     }
-    private var seeAll: some View {
-        HStack(spacing: 3) {
-            Text("See all")
-            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
-        }.font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.secondary).fixedSize().contentShape(Rectangle())
-    }
     /// Hidden gems not already on the top poster.
     private var gemItems: [JellyfinClient.Item] {
         let onPoster = JellyHomeRow.hidden(hiddenRowsRaw).contains(.hero) ? [] : Set(heroPicks.map(\.Id))
@@ -469,7 +530,6 @@ struct JellySpaceView: View {
             let user = await JellyfinUser.id(client)
             let items = await JellyDiscover.random(client: client, user: user, library: library)
             guard !items.isEmpty, var current = discover else { return }
-            if current.folders?.id == shelf.id { current.folders?.items = items }
             if let index = current.random.firstIndex(where: { $0.id == shelf.id }) { current.random[index].items = items }
             withAnimation(.smooth(duration: 0.3)) { discover = current }
             JellyHomeCache.discover = current
@@ -618,14 +678,18 @@ private struct JellyHeroCarousel: View {
 }
 
 /// One top poster: the backdrop fading into the page, the title's logo (or its name) centred on the
-/// fade with its year, genres and rating, then Play (Resume, or a show's next episode) and ⓘ for its page.
+/// fade with its year, genres and rating, then Play (Resume, or a show's next episode) and Favourite,
+/// side by side. A tap anywhere else on the poster opens its page.
 private struct JellyHero: View {
     let item: JellyfinClient.Item
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 430
+    @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 470
     @State private var starting = false
+    /// Set once you've tapped Favourite here (until then, what the server said).
+    @State private var favourite: Bool?
+    private var isFavourite: Bool { favourite ?? item.UserData?.IsFavorite ?? false }
 
     private var route: JellyDetailRoute { JellyDetailRoute(id: item.Id, name: item.Name ?? "") }
     /// "2023 · Anime · Drama".
@@ -651,27 +715,52 @@ private struct JellyHero: View {
             }
             .font(.system(size: 13, weight: .medium)).foregroundStyle(HomeStyle.primary.opacity(0.82)).lineLimit(1)
             HStack(spacing: 10) {
+                // Play: solid in the page's text colour (white on a dark theme), the page's colour on it.
                 Button { Task { await play() } } label: {
                     HStack(spacing: 7) {
-                        if starting { ProgressView().controlSize(.small).tint(WatchStyle.ink) } else { Image(systemName: "play.fill") }
-                        Text(playLabel).lineLimit(1)
+                        if starting { ProgressView().controlSize(.small).tint(ThemeStore.current.canvas) } else { Image(systemName: "play.fill") }
+                        Text(playLabel).lineLimit(1).minimumScaleFactor(0.8)
                     }
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(WatchStyle.ink)
-                    .padding(.horizontal, 22).frame(height: 42).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(ThemeStore.current.canvas)
+                    .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
+                    .background(HomeStyle.primary, in: Capsule()).contentShape(Capsule())
                 }
                 .buttonStyle(.springPress).disabled(starting)
                 .accessibilityLabel(playLabel + " " + (item.Name ?? "")).accessibilityIdentifier("jellyspace-hero-play-" + item.Id)
-                NavigationLink(value: route) {
-                    Image(systemName: "info").font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                        .frame(width: 42, height: 42).glassEffect(.regular.interactive(), in: Circle()).contentShape(Circle())
+                Button { toggleFavourite() } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: isFavourite ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace))
+                        Text("Favourite").lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
+                    .glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
                 }
-                .buttonStyle(.plain).accessibilityLabel("About " + (item.Name ?? "this title")).accessibilityIdentifier("jellyspace-hero-" + item.Id)
+                .buttonStyle(.springPress)
+                .sensoryFeedback(.selection, trigger: isFavourite)
+                .accessibilityLabel(isFavourite ? "Remove " + (item.Name ?? "this title") + " from favourites" : "Add " + (item.Name ?? "this title") + " to favourites")
+                .accessibilityIdentifier("jellyspace-hero-favourite-" + item.Id)
             }.padding(.top, 5)
         }
         .padding(.horizontal, 24).padding(.bottom, 36)
         .frame(maxWidth: .infinity)
-        .frame(height: verticalSizeClass == .compact ? 280 : min(height, 560), alignment: .bottom)
-        .background { backdrop }
+        .frame(height: verticalSizeClass == .compact ? 280 : min(height, 600), alignment: .bottom)
+        .background {
+            // The poster itself opens the title's page.
+            NavigationLink(value: route) { backdrop }
+                .buttonStyle(.plain)
+                .accessibilityLabel("About " + (item.Name ?? "this title")).accessibilityIdentifier("jellyspace-hero-" + item.Id)
+        }
+    }
+
+    private func toggleFavourite() {
+        let now = !isFavourite
+        withAnimation(.snappy(duration: 0.2)) { favourite = now }
+        let id = item.Id
+        Task {
+            guard let user = await JellyfinUser.id(client) else { return }
+            do { try await client.setFavourite(id, user: user, now) } catch { favourite = !now }
+        }
     }
 
     @ViewBuilder private var titleMark: some View {
@@ -693,8 +782,9 @@ private struct JellyHero: View {
             .overlay { JellyImage(url: item.BackdropImageTags?.first.flatMap { JellyfinClient.imageURL(base: client.base, item: item.Id, type: "Backdrop", tag: $0, width: 1280) }) }
             .overlay {
                 LinearGradient(stops: [
-                    .init(color: .black.opacity(0.35), location: 0),
-                    .init(color: .clear, location: 0.25),
+                    .init(color: .black.opacity(0.55), location: 0),
+                    .init(color: .black.opacity(0.18), location: 0.2),
+                    .init(color: .clear, location: 0.34),
                     .init(color: page.opacity(0.5), location: 0.58),
                     .init(color: page.opacity(0.9), location: 0.84),
                     .init(color: page, location: 1)
@@ -718,13 +808,33 @@ private struct JellyHero: View {
     }
 }
 
+/// "JellySpace" in the top bar once the page has scrolled: Jellyfin's own logo (the app's
+/// jellyfin-mark, as BrandLogo shows it) and the name, fading in and lifting slightly as a title
+/// page's name does.
+private struct JellySpaceBarTitle: View {
+    let state: CompactHeaderState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        let progress = state.progress
+        HStack(spacing: 8) {
+            Image("jellyfin-mark").resizable().scaledToFit().frame(width: 22, height: 22)
+                .accessibilityHidden(true)
+            Text("JellySpace").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+        }
+        .opacity(Double(progress))
+        .offset(y: reduceMotion ? 0 : (1 - progress) * 6)
+        .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+        .accessibilityHidden(progress < 0.5)
+    }
+}
+
 /// The home while it first loads, in the shape it's about to take: the top poster fading into the
-/// page with the title, details and Play placed where they'll be, then Continue Watching's cards
-/// and My Media's pills. It breathes gently (still with Reduce Motion).
+/// page with the title, details, Play and Favourite placed where they'll be, then Continue Watching's
+/// cards. It breathes gently (still with Reduce Motion).
 private struct JellyHomeSkeleton: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 430
+    @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 470
     @State private var dim = false
 
     var body: some View {
@@ -738,12 +848,12 @@ private struct JellyHomeSkeleton: View {
                     Capsule().fill(fill).frame(width: 210, height: 30)
                     Capsule().fill(fill).frame(width: 150, height: 12)
                     HStack(spacing: 10) {
-                        Capsule().fill(fill).frame(width: 130, height: 42)
-                        Circle().fill(fill).frame(width: 42, height: 42)
-                    }.padding(.top, 5)
+                        Capsule().fill(fill).frame(height: 44)
+                        Capsule().fill(fill).frame(height: 44)
+                    }.padding(.top, 5).padding(.horizontal, 24)
                 }.padding(.bottom, 36)
             }
-            .frame(height: verticalSizeClass == .compact ? 280 : min(height, 560))
+            .frame(height: verticalSizeClass == .compact ? 280 : min(height, 600))
             VStack(alignment: .leading, spacing: 10) {
                 Capsule().fill(fill).frame(width: 170, height: 18)
                 HStack(spacing: 12) {
@@ -755,10 +865,6 @@ private struct JellyHomeSkeleton: View {
                         }
                     }
                 }
-            }.padding(.horizontal, 14)
-            VStack(alignment: .leading, spacing: 10) {
-                Capsule().fill(fill).frame(width: 110, height: 18)
-                HStack(spacing: 8) { ForEach([118, 104, 92], id: \.self) { Capsule().fill(fill).frame(width: CGFloat($0), height: 36) } }
             }.padding(.horizontal, 14)
         }
         .onAppear { withAnimation(.easeInOut(duration: reduceMotion ? 1.6 : 0.9).repeatForever(autoreverses: true)) { dim = true } }
@@ -840,17 +946,25 @@ struct JellyForYou: Sendable {
 /// season its episodes, and films, episodes and videos play. Sort and Unwatched sit in the ••• menu.
 struct JellyFolderPage: View {
     let route: JellyFolderRoute
-    /// Posters or landscape cards, remembered for this library or folder.
-    @AppStorage private var landscape: Bool
+    /// Posters, landscape cards or Canvas, remembered for this library or folder.
+    @AppStorage private var layout: JellyGridLayout
+    /// Library, Folder, Genres or Studios, remembered for this one.
+    @AppStorage private var browse: JellyBrowse
+    /// Sort, order and filters (JellyBrowseOptions as JSON), remembered for this one.
+    @AppStorage private var optionsRaw: String
     init(route: JellyFolderRoute) {
         self.route = route
-        _landscape = AppStorage(wrappedValue: false, JellyLayout.key(route.id))
+        _layout = JellyLayout.storage(route.id)
+        _browse = AppStorage(wrappedValue: .library, JellyLayout.browseKey(route.id))
+        _optionsRaw = AppStorage(wrappedValue: "", JellyBrowseOptions.key(route.id))
     }
-    @AppStorage("jellyspace.sort") private var sortRaw = JellyfinClient.Sort.name.rawValue
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @AppStorage("jellyspace.music.view") private var musicView = "Albums"
-    @State private var unwatched = false
     @State private var items: [JellyfinClient.Item] = []
+    /// Genres or Studios: their tiles.
+    @State private var tiles: [JellyfinClient.Item] = []
+    /// The genres in here, for the Filter menu.
+    @State private var genreNames: [String] = []
     @State private var loading = true
     @State private var failure: String?
     @State private var playing: JellyPlayback?
@@ -860,6 +974,12 @@ struct JellyFolderPage: View {
     @State private var loadingMore = false
     private let pageSize = 200
     private var music: Bool { route.type == "music" }
+    private var options: JellyBrowseOptions { JellyBrowseOptions.decode(optionsRaw) }
+    private var optionsBinding: Binding<JellyBrowseOptions> {
+        Binding(get: { JellyBrowseOptions.decode(optionsRaw) }, set: { optionsRaw = $0.encoded })
+    }
+    /// Genres or Studios shown as tiles (in a library or folder that can be browsed so).
+    private var showsTiles: Bool { browsable && !browse.listsTitles }
 
     var body: some View {
         EdgeToEdgeScroll(frosted: true) {
@@ -871,16 +991,27 @@ struct JellyFolderPage: View {
                         }.pickerStyle(.segmented).padding(.horizontal, 6).accessibilityIdentifier("jellyspace-music-view")
                     }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                    else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
-                    else if items.isEmpty { Text("Nothing in here.").font(.subheadline).foregroundStyle(.secondary) }
-                    if route.kind == "Season" {
+                    else if loading && items.isEmpty && tiles.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
+                    else if showsTiles ? tiles.isEmpty : items.isEmpty {
+                        Text(options.filtering && !showsTiles ? "Nothing matches these filters." : "Nothing in here.").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    if showsTiles {
+                        // Each genre or studio of this library, opening its titles here.
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+                            ForEach(tiles, id: \.Id) { tile in
+                                NavigationLink(value: JellyListRoute(kind: browse == .studios ? .studio : .genre, id: tile.Id, name: tile.Name ?? "", library: route.id)) {
+                                    JellyNameTile(item: tile, client: client)
+                                }.buttonStyle(.springPress).accessibilityIdentifier("jellyspace-tile-" + tile.Id)
+                            }
+                        }
+                    } else if route.kind == "Season" {
                         LazyVStack(spacing: 8) { ForEach(items, id: \.Id) { JellyEpisodeRow(item: $0, client: client, playing: $playing) } }
                     } else {
                         // Albums, videos and the rest as posters; photos as a grid of squares, songs as a
                         // list, after them.
                         let photos = items.filter { $0.kind == "Photo" }, songs = items.filter { $0.kind == "Audio" }
                         let rest = items.filter { $0.kind != "Photo" && $0.kind != "Audio" }
-                        if !rest.isEmpty { JellyGrid(items: rest, client: client, playing: $playing, landscape: landscape) { Task { await loadMore() } } }
+                        if !rest.isEmpty { JellyGrid(items: rest, client: client, playing: $playing, layout: layout) { Task { await loadMore() } } }
                         if !photos.isEmpty { JellyPhotoGrid(photos: photos, client: client) { Task { await loadMore() } } }
                         if loadingMore { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
                         if !songs.isEmpty { JellyTrackList(tracks: songs) }
@@ -890,14 +1021,37 @@ struct JellyFolderPage: View {
         }
         .diaryScreenBackground()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-        .toolbar { if sortable { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched, landscape: $landscape) } } }
+        .toolbar {
+            if sortable {
+                ToolbarItem(placement: .topBarTrailing) {
+                    JellyBrowseMenu(options: optionsBinding, layout: $layout, content: browsable ? $browse : nil,
+                                    genres: browsable && browse == .library ? genreNames : nil)
+                }
+            }
+        }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
-        .task(id: sortRaw + String(unwatched) + hiddenRaw + musicView) { await load() }
+        .task(id: optionsRaw + hiddenRaw + musicView + browse.rawValue) { await load() }
+        .task(id: browse.rawValue) { await loadGenreNames() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
     }
 
     /// Seasons, a show's season list and an album keep their own order.
     private var sortable: Bool { !["Season", "Series", "MusicAlbum"].contains(route.kind) }
+    /// A library or a folder in one (not music, which has its own Albums, Artists and Folders, nor a
+    /// collection): it can be browsed as a whole, folder by folder, or by genre or studio.
+    private var browsable: Bool { sortable && !music && route.kind != "BoxSet" }
+    /// One page: everything under it (Library, with every filter) or its own level (Folder, with the
+    /// sort and the watched filter: genres and the like would hide its folders).
+    private func page(_ client: JellyfinClient, user: String?, start: Int) async throws -> JellyfinClient.Page {
+        if browsable, browse == .library {
+            return try await client.libraryPage(of: route.id, libraryType: route.type, user: user, order: options.query(attributes: true),
+                                                start: start, limit: pageSize)
+        }
+        if sortable {
+            return try await client.folderPage(of: route.id, user: user, order: options.query(attributes: false), start: start, limit: pageSize)
+        }
+        return try await client.childrenPage(of: route.id, user: user, sort: nil, unwatched: false, start: start, limit: pageSize)
+    }
 
     private func load() async {
         guard let client = JellySpace.client else { return }
@@ -905,39 +1059,52 @@ struct JellyFolderPage: View {
         defer { loading = false }
         do {
             let user = await JellyfinUser.id(client)
-            let sort = sortable ? JellyfinClient.Sort(rawValue: sortRaw) ?? .name : nil
+            if showsTiles {
+                let found = browse == .studios ? try await client.studios(in: route.id, user: user) : try await client.genres(in: route.id, user: user)
+                tiles = found.filter { !($0.Name ?? "").isEmpty }
+                items = []; total = 0; fetched = 0
+                return
+            }
+            tiles = []
             if music, musicView != "Folders" {
                 // A music library by album or by artist (the whole library, not its folders).
                 let found: [JellyfinClient.Item]
                 if musicView == "Artists" {
                     found = try await client.artists(in: route.id, user: user)
                 } else {
+                    let options = options
                     found = try await client.items([URLQueryItem(name: "IncludeItemTypes", value: "MusicAlbum"), URLQueryItem(name: "ParentId", value: route.id)],
-                                                   filters: unwatched ? ["IsUnplayed"] : [], user: user, sort: sort ?? .name, limit: 2000)
+                                                   filters: options.showFilter.map { [$0] } ?? [], user: user, sort: options.sort,
+                                                   ascending: options.isAscending, limit: 2000)
                 }
                 total = found.count; fetched = found.count
                 items = arrange(found)
                 return
             }
-            let page = try await client.childrenPage(of: route.id, user: user, sort: sort, unwatched: sortable && unwatched, start: 0, limit: pageSize)
-            total = page.TotalRecordCount; fetched = page.Items.count
-            items = arrange(page.Items)
+            let first = try await page(client, user: user, start: 0)
+            total = first.TotalRecordCount; fetched = first.Items.count
+            items = arrange(first.Items)
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
         }
     }
+    /// The genres in here, for the Filter menu (the Library view only).
+    private func loadGenreNames() async {
+        guard browsable, browse == .library, genreNames.isEmpty, let client = JellySpace.client else { return }
+        let user = await JellyfinUser.id(client)
+        genreNames = ((try? await client.genres(in: route.id, user: user)) ?? []).compactMap(\.Name)
+    }
     /// The next 200, when you near the end.
     private func loadMore() async {
-        guard !loadingMore, fetched < total, !(music && musicView != "Folders"), let client = JellySpace.client else { return }
+        guard !loadingMore, !showsTiles, fetched < total, !(music && musicView != "Folders"), let client = JellySpace.client else { return }
         loadingMore = true
         defer { loadingMore = false }
         let user = await JellyfinUser.id(client)
-        let sort = sortable ? JellyfinClient.Sort(rawValue: sortRaw) ?? .name : nil
-        guard let page = try? await client.childrenPage(of: route.id, user: user, sort: sort, unwatched: sortable && unwatched, start: fetched, limit: pageSize) else { return }
-        fetched += page.Items.count
-        total = page.TotalRecordCount
+        guard let next = try? await page(client, user: user, start: fetched) else { return }
+        fetched += next.Items.count
+        total = next.TotalRecordCount
         let known = Set(items.map(\.Id))
-        items = arrange(items + page.Items.filter { !known.contains($0.Id) })
+        items = arrange(items + next.Items.filter { !known.contains($0.Id) })
     }
     /// Without what you hid; folders first.
     private func arrange(_ found: [JellyfinClient.Item]) -> [JellyfinClient.Item] {
@@ -952,18 +1119,92 @@ struct JellyGrid: View {
     let items: [JellyfinClient.Item]
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
-    /// Landscape cards (the backdrop or a video's frame), two across, instead of posters three across.
-    var landscape = false
+    var layout = JellyGridLayout.posters
     /// Called as the last poster comes on screen (to load more).
     var reachedEnd: (() -> Void)? = nil
+    @State private var width: CGFloat = 0
     var body: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: landscape ? 2 : 3)
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            ForEach(items, id: \.Id) { item in
-                JellyTile(item: item, client: client, playing: $playing, wide: landscape)
-                    .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
+        if layout == .canvas {
+            canvas
+        } else {
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: layout == .landscape ? 2 : 3)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                ForEach(items, id: \.Id) { item in
+                    JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
+                        .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
+                }
             }
         }
+    }
+    /// Canvas: rows of three across, as posters, a wide card beside a poster, or one card the full
+    /// width, in the titles' own order.
+    private var canvas: some View {
+        let column = max(0, (width - 24) / 3), tall = column * 1.5
+        let rows = JellyCanvas.rows(items)
+        return LazyVStack(spacing: 12) {
+            ForEach(rows) { row in
+                HStack(spacing: 12) {
+                    ForEach(row.cells) { cell in
+                        JellyTile(item: cell.item, client: client, playing: $playing, canvas: cell.shape)
+                            .frame(width: cell.shape == .poster ? column : cell.shape == .wide ? column * 2 + 12 : width,
+                                   height: cell.shape == .full ? width * 9 / 16 : tall)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .onAppear { if row.id == rows.last?.id { reachedEnd?() } }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+/// A title's shape on the Canvas.
+enum JellyCanvasShape: Hashable { case poster, wide, full }
+
+/// The Canvas's rows. A rhythm of row shapes (three posters; a wide card and a poster; three
+/// posters; a poster and a wide card; three posters; one full-width card) is followed in the titles'
+/// own order: a title goes wide only when it has a landscape picture (a backdrop, Jellyfin's "Thumb"
+/// art, or an episode's or video's own frame), and a row that doesn't fit falls back to three posters.
+enum JellyCanvas {
+    struct Cell: Identifiable {
+        let item: JellyfinClient.Item
+        let shape: JellyCanvasShape
+        var id: String { item.Id }
+    }
+    struct Row: Identifiable {
+        let id: Int
+        let cells: [Cell]
+    }
+    private enum Pattern { case three, wideLeft, wideRight, full }
+    private static let rhythm: [Pattern] = [.three, .wideLeft, .three, .wideRight, .three, .full]
+
+    static func rows(_ items: [JellyfinClient.Item]) -> [Row] {
+        var rows: [Row] = [], index = 0, beat = 0
+        while index < items.count {
+            let here = items[index], next = index + 1 < items.count ? items[index + 1] : nil
+            var cells: [Cell]
+            switch rhythm[beat % rhythm.count] {
+            case .full where landscape(here):
+                cells = [Cell(item: here, shape: .full)]
+            case .wideLeft where landscape(here) && next != nil:
+                cells = [Cell(item: here, shape: .wide), Cell(item: next!, shape: .poster)]
+            case .wideRight where next.map(landscape) == true:
+                cells = [Cell(item: here, shape: .poster), Cell(item: next!, shape: .wide)]
+            case .wideRight where landscape(here) && next != nil:
+                cells = [Cell(item: here, shape: .wide), Cell(item: next!, shape: .poster)]
+            default:
+                cells = items[index..<min(items.count, index + 3)].map { Cell(item: $0, shape: .poster) }
+            }
+            rows.append(Row(id: rows.count, cells: cells))
+            index += cells.count
+            beat += 1
+        }
+        return rows
+    }
+    /// Whether a title has a picture that suits a wide card.
+    static func landscape(_ item: JellyfinClient.Item) -> Bool {
+        !(item.BackdropImageTags ?? []).isEmpty || item.ImageTags?["Thumb"] != nil || ["Episode", "Video", "MusicVideo"].contains(item.kind)
     }
 }
 
@@ -980,6 +1221,9 @@ struct JellyTile: View {
     /// The app's own home poster (as the diary's rows draw it): rounder corners, a 14-point name on
     /// two lines kept for every card so a row's cards line up.
     var home = false
+    /// On the Canvas: just the picture, filling the frame it's given (a poster, or a wide or
+    /// full-width card with the title's logo or name on it).
+    var canvas: JellyCanvasShape? = nil
     @State private var played: Bool?
     @State private var favourite: Bool?
     @State private var photo: JellyPhotoSelection?
@@ -1013,7 +1257,53 @@ struct JellyTile: View {
                 .buttonStyle(.springPress).accessibilityLabel("Play " + JellySpace.name(item)).accessibilityIdentifier("jellyspace-item-" + item.Id)
         }
     }
-    private var face: some View {
+    @ViewBuilder private var face: some View {
+        if let canvas { canvasFace(canvas) } else { cardFace }
+    }
+    private func canvasFace(_ shape: JellyCanvasShape) -> some View {
+        Color.clear
+            .overlay {
+                let fallback = Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
+                if let url = shape == .poster ? JellySpace.poster(item, base: client.base) : JellySpace.canvasImage(item, base: client.base) {
+                    JellyfinPoster(url: url) { fallback }
+                } else { fallback }
+            }
+            .overlay(alignment: .bottomLeading) {
+                if shape != .poster {
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.7), location: 1)],
+                                       startPoint: .top, endPoint: .bottom)
+                        if let logo = item.ImageTags?["Logo"] {
+                            JellyImage(url: JellyfinClient.imageURL(base: client.base, item: item.Id, type: "Logo", tag: logo, width: 600), mode: .fit)
+                                .frame(maxWidth: shape == .full ? 240 : 160, maxHeight: shape == .full ? 84 : 60, alignment: .bottomLeading)
+                                .padding(16)
+                        } else {
+                            Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
+                                .font(.system(size: shape == .full ? 28 : 22, weight: .bold)).tracking(-0.3).foregroundStyle(.white)
+                                .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.4), radius: 6).padding(16)
+                        }
+                    }
+                }
+            }
+            .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
+            .overlay(alignment: .topTrailing) { cornerBadge }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
+            .contentShape(Rectangle())
+            .accessibilityLabel(JellySpace.name(item))
+    }
+    /// New episodes, the unwatched count, or the watched tick, on the top corner.
+    @ViewBuilder private var cornerBadge: some View {
+        if played != true, let fresh = JellyNewEpisodes.count(item) {
+            Text("\(fresh) new").font(.system(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
+                .padding(.horizontal, 7).frame(minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
+                .accessibilityLabel("\(fresh) new episodes")
+        } else if counts, item.kind == "Series", played != true, let left = item.UserData?.UnplayedItemCount, left > 0 {
+            Text("\(left)").font(.system(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(.white)
+                .padding(.horizontal, 5).frame(minWidth: 22, minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
+        } else if ticks { JellyWatchedMark(item: item, played: played) }
+    }
+    private var cardFace: some View {
         VStack(alignment: .leading, spacing: 2) {
             // Jellyfin's own posters come from its home-network address, which the public artwork
             // loader refuses (it takes TMDB's and AniList's only): JellyfinPoster loads and keeps them.
@@ -1030,16 +1320,7 @@ struct JellyTile: View {
                     } else { fallback }
                 }
                 .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
-                .overlay(alignment: .topTrailing) {
-                    if played != true, let fresh = JellyNewEpisodes.count(item) {
-                        Text("\(fresh) new").font(.system(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
-                            .padding(.horizontal, 7).frame(minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
-                            .accessibilityLabel("\(fresh) new episodes")
-                    } else if counts, item.kind == "Series", played != true, let left = item.UserData?.UnplayedItemCount, left > 0 {
-                        Text("\(left)").font(.system(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(.white)
-                            .padding(.horizontal, 5).frame(minWidth: 22, minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
-                    } else if ticks { JellyWatchedMark(item: item, played: played) }
-                }
+                .overlay(alignment: .topTrailing) { cornerBadge }
                 .clipShape(RoundedRectangle(cornerRadius: home ? 16 : 8))
                 .overlay { if home { RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline) } }
             if captions {
@@ -1066,34 +1347,55 @@ struct JellyEpisodeRow: View {
         row.modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite, play: nil))
     }
     private var watched: Bool { played ?? (item.UserData?.Played == true) }
+    /// Netflix's way: the still with a play sign (the red line as far as you've watched), the name and
+    /// length beside it, the watched tick at the right, and the story under it all.
     private var row: some View {
-        Button { playing = JellySpace.playback(item, client: client) } label: {
-            HStack(alignment: .top, spacing: 12) {
-                still
-                VStack(alignment: .leading, spacing: 3) {
-                    if upNext {
-                        Text(upNextLabel).font(.system(size: 11, weight: .bold)).tracking(0.3).foregroundStyle(Color(themed: "#e8b33c"))
-                    }
-                    Text([item.IndexNumber.map { "\($0)." }, item.Name].compactMap { $0 }.joined(separator: " "))
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(watched ? HomeStyle.secondary : HomeStyle.primary)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                    if !meta.isEmpty { Text(meta).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
-                    // Only the next one's story: under every episode it made the list a wall of text.
-                    if upNext, let overview = item.Overview.map(JellySpace.plainText), !overview.isEmpty {
-                        Text(overview).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).multilineTextAlignment(.leading)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                Button { playing = JellySpace.playback(item, client: client) } label: {
+                    HStack(alignment: .center, spacing: 12) {
+                        still
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text([item.IndexNumber.map { "\($0)." }, item.Name].compactMap { $0 }.joined(separator: " "))
+                                .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                .lineLimit(2).multilineTextAlignment(.leading)
+                            if !meta.isEmpty { Text(meta).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                        }
+                        Spacer(minLength: 0)
+                    }.contentShape(Rectangle())
                 }
-                Spacer(minLength: 0)
+                .buttonStyle(.springPress).accessibilityLabel("Play " + JellySpace.name(item))
+                .accessibilityIdentifier("jellyspace-episode-" + item.Id)
+                // Watched: a tap marks it watched or not, in Jellyfin.
+                Button { toggleWatched() } label: {
+                    Image(systemName: watched ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(watched ? Color(themed: "#3fbf6f") : HomeStyle.secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.springPress).sensoryFeedback(.selection, trigger: watched)
+                .accessibilityLabel(watched ? "Mark unwatched" : "Mark watched")
+                .accessibilityIdentifier("jellyspace-episode-watched-" + item.Id)
             }
-            .padding(.horizontal, upNext ? 10 : 0).padding(.vertical, upNext ? 10 : 7)
-            .background { if upNext { RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.07)) } }
-            .padding(.horizontal, upNext ? -10 : 0)
-            .contentShape(Rectangle())
-        }.buttonStyle(.springPress).accessibilityLabel((upNext ? "Up next: " : "") + "Play " + JellySpace.name(item))
-            .accessibilityIdentifier("jellyspace-episode-" + item.Id)
+            if let overview = item.Overview.map(JellySpace.plainText), !overview.isEmpty {
+                Text(overview).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    private func toggleWatched() {
+        let now = !watched
+        withAnimation(.snappy(duration: 0.2)) { played = now }
+        let id = item.Id
+        Task {
+            guard let user = await JellyfinUser.id(client) else { return }
+            do { try await client.setPlayed(id, user: user, now) } catch { played = !now }
+        }
     }
     private var still: some View {
-        Color.clear.frame(width: 120, height: 68)
+        Color.clear.frame(width: 130, height: 73)
             .overlay {
                 let fallback = Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
                 if let url = JellyfinClient.posterURL(base: client.base, item: item.Id, tag: item.ImageTags?["Primary"]) ?? JellySpace.poster(item, base: client.base) {
@@ -1101,34 +1403,30 @@ struct JellyEpisodeRow: View {
                 } else { fallback }
             }
             .overlay {
-                if upNext {
-                    Image(systemName: "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 32, height: 32).background(.black.opacity(0.5), in: Circle())
+                Image(systemName: "play.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
+            }
+            .overlay(alignment: .bottomLeading) {
+                // Red as far as you've watched (all the way once it's watched).
+                let done = watched ? 1 : (item.UserData?.PlayedPercentage ?? 0) / 100
+                if done > 0 {
+                    GeometryReader { proxy in
+                        Rectangle().fill(Color(red: 0.9, green: 0.04, blue: 0.08)).frame(width: proxy.size.width * min(1, done), height: 3)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                    }
                 }
             }
-            .overlay(alignment: .topTrailing) {
-                if watched {
-                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 20, height: 20).background(.black.opacity(0.6), in: Circle()).padding(5)
-                }
-            }
-            .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
-            .opacity(watched ? 0.75 : 1)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
-    /// "UP NEXT", or "UP NEXT · 14M LEFT" when it's started.
-    private var upNextLabel: String {
-        guard let percent = item.UserData?.PlayedPercentage, percent > 0, let ticks = item.RunTimeTicks, ticks > 0 else { return "UP NEXT" }
-        let left = max(1, Int(Double(ticks) / 600_000_000 * (1 - percent / 100)))
-        return "UP NEXT · \(left)M LEFT"
-    }
-    /// "23m · Watched", "24m · 12 Jul 2024".
+    /// "52m", "52m · 31m left" once started, "49m · 28 Nov 2026" for one you haven't.
     private var meta: String {
         var parts: [String] = []
-        if let minutes = item.RunTimeTicks.map({ Int($0 / 600_000_000) }), minutes > 0 { parts.append(DiaryDate.duration(minutes)) }
-        if watched {
-            parts.append("Watched")
-        } else if let aired = Self.aired(item.PremiereDate) {
+        let minutes = item.RunTimeTicks.map { Int($0 / 600_000_000) } ?? 0
+        if minutes > 0 { parts.append(DiaryDate.duration(minutes)) }
+        if !watched, let percent = item.UserData?.PlayedPercentage, percent > 0, minutes > 0 {
+            parts.append(DiaryDate.duration(max(1, Int(Double(minutes) * (1 - percent / 100)))) + " left")
+        } else if !watched, let aired = Self.aired(item.PremiereDate) {
             parts.append(aired)
         }
         return parts.joined(separator: " · ")
@@ -1279,31 +1577,60 @@ struct JellyItemMenu: ViewModifier {
 }
 
 /// The ••• menu over a folder or list: Sort (name, date added, year, rating) and Unwatched only.
-/// Where each library, folder and list remembers posters or landscape cards.
-enum JellyLayout {
-    static func key(_ section: String) -> String { "jellyspace.layout." + section }
+/// How a library or folder is browsed: Library, everything in it on one page however deep its
+/// folders go (the default); Folder, one level at a time as the folders are on disk; or its Genres
+/// or Studios as tiles, each opening its titles in this library.
+enum JellyBrowse: String, CaseIterable {
+    case library, folder, genres, studios
+    var title: String {
+        switch self {
+        case .library: "Library"
+        case .folder: "Folder"
+        case .genres: "Genres"
+        case .studios: "Studios"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .library: "square.stack"
+        case .folder: "folder"
+        case .genres: "theatermasks"
+        case .studios: "building.2"
+        }
+    }
+    /// Library and Folder list titles (so they sort and filter); Genres and Studios list tiles.
+    var listsTitles: Bool { self == .library || self == .folder }
 }
 
-struct JellySortMenu: View {
-    @Binding var sort: String
-    @Binding var unwatched: Bool
-    /// Posters or landscape cards, remembered for this library, folder or list.
-    var landscape: Binding<Bool>? = nil
-    var body: some View {
-        Menu {
-            if let landscape {
-                Picker("Layout", selection: landscape) {
-                    Label("Posters", systemImage: "rectangle.portrait").tag(false)
-                    Label("Landscape", systemImage: "rectangle").tag(true)
-                }
-                Divider()
-            }
-            Picker("Sort by", selection: $sort) {
-                ForEach(JellyfinClient.Sort.allCases, id: \.rawValue) { Text($0.rawValue).tag($0.rawValue) }
-            }
-            Toggle("Unwatched only", isOn: $unwatched)
-        } label: { TitleMoreButtonLabel() }
-            .accessibilityLabel("Sort and filter").accessibilityIdentifier("jellyspace-sort")
+/// How a library, folder or list lays its titles out: posters three across, landscape cards two
+/// across, or Canvas (a mosaic of posters, wide and full-width cards, each title in the shape its
+/// pictures suit). Remembered for each one.
+enum JellyGridLayout: String, CaseIterable {
+    case posters, landscape, canvas
+    var title: String {
+        switch self {
+        case .posters: "Posters"
+        case .landscape: "Landscape"
+        case .canvas: "Canvas"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .posters: "rectangle.portrait"
+        case .landscape: "rectangle"
+        case .canvas: "square.grid.3x3.square"
+        }
+    }
+}
+
+@MainActor enum JellyLayout {
+    /// The first version kept only Landscape on or off, under this key.
+    static func key(_ section: String) -> String { "jellyspace.layout." + section }
+    static func modeKey(_ section: String) -> String { "jellyspace.layoutMode." + section }
+    static func browseKey(_ section: String) -> String { "jellyspace.browse." + section }
+    /// A section's layout setting, starting from its old Landscape switch.
+    static func storage(_ section: String) -> AppStorage<JellyGridLayout> {
+        AppStorage(wrappedValue: UserDefaults.standard.bool(forKey: key(section)) ? .landscape : .posters, modeKey(section))
     }
 }
 
@@ -1409,6 +1736,12 @@ struct JellySortMenu: View {
             parts.append(DiaryDate.duration(max(1, Int(Double(ticks) / 600_000_000 * (1 - percent / 100)))) + " left")
         }
         return parts.joined(separator: " · ")
+    }
+    /// A wide card's picture: the backdrop, else Jellyfin's landscape "Thumb" art, else a wide frame.
+    static func canvasImage(_ item: JellyfinClient.Item, base: URL) -> URL? {
+        if let tag = item.BackdropImageTags?.first { return JellyfinClient.imageURL(base: base, item: item.Id, type: "Backdrop", tag: tag) }
+        if let thumb = item.ImageTags?["Thumb"] { return JellyfinClient.imageURL(base: base, item: item.Id, type: "Thumb", tag: thumb) }
+        return wideImage(item, base: base)
     }
     static func symbol(_ libraryType: String?) -> String {
         switch libraryType {

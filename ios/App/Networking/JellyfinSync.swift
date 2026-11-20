@@ -393,6 +393,28 @@ struct JellyfinClient: Sendable {
     func children(of parent: String, user: String?, sort: Sort? = nil, unwatched: Bool = false) async throws -> [Item] {
         try await childrenPage(of: parent, user: user, sort: sort, unwatched: unwatched, start: 0, limit: 1000).Items
     }
+    /// One page of everything under a library or folder, however deep its folders go (the Library
+    /// view): films in a film library, shows in a show library, otherwise every video, show and photo.
+    func libraryPage(of parent: String, libraryType: String?, user: String?, order: [URLQueryItem], start: Int, limit: Int) async throws -> Page {
+        let types = switch libraryType {
+        case "movies": "Movie"
+        case "tvshows": "Series"
+        default: "Movie,Video,Series,MusicVideo,Photo"
+        }
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "true"),
+                     URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))] + order
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
+    }
+    /// One page of a folder's own level, in an order and with filters of your choosing.
+    func folderPage(of parent: String, user: String?, order: [URLQueryItem], start: Int, limit: Int) async throws -> Page {
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))] + order
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
+    }
     /// One page of a folder (a big one loads as you scroll).
     func childrenPage(of parent: String, user: String?, sort: Sort?, unwatched: Bool, start: Int, limit: Int) async throws -> Page {
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
@@ -405,21 +427,43 @@ struct JellyfinClient: Sendable {
     }
     /// How a folder or list is ordered.
     enum Sort: String, CaseIterable, Sendable {
-        case name = "Name", added = "Date added", year = "Year", rating = "Rating"
-        var query: [URLQueryItem] {
+        case name = "Name", added = "Date added", released = "Release date", year = "Year", rating = "Rating"
+        case critic = "Critic rating", runtime = "Runtime", watched = "Date watched", random = "Random"
+        /// The way round it starts: A to Z and shortest first; newest and best first for the rest.
+        var ascendingByDefault: Bool { self == .name || self == .runtime }
+        var query: [URLQueryItem] { query(ascending: ascendingByDefault) }
+        func query(ascending: Bool) -> [URLQueryItem] {
+            let order = ascending ? "Ascending" : "Descending"
+            let fields = switch self {
+            // Folders first, then the names (so a folder paged in later still sits with the others).
+            case .name: "IsFolder,SortName"
+            case .added: "DateCreated,SortName"
+            case .released: "PremiereDate,ProductionYear,SortName"
+            case .year: "ProductionYear,PremiereDate,SortName"
+            case .rating: "CommunityRating,SortName"
+            case .critic: "CriticRating,SortName"
+            case .runtime: "Runtime,SortName"
+            case .watched: "DatePlayed,SortName"
+            case .random: "Random"
+            }
+            return [URLQueryItem(name: "SortBy", value: fields),
+                    URLQueryItem(name: "SortOrder", value: self == .name ? "Descending," + order : order)]
+        }
+        /// The order's two ways, in words that fit the sort.
+        var orderLabels: (ascending: String, descending: String) {
             switch self {
-            // Folders first, then A to Z (so a folder paged in later still sits with the others).
-            case .name: [URLQueryItem(name: "SortBy", value: "IsFolder,SortName"), URLQueryItem(name: "SortOrder", value: "Descending,Ascending")]
-            case .added: [URLQueryItem(name: "SortBy", value: "DateCreated,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
-            case .year: [URLQueryItem(name: "SortBy", value: "ProductionYear,PremiereDate,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
-            case .rating: [URLQueryItem(name: "SortBy", value: "CommunityRating,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
+            case .name: ("A to Z", "Z to A")
+            case .added, .released, .year, .watched: ("Oldest first", "Newest first")
+            case .rating, .critic: ("Lowest first", "Highest first")
+            case .runtime: ("Shortest first", "Longest first")
+            case .random: ("Ascending", "Descending")
             }
         }
     }
     /// Anything across the libraries: a person's films and shows, a genre, your favourites, collections.
-    func items(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, limit: Int = 300) async throws -> [Item] {
+    func items(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, ascending: Bool? = nil, limit: Int = 300) async throws -> [Item] {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
-                     URLQueryItem(name: "Limit", value: String(limit))] + sort.query + extra
+                     URLQueryItem(name: "Limit", value: String(limit))] + sort.query(ascending: ascending ?? sort.ascendingByDefault) + extra
         if !filters.isEmpty { query.append(URLQueryItem(name: "Filters", value: filters.joined(separator: ","))) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items", query)
@@ -560,9 +604,11 @@ struct JellyfinClient: Sendable {
         let MediaSources: [Source]?
         let RemoteTrailers: [Trailer]?
         let UserData: UserState?
+        /// "Imdb": "tt…", for sharing.
+        let ProviderIds: [String: String]?
         enum CodingKeys: String, CodingKey {
             case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, GenreItems, OfficialRating, CommunityRating, CriticRating
-            case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData, RemoteTrailers
+            case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData, RemoteTrailers, ProviderIds
         }
     }
     func detail(_ id: String, user: String?) async throws -> Detail {

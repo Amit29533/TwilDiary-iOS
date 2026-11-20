@@ -46,7 +46,9 @@ struct SettingsView: View {
                         divider
                         NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
                         divider
-                        NavigationLink(value: AppDestination.jellyspaceSettings) { settingsRow("play.rectangle.on.rectangle.fill", .purple, "JellySpace", disclosure: true) }.accessibilityIdentifier("settings-jellyspace")
+                        NavigationLink(value: AppDestination.jellyspaceSettings) {
+                            settingsRow(leading: jellyfinTile, "JellySpace", subtitle: nil, value: nil, disclosure: true, padded: true)
+                        }.accessibilityIdentifier("settings-jellyspace")
                         divider
                         NavigationLink(value: AppDestination.trash) { settingsRow("trash.fill", .red, "Trash", value: trashCount == 0 ? "Empty" : String(trashCount), disclosure: true) }
                     }
@@ -266,6 +268,16 @@ struct SettingsView: View {
             case .pink: .systemPink
             }
             return Color(uiColor: colour)
+        }
+    }
+    /// JellySpace's row: Jellyfin's own logo, at the size of the other rows' tiles (on the design's
+    /// tile, or bare as Native's colour tiles are).
+    @ViewBuilder private var jellyfinTile: some View {
+        if ThemeStore.current.native {
+            BrandLogo(service: .jellyfin, size: 30)
+        } else {
+            BrandLogo(service: .jellyfin, size: 26).frame(width: 38, height: 38)
+                .background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
         }
     }
     @ViewBuilder private func tile(_ symbol: String, _ tint: TileTint) -> some View {

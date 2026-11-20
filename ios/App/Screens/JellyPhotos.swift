@@ -42,6 +42,8 @@ struct JellyPhotoViewer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var index: Int
     @State private var chrome = true
+    /// How far a photo has been pulled down to close (0 to 1).
+    @State private var pulled: CGFloat = 0
 
     init(photos: [JellyfinClient.Item], client: JellyfinClient, start: Int) {
         self.photos = photos
@@ -51,18 +53,19 @@ struct JellyPhotoViewer: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.opacity(1 - pulled * 0.85).ignoresSafeArea()
             TabView(selection: $index) {
                 ForEach(photos.indices, id: \.self) { position in
-                    JellyPhotoPage(url: JellyPhotos.url(photos[position], base: client.base, width: 2400)) {
-                        withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
-                    }
+                    JellyPhotoPage(url: JellyPhotos.url(photos[position], base: client.base, width: 2400),
+                                   tapped: { withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() } },
+                                   pulled: { pulled = $0 },
+                                   close: { dismiss() })
                     .tag(position)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea()
-            if chrome {
+            if chrome && pulled == 0 {
                 HStack(spacing: 12) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
@@ -88,12 +91,15 @@ struct JellyPhotoViewer: View {
 private struct JellyPhotoPage: View {
     let url: URL?
     let tapped: () -> Void
+    /// A swipe down: how far (0 to 1), and closing when it's let go far or fast enough.
+    var pulled: (CGFloat) -> Void = { _ in }
+    var close: () -> Void = {}
     @State private var image: UIImage?
     @State private var failed = false
     var body: some View {
         ZStack {
             if let image {
-                JellyZoomImage(image: image, tapped: tapped)
+                JellyZoomImage(image: image, tapped: tapped, pulled: pulled, close: close)
             } else if failed {
                 Image(systemName: "photo").font(.system(size: 40)).foregroundStyle(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).onTapGesture(perform: tapped)
@@ -119,10 +125,14 @@ private struct JellyPhotoPage: View {
 
 /// Pinch and double-tap zoom (UIKit's scroll view does it best); a single tap goes to `tapped`.
 /// The picture is sized to fit the screen and kept centred, so zoomed in it fills the whole screen
-/// and panning stops at the photo's edges (not at black bars around it).
+/// and panning stops at the photo's edges (not at black bars around it). At its normal size a swipe
+/// down pulls the photo away (it follows the finger and shrinks) and, let go far or fast enough,
+/// closes the viewer, as in Photos; otherwise it springs back.
 private struct JellyZoomImage: UIViewRepresentable {
     let image: UIImage
     let tapped: () -> Void
+    var pulled: (CGFloat) -> Void = { _ in }
+    var close: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeUIView(context: Context) -> JellyZoomScrollView {
@@ -150,19 +160,58 @@ private struct JellyZoomImage: UIViewRepresentable {
         let single = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.singleTapped))
         single.require(toFail: double)
         scroll.addGestureRecognizer(single)
+        let pull = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pulledDown(_:)))
+        pull.delegate = context.coordinator
+        pull.maximumNumberOfTouches = 1
+        scroll.addGestureRecognizer(pull)
         return scroll
     }
     func updateUIView(_ scroll: JellyZoomScrollView, context: Context) {
         context.coordinator.tapped = tapped
+        context.coordinator.pulled = pulled
+        context.coordinator.close = close
         if context.coordinator.imageView?.image !== image {
             context.coordinator.imageView?.image = image
             context.coordinator.fit(scroll)
         }
     }
 
-    @MainActor final class Coordinator: NSObject, UIScrollViewDelegate {
+    @MainActor final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
         weak var imageView: UIImageView?
         var tapped: () -> Void = {}
+        var pulled: (CGFloat) -> Void = { _ in }
+        var close: () -> Void = {}
+        /// Only a mostly-downward swipe at the photo's normal size (zoomed in, a drag pans the photo;
+        /// sideways, it turns to the next one).
+        func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+            guard let pan = gesture as? UIPanGestureRecognizer, let scroll = pan.view as? UIScrollView else { return true }
+            guard scroll.zoomScale <= scroll.minimumZoomScale + 0.01 else { return false }
+            let velocity = pan.velocity(in: scroll)
+            return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.2
+        }
+        @objc func pulledDown(_ pan: UIPanGestureRecognizer) {
+            guard let scroll = pan.view as? UIScrollView, let imageView else { return }
+            let moved = pan.translation(in: scroll)
+            let down = max(0, moved.y)
+            let share = min(1, down / max(1, scroll.bounds.height * 0.6))
+            switch pan.state {
+            case .changed:
+                let shrink = 1 - share * 0.3
+                imageView.transform = CGAffineTransform(translationX: moved.x * 0.6, y: down).scaledBy(x: shrink, y: shrink)
+                pulled(share)
+            case .ended, .cancelled, .failed:
+                if pan.state == .ended && (down > 120 || pan.velocity(in: scroll).y > 900) {
+                    close()
+                } else {
+                    UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0) {
+                        imageView.transform = .identity
+                    }
+                    pulled(0)
+                }
+            default:
+                break
+            }
+        }
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
         func scrollViewDidZoom(_ scrollView: UIScrollView) { centre(scrollView) }
         /// Back to the whole photo, fitted to the screen.

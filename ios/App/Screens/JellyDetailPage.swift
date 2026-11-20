@@ -44,10 +44,11 @@ struct JellyCompactTitle: View {
     }
 }
 
-/// A film's or show's page, before playing: the backdrop fading into the page with the logo on it;
-/// centred under it the years, genres, ratings and the file's badges; Play (or Resume, or a show's
-/// next episode) with Watched, Favourite, Trailer and File info; then the overview, a show's
-/// episodes, extras, cast and crew, and similar titles. File info and other players are in •••.
+/// A film's or show's page, before playing, laid out as Netflix's is: the backdrop fading into the
+/// page; "SERIES" and the name on the left; one line of score, years, age rating, length and the
+/// file's badges; its place in the Top 10; Play (or Resume, or a show's next episode) and Trailer
+/// across the page; the story, the cast and who made it (all of them a tap away); Favourite, Watched,
+/// Share and File info; then tabs for the episodes, similar titles and extras. Other players are in •••.
 struct JellyDetailPage: View {
     let route: JellyDetailRoute
     @State private var detail: JellyfinClient.Detail?
@@ -65,7 +66,6 @@ struct JellyDetailPage: View {
     @State private var favourite = false
     @State private var fullOverview = false
     @State private var user: String?
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     /// Trailer files and special features.
     @State private var extras: [JellyfinClient.Item] = []
     /// The version of a film to play (when it's stored in more than one quality).
@@ -79,28 +79,32 @@ struct JellyDetailPage: View {
     private var series: Bool { detail?.kind == "Series" }
     private var name: String { detail?.Name ?? route.name }
 
+    /// The tabs under the buttons, as Netflix has them.
+    private enum Tab: String, CaseIterable { case episodes = "Episodes", similar = "More like this", extras = "Extras" }
+    @State private var tab: Tab?
+    @Namespace private var tabSpace
+    /// The whole cast and crew, the genres and the age rating (Cast's "more").
+    @State private var showCredits = false
+
     var body: some View {
         EdgeToEdgeScroll(artworkUnderBar: true) {
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 if let client = JellySpace.client {
-                    header(client)
-                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
-                            headerState.update(ScrollLinkedBarTitle.progress(headingBottom: bottom))
+                    picture(client)
+                    VStack(alignment: .leading, spacing: 0) {
+                        titleBlock
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
+                                headerState.update(ScrollLinkedBarTitle.progress(headingBottom: bottom))
+                            }
+                        if let detail {
+                            summary(detail, client: client).padding(.top, 10)
+                            tabsSection(client).padding(.top, 24)
+                        } else if let failure {
+                            RetryNotice(message: failure) { Task { await load() } }.padding(.top, 16)
+                        } else {
+                            DiaryLoadingPlaceholder(height: 260, label: "Loading").padding(.top, 16)
                         }
-                    if let detail {
-                        summary(detail, client: client).padding(.horizontal, 20)
-                        VStack(alignment: .leading, spacing: 28) {
-                            if let overview = detail.Overview.map(JellySpace.plainText), !overview.isEmpty { overviewSection(overview) }
-                            if series { seasonsSection(client) }
-                            if !extras.isEmpty { extrasRow(client) }
-                            if let people = detail.People?.prefix(20), !people.isEmpty { castRow(Array(people), client: client) }
-                            if !similar.isEmpty { similarRow(client) }
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.top, 26)
-                    } else if let failure {
-                        RetryNotice(message: failure) { Task { await load() } }.padding(.horizontal, 16)
-                    } else {
-                        DiaryLoadingPlaceholder(height: 260, label: "Loading").padding(.horizontal, 16)
-                    }
+                    }.padding(.horizontal, 16)
                 }
             }.padding(.bottom, 48)
         }
@@ -120,6 +124,11 @@ struct JellyDetailPage: View {
                 JellyFileInfo(name: name, source: source).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
             }
         }
+        .sheet(isPresented: $showCredits) {
+            if let detail, let client = JellySpace.client {
+                credits(detail, client: client).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+            }
+        }
         .task { await load() }
         .task(id: season) { await loadEpisodes() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load(); await loadEpisodes() } }) { JellyPlayerView(playback: $0) }
@@ -127,148 +136,250 @@ struct JellyDetailPage: View {
 
     // MARK: The picture and the title
 
-    /// The backdrop, fading into the page (whatever the theme's background is) instead of ending at
-    /// an edge, with the logo (or, without one, the name) on the fade.
-    private func header(_ client: JellyfinClient) -> some View {
+    /// The backdrop across the top, fading into the page at its foot.
+    private func picture(_ client: JellyfinClient) -> some View {
         let backdrop = detail?.BackdropImageTags?.first.flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Backdrop", tag: $0, width: 1200) }
         let primary = detail?.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Primary", tag: $0, width: 900) }
-        let logo = detail?.ImageTags?["Logo"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Logo", tag: $0, width: 800) }
         // The picture fills a fixed box laid out at the screen's width; it never sizes the page (a
         // filled picture in a plain stack made the whole page wider than the screen).
-        return Color.clear.frame(maxWidth: .infinity).frame(height: 380)
+        return Color.clear.frame(maxWidth: .infinity).frame(height: 300)
             .overlay { JellyImage(url: backdrop ?? primary) }
             .clipped()
             .mask {
-                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
-                                       .init(color: .black.opacity(0.6), location: 0.72), .init(color: .clear, location: 1)],
+                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.7), .init(color: .clear, location: 1)],
                                startPoint: .top, endPoint: .bottom)
             }
-            .overlay(alignment: .bottom) { titleMark(logo).padding(.horizontal, 28).padding(.bottom, 6) }
+            .accessibilityHidden(true)
     }
-    @ViewBuilder private func titleMark(_ logo: URL?) -> some View {
-        if let logo {
-            JellyImage(url: logo, mode: .fit).frame(maxWidth: 280, maxHeight: 110)
-                .shadow(color: .black.opacity(0.45), radius: 10)
-                .accessibilityElement().accessibilityLabel(name).accessibilityAddTraits(.isHeader)
-        } else {
+    /// "SERIES" with Jellyfin's mark, then the name, large, on the left.
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let kind = kindLabel {
+                HStack(spacing: 6) {
+                    Image("jellyfin-mark").resizable().scaledToFit().frame(width: 16, height: 16)
+                    Text(kind).font(.system(size: 12, weight: .semibold)).tracking(3).foregroundStyle(HomeStyle.secondary)
+                }.accessibilityHidden(true)
+            }
             // Long names: up to three lines, a little smaller before they end in "…" (the whole name
             // is in the top bar once scrolled, and in File info).
             Text(name).font(.system(size: 28, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
-                .multilineTextAlignment(.center).lineLimit(3).minimumScaleFactor(0.75)
-                .shadow(color: .black.opacity(0.3), radius: 8).accessibilityAddTraits(.isHeader)
+                .lineLimit(3).minimumScaleFactor(0.75).fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, -26)
+    }
+    private var kindLabel: String? {
+        guard let kind = detail?.kind else { return nil }
+        switch kind {
+        case "Series": return "SERIES"
+        case "Movie": return "FILM"
+        default: return kind.uppercased()
         }
     }
 
-    // MARK: The details under the title
+    // MARK: The details, Play, the story and the buttons
 
-    /// Centred: the years and length, the genres, the ratings, the file's badges, then Play.
     private func summary(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 5) {
-                let line = yearLine(detail)
-                if !line.isEmpty { Text(line).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
-                genreLine(detail)
-            }
-            ratingsRow(detail)
-            badgesRow(detail)
+        VStack(alignment: .leading, spacing: 10) {
+            detailsLine(detail)
+            if let rank = topRank { topTenLine(rank) }
             if !series, let sources = detail.MediaSources, sources.count > 1 { versionMenu(sources) }
-            actions(detail, client: client).padding(.top, 4)
-        }.frame(maxWidth: .infinity)
-    }
-    /// "2023 · 1h 14m"; a show's "2021–2024 · 3 seasons · 12 unwatched".
-    private func yearLine(_ detail: JellyfinClient.Detail) -> String {
-        var parts: [String] = []
-        if let year = detail.ProductionYear {
-            let end = detail.EndDate.flatMap { Int($0.prefix(4)) }
-            parts.append(series && end != nil && end != year ? "\(year)–\(end!)" : String(year))
-        }
-        if series {
-            let count = seasons.filter { ($0.IndexNumber ?? 0) >= 1 }.count
-            if count > 0 { parts.append(count == 1 ? "1 season" : "\(count) seasons") }
-            if let left = detail.UserData?.UnplayedItemCount, left > 0 { parts.append("\(left) unwatched") }
-        } else if let minutes = detail.RunTimeTicks.map({ Int($0 / 600_000_000) }), minutes > 0 {
-            parts.append(Self.runtime(minutes))
-        }
-        return parts.joined(separator: " · ")
-    }
-    /// The genres on one line: as many as fit, then "+3". A tap lists them all, each opening its list.
-    @ViewBuilder private func genreLine(_ detail: JellyfinClient.Detail) -> some View {
-        let items = detail.GenreItems ?? []
-        let names = items.isEmpty ? (detail.Genres ?? []) : items.compactMap(\.Name)
-        if !names.isEmpty {
-            let line = ViewThatFits(in: .horizontal) {
-                ForEach(Array(stride(from: min(3, names.count), through: 1, by: -1)), id: \.self) { shown in
-                    genreText(names, shown: shown)
+            VStack(spacing: 8) {
+                wideButton(playLabel(detail), symbol: "play.fill", primary: true) { play(client) }
+                    .accessibilityIdentifier("jellyspace-detail-play")
+                if let trailer = trailer(detail, client: client) {
+                    wideButton("Trailer", symbol: "film", primary: false, action: trailer).accessibilityIdentifier("jellyspace-detail-trailer")
                 }
+            }.padding(.top, 4)
+            if let overview = detail.Overview.map(JellySpace.plainText), !overview.isEmpty {
+                Text(overview).font(.system(size: 15)).foregroundStyle(HomeStyle.primary)
+                    .lineLimit(fullOverview ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    .onTapGesture { withAnimation(.snappy(duration: 0.25)) { fullOverview.toggle() } }
+                    .accessibilityAddTraits(.isButton).accessibilityHint(fullOverview ? "Shows less" : "Shows the whole story")
+                    .padding(.top, 4)
             }
-            if items.isEmpty {
-                line
-            } else {
-                Menu {
-                    ForEach(items, id: \.Id) { genre in
-                        Button(genre.Name ?? "Genre") {
-                            router.paths[router.selectedTab, default: NavigationPath()].append(JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre"))
+            creditLines(detail)
+            actionRow(detail, client: client).padding(.top, 8)
+        }
+    }
+
+    /// One line: the score, the years, the age rating (filled), the seasons or length, then the
+    /// file's badges (outlined); the least important badges drop off when they don't all fit.
+    private func detailsLine(_ detail: JellyfinClient.Detail) -> some View {
+        let outlined = badges(detail).filter { $0.text != detail.OfficialRating }
+        return ViewThatFits(in: .horizontal) {
+            ForEach(Array(stride(from: outlined.count, through: 0, by: -1)), id: \.self) { count in
+                HStack(spacing: 8) {
+                    if let score = detail.CommunityRating, score > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(themed: "#f5c451"))
+                            Text(String(format: "%.1f", score)).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         }
                     }
-                } label: { line }
-                .buttonStyle(.plain).accessibilityLabel("Genres: " + names.joined(separator: ", ")).accessibilityIdentifier("jellyspace-detail-genres")
+                    if let critics = detail.CriticRating, critics > 0 {
+                        HStack(spacing: 3) {
+                            Circle().fill(Color(red: 0.98, green: 0.2, blue: 0.04)).frame(width: 9, height: 9)
+                            Text("\(Int(critics))%").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        }
+                    }
+                    if let years = years(detail) { Text(years).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary) }
+                    if let rating = detail.OfficialRating, !rating.isEmpty {
+                        Text(rating).font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary.opacity(0.9))
+                            .padding(.horizontal, 5).frame(height: 18).background(Color.primary.opacity(0.16), in: RoundedRectangle(cornerRadius: 3))
+                    }
+                    if let length = length(detail) { Text(length).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary) }
+                    ForEach(outlined.prefix(count), id: \.text) { badge($0.symbol, $0.text) }
+                }.fixedSize()
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(([years(detail), detail.OfficialRating, length(detail)].compactMap { $0 } + outlined.map(\.text)).joined(separator: ", "))
     }
-    private func genreText(_ names: [String], shown: Int) -> some View {
-        let rest = names.count - shown
-        let more = rest > 0 ? Text(" +\(rest)").foregroundStyle(HomeStyle.secondary) : Text("")
-        return Text("\(names.prefix(shown).joined(separator: " · "))\(more)")
-            .font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary.opacity(0.85)).lineLimit(1).fixedSize()
+    /// "2023"; a show's "2021–2024".
+    private func years(_ detail: JellyfinClient.Detail) -> String? {
+        guard let year = detail.ProductionYear else { return nil }
+        let end = detail.EndDate.flatMap { Int($0.prefix(4)) }
+        if series, let end, end != year { return "\(year)–\(end)" }
+        return String(year)
     }
-    /// The score and the critics' score, each in a small container; the row is left out with neither.
-    @ViewBuilder private func ratingsRow(_ detail: JellyfinClient.Detail) -> some View {
-        let score = detail.CommunityRating.flatMap { $0 > 0 ? $0 : nil }
-        let critics = detail.CriticRating.flatMap { $0 > 0 ? $0 : nil }
-        if score != nil || critics != nil {
+    /// A film's "1h 52m"; a show's "3 seasons", or with one season its "6 episodes".
+    private func length(_ detail: JellyfinClient.Detail) -> String? {
+        if series {
+            let count = seasons.filter { ($0.IndexNumber ?? 0) >= 1 }.count
+            if count > 1 { return "\(count) seasons" }
+            if !episodes.isEmpty { return episodes.count == 1 ? "1 episode" : "\(episodes.count) episodes" }
+            return count == 1 ? "1 season" : nil
+        }
+        guard let minutes = detail.RunTimeTicks.map({ Int($0 / 600_000_000) }), minutes > 0 else { return nil }
+        return Self.runtime(minutes)
+    }
+    /// "#3 in Movies": where it stands in the home's Top 10, when it's there.
+    private var topRank: String? {
+        guard let shelf = JellyHomeCache.discover?.top, let index = shelf.items.firstIndex(where: { $0.Id == route.id }) else { return nil }
+        return "#\(index + 1) in " + (shelf.library?.name ?? "the Top 10")
+    }
+    private func topTenLine(_ rank: String) -> some View {
+        HStack(spacing: 8) {
+            VStack(spacing: -2) {
+                Text("TOP").font(.system(size: 7, weight: .heavy))
+                Text("10").font(.system(size: 11, weight: .heavy))
+            }
+            .foregroundStyle(.white).frame(width: 22, height: 24)
+            .background(Color(red: 0.86, green: 0.1, blue: 0.12), in: RoundedRectangle(cornerRadius: 3))
+            Text(rank).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore).accessibilityLabel(rank + " in the Top 10")
+    }
+    /// Play (solid, in the page's text colour) or Trailer (grey), across the page.
+    private func wideButton(_ title: String, symbol: String, primary: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 8) {
-                if let score {
-                    ratingPill {
-                        Image(systemName: "star.fill").foregroundStyle(Color(themed: "#f5c451"))
-                        Text(String(format: "%.1f", score))
-                    }.accessibilityLabel("Rating \(String(format: "%.1f", score))")
-                }
-                if let critics {
-                    ratingPill {
-                        Circle().fill(Color(red: 0.98, green: 0.2, blue: 0.04)).frame(width: 11, height: 11)
-                        Text("\(Int(critics))%")
-                    }.accessibilityLabel("Rotten Tomatoes \(Int(critics)) percent")
-                }
+                Image(systemName: symbol)
+                Text(title).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .font(.system(size: 17, weight: .bold))
+            .foregroundStyle(primary ? ThemeStore.current.canvas : HomeStyle.primary)
+            .frame(maxWidth: .infinity).frame(height: 46)
+            .background(primary ? AnyShapeStyle(HomeStyle.primary) : AnyShapeStyle(Color.primary.opacity(0.14)),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
+        }.buttonStyle(.springPress)
+    }
+
+    private struct CreditGroup: Identifiable {
+        let id: String
+        let people: [JellyfinClient.Detail.Person]
+    }
+    private func creditGroups(_ detail: JellyfinClient.Detail) -> [CreditGroup] {
+        let people = detail.People ?? []
+        return [CreditGroup(id: "Cast", people: people.filter { $0.kind == "Actor" || $0.kind == "GuestStar" }),
+                CreditGroup(id: "Directors", people: people.filter { $0.kind == "Director" }),
+                CreditGroup(id: "Writers", people: people.filter { $0.kind == "Writer" }),
+                CreditGroup(id: "Producers", people: people.filter { $0.kind == "Producer" })].filter { !$0.people.isEmpty }
+    }
+    private func genreNames(_ detail: JellyfinClient.Detail) -> [String] {
+        let items = detail.GenreItems ?? []
+        return items.isEmpty ? (detail.Genres ?? []) : items.compactMap(\.Name)
+    }
+    /// "Cast: A, B, C … more", "Director: D", "Genres: E, F": a tap shows them all.
+    @ViewBuilder private func creditLines(_ detail: JellyfinClient.Detail) -> some View {
+        let people = detail.People ?? []
+        let cast = people.filter { $0.kind == "Actor" || $0.kind == "GuestStar" }.compactMap(\.Name)
+        let directors = people.filter { $0.kind == "Director" }.compactMap(\.Name)
+        let writers = people.filter { $0.kind == "Writer" }.compactMap(\.Name)
+        let genres = genreNames(detail)
+        if !cast.isEmpty || !directors.isEmpty || !writers.isEmpty || !genres.isEmpty {
+            Button { showCredits = true } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    if !cast.isEmpty { creditLine("Cast", cast, more: true) }
+                    if !directors.isEmpty { creditLine(directors.count == 1 ? "Director" : "Directors", directors, more: false) }
+                    else if !writers.isEmpty { creditLine(series ? "Creator" : "Writer", writers, more: false) }
+                    if !genres.isEmpty { creditLine("Genres", genres, more: cast.isEmpty) }
+                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityHint("Shows the whole cast and crew").accessibilityIdentifier("jellyspace-detail-credits")
+        }
+    }
+    private func creditLine(_ label: String, _ names: [String], more: Bool) -> some View {
+        let shown = names.prefix(3).joined(separator: ", ")
+        let tail = more ? Text(" … more").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary) : Text("")
+        return Text("\(label): \(shown)\(tail)").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+    }
+
+    /// Favourite, Watched, Share and (a film) File info: a symbol with its name under it.
+    private func actionRow(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            actionButton(favourite ? "heart.fill" : "heart", title: "Favourite", label: favourite ? "Remove from favourites" : "Add to favourites") {
+                guard let user else { return }
+                favourite.toggle()
+                let now = favourite
+                Task { try? await client.setFavourite(route.id, user: user, now) }
+            }
+            actionButton(played ? "checkmark.circle.fill" : "checkmark.circle", title: "Watched", label: played ? "Mark unwatched" : "Mark watched") {
+                guard let user else { return }
+                played.toggle()
+                let now = played
+                Task { try? await client.setPlayed(route.id, user: user, now) }
+            }
+            ShareLink(item: shareText(detail)) { actionLabel("paperplane", title: "Share") }
+                .buttonStyle(.springPress).accessibilityLabel("Share " + name)
+            if !series, chosenSource(detail) != nil {
+                actionButton("info.circle", title: "File info", label: "File info") { showFileInfo = true }
+                    .accessibilityIdentifier("jellyspace-detail-file-info")
             }
         }
     }
-    private func ratingPill<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 5) { content() }
-            .font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-            .padding(.horizontal, 11).frame(height: 28).background(Color.primary.opacity(0.09), in: Capsule())
-            .accessibilityElement(children: .ignore)
+    private func actionButton(_ symbol: String, title: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { actionLabel(symbol, title: title) }
+            .buttonStyle(.springPress).accessibilityLabel(label)
+            .sensoryFeedback(.selection, trigger: symbol)
     }
-    /// Outlined badges, one line: the age rating, then (a film) the picture and sound. The least
-    /// important ones drop off the end when they don't all fit.
-    @ViewBuilder private func badgesRow(_ detail: JellyfinClient.Detail) -> some View {
-        let all = badges(detail)
-        if !all.isEmpty {
-            ViewThatFits(in: .horizontal) {
-                ForEach(Array(stride(from: all.count, through: 1, by: -1)), id: \.self) { count in
-                    HStack(spacing: 6) { ForEach(all.prefix(count), id: \.text) { badge($0.symbol, $0.text) } }.fixedSize()
-                }
-            }
-            .accessibilityElement(children: .ignore).accessibilityLabel(all.map(\.text).joined(separator: ", "))
-        }
+    private func actionLabel(_ symbol: String, title: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 22)).foregroundStyle(HomeStyle.primary)
+                .contentTransition(.symbolEffect(.replace)).frame(height: 26)
+            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+        }.frame(maxWidth: .infinity).padding(.vertical, 4).contentShape(Rectangle())
     }
+    /// "Dune (2021)", and its IMDb page when Jellyfin knows it.
+    private func shareText(_ detail: JellyfinClient.Detail) -> String {
+        let title = [detail.Name ?? name, detail.ProductionYear.map { "(\($0))" }].compactMap { $0 }.joined(separator: " ")
+        if let imdb = detail.ProviderIds?["Imdb"], !imdb.isEmpty { return title + "\nhttps://www.imdb.com/title/" + imdb + "/" }
+        return title
+    }
+
+    // MARK: The file's badges
+
     private func badge(_ symbol: String?, _ text: String) -> some View {
         HStack(spacing: 4) {
             if let symbol { Image(systemName: symbol).font(.system(size: 10, weight: .semibold)) }
             Text(text)
         }
         .font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary.opacity(0.85))
-        .padding(.horizontal, 7).frame(height: 22)
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(HomeStyle.primary.opacity(0.3), lineWidth: 1))
+        .padding(.horizontal, 5).frame(height: 18)
+        .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(HomeStyle.primary.opacity(0.4), lineWidth: 1))
     }
     private func badges(_ detail: JellyfinClient.Detail) -> [JellyBadge] {
         var out: [JellyBadge] = []
@@ -278,11 +389,9 @@ struct JellyDetailPage: View {
         if let video = streams.first(where: { $0.kind == "Video" }) {
             if let size = JellyFileInfo.resolution(video) { out.append(JellyBadge(symbol: nil, text: size)) }
             if let range = video.VideoRangeType, !range.isEmpty, range != "SDR" { out.append(JellyBadge(symbol: nil, text: JellyFileInfo.rangeName(range))) }
-            if let codec = video.Codec { out.append(JellyBadge(symbol: nil, text: JellyFileInfo.videoCodec(codec))) }
         }
         if let audio = streams.first(where: { $0.kind == "Audio" && $0.IsDefault == true }) ?? streams.first(where: { $0.kind == "Audio" }) {
-            if let layout = JellyFileInfo.channels(audio) { out.append(JellyBadge(symbol: "speaker.wave.2.fill", text: layout)) }
-            if let codec = audio.Codec { out.append(JellyBadge(symbol: nil, text: JellyFileInfo.audioCodec(codec))) }
+            if let layout = JellyFileInfo.channels(audio) { out.append(JellyBadge(symbol: nil, text: layout)) }
         }
         if streams.contains(where: { $0.kind == "Subtitle" }) { out.append(JellyBadge(symbol: "captions.bubble", text: "CC")) }
         // The same text twice (an age rating that reads like a codec) would clash as an id.
@@ -297,50 +406,8 @@ struct JellyDetailPage: View {
         minutes < 60 ? "\(minutes)m" : (minutes % 60 == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h \(minutes % 60)m")
     }
 
-    // MARK: Play, watched, favourite, trailer, file info
+    // MARK: Trailer, the ••• menu, versions, Play
 
-    private func actions(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> some View {
-        VStack(spacing: 16) {
-            Button { play(client) } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill")
-                    Text(playLabel(detail)).lineLimit(1)
-                }.font(.system(size: 16, weight: .bold)).foregroundStyle(WatchStyle.ink)
-                    .frame(maxWidth: .infinity).frame(height: 50).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
-            }.buttonStyle(.springPress).accessibilityIdentifier("jellyspace-detail-play")
-            HStack(alignment: .top, spacing: 10) {
-                labelled(played ? "checkmark.circle.fill" : "checkmark.circle", title: "Watched", label: played ? "Mark unwatched" : "Mark watched") {
-                    guard let user else { return }
-                    played.toggle()
-                    let now = played
-                    Task { try? await client.setPlayed(route.id, user: user, now) }
-                }
-                labelled(favourite ? "heart.fill" : "heart", title: "Favourite", label: favourite ? "Remove from favourites" : "Add to favourites") {
-                    guard let user else { return }
-                    favourite.toggle()
-                    let now = favourite
-                    Task { try? await client.setFavourite(route.id, user: user, now) }
-                }
-                if let trailer = trailer(detail, client: client) {
-                    labelled("film", title: "Trailer", label: "Play trailer", action: trailer)
-                }
-                if !series, chosenSource(detail) != nil {
-                    labelled("waveform", title: audioLanguages(detail) ?? "File info", label: "File info") { showFileInfo = true }
-                        .accessibilityIdentifier("jellyspace-detail-file-info")
-                }
-            }
-        }
-    }
-    /// A round button with its name under it.
-    private func labelled(_ symbol: String, title: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                    .frame(width: 48, height: 48).background(Color.primary.opacity(0.09), in: Circle())
-                Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-            }.frame(minWidth: 0, maxWidth: 74).contentShape(Rectangle())
-        }.buttonStyle(.springPress).accessibilityLabel(label)
-    }
     /// The trailer: a trailer file on the server plays here; else the online one opens.
     private func trailer(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> (() -> Void)? {
         if let file = extras.first(where: { $0.kind == "Trailer" }) {
@@ -350,15 +417,6 @@ struct JellyDetailPage: View {
             return { openURL(url) }
         }
         return nil
-    }
-    /// "English, Japanese": the film's audio languages.
-    private func audioLanguages(_ detail: JellyfinClient.Detail) -> String? {
-        var seen: [String] = []
-        for stream in chosenSource(detail)?.MediaStreams ?? [] where stream.kind == "Audio" {
-            guard let code = stream.Language, let language = Locale.current.localizedString(forLanguageCode: code), !seen.contains(language) else { continue }
-            seen.append(language)
-        }
-        return seen.isEmpty ? nil : seen.joined(separator: ", ")
     }
     /// Whether ••• has anything in it (a show without an online trailer has nothing).
     private func hasMore(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> Bool {
@@ -401,7 +459,7 @@ struct JellyDetailPage: View {
             .padding(.horizontal, 12).frame(height: 32).background(Color.primary.opacity(0.09), in: Capsule())
         }.accessibilityIdentifier("jellyspace-version")
     }
-    /// "Play", "Resume · 23m left", or a show's "Play S1 E4" (the length is on the line above).
+    /// "Play", "Resume · 23m left", or a show's "Play S1 E4".
     private func playLabel(_ detail: JellyfinClient.Detail) -> String {
         if series {
             guard let next = nextEpisode ?? firstEpisode else { return "Play" }
@@ -422,30 +480,46 @@ struct JellyDetailPage: View {
         }
     }
 
-    // MARK: Sections
+    // MARK: The tabs: Episodes, More like this, Extras
 
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text).font(.system(size: 20, weight: .semibold)).tracking(-0.2).foregroundStyle(HomeStyle.primary)
-            .accessibilityAddTraits(.isHeader)
+    private var tabs: [Tab] {
+        (series ? [.episodes] : []) + (similar.isEmpty ? [] : [.similar]) + (extras.isEmpty ? [] : [.extras])
     }
-    private func overviewSection(_ overview: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionTitle("Overview")
-            Text(overview).font(.system(size: 15)).foregroundStyle(HomeStyle.primary.opacity(0.85))
-                .lineLimit(fullOverview ? nil : 4)
-            Button(fullOverview ? "Show less" : "Show more") { withAnimation { fullOverview.toggle() } }
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(ThemeStore.accent)
-        }
-    }
-    /// Trailers and special features, as wide cards that play.
-    private func extrasRow(_ client: JellyfinClient) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Extras")
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(extras, id: \.Id) { JellyWideCard(item: $0, client: client, playing: $playing).frame(width: 220) }
+    @ViewBuilder private func tabsSection(_ client: JellyfinClient) -> some View {
+        let available = tabs
+        if let current = tab.flatMap({ available.contains($0) ? $0 : nil }) ?? available.first {
+            VStack(alignment: .leading, spacing: 16) {
+                // The names, the chosen one under a red bar on the line across the page.
+                HStack(alignment: .top, spacing: 22) {
+                    ForEach(available, id: \.self) { item in
+                        Button { withAnimation(.snappy(duration: 0.25)) { tab = item } } label: {
+                            Text(item.rawValue).font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(item == current ? HomeStyle.primary : HomeStyle.secondary)
+                                .fixedSize().padding(.top, 12)
+                                .overlay(alignment: .top) {
+                                    if item == current {
+                                        Rectangle().fill(Color(red: 0.86, green: 0.1, blue: 0.12)).frame(height: 4)
+                                            .matchedGeometryEffect(id: "bar", in: tabSpace)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(item == current ? .isSelected : [])
+                        .accessibilityIdentifier("jellyspace-detail-tab-" + String(describing: item))
+                    }
                 }
-            }.scrollIndicators(.hidden).scrollClipDisabled()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(alignment: .top) { Rectangle().fill(HomeStyle.primary.opacity(0.12)).frame(height: 1) }
+                switch current {
+                case .episodes: episodesTab(client)
+                case .similar: JellyGrid(items: similar, client: client, playing: $playing)
+                case .extras:
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(extras, id: \.Id) { JellyWideCard(item: $0, client: client, playing: $playing, large: true) }
+                    }
+                }
+            }
         }
     }
     /// Seasons in order, with the specials last.
@@ -456,35 +530,31 @@ struct JellyDetailPage: View {
             return left < right
         }
     }
-    /// Episodes: the season in a menu, how many and how many are left, then the season's episodes
-    /// (the next one to watch on a card).
-    private func seasonsSection(_ client: JellyfinClient) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    /// The season (a menu when there are more), how many are left, then its episodes (the next one
+    /// to watch on a card).
+    private func episodesTab(_ client: JellyfinClient) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                sectionTitle("Episodes")
-                Spacer(minLength: 8)
+                let title = seasons.first { $0.Id == season }?.Name ?? "Season"
                 if seasons.count > 1 {
                     Menu {
                         Picker("Season", selection: Binding(get: { season ?? "" }, set: { season = $0 })) {
                             ForEach(orderedSeasons, id: \.Id) { Text($0.Name ?? "Season").tag($0.Id) }
                         }
                     } label: {
-                        HStack(spacing: 5) {
-                            Text(seasons.first { $0.Id == season }?.Name ?? "Season").lineLimit(1)
-                            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold))
-                        }
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        .padding(.horizontal, 13).frame(height: 32).background(Color.primary.opacity(0.09), in: Capsule())
-                    }.accessibilityLabel("Season").accessibilityIdentifier("jellyspace-season-menu")
-                } else if let only = seasons.first?.Name {
-                    Text(only).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        HStack(spacing: 6) {
+                            Text(title).lineLimit(1)
+                            Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold))
+                        }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    }.accessibilityLabel("Season: " + title).accessibilityIdentifier("jellyspace-season-menu")
+                } else {
+                    Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 }
-            }
-            if !episodes.isEmpty {
-                let left = episodes.filter { $0.UserData?.Played != true }.count
-                HStack(spacing: 6) {
-                    countPill(episodes.count == 1 ? "1 episode" : "\(episodes.count) episodes")
-                    if left == 0 { countPill("All watched") } else if left < episodes.count { countPill("\(left) left") }
+                Spacer(minLength: 8)
+                if !episodes.isEmpty {
+                    let left = episodes.filter { $0.UserData?.Played != true }.count
+                    Text(left == 0 ? "All watched" : left == episodes.count ? "\(episodes.count) episodes" : "\(episodes.count) · \(left) left")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(HomeStyle.secondary)
                 }
             }
             LazyVStack(spacing: 2) {
@@ -492,45 +562,69 @@ struct JellyDetailPage: View {
             }
         }
     }
-    private func countPill(_ text: String) -> some View {
-        Text(text).font(.system(size: 12, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-            .padding(.horizontal, 10).frame(height: 26).background(Color.primary.opacity(0.06), in: Capsule())
-    }
 
-    private func castRow(_ people: [JellyfinClient.Detail.Person], client: JellyfinClient) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Cast & crew")
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(people, id: \.Id) { person in
-                      NavigationLink(value: JellyListRoute(kind: .person, id: person.Id, name: person.Name ?? "")) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ZStack {
-                                Rectangle().fill(HomeStyle.card)
-                                Image(systemName: "person.fill").font(.system(size: 30)).foregroundStyle(HomeStyle.secondary)
-                                JellyImage(url: person.PrimaryImageTag.flatMap { JellyfinClient.imageURL(base: client.base, item: person.Id, type: "Primary", tag: $0, width: 300) })
-                            }.frame(width: 104, height: 140).clipShape(RoundedRectangle(cornerRadius: 12))
-                            Text(person.Name ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                            Text(person.Role ?? person.kind ?? "").font(.system(size: 11)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                        }.frame(width: 104, alignment: .leading).contentShape(Rectangle())
-                      }.buttonStyle(.springPress)
+    // MARK: Cast and crew (Cast's "more")
+
+    private func credits(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> some View {
+        let genres = detail.GenreItems ?? []
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                Text(name).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                ForEach(creditGroups(detail)) { group in
+                    VStack(alignment: .leading, spacing: 4) {
+                        creditsHeading(group.id)
+                        ForEach(Array(group.people.enumerated()), id: \.offset) { _, person in
+                            Button { open(JellyListRoute(kind: .person, id: person.Id, name: person.Name ?? "")) } label: { personRow(person, client: client) }
+                                .buttonStyle(.springPress)
+                        }
                     }
                 }
-            }.scrollIndicators(.hidden).scrollClipDisabled()
+                if !genres.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        creditsHeading("Genres")
+                        ForEach(genres, id: \.Id) { genre in
+                            Button { open(JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre")) } label: {
+                                HStack {
+                                    Text(genre.Name ?? "Genre").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                                }.frame(minHeight: 40).contentShape(Rectangle())
+                            }.buttonStyle(.springPress)
+                        }
+                    }
+                }
+                if let rating = detail.OfficialRating, !rating.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        creditsHeading("Age rating")
+                        Text(rating).font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                    }
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(20).padding(.top, 8)
         }
+        .diaryScreenBackground()
     }
-    /// Similar titles, their names on two lines (one line said little at this width).
-    private func similarRow(_ client: JellyfinClient) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Similar")
-            ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(similar, id: \.Id) {
-                        JellyTile(item: $0, client: client, playing: $playing, home: true).frame(width: posterSize.homeWidth)
-                    }
-                }
-            }.scrollIndicators(.hidden).scrollClipDisabled()
-        }
+    private func creditsHeading(_ text: String) -> some View {
+        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary).accessibilityAddTraits(.isHeader)
+    }
+    private func personRow(_ person: JellyfinClient.Detail.Person, client: JellyfinClient) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(HomeStyle.card)
+                Image(systemName: "person.fill").font(.system(size: 18)).foregroundStyle(HomeStyle.secondary)
+                JellyImage(url: person.PrimaryImageTag.flatMap { JellyfinClient.imageURL(base: client.base, item: person.Id, type: "Primary", tag: $0, width: 160) })
+            }.frame(width: 44, height: 44).clipShape(Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(person.Name ?? "").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let role = person.Role, !role.isEmpty { Text(role).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+        }.padding(.vertical, 4).contentShape(Rectangle())
+    }
+    /// Closes the sheet and opens a person's or genre's list on this tab.
+    private func open(_ route: JellyListRoute) {
+        showCredits = false
+        router.paths[router.selectedTab, default: NavigationPath()].append(route)
     }
 
     // MARK: Loading

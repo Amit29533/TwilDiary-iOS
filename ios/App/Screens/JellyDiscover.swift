@@ -11,41 +11,43 @@ struct JellyShelf: Sendable, Identifiable {
     var library: JellyfinLibrary? = nil
     /// "Tonight: Romance": the genre's name, for See all.
     var genre: String? = nil
+    /// Wide frames (a plain library's videos) rather than posters.
+    var wide = false
 }
 
 /// What JellySpace's home offers beyond the newest: genre chips, a Top 10, hidden gems (unwatched,
-/// rated 7.5 or more), a genre for tonight, a random shelf from each film and show library, and
-/// something from one of the plain video libraries. Drawn once a session, freshly shuffled, from
-/// the libraries shown on the home only.
+/// rated 7.5 or more), a genre for tonight, and a random shelf of its own for every video library
+/// (posters for a film or show library, wide frames for a plain one). Drawn once a session,
+/// freshly shuffled, from the libraries shown on the home only.
 struct JellyDiscover: Sendable {
     var genres: [JellyfinClient.Item] = []
     var top: JellyShelf?
     var gems: [JellyfinClient.Item] = []
     var tonight: JellyShelf?
     var random: [JellyShelf] = []
-    var folders: JellyShelf?
 
     /// Library kinds that hold videos (music, books, photos, collections and playlists don't).
-    private static let videoKinds: Set<String> = ["movies", "tvshows", "homevideos", "mixed", "folders", "musicvideos"]
+    static let videoKinds: Set<String> = ["movies", "tvshows", "homevideos", "mixed", "folders", "musicvideos"]
+    static func holdsVideo(_ library: JellyfinLibrary) -> Bool { library.type.map(videoKinds.contains) ?? true }
 
-    /// `turn` picks which library's Top 10 and which plain library's shelf this visit shows, so they
-    /// take turns.
+    /// `turn` picks which library's Top 10 this visit shows, so they take turns.
     static func load(client: JellyfinClient, user: String?, libraries: [JellyfinLibrary], turn: Int) async -> JellyDiscover {
-        let usable = libraries.filter { $0.type.map(videoKinds.contains) ?? true }
-        let films = usable.filter { $0.type == "movies" || $0.type == "tvshows" }
-        // A random sample of each film and show library; one where most titles have a backdrop is a
-        // "rich" library (artwork, ratings, genres), the rest are shown as plain videos.
-        let samples = await gather(films) { library in await random(client: client, user: user, library: library) }
-        let rich = films.filter { library in
+        let usable = libraries.filter(holdsVideo)
+        // A random sample of every video library, which is also its own shelf. A film or show library
+        // where most of the sample has a backdrop is "rich" (artwork, ratings, genres): its shelf is
+        // posters, and it feeds the gems, genres and Top 10. Any other library's shelf is wide frames.
+        let samples = await gather(usable) { library in await random(client: client, user: user, library: library) }
+        let rich = usable.filter { library in
+            guard library.type == "movies" || library.type == "tvshows" else { return false }
             let sample = samples[library.id] ?? []
             return !sample.isEmpty && sample.filter { !($0.BackdropImageTags ?? []).isEmpty }.count * 2 >= sample.count
         }
-        let plain = usable.filter { library in !rich.contains { $0.id == library.id } }
 
         var found = JellyDiscover()
-        found.random = rich.compactMap { library in
+        found.random = usable.compactMap { library in
             guard let items = samples[library.id], !items.isEmpty else { return nil }
-            return JellyShelf(id: "random-" + library.id, title: "Random from " + library.name, items: items, library: library)
+            return JellyShelf(id: "random-" + library.id, title: "Random from " + library.name, items: items, library: library,
+                              wide: !rich.contains { $0.id == library.id })
         }
         // Hidden gems, the genres and the Top 10, from the rich libraries, at once.
         let topLibrary = rich.isEmpty ? nil : rich[turn % rich.count]
@@ -75,16 +77,6 @@ struct JellyDiscover: Sendable {
             let items = unique(rich.flatMap { lists[$0.id] ?? [] }).shuffled()
             if items.count >= 4 {
                 found.tonight = JellyShelf(id: "tonight-" + genre.Id, title: "Tonight: " + name, items: Array(items.prefix(12)), genre: name)
-                break
-            }
-        }
-        // Something from one plain library (your own folders of videos), a different one each visit.
-        for step in 0..<plain.count {
-            let library = plain[(turn + step) % plain.count]
-            let items: [JellyfinClient.Item]
-            if let sample = samples[library.id] { items = sample } else { items = await random(client: client, user: user, library: library) }
-            if !items.isEmpty {
-                found.folders = JellyShelf(id: "folders-" + library.id, title: "Something from " + library.name, items: items, library: library)
                 break
             }
         }

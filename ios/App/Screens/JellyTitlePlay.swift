@@ -31,7 +31,7 @@ struct JellyPlayButton: View {
                 }
                 .buttonStyle(.springPress).disabled(target == nil).accessibilityIdentifier("title-jellyspace-play")
                 Button { router.paths[router.selectedTab, default: NavigationPath()].append(JellyDetailRoute(id: entry.id, name: entry.name)) } label: {
-                    Image(systemName: "play.rectangle.on.rectangle").font(.system(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Image("jellyfin-mark").resizable().scaledToFit().frame(width: 22, height: 22)
                         .frame(width: 48, height: 48).background(Color.primary.opacity(0.09), in: Circle()).contentShape(Circle())
                 }
                 .buttonStyle(.springPress).accessibilityLabel("Open in JellySpace").accessibilityIdentifier("title-jellyspace-open")
