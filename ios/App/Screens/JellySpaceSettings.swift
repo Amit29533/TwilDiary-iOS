@@ -113,8 +113,11 @@ enum JellySecrets {
     private static let userKey = "jellyspace.account.user", nameKey = "jellyspace.account.name", serverKey = "jellyspace.account.server"
     static var token: String? {
         guard let server = JellyfinSettings.address?.absoluteString, UserDefaults.standard.string(forKey: serverKey) == server else { return nil }
-        return JellySecrets.read("user-token")
+        // Read from the Keychain once (asked often: playback reports, the client).
+        if cachedToken == nil { cachedToken = .some(JellySecrets.read("user-token")) }
+        return cachedToken ?? nil
     }
+    private static var cachedToken: String??
     static var userID: String? { token == nil ? nil : UserDefaults.standard.string(forKey: userKey) }
     static var userName: String? { token == nil ? nil : UserDefaults.standard.string(forKey: nameKey) }
     static func save(_ session: JellyAuth.Session) {
@@ -123,10 +126,14 @@ enum JellySecrets {
         UserDefaults.standard.set(session.User.Id, forKey: userKey)
         UserDefaults.standard.set(session.User.Name, forKey: nameKey)
         JellySecrets.write("user-token", session.AccessToken)
+        cachedToken = nil
+        JellySpace.resetKey()
     }
     static func signOut() {
         for key in [userKey, nameKey, serverKey] { UserDefaults.standard.removeObject(forKey: key) }
         JellySecrets.write("user-token", nil)
+        cachedToken = nil
+        JellySpace.resetKey()
     }
 }
 

@@ -146,7 +146,6 @@ struct JellyPlayerView: View {
 
     init(playback: JellyPlayback) {
         _current = State(initialValue: playback)
-        _engine = State(initialValue: try? AetherEngine())
     }
 
     private var fill: JellyFill { JellyFill(rawValue: fillRaw) ?? .fit }
@@ -478,6 +477,7 @@ struct JellyPlayerView: View {
     // MARK: Starting, switching and finishing
 
     private func start() async {
+        if engine == nil { engine = try? AetherEngine() }
         guard let engine else { failure = "The player couldn’t start."; return }
         JellyMusic.shared.pause()
         skipped = []
@@ -534,11 +534,13 @@ struct JellyPlayerView: View {
             if speed != 1 { engine.setRate(speed) }
             if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
+            guard !Task.isCancelled else { return }
+            failure = await Self.unavailable(current.url) ? "This file isn’t available on the server right now. Its drive may be unplugged."
+                : error.localizedDescription
             return
         }
-        segments = (await stretches) ?? []
-        if segments.isEmpty, introDB { segments = await introDBSegments(client: client, user: user) }
+        segments = Self.merged((await stretches) ?? [])
+        if segments.isEmpty, introDB { segments = Self.merged(await introDBSegments(client: client, user: user)) }
         chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
         if let entry = extras?.Trickplay?.first {
             let sorted = entry.value.values.sorted { $0.Width < $1.Width }
@@ -550,6 +552,27 @@ struct JellyPlayerView: View {
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
             engine.setNowPlayingInfo(nowPlayingInfo(art))
         }
+    }
+
+    /// True when Jellyfin answers "not found" for the file itself (a missing or unplugged drive).
+    static func unavailable(_ url: URL) async -> Bool {
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.setValue("bytes=0-1", forHTTPHeaderField: "Range")
+        guard let answer = try? await URLSession.shared.data(for: request) else { return false }
+        return (answer.1 as? HTTPURLResponse)?.statusCode == 404
+    }
+    /// Overlapping stretches of one kind (two plugins timing the same intro) as one.
+    static func merged(_ segments: [JellyfinClient.Segment]) -> [JellyfinClient.Segment] {
+        var out: [JellyfinClient.Segment] = []
+        for segment in segments.sorted(by: { $0.StartTicks < $1.StartTicks }) {
+            if let last = out.last, last.kind == segment.kind, segment.StartTicks <= last.EndTicks {
+                out[out.count - 1] = JellyfinClient.Segment(kind: last.kind, start: Double(last.StartTicks) / 10_000_000,
+                                                            end: Double(max(last.EndTicks, segment.EndTicks)) / 10_000_000)
+            } else {
+                out.append(segment)
+            }
+        }
+        return out
     }
 
     /// "4K HEVC", "1080p H.264": the file's picture size and codec.
@@ -839,18 +862,18 @@ struct JellyPlayerView: View {
     private func reachedEnd(_ seconds: Double) {
         guard !finished, duration > 60, seconds >= duration * 0.9 else { return }
         finished = true
-        let client = current.client, id = current.id, user = userID
+        let client = current.client, id = current.id, user = userID, item = current.item
         Task {
             if let user {
                 try? await client.markPlayed(id, user: user)
                 try? await client.savePosition(id, user: user, seconds: 0)
             }
-            if diaryOn { await markInDiary() }
+            if diaryOn { await markInDiary(item, client: client) }
         }
     }
 
-    private func markInDiary() async {
-        let note = await JellyDiary.mark(current.item, client: current.client, store: store)
+    private func markInDiary(_ item: JellyfinClient.Item, client: JellyfinClient) async {
+        let note = await JellyDiary.mark(item, client: client, store: store)
         if !note.isEmpty { show(note) }
     }
     /// Tells Jellyfin what's playing (signed in only: the server's API key has no user to report as).
@@ -908,7 +931,8 @@ struct JellyPlayerView: View {
                 HStack(spacing: verticalSizeClass == .compact ? 64 : 28) {
                     transport("gobackward.\(skipSeconds)", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
                     Button {
-                        if playingNow { engine?.pause() } else { engine?.play() }
+                        if state == .ended { Task { await start() } }
+                        else if playingNow { engine?.pause() } else { engine?.play() }
                         scheduleHide()
                     } label: {
                         ZStack {
@@ -916,7 +940,7 @@ struct JellyPlayerView: View {
                             if buffering {
                                 ProgressView().controlSize(.large).tint(.white)
                             } else {
-                                Image(systemName: playingNow ? "pause.fill" : "play.fill").font(.system(size: 34, weight: .semibold))
+                                Image(systemName: playingNow ? "pause.fill" : state == .ended ? "arrow.counterclockwise" : "play.fill").font(.system(size: 34, weight: .semibold))
                                     .foregroundStyle(.white).offset(x: playingNow ? 0 : 2)
                             }
                         }.frame(width: 78, height: 78).contentShape(Circle())
@@ -1078,14 +1102,12 @@ struct JellyPlayerView: View {
             Menu {
                 ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
                     Button { speed = Float(value); engine?.setRate(Float(value)) } label: {
-                        Label(Self.speedName(Float(value)), systemImage: speed == Float(value) ? "checkmark" : "")
+                        if speed == Float(value) { Label(Self.speedName(Float(value)), systemImage: "checkmark") } else { Text(Self.speedName(Float(value))) }
                     }
                 }
             } label: { actionFace("gauge.with.needle", Self.speedName(speed), labels: labels) }
                 .accessibilityLabel("Speed").accessibilityIdentifier("jellyspace-speed")
-            do {
-                action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
-            }
+            action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
             action(fill.symbol, fill.rawValue, labels: labels) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
             if pip.available { action("pip.enter", "PiP", labels: labels) { pip.start() } }
             if let next = nextEpisode {
@@ -1748,7 +1770,7 @@ private struct JellySubtitles: View {
 /// The phone's volume, changed through a hidden system volume view (iOS has no other way to set it;
 /// while that view is on screen the system's own volume badge stays away).
 @MainActor final class JellyVolume {
-    let view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+    lazy var view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
     var level: Float { slider?.value ?? AVAudioSession.sharedInstance().outputVolume }
     func set(_ value: Float) { slider?.value = value }
     private var slider: UISlider? { view.subviews.compactMap { $0 as? UISlider }.first }

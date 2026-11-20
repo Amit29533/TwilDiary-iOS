@@ -13,6 +13,7 @@ struct JellyFolderRoute: Hashable {
 /// The home's last load, kept while the app runs: JellySpace opens on it at once and refreshes
 /// behind it (at most once a minute, and after watching something).
 @MainActor enum JellyHomeCache {
+    /// The server and user they were loaded for.
     static var server: String?
     static var at: Date?
     static var libraries: [JellyfinLibrary] = []
@@ -285,7 +286,9 @@ struct JellySpaceView: View {
 
     /// What was loaded last time shows at once; it's fetched again when it's over a minute old.
     private func appear() async {
-        let server = JellyfinSettings.address?.absoluteString
+        guard let client = JellySpace.client else { return }
+        // The rows were loaded for a server and a user: another user (or server) loads afresh.
+        let server = client.base.absoluteString + "|" + (await JellyfinUser.id(client) ?? "")
         if libraries.isEmpty, JellyHomeCache.server == server, JellyHomeCache.at != nil {
             libraries = JellyHomeCache.libraries; resume = JellyHomeCache.resume; favourites = JellyHomeCache.favourites
             collections = JellyHomeCache.collections; latest = JellyHomeCache.latest; loaded = true
@@ -322,7 +325,7 @@ struct JellySpaceView: View {
             for await (id, items) in group { newest[id] = items }
             return newest
         }
-        JellyHomeCache.server = client.base.absoluteString; JellyHomeCache.at = .now
+        JellyHomeCache.server = client.base.absoluteString + "|" + user; JellyHomeCache.at = .now
         JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
         JellyHomeCache.collections = collections; JellyHomeCache.latest = latest
     }
@@ -801,10 +804,16 @@ struct JellySortMenu: View {
 /// What JellySpace's pages share: the client, posters, names and which items open or play.
 @MainActor enum JellySpace {
     static var client: JellyfinClient? {
-        // A user you signed in as (Settings → JellySpace) stands in for the server's API key.
-        guard let base = JellyfinSettings.address, let key = JellyAccount.token ?? JellyfinSettings.apiKey else { return nil }
+        // A user you signed in as (Settings → JellySpace) stands in for the server's API key. Both
+        // are read from the Keychain once and kept (pages ask for the client on every redraw).
+        guard let base = JellyfinSettings.address else { return nil }
+        if keyCache == nil { keyCache = .some(JellyAccount.token ?? JellyfinSettings.apiKey) }
+        guard let key = keyCache ?? nil else { return nil }
         return JellyfinClient(base: base, key: key)
     }
+    private static var keyCache: String??
+    /// After the key changes: a new server key, a sign-in, a sign-out.
+    static func resetKey() { keyCache = nil }
     /// Jellyseerr, when its address and key are set (Settings → JellySpace).
     static var seerr: JellySeerr? {
         guard let text = UserDefaults.standard.string(forKey: JellyPrefs.seerrAddressKey), let base = JellyfinSettings.normalized(text),

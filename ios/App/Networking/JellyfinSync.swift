@@ -34,6 +34,7 @@ import TwilDiaryCore
         return String(data: data, encoding: .utf8)
     }
     static func save(address: URL, apiKey: String?) throws {
+        JellySpace.resetKey()
         UserDefaults.standard.set(address.absoluteString, forKey: addressKey)
         guard let apiKey, !apiKey.isEmpty else { return }
         let data = Data(apiKey.utf8)
@@ -45,6 +46,7 @@ import TwilDiaryCore
     }
     /// Forgetting the server also drops the Jellyfin list and posters saved on this iPhone.
     static func forget() {
+        JellySpace.resetKey()
         SecItemDelete(query as CFDictionary)
         for key in [addressKey, excludedKey, summaryKey] { UserDefaults.standard.removeObject(forKey: key) }
         JellyfinShelf.shared.forget()
