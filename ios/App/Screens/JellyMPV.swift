@@ -100,7 +100,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// Jellyfin's separate subtitle files, added once the video has opened.
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
-    func start(layer: CAMetalLayer, url: URL, at seconds: Double?, subtitles: [ExternalSubtitleTrack], smooth: Bool) {
+    func start(layer: CAMetalLayer, url: URL, at seconds: Double?, subtitles: [ExternalSubtitleTrack], smooth: Int) {
         guard handle == nil, let raw = mpv_create() else { return }
         var wid = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
@@ -142,14 +142,15 @@ private struct JellyMPVHandle: @unchecked Sendable {
     func setSpeed(_ value: Double) { set("speed", String(value)) }
     func selectAudio(_ id: Int) { set("aid", String(id)) }
     func selectSubtitle(_ id: Int?) { set("sid", id.map(String.init) ?? "no") }
-    /// Smooth motion: frames timed to the screen's 60 Hz and blended where they fall between two
-    /// refreshes (mpv's display-resample with interpolation), so pans and handheld shots don't judder.
-    func setSmooth(_ on: Bool) {
-        for (name, value) in Self.smoothOptions(on) { set(name, value) }
+    /// Smooth motion at 60 or 120 Hz (0 off): frames timed to the screen's refresh and blended where
+    /// they fall between two refreshes (mpv's display-resample with interpolation), so pans and
+    /// handheld shots don't judder.
+    func setSmooth(_ rate: Int) {
+        for (name, value) in Self.smoothOptions(rate) { set(name, value) }
     }
-    nonisolated private static func smoothOptions(_ on: Bool) -> [(String, String)] {
-        on ? [("display-fps-override", "60"), ("video-sync", "display-resample"), ("interpolation", "yes"), ("tscale", "oversample")]
-           : [("interpolation", "no"), ("video-sync", "audio")]
+    nonisolated private static func smoothOptions(_ rate: Int) -> [(String, String)] {
+        rate > 0 ? [("display-fps-override", String(rate)), ("video-sync", "display-resample"), ("interpolation", "yes"), ("tscale", "oversample")]
+                 : [("interpolation", "no"), ("video-sync", "audio")]
     }
     /// The picture off in the background (mpv's Metal layer can't draw there) and back.
     func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
@@ -262,6 +263,27 @@ private struct JellyMPVHandle: @unchecked Sendable {
     }
 }
 
+/// Holds the screen at a refresh rate while smooth motion is on (a display link asking for it; the
+/// frames themselves come from mpv). 0 lets iOS choose again.
+@MainActor final class JellyRefreshRate {
+    private var link: CADisplayLink?
+    private let target = JellyRefreshTarget()
+
+    func hold(_ rate: Int) {
+        link?.invalidate()
+        link = nil
+        guard rate > 0 else { return }
+        let link = CADisplayLink(target: target, selector: #selector(JellyRefreshTarget.tick(_:)))
+        let hz = Float(rate)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: hz, maximum: hz, preferred: hz)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+}
+private final class JellyRefreshTarget: NSObject {
+    @objc func tick(_ link: CADisplayLink) {}
+}
+
 /// The Metal layer mpv draws into. MoltenVK sets a 1×1 drawable to finish a presentation early, which
 /// flickers and can stick; such sizes are ignored (mpv's own workaround).
 final class JellyMPVLayer: CAMetalLayer {
@@ -281,7 +303,7 @@ private struct JellyMPVSurface: UIViewRepresentable {
     let url: URL
     let start: Double?
     let subtitles: [ExternalSubtitleTrack]
-    let smooth: Bool
+    let smooth: Int
     @Environment(\.displayScale) private var displayScale
 
     func makeUIView(context: Context) -> JellyMPVSurfaceView {
@@ -316,7 +338,9 @@ struct JellyMPVPlayerView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage(JellyPrefs.resumeKey) private var resumeOn = true
     @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
-    @AppStorage("jellyspace.mpvSmooth") private var smoothMotion = false
+    /// Smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
+    @AppStorage("jellyspace.mpvSmoothRate") private var smoothMotion = 0
+    @State private var refresh = JellyRefreshRate()
     @StateObject private var mpv = JellyMPV()
     @State private var start: Double?
     @State private var subtitles: [ExternalSubtitleTrack] = []
@@ -365,6 +389,7 @@ struct JellyMPVPlayerView: View {
             if phase == .active { mpv.showVideo(true) }
         }
         .onAppear {
+            refresh.hold(smoothMotion)
             UIApplication.shared.isIdleTimerDisabled = true
             JellyMusic.shared.pause()
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -373,6 +398,7 @@ struct JellyMPVPlayerView: View {
             OrientationLock.set(upright ? .portrait : .landscape, turnTo: upright ? .portrait : .landscape)
         }
         .onDisappear {
+            refresh.hold(0)
             UIApplication.shared.isIdleTimerDisabled = false
             hideTask?.cancel()
             report("stop")
@@ -471,11 +497,16 @@ struct JellyMPVPlayerView: View {
 
     private var decoderMenu: some View {
         Menu {
-            Toggle(isOn: Binding(get: { smoothMotion }, set: { on in
-                smoothMotion = on
-                mpv.setSmooth(on)
+            Picker(selection: Binding(get: { smoothMotion }, set: { rate in
+                smoothMotion = rate
+                mpv.setSmooth(rate)
+                refresh.hold(rate)
                 scheduleHide()
-            })) { Label("Smooth motion", systemImage: "wand.and.sparkles") }
+            })) {
+                Text("Off").tag(0)
+                Text("60 Hz").tag(60)
+                Text("120 Hz").tag(120)
+            } label: { Label("Smooth motion", systemImage: "wand.and.sparkles") }.pickerStyle(.menu)
             Picker(selection: Binding(get: { JellyDecoder.mpv }, set: { choice in
                 guard choice != .mpv else { return }
                 switching = true
