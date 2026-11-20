@@ -99,6 +99,7 @@ private struct JellyPhotoPage: View {
                 ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).onTapGesture(perform: tapped)
             }
         }
+        .onDisappear { image = nil; failed = false }
         .task(id: url) {
             guard let url, image == nil else { return }
             // Full-size photos aren't kept in the poster memory (they're large): loaded per page.

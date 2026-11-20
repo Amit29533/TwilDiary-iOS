@@ -22,6 +22,7 @@ struct JellySpaceView: View {
     @State private var collections: [JellyfinClient.Item] = []
     @State private var query = ""
     @State private var searching = false
+    @State private var searchRunning = false
     @State private var loading = false
     @State private var loaded = false
     @State private var failure: String?
@@ -39,7 +40,7 @@ struct JellySpaceView: View {
                         if searching { SearchField(placeholder: "Search Jellyfin", text: $query, label: "Search Jellyfin") }
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
                         if searching && !query.isEmpty {
-                            if results.isEmpty && !loading { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
+                            if results.isEmpty && !searchRunning { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
                             JellyGrid(items: results, client: client, playing: $playing)
                         } else if loading && !loaded {
                             DiaryLoadingPlaceholder(label: "Loading Jellyfin", layout: .posterShelf)
@@ -85,11 +86,15 @@ struct JellySpaceView: View {
         }
         .task { await loadHome() }
         .task(id: query) {
-            guard !query.isEmpty else { results = []; return }
+            guard !query.isEmpty else { results = []; searchRunning = false; return }
+            searchRunning = true
             // A pause after typing, so a search goes once per word, not once per letter.
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled, let client = JellySpace.client else { return }
-            results = (try? await client.videos(search: query.trimmingCharacters(in: .whitespacesAndNewlines))) ?? []
+            let found = (try? await client.videos(search: query.trimmingCharacters(in: .whitespacesAndNewlines))) ?? []
+            guard !Task.isCancelled else { return }
+            results = found
+            searchRunning = false
         }
         .fullScreenCover(item: $playing, onDismiss: { Task { await loadRows() } }) { JellyPlayerView(playback: $0) }
     }
@@ -542,7 +547,7 @@ struct JellyItemMenu: ViewModifier {
     let play: (() -> Void)?
     @Environment(AppRouter.self) private var router
     @ViewBuilder func body(content: Content) -> some View {
-        if item.kind == "CollectionFolder" {
+        if ["CollectionFolder", "Photo", "PhotoAlbum"].contains(item.kind) {
             content
         } else {
             content.contextMenu {

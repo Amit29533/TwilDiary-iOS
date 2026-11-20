@@ -64,6 +64,11 @@ struct JellyPlayerView: View {
     @State private var chapters: [JellyfinClient.PlayerInfo.Chapter] = []
     @State private var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
     @State private var thumbnail: UIImage?
+    /// The one sheet of scrubbing thumbnails in use (each is a big picture, so only one is kept).
+    @State private var sheet: (index: Int, image: UIImage)?
+    /// The next episode beyond this season (the first of the next one).
+    @State private var following: JellyfinClient.Item?
+    @State private var countdownTask: Task<Void, Never>?
     @State private var subtitleDelay: Double = 0
     @State private var audioDelay: Double = 0
     @State private var volume = JellyVolume()
@@ -89,8 +94,12 @@ struct JellyPlayerView: View {
 
     private var fill: JellyFill { JellyFill(rawValue: fillRaw) ?? .fit }
     private var nextEpisode: JellyfinClient.Item? {
-        guard current.item.kind == "Episode", let number = current.item.IndexNumber else { return nil }
-        return season.filter { ($0.IndexNumber ?? 0) > number }.min { ($0.IndexNumber ?? 0) < ($1.IndexNumber ?? 0) }
+        guard current.item.kind == "Episode" else { return nil }
+        if let number = current.item.IndexNumber,
+           let inSeason = season.filter({ ($0.IndexNumber ?? 0) > number }).min(by: { ($0.IndexNumber ?? 0) < ($1.IndexNumber ?? 0) }) {
+            return inSeason
+        }
+        return following
     }
 
     var body: some View {
@@ -150,6 +159,7 @@ struct JellyPlayerView: View {
         .onChange(of: videoSize) { _, size in turnToPicture(size) }
         .onDisappear {
             if let brightnessAtOpen { JellyScreen.brightness = brightnessAtOpen }
+            countdownTask?.cancel()
             savePlace()
             engine?.stop()
             OrientationLock.set(.portrait, turnTo: .portrait)
@@ -347,7 +357,7 @@ struct JellyPlayerView: View {
         guard let engine else { failure = "The player couldn’t start."; return }
         pip.engine = engine
         finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false; time = 0
-        segments = []; chapters = []; trickplay = nil; thumbnail = nil
+        segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil
         let client = current.client, id = current.id
         // The user Jellyfin keeps your places for (the administrator, else the first), found once.
         let user = await JellyfinUser.id(client)
@@ -359,9 +369,12 @@ struct JellyPlayerView: View {
         if let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
             startAt = Double(ticks) / 10_000_000
         }
-        // Chapters, scrubbing thumbnails and the intro and credits stretches, fetched while it loads.
-        async let info = try? client.playerInfo(id, user: user)
+        // Chapters, scrubbing thumbnails and separate subtitle files first (the files load with the
+        // video); the intro and credits stretches while it loads.
+        let extras = try? await client.playerInfo(id, user: user)
         async let stretches = try? client.segments(id)
+        var options = LoadOptions()
+        options.externalSubtitles = Self.subtitleFiles(extras, item: id, client: client)
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
         // The lock screen and Control Center: the title, its poster, play/pause and skipping.
         engine.ownsSoftwareNowPlaying = true
@@ -370,11 +383,11 @@ struct JellyPlayerView: View {
         engine.setNowPlayingInfo(nowPlayingInfo(nil))
         do {
             if let startAt, startAt > 30 {
-                try await engine.load(url: current.url, startPosition: startAt)
+                try await engine.load(url: current.url, startPosition: startAt, options: options)
                 resumedAt = startAt
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
             } else {
-                try await engine.load(url: current.url)
+                try await engine.load(url: current.url, options: options)
             }
             engine.play()
             if speed != 1 { engine.setRate(speed) }
@@ -384,14 +397,36 @@ struct JellyPlayerView: View {
             return
         }
         segments = (await stretches) ?? []
-        let extras = await info
         chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
         if let entry = extras?.Trickplay?.first {
             let sorted = entry.value.values.sorted { $0.Width < $1.Width }
             if let pick = sorted.first(where: { $0.Width >= 240 }) ?? sorted.last { trickplay = (pick, entry.key) }
         }
+        if current.item.kind == "Episode", let series = current.item.SeriesId {
+            following = try? await client.episode(after: id, series: series, user: user)
+        }
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
             engine.setNowPlayingInfo(nowPlayingInfo(art))
+        }
+    }
+
+    /// The video's separate subtitle files (.srt, .ass, .vtt and the like next to it), as tracks the
+    /// player loads with the video. Picture subtitles in a separate file (.sup) are left out.
+    static func subtitleFiles(_ info: JellyfinClient.PlayerInfo?, item: String, client: JellyfinClient) -> [ExternalSubtitleTrack] {
+        guard let source = info?.MediaSources?.first, let sourceID = source.Id else { return [] }
+        return (source.MediaStreams ?? []).compactMap { stream in
+            guard stream.kind == "Subtitle", stream.IsExternal == true else { return nil }
+            let codec = (stream.Codec ?? "").lowercased()
+            let format: String
+            switch codec {
+            case "ass", "ssa": format = "ass"
+            case "webvtt", "vtt": format = "vtt"
+            case "pgssub", "pgs", "sup", "dvdsub", "dvd_subtitle", "vobsub": return nil
+            default: format = "srt"
+            }
+            guard let url = client.subtitleURL(item, source: sourceID, index: stream.Index, format: format) else { return nil }
+            return ExternalSubtitleTrack(url: url, name: stream.DisplayTitle, language: stream.Language,
+                                         isForced: stream.IsForced == true, isDefault: stream.IsDefault == true, formatHint: format)
         }
     }
 
@@ -449,8 +484,14 @@ struct JellyPlayerView: View {
     private func loadThumbnail(_ index: Int?) async {
         guard let index, let trickplay else { thumbnail = nil; return }
         let info = trickplay.info, perSheet = max(1, info.TileWidth * info.TileHeight)
-        guard let url = current.client.trickplayURL(current.id, width: info.Width, sheet: index / perSheet, source: trickplay.source),
-              let sheet = await JellyfinPosterCache.shared.image(url), let picture = sheet.cgImage, !Task.isCancelled else { return }
+        let number = index / perSheet
+        if sheet?.index != number {
+            guard let url = current.client.trickplayURL(current.id, width: info.Width, sheet: number, source: trickplay.source),
+                  let fetched = try? await URLSession.shared.data(from: url), (fetched.1 as? HTTPURLResponse)?.statusCode == 200,
+                  let loaded = UIImage(data: fetched.0), !Task.isCancelled else { return }
+            sheet = (number, loaded)
+        }
+        guard let picture = sheet?.image.cgImage else { return }
         let spot = index % perSheet
         let rect = CGRect(x: (spot % max(1, info.TileWidth)) * info.Width, y: (spot / max(1, info.TileWidth)) * info.Height, width: info.Width, height: info.Height)
         if let cut = picture.cropping(to: rect) { thumbnail = UIImage(cgImage: cut) }
@@ -488,19 +529,20 @@ struct JellyPlayerView: View {
 
     private func startCountdown() {
         countdown = 5
-        Task {
+        countdownTask?.cancel()
+        countdownTask = Task {
             while let left = countdown, left > 0 {
                 try? await Task.sleep(for: .seconds(1))
-                guard countdown != nil else { return }
+                guard !Task.isCancelled, countdown != nil else { return }
                 countdown = left - 1
             }
             if countdown == 0, let next = nextEpisode { play(next) }
         }
     }
 
-    /// Where you are, to Jellyfin (not once it's finished: Jellyfin then starts it over next time).
+    /// Where you are, to Jellyfin (not in the last 10% once it's marked watched: it starts over then).
     private func savePlace() {
-        guard !finished, let user = userID, time > 5 else { return }
+        guard let user = userID, time > 5, !(finished && time >= duration * 0.9) else { return }
         let client = current.client, id = current.id, at = time
         Task { try? await client.savePosition(id, user: user, seconds: at) }
     }
@@ -996,10 +1038,14 @@ private struct JellyVolumeView: UIViewRepresentable {
 /// user), found once and remembered.
 @MainActor enum JellyfinUser {
     private static let key = "jellyspace.userID"
+    private static let serverKey = "jellyspace.userServer"
     static func id(_ client: JellyfinClient) async -> String? {
-        if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty { return saved }
+        let defaults = UserDefaults.standard, server = client.base.absoluteString
+        // Kept for one server: connecting another finds that server's user afresh.
+        if let saved = defaults.string(forKey: key), !saved.isEmpty, defaults.string(forKey: serverKey) == server { return saved }
         guard let users = try? await client.users(), let user = users.first(where: { $0.Policy?.IsAdministrator == true }) ?? users.first else { return nil }
-        UserDefaults.standard.set(user.Id, forKey: key)
+        defaults.set(user.Id, forKey: key)
+        defaults.set(server, forKey: serverKey)
         return user.Id
     }
 }

@@ -362,9 +362,9 @@ struct JellyfinClient: Sendable {
         let folders: [Folder] = try await get("Library/VirtualFolders")
         return folders.compactMap { folder in folder.ItemId.map { JellyfinLibrary(id: $0, name: folder.Name, type: folder.CollectionType?.lowercased()) } }
     }
-    /// Films and episodes for JellySpace: the newest first, or those matching a search.
+    /// Films, shows and episodes for JellySpace: the newest first, or those matching a search.
     func videos(search: String, limit: Int = 60) async throws -> [Item] {
-        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Episode"),
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode"),
                      URLQueryItem(name: "Fields", value: "ProviderIds"), URLQueryItem(name: "Limit", value: String(limit))]
         if search.isEmpty { query += [URLQueryItem(name: "SortBy", value: "DateCreated"), URLQueryItem(name: "SortOrder", value: "Descending")] }
         else { query.append(URLQueryItem(name: "SearchTerm", value: search)) }
@@ -434,11 +434,39 @@ struct JellyfinClient: Sendable {
     struct PlayerInfo: Decodable, Sendable {
         struct Chapter: Decodable, Sendable { let StartPositionTicks: Int64; let Name: String?; let ImageTag: String? }
         struct TrickplayInfo: Decodable, Sendable { let Width: Int; let Height: Int; let TileWidth: Int; let TileHeight: Int; let ThumbnailCount: Int; let Interval: Int }
+        /// A subtitle (or other) stream; IsExternal marks a separate file next to the video.
+        struct Stream: Decodable, Sendable {
+            let kind: String?
+            let Index: Int
+            let IsExternal: Bool?
+            let Codec: String?
+            let Language: String?
+            let DisplayTitle: String?
+            let IsForced: Bool?
+            let IsDefault: Bool?
+            enum CodingKeys: String, CodingKey { case kind = "Type", Index, IsExternal, Codec, Language, DisplayTitle, IsForced, IsDefault }
+        }
+        struct Source: Decodable, Sendable { let Id: String?; let MediaStreams: [Stream]? }
         let Chapters: [Chapter]?
         let Trickplay: [String: [String: TrickplayInfo]]?
+        let MediaSources: [Source]?
     }
     func playerInfo(_ id: String, user: String?) async throws -> PlayerInfo {
         try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+    }
+    /// A separate subtitle file, served by Jellyfin in a format the player reads (srt, ass or vtt).
+    func subtitleURL(_ id: String, source: String, index: Int, format: String) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/\(source)/Subtitles/\(index)/Stream.\(format)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+    /// The episode after this one in the whole show (so the last of a season leads to the next season).
+    func episode(after id: String, series: String, user: String?) async throws -> Item? {
+        var query = [URLQueryItem(name: "startItemId", value: id), URLQueryItem(name: "Limit", value: "2"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Overview")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items.first { $0.Id != id }
     }
     /// One sheet of scrubbing thumbnails (a grid of TileWidth x TileHeight).
     func trickplayURL(_ id: String, width: Int, sheet: Int, source: String) -> URL? {

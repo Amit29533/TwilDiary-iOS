@@ -33,6 +33,8 @@ struct JellyDetailPage: View {
     @State private var season: String?
     @State private var episodes: [JellyfinClient.Item] = []
     @State private var nextEpisode: JellyfinClient.Item?
+    /// A show you haven't started: its first episode (season 1's, not a special's).
+    @State private var firstEpisode: JellyfinClient.Item?
     @State private var similar: [JellyfinClient.Item] = []
     @State private var failure: String?
     @State private var playing: JellyPlayback?
@@ -86,7 +88,7 @@ struct JellyDetailPage: View {
         .diaryScreenBackground()
         .task { await load() }
         .task(id: season) { await loadEpisodes() }
-        .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
+        .fullScreenCover(item: $playing, onDismiss: { Task { await load(); await loadEpisodes() } }) { JellyPlayerView(playback: $0) }
     }
 
     // MARK: Header and facts
@@ -181,7 +183,7 @@ struct JellyDetailPage: View {
     /// "Play 1h 52m", "Resume · 23m left", or a show's "Play S1 E4".
     private func playLabel(_ detail: JellyfinClient.Detail) -> String {
         if series {
-            guard let next = nextEpisode else { return "Play" }
+            guard let next = nextEpisode ?? firstEpisode else { return "Play" }
             let place = [next.ParentIndexNumber.map { "S\($0)" }, next.IndexNumber.map { "E\($0)" }].compactMap { $0 }.joined(separator: " ")
             return (next.UserData?.PlayedPercentage ?? 0) > 0 ? "Resume \(place)" : "Play \(place)"
         }
@@ -193,7 +195,7 @@ struct JellyDetailPage: View {
     }
     private func play(_ client: JellyfinClient) {
         if series {
-            if let next = nextEpisode ?? episodes.first { playing = JellySpace.playback(next, client: client) }
+            if let next = nextEpisode ?? firstEpisode ?? episodes.first { playing = JellySpace.playback(next, client: client) }
         } else if let item {
             playing = JellySpace.playback(item, client: client)
         }
@@ -294,7 +296,12 @@ struct JellyDetailPage: View {
         if series {
             seasons = (try? await client.seasons(of: route.id, user: user)) ?? []
             if let user { nextEpisode = try? await client.nextUp(series: route.id, user: user) }
-            if season == nil { season = nextEpisode?.SeasonId ?? seasons.first?.Id }
+            // Specials (season 0) come first in Jellyfin's list: the show starts at its first real season.
+            let opening = seasons.first { ($0.IndexNumber ?? 0) >= 1 } ?? seasons.first
+            if nextEpisode == nil, let opening {
+                firstEpisode = (try? await client.episodes(of: route.id, season: opening.Id, user: user))?.first
+            }
+            if season == nil { season = nextEpisode?.SeasonId ?? opening?.Id }
         } else {
             item = try? await client.item(route.id)
         }
