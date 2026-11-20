@@ -178,8 +178,16 @@ struct JellyPlayerView: View {
     private enum Panel { case episodes, chapters, advanced, subtitleSearch }
     private enum SwipeKind { case brightness, volume, seek }
 
-    init(playback: JellyPlayback) {
+    /// Where mpv was when you switched back (used once, for the first video).
+    private let handoff: Double?
+    /// Over to mpv (More → Decoder → mpv), with the video playing now and where it is.
+    private let toMPV: ((JellyPlayback, Double) -> Void)?
+    @State private var usedHandoff = false
+
+    init(playback: JellyPlayback, startAt: Double? = nil, toMPV: ((JellyPlayback, Double) -> Void)? = nil) {
         _current = State(initialValue: playback)
+        handoff = startAt
+        self.toMPV = toMPV
     }
 
     private var fill: JellyFill { JellyFill(rawValue: fillRaw) ?? .fit }
@@ -606,7 +614,11 @@ struct JellyPlayerView: View {
             season = ((try? await client.children(of: seasonID, user: user)) ?? []).filter { $0.kind == "Episode" }
         }
         var startAt: Double?
-        if resumeOn, let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
+        var handedOver = false
+        if let handoff, !usedHandoff {
+            usedHandoff = true
+            startAt = handoff; handedOver = true
+        } else if resumeOn, let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
             startAt = Double(ticks) / 10_000_000
         }
         // Chapters, scrubbing thumbnails and separate subtitle files first (the files load with the
@@ -641,9 +653,9 @@ struct JellyPlayerView: View {
         engine.remoteSkipInterval = Double(skipSeconds)
         engine.setNowPlayingInfo(nowPlayingInfo(nil))
         do {
-            if let startAt, startAt > 30 {
+            if let startAt, startAt > (handedOver ? 1 : 30) {
                 try await engine.load(url: current.url, startPosition: startAt, options: options)
-                resumedAt = startAt
+                if !handedOver { resumedAt = startAt }
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
             } else {
                 try await engine.load(url: current.url, options: options)
@@ -1209,7 +1221,7 @@ struct JellyPlayerView: View {
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
-                       fill: fill, rotationLocked: rotationLocked, info: showsInfo, decoder: decodePath)
+                       fill: fill, rotationLocked: rotationLocked, info: showsInfo, decoder: decodePath == .software ? .app : .auto)
     }
     /// What the menus' choices do.
     private var menuActions: JellyMenuActions {
@@ -1335,11 +1347,17 @@ struct JellyPlayerView: View {
         guard let upscale, upscale.disabledReason == nil, upscale.sourceSize.height > 0 else { return nil }
         return "Upscaled from \(Int(upscale.sourceSize.height))p"
     }
-    /// Auto or the app's own decoder: the video reloads where it is on the new one.
-    private func setDecoder(_ path: DecodePath) {
+    /// Auto or the app's own decoder: the video reloads where it is on the new one. mpv: the video
+    /// moves to the mpv player where it is (and opens there from then on).
+    private func setDecoder(_ choice: JellyDecoder) {
+        if choice == .mpv {
+            toMPV?(current, time)
+            return
+        }
+        let path = choice.path
         guard path != decodePath else { return }
         decodePath = path
-        show("Decoder: " + JellyMenuParts.decoderName(path))
+        show("Decoder: " + choice.title)
         guard let engine, state != .idle, state != .loading else { return }
         Task { _ = try? await engine.reloadAtCurrentPosition { $0.preferredDecodePath = path } }
     }
@@ -2260,7 +2278,7 @@ private struct JellyMenuState: Equatable, Sendable {
     var fill: JellyFill
     var rotationLocked: Bool
     var info: Bool
-    var decoder: DecodePath
+    var decoder: JellyDecoder
 }
 
 /// What the menus' choices do (closures: they play no part in deciding a redraw).
@@ -2280,17 +2298,10 @@ private struct JellyMenuActions {
     let fill: (JellyFill) -> Void
     let rotation: () -> Void
     let info: (Bool) -> Void
-    let decoder: (DecodePath) -> Void
+    let decoder: (JellyDecoder) -> Void
 }
 
 @MainActor private enum JellyMenuParts {
-    /// "Auto" (the engine picks, usually the phone's own player) or "App" (the app's own decoder).
-    static func decoderName(_ path: DecodePath) -> String {
-        switch path {
-        case .automatic: "Auto"
-        case .software: "App"
-        }
-    }
     /// A button in the bottom row: its symbol and, where there's room, its name.
     static func label(_ symbol: String, _ title: String, labelled: Bool) -> some View {
         HStack(spacing: 8) {
@@ -2339,7 +2350,7 @@ private struct JellyMoreMenu: View, Equatable {
                         ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
                     } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
                     Picker(selection: Binding(get: { state.decoder }, set: { actions.decoder($0) })) {
-                        ForEach(DecodePath.allCases, id: \.self) { Text(JellyMenuParts.decoderName($0)).tag($0) }
+                        ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }
                     } label: { Label("Decoder", systemImage: "cpu") }.pickerStyle(.menu)
                 }
                 Section {

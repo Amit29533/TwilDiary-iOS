@@ -162,7 +162,7 @@ struct JellySpaceView: View {
             // What isn't on the server, from Jellyseerr when it's set up.
             if let seerr = JellySpace.seerr { seerrResults = (try? await seerr.search(query.trimmingCharacters(in: .whitespacesAndNewlines))) ?? [] }
         }
-        .fullScreenCover(item: $playing, onDismiss: { Task { await loadRows() } }) { JellyPlayerView(playback: $0) }
+        .fullScreenCover(item: $playing, onDismiss: { Task { await loadRows() } }) { JellyPlayerHost(playback: $0) }
     }
 
     private var hidden: [String: String] { JellyHidden.decode(hiddenRaw) }
@@ -1055,7 +1055,7 @@ struct JellyFolderPage: View {
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task(id: optionsRaw + hiddenRaw + musicView + browse.rawValue) { await load() }
         .task(id: browse.rawValue) { await loadGenreNames() }
-        .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
+        .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerHost(playback: $0) }
     }
 
     /// Seasons, a show's season list and an album keep their own order.

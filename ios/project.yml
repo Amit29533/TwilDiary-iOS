@@ -18,6 +18,10 @@ packages:
   AetherEngine:
     url: https://github.com/superuser404notfound/AetherEngine
     from: 7.71.0
+  # The fallback player (More → Decoder → mpv): libmpv, LGPL build.
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit
+    exactVersion: 1.0.0
 targets:
   TwilDiary:
     type: application
@@ -37,6 +41,8 @@ targets:
       - package: TwilDiaryCore
       - package: AetherEngine
         product: AetherEngine
+      - package: MPVKit
+        product: MPVKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary

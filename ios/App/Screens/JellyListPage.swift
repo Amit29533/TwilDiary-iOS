@@ -56,7 +56,7 @@ struct JellyListPage: View {
         .toolbar { ToolbarItem(placement: .topBarTrailing) { JellyBrowseMenu(options: optionsBinding, layout: $layout) } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task(id: optionsRaw + hiddenRaw) { await load() }
-        .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
+        .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerHost(playback: $0) }
     }
 
     private func personHeader(_ person: JellyfinClient.Detail, client: JellyfinClient) -> some View {
