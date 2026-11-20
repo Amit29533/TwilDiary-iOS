@@ -162,7 +162,8 @@ struct JellyFolderPage: View {
         defer { loading = false }
         do {
             let user = await JellyfinUser.id(client)
-            items = try await client.children(of: route.id, user: user)
+            let found = try await client.children(of: route.id, user: user)
+            items = found.filter { JellySpace.opens($0) } + found.filter { !JellySpace.opens($0) }
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
         }
@@ -212,7 +213,12 @@ private struct JellyTile: View {
                     if let url = JellySpace.poster(item, base: client.base) { JellyfinPoster(url: url) { fallback } } else { fallback }
                 }
                 .overlay(alignment: .bottom) { JellyProgress(item: item) }
-                .overlay(alignment: .topTrailing) { JellyWatchedMark(item: item) }
+                .overlay(alignment: .topTrailing) {
+                    if item.kind == "Series", let left = item.UserData?.UnplayedItemCount, left > 0 {
+                        Text("\(left)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 7).frame(minWidth: 24, minHeight: 24).background(ThemeStore.accent, in: Capsule()).padding(6)
+                    } else { JellyWatchedMark(item: item) }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? "")).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(HomeStyle.primary).lineLimit(1)
@@ -228,6 +234,7 @@ private struct JellyEpisodeRow: View {
     @Binding var playing: JellyPlayback?
     var body: some View {
         Button { playing = JellySpace.playback(item, client: client) } label: {
+          VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Color.clear.frame(width: 120, height: 68)
                     .overlay {
@@ -251,7 +258,11 @@ private struct JellyEpisodeRow: View {
                 } else {
                     Image(systemName: "play.circle").font(.system(size: 22)).foregroundStyle(HomeStyle.secondary)
                 }
-            }.padding(10).diaryPanel(padding: 0, radius: 14).contentShape(Rectangle())
+            }
+            if let overview = item.Overview.map(JellySpace.plainText), !overview.isEmpty {
+                Text(overview).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(3).multilineTextAlignment(.leading)
+            }
+          }.padding(10).diaryPanel(padding: 0, radius: 14).contentShape(Rectangle())
         }.buttonStyle(.springPress).accessibilityLabel("Play " + JellySpace.name(item)).accessibilityIdentifier("jellyspace-episode-" + item.Id)
     }
 }
@@ -298,6 +309,9 @@ private struct JellyWatchedMark: View {
     }
     /// "S1 E4 · Name" for an episode, the year for a film, what a folder is.
     static func detail(_ item: JellyfinClient.Item) -> String {
+        if item.IsFolder != true, item.kind != "Episode", let path = item.Path, !path.isEmpty {
+            return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+        }
         switch item.kind {
         case "Episode":
             let place = [item.ParentIndexNumber.map { "S\($0)" }, item.IndexNumber.map { "E\($0)" }].compactMap { $0 }.joined(separator: " ")
@@ -311,6 +325,12 @@ private struct JellyWatchedMark: View {
     static func name(_ item: JellyfinClient.Item) -> String {
         guard item.kind == "Episode", let show = item.SeriesName else { return item.Name ?? "Video" }
         return show + " · " + detail(item)
+    }
+    /// Jellyfin's overviews carry HTML (<br>, <i>): shown as plain text.
+    static func plainText(_ html: String) -> String {
+        html.replacingOccurrences(of: "<br>", with: "\n").replacingOccurrences(of: "<br/>", with: "\n")
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     static func symbol(_ libraryType: String?) -> String {
         switch libraryType {

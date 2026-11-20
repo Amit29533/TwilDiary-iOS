@@ -314,10 +314,12 @@ struct JellyfinClient: Sendable {
         let IsFolder: Bool?
         let RunTimeTicks: Int64?
         let UserData: ItemUserData?
-        struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool? }
+        let SeasonId: String?
+        let Overview: String?
+        struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int? }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
-            case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData
+            case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
@@ -369,8 +371,9 @@ struct JellyfinClient: Sendable {
     // MARK: Browsing (JellySpace)
     /// What's directly inside a library, folder, show or season (one level), with your progress.
     func children(of parent: String, user: String?) async throws -> [Item] {
-        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Fields", value: "ProviderIds"),
-                     URLQueryItem(name: "SortBy", value: "IsFolder,ParentIndexNumber,IndexNumber,SortName"), URLQueryItem(name: "Limit", value: "500")]
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName"), URLQueryItem(name: "Limit", value: "500")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items", query)
         return page.Items
