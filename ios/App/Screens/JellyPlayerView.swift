@@ -66,6 +66,11 @@ struct JellyPlayerView: View {
     @State private var thumbnail: UIImage?
     @State private var subtitleDelay: Double = 0
     @State private var audioDelay: Double = 0
+    @State private var volume = JellyVolume()
+    @State private var swipeStart: Double?
+    @State private var level: (symbol: String, value: Double)?
+    @State private var levelTask: Task<Void, Never>?
+    @State private var brightnessAtOpen: CGFloat?
 
     private enum Panel { case tracks, episodes, chapters }
 
@@ -86,12 +91,21 @@ struct JellyPlayerView: View {
             if let engine {
                 picture(engine)
             }
-            JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize).ignoresSafeArea().allowsHitTesting(false)
-            // Single tap: the controls; a double tap on the left or right half: 10 seconds back or on.
-            HStack(spacing: 0) {
-                tapZone(seconds: -10)
-                tapZone(seconds: 10)
+            GeometryReader { safe in
+                JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets,
+                               fill: fill, originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale))
+                    .ignoresSafeArea()
+            }.allowsHitTesting(false)
+            // Single tap: the controls; a double tap on the left or right half: 10 seconds back or on;
+            // a swipe up or down on the left: brightness, on the right: volume.
+            GeometryReader { area in
+                HStack(spacing: 0) {
+                    tapZone(seconds: -10, height: area.size.height)
+                    tapZone(seconds: 10, height: area.size.height)
+                }
             }.ignoresSafeArea()
+            JellyVolumeView(volume: volume).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false)
+            if let level { levelHUD(level).transition(.opacity).allowsHitTesting(false) }
             if let skipFlash {
                 Text(skipFlash < 0 ? "−10s" : "+10s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
                     .padding(18).background(.black.opacity(0.45), in: Circle())
@@ -112,6 +126,7 @@ struct JellyPlayerView: View {
         .persistentSystemOverlays(.hidden)
         .onAppear { OrientationLock.set(.landscape, turnTo: .landscapeRight) }
         .onDisappear {
+            if let brightnessAtOpen { JellyScreen.brightness = brightnessAtOpen }
             savePlace()
             engine?.stop()
             OrientationLock.set(.portrait, turnTo: .portrait)
@@ -155,8 +170,17 @@ struct JellyPlayerView: View {
         }
     }
 
-    private func tapZone(seconds: Double) -> some View {
+    private func tapZone(seconds: Double, height: CGFloat) -> some View {
         Color.clear.contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 14)
+                    .onChanged { drag in swiped(drag, brightness: seconds < 0, height: height) }
+                    .onEnded { _ in
+                        swipeStart = nil
+                        levelTask?.cancel()
+                        levelTask = Task { try? await Task.sleep(for: .milliseconds(900)); if !Task.isCancelled { withAnimation { level = nil } } }
+                    }
+            )
             .onTapGesture(count: 2) {
                 jump(seconds)
                 withAnimation(.easeOut(duration: 0.15)) { skipFlash = seconds }
@@ -166,6 +190,31 @@ struct JellyPlayerView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
                 if showsControls { scheduleHide() }
             }
+    }
+
+    /// Up raises, down lowers: the whole height of the screen goes from 0 to full. Swipes that start at
+    /// the very top or bottom are the system's, and mostly-sideways ones are ignored.
+    private func swiped(_ drag: DragGesture.Value, brightness: Bool, height: CGFloat) {
+        if swipeStart == nil {
+            guard abs(drag.translation.height) > abs(drag.translation.width) * 1.4,
+                  drag.startLocation.y > 44, drag.startLocation.y < height - 44 else { return }
+            if brightness, brightnessAtOpen == nil { brightnessAtOpen = JellyScreen.brightness }
+            swipeStart = brightness ? Double(JellyScreen.brightness) : Double(volume.level)
+        }
+        guard let start = swipeStart else { return }
+        let value = min(1, max(0, start - Double(drag.translation.height / max(1, height * 0.85))))
+        if brightness { JellyScreen.brightness = CGFloat(value) } else { volume.set(Float(value)) }
+        levelTask?.cancel()
+        level = (brightness ? "sun.max.fill" : value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill", value)
+    }
+    private func levelHUD(_ level: (symbol: String, value: Double)) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: level.symbol).font(.system(size: 16, weight: .semibold)).frame(width: 22)
+            Capsule().fill(.white.opacity(0.25)).frame(width: 140, height: 6)
+                .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 140 * level.value, height: 6) }
+        }
+        .foregroundStyle(.white).padding(.horizontal, 16).frame(height: 40).background(.black.opacity(0.6), in: Capsule())
+        .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18)
     }
 
     /// The controls fade on their own after a few seconds of playing.
@@ -740,13 +789,18 @@ private struct JellySubtitles: View {
     let cues: [SubtitleCue]
     let time: Double
     var scale: Double = 1
+    var insets = EdgeInsets()
+    var fill = JellyFill.fit
+    var originalSize = CGSize.zero
     var body: some View {
         let now = cues.filter { $0.startTime <= time && time < $0.endTime }
         GeometryReader { proxy in
+            let safe = CGRect(x: insets.leading + 8, y: insets.top + 8, width: proxy.size.width - insets.leading - insets.trailing - 16,
+                              height: proxy.size.height - insets.top - insets.bottom - 16)
             ZStack {
                 ForEach(now) { cue in
                     if case .image(let picture) = cue.body {
-                        let frame = Self.place(picture, in: proxy.size)
+                        let frame = Self.keep(Self.place(picture, in: proxy.size, fill: fill, originalSize: originalSize), inside: safe)
                         Image(decorative: picture.cgImage, scale: 1).resizable()
                             .frame(width: frame.width, height: frame.height).position(x: frame.midX, y: frame.midY)
                     }
@@ -759,20 +813,36 @@ private struct JellySubtitles: View {
                     Text(lines.joined(separator: "\n")).font(.system(size: max(14, proxy.size.height * 0.05 * scale), weight: .semibold))
                         .foregroundStyle(.white).multilineTextAlignment(.center)
                         .shadow(color: .black, radius: 2).shadow(color: .black.opacity(0.8), radius: 4)
-                        .padding(.horizontal, 40).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, proxy.size.height * 0.07)
+                        .padding(.leading, max(40, insets.leading + 16)).padding(.trailing, max(40, insets.trailing + 16))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, max(proxy.size.height * 0.07, insets.bottom + 12))
                 }
             }
         }
     }
-    /// A picture cue's rectangle: its canvas fitted into the screen, as the video is.
-    static func place(_ picture: SubtitleImage, in size: CGSize) -> CGRect {
+    /// A picture cue's rectangle: its canvas laid over the picture as it is shown (fitted, filled or
+    /// at its own size), so the cue sits where the film puts it.
+    static func place(_ picture: SubtitleImage, in size: CGSize, fill: JellyFill, originalSize: CGSize) -> CGRect {
         let canvas = picture.canvasSize
         guard canvas.width > 0, canvas.height > 0 else { return .zero }
-        let scale = min(size.width / canvas.width, size.height / canvas.height)
+        let scale: CGFloat = switch fill {
+        case .fit: min(size.width / canvas.width, size.height / canvas.height)
+        case .fill: max(size.width / canvas.width, size.height / canvas.height)
+        case .original: originalSize.width > 0 ? originalSize.width / canvas.width : min(size.width / canvas.width, size.height / canvas.height)
+        }
         let origin = CGPoint(x: (size.width - canvas.width * scale) / 2, y: (size.height - canvas.height * scale) / 2)
         let spot = picture.position
         return CGRect(x: origin.x + spot.minX * scale, y: origin.y + spot.minY * scale, width: spot.width * scale, height: spot.height * scale)
+    }
+    /// Moved (and if need be shrunk) to lie within the screen's safe area: never cut off by the edges,
+    /// the camera or a zoomed picture.
+    static func keep(_ rect: CGRect, inside safe: CGRect) -> CGRect {
+        guard rect.width > 0, rect.height > 0, safe.width > 0, safe.height > 0 else { return rect }
+        let shrink = min(1, safe.width / rect.width, safe.height / rect.height)
+        var out = CGRect(x: rect.midX - rect.width * shrink / 2, y: rect.midY - rect.height * shrink / 2, width: rect.width * shrink, height: rect.height * shrink)
+        out.origin.x = min(max(out.minX, safe.minX), safe.maxX - out.width)
+        out.origin.y = min(max(out.minY, safe.minY), safe.maxY - out.height)
+        return out
     }
     /// ASS override tags ({\i1}) out, its line breaks (\N) in.
     static func plain(_ text: String) -> String {
@@ -780,6 +850,31 @@ private struct JellySubtitles: View {
             .replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+/// The screen's brightness (put back when the player closes).
+@MainActor enum JellyScreen {
+    static var brightness: CGFloat {
+        get { screen?.brightness ?? 0.5 }
+        set { screen?.brightness = newValue }
+    }
+    private static var screen: UIScreen? {
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+    }
+}
+
+/// The phone's volume, changed through a hidden system volume view (iOS has no other way to set it;
+/// while that view is on screen the system's own volume badge stays away).
+@MainActor final class JellyVolume {
+    let view = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+    var level: Float { slider?.value ?? AVAudioSession.sharedInstance().outputVolume }
+    func set(_ value: Float) { slider?.value = value }
+    private var slider: UISlider? { view.subviews.compactMap { $0 as? UISlider }.first }
+}
+private struct JellyVolumeView: UIViewRepresentable {
+    let volume: JellyVolume
+    func makeUIView(context: Context) -> MPVolumeView { volume.view }
+    func updateUIView(_ view: MPVolumeView, context: Context) {}
 }
 
 /// The Jellyfin user whose places and plays JellySpace keeps: the administrator (else the first

@@ -207,7 +207,10 @@ struct JellyFolderPage: View {
                     if route.kind == "Season" {
                         LazyVStack(spacing: 8) { ForEach(items, id: \.Id) { JellyEpisodeRow(item: $0, client: client, playing: $playing) } }
                     } else {
-                        JellyGrid(items: items, client: client, playing: $playing)
+                        // Albums, videos and the rest as posters; photos as a grid of squares after them.
+                        let photos = items.filter { $0.kind == "Photo" }
+                        JellyGrid(items: photos.isEmpty ? items : items.filter { $0.kind != "Photo" }, client: client, playing: $playing)
+                        if !photos.isEmpty { JellyPhotoGrid(photos: photos, client: client) }
                     }
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
@@ -255,12 +258,17 @@ struct JellyTile: View {
     @Binding var playing: JellyPlayback?
     @State private var played: Bool?
     @State private var favourite: Bool?
+    @State private var photo: JellyPhotoSelection?
     var body: some View {
         link.modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite,
                                     play: item.kind == "Movie" ? { playing = JellySpace.playback(item, client: client) } : nil))
+            .fullScreenCover(item: $photo) { _ in JellyPhotoViewer(photos: [item], client: client, start: 0) }
     }
     @ViewBuilder private var link: some View {
-        if item.kind == "Movie" || item.kind == "Series" {
+        if item.kind == "Photo" {
+            Button { photo = JellyPhotoSelection(index: 0) } label: { face }
+                .buttonStyle(.springPress).accessibilityLabel(item.Name ?? "Photo").accessibilityIdentifier("jellyspace-photo-" + item.Id)
+        } else if item.kind == "Movie" || item.kind == "Series" {
             NavigationLink(value: JellyDetailRoute(id: item.Id, name: item.Name ?? "")) { face }
                 .buttonStyle(.springPress).accessibilityIdentifier("jellyspace-title-" + item.Id)
         } else if JellySpace.opens(item) {
@@ -503,6 +511,7 @@ struct JellySortBar: View {
         case "Series": return item.ProductionYear.map { "Show · \($0)" } ?? "Show"
         case "Season": return "Season"
         case "Movie": return item.ProductionYear.map(String.init) ?? "Movie"
+        case "PhotoAlbum": return "Album"
         default: return item.IsFolder == true ? "Folder" : (item.ProductionYear.map(String.init) ?? "Video")
         }
     }
@@ -521,6 +530,7 @@ struct JellySortBar: View {
         case "movies": "film"
         case "tvshows": "tv"
         case "homevideos": "video"
+        case "photos": "photo.on.rectangle"
         case "music": "music.note"
         case "musicvideos": "music.note.tv"
         default: "folder"

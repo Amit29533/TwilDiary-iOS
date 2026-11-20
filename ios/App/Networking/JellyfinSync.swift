@@ -377,7 +377,7 @@ struct JellyfinClient: Sendable {
     /// What's directly inside a library, folder, show or season (one level), with your progress.
     func children(of parent: String, user: String?, sort: Sort? = nil, unwatched: Bool = false) async throws -> [Item] {
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"), URLQueryItem(name: "Limit", value: "500")]
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"), URLQueryItem(name: "Limit", value: "1000")]
         query += sort?.query ?? [URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName")]
         if unwatched { query.append(URLQueryItem(name: "Filters", value: "IsUnplayed")) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
