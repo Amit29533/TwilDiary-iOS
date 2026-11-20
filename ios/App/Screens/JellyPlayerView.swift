@@ -536,10 +536,11 @@ struct JellyPlayerView: View {
             scheduleHide()
         }
         .accessibilityIdentifier("jellyspace-brightness")
-        // Sideways it's centred on the left; upright that's where back sits, so it goes up under the
+        // Sideways it's on the left, centred in the room above the bar and "Resumed at" (centred on
+        // the whole height it ran into them); upright that's where back sits, so it goes up under the
         // top row instead.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: compact ? .leading : .topLeading)
-        .padding(.leading, compact ? 30 : 14).padding(.top, compact ? 0 : 100)
+        .padding(.leading, compact ? 30 : 14).padding(.top, compact ? 0 : 100).padding(.bottom, compact ? 90 : 0)
     }
     private func setBrightness(_ value: Double) {
         let level = min(1, max(0, value))
