@@ -183,6 +183,8 @@ struct JellyPlayerView: View {
     /// Over to mpv (More → Decoder → mpv), with the video playing now and where it is.
     private let toMPV: ((JellyPlayback, Double) -> Void)?
     @State private var usedHandoff = false
+    /// Handing over to mpv: the screen keeps its way round as this player goes.
+    @State private var handingOver = false
 
     init(playback: JellyPlayback, startAt: Double? = nil, toMPV: ((JellyPlayback, Double) -> Void)? = nil) {
         _current = State(initialValue: playback)
@@ -317,7 +319,7 @@ struct JellyPlayerView: View {
             report("stop")
             savePlace()
             engine?.stop()
-            OrientationLock.set(.portrait, turnTo: .portrait)
+            if !handingOver { OrientationLock.set(.portrait, turnTo: .portrait) }
         }
         .task(id: current.id) { await start() }
         .task(id: thumbnailIndex) { await loadThumbnail(thumbnailIndex) }
@@ -1351,6 +1353,7 @@ struct JellyPlayerView: View {
     /// moves to the mpv player where it is (and opens there from then on).
     private func setDecoder(_ choice: JellyDecoder) {
         if choice == .mpv {
+            handingOver = true
             toMPV?(current, time)
             return
         }

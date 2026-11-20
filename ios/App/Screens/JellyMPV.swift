@@ -74,6 +74,7 @@ private enum JellyMPVChange: Sendable {
     case time(Double), duration(Double), paused(Bool), buffering(Bool), ended(Bool), speed(Double)
     case tracks(audio: [JellyMPVTrack], subtitles: [JellyMPVTrack], aid: Int?, sid: Int?)
     case loaded
+    case log(String), failed(String)
 }
 
 /// mpv's handle, for the event thread (its client API may be called from any thread).
@@ -95,13 +96,18 @@ private struct JellyMPVHandle: @unchecked Sendable {
     @Published private(set) var audioID: Int?
     @Published private(set) var subtitleID: Int?
     @Published private(set) var loaded = false
+    /// Why the video didn't open (mpv's own words), and its latest warnings and errors.
+    @Published private(set) var failure: String?
+    @Published private(set) var log: [String] = []
 
     private var handle: JellyMPVHandle?
     /// Jellyfin's separate subtitle files, added once the video has opened.
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
     func start(layer: CAMetalLayer, url: URL, at seconds: Double?, subtitles: [ExternalSubtitleTrack], smooth: Int) {
-        guard handle == nil, let raw = mpv_create() else { return }
+        guard handle == nil else { return }
+        guard let raw = mpv_create() else { failure = "mpv couldn't be created."; return }
+        mpv_request_log_messages(raw, "warn")
         var wid = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
         let options: [(String, String)] = [
@@ -112,7 +118,12 @@ private struct JellyMPVHandle: @unchecked Sendable {
         ]
         for (name, value) in options { mpv_set_option_string(raw, name, value) }
         for (name, value) in Self.smoothOptions(smooth) { mpv_set_option_string(raw, name, value) }
-        guard mpv_initialize(raw) >= 0 else { mpv_terminate_destroy(raw); return }
+        let started = mpv_initialize(raw)
+        guard started >= 0 else {
+            failure = "mpv didn't start: " + String(cString: mpv_error_string(started))
+            mpv_terminate_destroy(raw)
+            return
+        }
         let observed: [(String, mpv_format)] = [
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE), ("pause", MPV_FORMAT_FLAG),
             ("paused-for-cache", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG), ("speed", MPV_FORMAT_DOUBLE),
@@ -177,6 +188,10 @@ private struct JellyMPVHandle: @unchecked Sendable {
         case .speed(let value): speed = value
         case .tracks(let audio, let subtitles, let aid, let sid):
             audioTracks = audio; subtitleTracks = subtitles; audioID = aid; subtitleID = sid
+        case .log(let line):
+            log = Array((log + [line]).suffix(8))
+        case .failed(let reason):
+            failure = reason; buffering = false
         case .loaded:
             loaded = true; buffering = false
             for subtitle in pendingSubtitles {
@@ -198,6 +213,16 @@ private struct JellyMPVHandle: @unchecked Sendable {
                 switch event.event_id {
                 case MPV_EVENT_FILE_LOADED:
                     change = .loaded
+                case MPV_EVENT_LOG_MESSAGE:
+                    if let message = event.data?.assumingMemoryBound(to: mpv_event_log_message.self).pointee,
+                       let prefix = message.prefix, let level = message.level, let text = message.text {
+                        let line = "[\(String(cString: prefix))] \(String(cString: level)): \(String(cString: text))"
+                        change = .log(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                case MPV_EVENT_END_FILE:
+                    if let end = event.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee, end.reason == MPV_END_FILE_REASON_ERROR {
+                        change = .failed("mpv couldn't open this video: " + String(cString: mpv_error_string(end.error)))
+                    }
                 case MPV_EVENT_PROPERTY_CHANGE:
                     guard let property = event.data?.assumingMemoryBound(to: mpv_event_property.self).pointee,
                           let cName = property.name else { break }
@@ -351,6 +376,8 @@ struct JellyMPVPlayerView: View {
     @State private var scrub: Double?
     @State private var finished = false
     @State private var switching = false
+    /// Still nothing opened ten seconds in: mpv's latest warnings show.
+    @State private var stalled = false
 
     var body: some View {
         ZStack {
@@ -363,8 +390,11 @@ struct JellyMPVPlayerView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
                     if showsControls { scheduleHide() }
                 }
-            if mpv.buffering, !showsControls {
+            if mpv.buffering, !showsControls, mpv.failure == nil {
                 ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)
+            }
+            if mpv.failure != nil || (stalled && !mpv.loaded) {
+                problem.allowsHitTesting(false)
             }
             controls.opacity(showsControls ? 1 : 0).allowsHitTesting(showsControls)
         }
@@ -521,6 +551,21 @@ struct JellyMPVPlayerView: View {
         .simultaneousGesture(TapGesture().onEnded { hideTask?.cancel() })
     }
 
+    /// What went wrong, in mpv's words, with its latest warnings and errors.
+    private var problem: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(mpv.failure ?? "Still opening…").font(.system(size: 14, weight: .semibold))
+            ForEach(Array(mpv.log.enumerated()), id: \.offset) { _, line in
+                Text(line).font(.system(size: 11, design: .monospaced)).foregroundStyle(.white.opacity(0.75)).lineLimit(3)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(maxWidth: 560, alignment: .leading)
+        .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 24)
+    }
+
     private func scheduleHide() {
         hideTask?.cancel()
         hideTask = Task {
@@ -545,6 +590,8 @@ struct JellyMPVPlayerView: View {
         let info = try? await client.playerInfo(id, user: user)
         subtitles = JellyPlayerView.subtitleFiles(info, source: playback.source, item: id, client: client)
         ready = true
+        try? await Task.sleep(for: .seconds(10))
+        stalled = true
     }
 
     private func savePlace() {
