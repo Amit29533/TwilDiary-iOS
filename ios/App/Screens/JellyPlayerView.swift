@@ -165,8 +165,8 @@ struct JellyPlayerView: View {
                 picture(engine)
             }
             GeometryReader { safe in
-                JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets, sheet: assSheet,
-                               fill: fill, originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale))
+                JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets,
+                               fill: fill, originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale), sheet: assSheet)
                     .ignoresSafeArea()
             }.allowsHitTesting(false)
             // One finger: tap for the controls, double tap 15 seconds back (left) or on (right), hold

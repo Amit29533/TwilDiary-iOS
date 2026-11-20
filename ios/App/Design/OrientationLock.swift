@@ -7,7 +7,7 @@ import UIKit
 
     /// The way the screen faces now, as a mask (the player's rotation lock keeps it).
     static var current: UIInterfaceOrientationMask {
-        switch UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first?.interfaceOrientation {
+        switch UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first?.effectiveGeometry.interfaceOrientation {
         case .landscapeLeft: .landscapeLeft
         case .landscapeRight: .landscapeRight
         default: .portrait

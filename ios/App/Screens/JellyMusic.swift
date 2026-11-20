@@ -73,8 +73,10 @@ import TwilDiaryCore
         if repeatMode == .one { Task { await load() } } else { next() }
     }
     private func updateCommands() {
-        engine?.setNowPlayingTrackCommands(next: index + 1 < queue.count || repeatMode == .all ? { [weak self] in self?.next() } : nil,
-                                           previous: { [weak self] in self?.previous() })
+        let hasNext = index + 1 < queue.count || repeatMode == .all
+        let next: (@MainActor () -> Void)? = hasNext ? { [weak self] in self?.next() } : nil
+        let previous: @MainActor () -> Void = { [weak self] in self?.previous() }
+        engine?.setNowPlayingTrackCommands(next: next, previous: previous)
     }
     /// The song's play to Jellyfin (signed in only), so the server and its plugins see it.
     private func report(_ event: String, _ id: String) {
