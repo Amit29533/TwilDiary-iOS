@@ -536,11 +536,10 @@ struct JellyPlayerView: View {
             scheduleHide()
         }
         .accessibilityIdentifier("jellyspace-brightness")
-        // Sideways it's on the left, centred in the room above the bar and "Resumed at" (centred on
-        // the whole height it ran into them); upright that's where back sits, so it goes up under the
+        // Sideways it's centred on the left; upright that's where back sits, so it goes up under the
         // top row instead.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: compact ? .leading : .topLeading)
-        .padding(.leading, compact ? 30 : 14).padding(.top, compact ? 0 : 100).padding(.bottom, compact ? 90 : 0)
+        .padding(.leading, compact ? 30 : 14).padding(.top, compact ? 0 : 100)
     }
     private func setBrightness(_ value: Double) {
         let level = min(1, max(0, value))
@@ -1091,7 +1090,9 @@ struct JellyPlayerView: View {
             .padding(.horizontal, side).padding(.top, 10)
             Spacer(minLength: 0)
             if let resumedAt {
-                resumePill(resumedAt).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, side).padding(.bottom, 8)
+                // Sideways it starts clear of the brightness bar's foot.
+                resumePill(resumedAt).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, side)
+                    .padding(.leading, verticalSizeClass == .compact ? 56 : 0).padding(.bottom, 8)
             }
             // The bar, red as far as you've watched, and the time left beside it (a tap shows the whole
             // length instead).

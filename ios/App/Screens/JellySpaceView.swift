@@ -62,7 +62,6 @@ struct JellySpaceView: View {
     @State private var failure: String?
     @State private var playing: JellyPlayback?
     /// "JellySpace" in the top bar once the page has scrolled (the big poster gone under the bar).
-    @State private var header = CompactHeaderState()
     /// The status bar and top bar's height: the big title sits in the bar's row, My Media under it.
     @State private var topInset: CGFloat = 0
     /// The top card on show (its colours light the top of the page).
@@ -108,10 +107,6 @@ struct JellySpaceView: View {
                             }
                         }
                     }
-                    // Search results: the bar's title follows their top edge (the big title is away).
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
-                        if showsResults { header.update(ScrollLinkedBarTitle.progress(headingBottom: top + 58)) }
-                    }
                     .padding(.horizontal, 14).padding(.top, showsResults ? 64 : 0)
                 } else {
                     NavigationLink(value: AppDestination.jellyfin) {
@@ -137,7 +132,7 @@ struct JellySpaceView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .principal) { JellySpaceBarTitle(state: header) }
+            ToolbarItem(placement: .principal) { JellySpaceBarTitle() }
             if JellySpace.client != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(searching ? "Close search" : "Search", systemImage: searching ? "xmark" : "magnifyingglass") {
@@ -318,14 +313,6 @@ struct JellySpaceView: View {
         let ink = HomeStyle.primary
         let chips = JellyHomeRow.hidden(hiddenRowsRaw).contains(.media) ? [] : JellyMediaOrder.sorted(visibleLibraries, mediaOrderRaw)
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 9) {
-                Image("jellyfin-mark").resizable().scaledToFit().frame(width: 30, height: 30).accessibilityHidden(true)
-                Text("JellySpace").font(.system(size: 30, weight: .bold)).tracking(-0.5).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
-            }
-            .frame(height: 44)
-            .padding(.horizontal, 16)
-            .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
-            .allowsHitTesting(false)
             if !chips.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
@@ -357,12 +344,8 @@ struct JellySpaceView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // The bar's small "JellySpace" fades in as this one goes under the bar.
-        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
-            header.update(ScrollLinkedBarTitle.progress(headingBottom: bottom + (chips.isEmpty ? 46 : 0)))
-        }
-        // Its own row, just under the back and search buttons.
-        .padding(.top, topInset + 2)
+        // Just under the back and search buttons (with "JellySpace" between them).
+        .padding(.top, topInset + 6)
     }
 
     /// The top card's picture, blurred and faded, behind the title, the chips and the card (as
@@ -720,15 +703,18 @@ private struct JellyHero: View {
     private var facts: String {
         ([item.ProductionYear.map(String.init)].compactMap { $0 } + (item.Genres ?? []).prefix(2)).joined(separator: " · ")
     }
-    /// "Resume · 52m left" for a film you've started; else Play.
+    /// Resume for a film you've started; else Play.
     private var playLabel: String {
-        guard item.kind == "Movie", let percent = item.UserData?.PlayedPercentage, percent > 0, let ticks = item.RunTimeTicks, ticks > 0 else { return "Play" }
-        return "Resume · " + DiaryDate.duration(max(1, Int(Double(ticks) / 600_000_000 * (1 - percent / 100)))) + " left"
+        guard item.kind == "Movie", let percent = item.UserData?.PlayedPercentage, percent > 0 else { return "Play" }
+        return "Resume"
     }
+    /// Upright the card shows the poster whole (it carries the title, so the logo isn't added on top);
+    /// sideways, the backdrop with the logo.
+    private var showsPoster: Bool { verticalSizeClass != .compact && item.ImageTags?["Primary"] != nil }
 
     var body: some View {
         VStack(spacing: 9) {
-            NavigationLink(value: route) { titleMark }.buttonStyle(.plain)
+            if !showsPoster { NavigationLink(value: route) { titleMark }.buttonStyle(.plain) }
             HStack(spacing: 5) {
                 if !facts.isEmpty { Text(facts) }
                 if let score = item.CommunityRating, score > 0 {
@@ -745,8 +731,8 @@ private struct JellyHero: View {
         }
         .padding(.horizontal, 16).padding(.bottom, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        // A tall card upright (as Netflix's), a wide one sideways.
-        .aspectRatio(verticalSizeClass == .compact ? 16 / 9 : 3 / 4, contentMode: .fit)
+        // The poster's own shape upright, so it fits whole; a wide card sideways.
+        .aspectRatio(verticalSizeClass == .compact ? 16 / 9 : 2 / 3, contentMode: .fit)
         .background {
             // The picture itself opens the title's page.
             NavigationLink(value: route) { cardArt }
@@ -816,16 +802,20 @@ private struct JellyHero: View {
         }
     }
 
-    /// The card's picture: the title's backdrop (no writing on it, unlike most posters) cropped to the
-    /// card, darkening toward the foot where the logo and buttons sit.
+    /// The card's picture: the poster upright, the backdrop sideways, darkening toward the foot where
+    /// the buttons sit.
     private var cardArt: some View {
         Color.clear
-            .overlay { JellyImage(url: Self.cardImage(item, base: client.base)) }
+            .overlay { JellyImage(url: showsPoster ? Self.posterImage(item, base: client.base) : Self.cardImage(item, base: client.base)) }
             .overlay {
                 LinearGradient(stops: [.init(color: .clear, location: 0.4), .init(color: .black.opacity(0.55), location: 0.7),
                                        .init(color: .black.opacity(0.88), location: 1)], startPoint: .top, endPoint: .bottom)
             }
             .clipped()
+    }
+    /// The poster at card size.
+    static func posterImage(_ item: JellyfinClient.Item, base: URL) -> URL? {
+        item.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: base, item: item.Id, type: "Primary", tag: $0, width: 900) }
     }
     /// The backdrop at card size; the poster when there's none.
     static func cardImage(_ item: JellyfinClient.Item, base: URL) -> URL? {
@@ -851,19 +841,13 @@ private struct JellyHero: View {
 /// jellyfin-mark, as BrandLogo shows it) and the name, fading in and lifting slightly as a title
 /// page's name does.
 private struct JellySpaceBarTitle: View {
-    let state: CompactHeaderState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        let progress = state.progress
         HStack(spacing: 8) {
-            Image("jellyfin-mark").resizable().scaledToFit().frame(width: 22, height: 22)
+            Image("jellyfin-mark").resizable().scaledToFit().frame(width: 24, height: 24)
                 .accessibilityHidden(true)
-            Text("JellySpace").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            Text("JellySpace").font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
         }
-        .opacity(Double(progress))
-        .offset(y: reduceMotion ? 0 : (1 - progress) * 6)
         .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
-        .accessibilityHidden(progress < 0.5)
     }
 }
 
