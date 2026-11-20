@@ -32,6 +32,7 @@ enum JellyPrefs {
     static let batteryKey = "jellyspace.battery"
     static let timeModeKey = "jellyspace.timeMode"
     static let subtitleLanguageKey = "jellyspace.subtitleSearchLanguage"
+    static let lrclibKey = "jellyspace.lrclib"
 }
 
 /// The home's rows, in the order you set; any you turned off are left out.
@@ -156,6 +157,7 @@ struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.skipDelayKey) private var skipDelay = 0
     @AppStorage(JellyPrefs.batteryKey) private var battery = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
+    @AppStorage(JellyPrefs.lrclibKey) private var lrclib = true
     @AppStorage(JellyPrefs.skipSecondsKey) private var skipSeconds = 15
     @AppStorage(JellyPrefs.autoplayKey) private var autoplay = true
     @AppStorage(JellyPrefs.countdownKey) private var countdown = 5
@@ -197,6 +199,9 @@ struct JellySpaceSettingsView: View {
                     toggleLine("Brightness and volume swipes", $swipeLevels)
                     SettingsDivider()
                     toggleLine("Hold for 2x", $hold)
+                }
+                SettingsGroup(label: "Music") {
+                    toggleLine("Lyrics from LRCLIB", $lrclib)
                 }
                 SettingsGroup(label: "Diary") {
                     toggleLine("Mark watched in diary", $diary)

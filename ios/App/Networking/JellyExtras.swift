@@ -88,7 +88,7 @@ extension JellyfinClient {
     }
     /// A song's words, each line with when it starts (when the file has timed lyrics).
     struct Lyrics: Decodable, Sendable {
-        struct Line: Decodable, Sendable { let Text: String?; let Start: Int64? }
+        struct Line: Codable, Sendable { let Text: String?; let Start: Int64? }
         let Lyrics: [Line]?
     }
     func lyrics(_ id: String) async -> [Lyrics.Line] {

@@ -236,6 +236,7 @@ struct JellyNowPlaying: View {
     /// What fills the top: the picture, the song's words, or Up Next.
     @State private var view = Face.artwork
     @State private var lyrics: [JellyfinClient.Lyrics.Line] = []
+    @State private var lyricsLoading = false
     private enum Face { case artwork, lyrics, queue }
     var body: some View {
         let music = JellyMusic.shared
@@ -256,7 +257,12 @@ struct JellyNowPlaying: View {
                     }
                 }
                 .frame(maxHeight: 340)
-                .task(id: track.Id) { lyrics = await client.lyrics(track.Id) }
+                .task(id: track.Id) {
+                    // Your server's lyrics, else LRCLIB's (kept on the phone).
+                    lyricsLoading = true
+                    lyrics = await JellyLyrics.find(track, client: client)
+                    lyricsLoading = false
+                }
                 VStack(spacing: 4) {
                     Text(track.Name ?? "Song").font(.system(size: 21, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.center)
                     Text([JellyMusic.artist(track), track.Album].compactMap { $0 }.joined(separator: " · "))
@@ -301,13 +307,16 @@ struct JellyNowPlaying: View {
     /// The words, the line being sung lit and kept in view (when they're timed).
     private func lyricsView(_ music: JellyMusic) -> some View {
         let now = lyrics.lastIndex { ($0.Start ?? .max) <= Int64(music.time * 10_000_000) }
+        // Plain lyrics (no times) show all lines bright; timed ones light the line being sung.
+        let timed = lyrics.contains { $0.Start != nil }
         return ScrollViewReader { reader in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if lyrics.isEmpty { Text("No lyrics").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary) }
+                    if lyricsLoading && lyrics.isEmpty { ProgressView().frame(maxWidth: .infinity) }
+                    else if lyrics.isEmpty { Text("No lyrics").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary) }
                     ForEach(lyrics.indices, id: \.self) { index in
                         Text(lyrics[index].Text ?? "").font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(index == now ? HomeStyle.primary : HomeStyle.secondary.opacity(0.7))
+                            .foregroundStyle(!timed || index == now ? HomeStyle.primary : HomeStyle.secondary.opacity(0.7))
                             .frame(maxWidth: .infinity, alignment: .leading).id(index)
                     }
                 }.padding(.vertical, 8)
