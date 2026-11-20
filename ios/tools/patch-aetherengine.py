@@ -47,15 +47,34 @@ NEW = f"""        {MARK}
         return packet
 """
 
+# Release builds: Xcode 26.6 reads the key path captured by `median`'s map closure as a data race
+# ("sending 'key' risks causing data races"); a plain loop reads the same values.
+MARK2 = "// TwilDiary patch: median without a closure for Xcode 26.6"
+OLD2 = """        func median(_ key: KeyPath<FrameUpscaler.StageTimes, Double>) -> Double {
+            let sorted = steps.map { $0[keyPath: key] }.sorted()
+"""
+NEW2 = f"""        func median(_ key: KeyPath<FrameUpscaler.StageTimes, Double>) -> Double {{
+            {MARK2}
+            var values: [Double] = []
+            for step in steps {{ values.append(step[keyPath: key]) }}
+            let sorted = values.sorted()
+"""
+
 if not TARGET.exists():
     sys.exit(f"patch-aetherengine: {TARGET} is missing (packages not resolved?)")
 text = TARGET.read_text(encoding="utf-8")
-if MARK in text:
+changed = False
+for mark, old, new in [(MARK, OLD, NEW), (MARK2, OLD2, NEW2)]:
+    if mark in text:
+        continue
+    if text.count(old) != 1:
+        sys.exit("patch-aetherengine: the expected code in PerFrameBenchmark.swift changed upstream; review the patch")
+    text = text.replace(old, new)
+    changed = True
+if not changed:
     print("patch-aetherengine: already patched")
     sys.exit(0)
-if text.count(OLD) != 1:
-    sys.exit("patch-aetherengine: the expected code in PerFrameBenchmark.swift changed upstream; review the patch")
 # Package checkouts are read-only: this one file is made writable first.
 os.chmod(TARGET, os.stat(TARGET).st_mode | stat.S_IWUSR)
-TARGET.write_text(text.replace(OLD, NEW), encoding="utf-8")
+TARGET.write_text(text, encoding="utf-8")
 print("patch-aetherengine: patched", TARGET)
