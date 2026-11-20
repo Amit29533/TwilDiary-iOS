@@ -149,7 +149,9 @@ struct JellyPlayerView: View {
     /// "1080p HEVC", from the file's video stream.
     @State private var quality: String?
     /// A control's menu is open: the controls stay up until it's used or the screen is tapped.
-    @State private var menuOpen = false
+    /// How many menu items are on screen: above zero while a menu is open.
+    @State private var menuItems = 0
+    private var menuOpen: Bool { menuItems > 0 }
     /// The sleep timer's choice in its menu: -1 off, 0 the end of this video, else minutes.
     @State private var sleepChoice = -1
     /// The phone's volume, shown in the top-right slider (kept current from the system).
@@ -208,7 +210,7 @@ struct JellyPlayerView: View {
             JellyGestureLayer(
                 tap: {
                     touched()
-                    menuOpen = false
+                    menuItems = 0
                     withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
                     if showsControls { scheduleHide() }
                 },
@@ -482,7 +484,7 @@ struct JellyPlayerView: View {
         scheduleHide()
     }
     private func lockScreen() {
-        menuOpen = false
+        menuItems = 0
         withAnimation(.easeInOut(duration: 0.2)) { screenLocked = true; showsControls = false; panel = nil }
         flashUnlock()
     }
@@ -1191,6 +1193,7 @@ struct JellyPlayerView: View {
     private var menuActions: JellyMenuActions {
         JellyMenuActions(
             opened: { menuShown() },
+            closed: { menuGone() },
             sleep: { choice in menuUsed(); setSleep(choice < 0 ? nil : choice) },
             speed: { value in menuUsed(); speed = Float(value); engine?.setRate(Float(value)) },
             upscale: { mode in menuUsed(); setUpscale(mode) },
@@ -1231,16 +1234,21 @@ struct JellyPlayerView: View {
     /// A menu opened: the controls stay up meanwhile.
     private func menuShown() {
         touched()
-        menuOpen = true
+        menuItems += 1
         hideTask?.cancel()
+    }
+    /// A menu's items left the screen: once none are left, the controls hide as usual.
+    private func menuGone() {
+        menuItems = max(0, menuItems - 1)
+        if menuItems == 0 { scheduleHide() }
     }
     /// A choice made in a menu (which closes it).
     private func menuUsed() {
-        menuOpen = false
+        menuItems = 0
         scheduleHide()
     }
     private func openPanel(_ next: Panel) {
-        menuOpen = false
+        menuItems = 0
         withAnimation { panel = next }
     }
 
@@ -2224,6 +2232,7 @@ private struct JellyMenuState: Equatable, Sendable {
 /// What the menus' choices do (closures: they play no part in deciding a redraw).
 private struct JellyMenuActions {
     let opened: () -> Void
+    let closed: () -> Void
     let sleep: (Int) -> Void
     let speed: (Double) -> Void
     let upscale: (JellyUpscale) -> Void
@@ -2267,40 +2276,42 @@ private struct JellyMoreMenu: View, Equatable {
 
     var body: some View {
         Menu {
-            Picker(selection: Binding(get: { state.fill }, set: { actions.fill($0) })) {
-                ForEach(JellyFill.allCases, id: \.self) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
-            } label: { Label("Picture", systemImage: state.fill.symbol) }.pickerStyle(.menu)
-            Button { actions.rotation() } label: {
-                Label(state.rotationLocked ? "Unlock rotation" : "Lock rotation",
-                      systemImage: state.rotationLocked ? "lock.rotation" : "lock.rotation.open")
+            Group {
+                Picker(selection: Binding(get: { state.fill }, set: { actions.fill($0) })) {
+                    ForEach(JellyFill.allCases, id: \.self) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
+                } label: { Label("Picture", systemImage: state.fill.symbol) }.pickerStyle(.menu)
+                Button { actions.rotation() } label: {
+                    Label(state.rotationLocked ? "Unlock rotation" : "Lock rotation",
+                          systemImage: state.rotationLocked ? "lock.rotation" : "lock.rotation.open")
+                }
+                Section {
+                    Picker(selection: Binding(get: { state.sleep }, set: { actions.sleep($0) })) {
+                        Text("Off").tag(-1)
+                        Text("15 minutes").tag(15)
+                        Text("30 minutes").tag(30)
+                        Text("60 minutes").tag(60)
+                        Text(state.episode ? "End of episode" : "End of film").tag(0)
+                    } label: { Label("Sleep timer", systemImage: "moon.zzz") }.pickerStyle(.menu)
+                    Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
+                        ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
+                    } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
+                }
+                Section {
+                    Picker(selection: Binding(get: { state.dialogue }, set: { actions.dialogue($0) })) {
+                        ForEach(JellySound.dialogue, id: \.1) { Text($0.0).tag($0.1) }
+                    } label: { Label("Dialogue boost", systemImage: "person.wave.2") }.pickerStyle(.menu)
+                    Toggle(isOn: Binding(get: { state.night }, set: { actions.night($0) })) { Label("Night mode", systemImage: "moon.stars") }
+                    Picker(selection: Binding(get: { state.boost }, set: { actions.boost($0) })) {
+                        ForEach(JellySound.boost, id: \.1) { Text($0.0).tag($0.1) }
+                    } label: { Label("Volume boost", systemImage: "speaker.plus") }.pickerStyle(.menu)
+                }
+                Button { actions.advanced() } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
             }
-            Section {
-                Picker(selection: Binding(get: { state.sleep }, set: { actions.sleep($0) })) {
-                    Text("Off").tag(-1)
-                    Text("15 minutes").tag(15)
-                    Text("30 minutes").tag(30)
-                    Text("60 minutes").tag(60)
-                    Text(state.episode ? "End of episode" : "End of film").tag(0)
-                } label: { Label("Sleep timer", systemImage: "moon.zzz") }.pickerStyle(.menu)
-                Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
-                    ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
-                } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
-            }
-            Section {
-                Picker(selection: Binding(get: { state.dialogue }, set: { actions.dialogue($0) })) {
-                    ForEach(JellySound.dialogue, id: \.1) { Text($0.0).tag($0.1) }
-                } label: { Label("Dialogue boost", systemImage: "person.wave.2") }.pickerStyle(.menu)
-                Toggle(isOn: Binding(get: { state.night }, set: { actions.night($0) })) { Label("Night mode", systemImage: "moon.stars") }
-                Picker(selection: Binding(get: { state.boost }, set: { actions.boost($0) })) {
-                    ForEach(JellySound.boost, id: \.1) { Text($0.0).tag($0.1) }
-                } label: { Label("Volume boost", systemImage: "speaker.plus") }.pickerStyle(.menu)
-            }
-            Button { actions.advanced() } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
+            .onAppear { actions.opened() }.onDisappear { actions.closed() }
         } label: {
             JellyMenuParts.label("ellipsis.circle", "More", labelled: labelled)
         }
         .menuOrder(.fixed).menuIndicator(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { actions.opened() })
         .accessibilityLabel("More").accessibilityIdentifier("jellyspace-settings")
     }
 }
@@ -2315,14 +2326,16 @@ private struct JellySpeedMenu: View, Equatable {
     var body: some View {
         let name = JellyPlayerView.speedName(Float(state.speed))
         Menu {
-            Picker(selection: Binding(get: { state.speed }, set: { actions.speed($0) })) {
-                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { Text(JellyPlayerView.speedName(Float($0))).tag($0) }
-            } label: { Text("Speed") }.pickerStyle(.inline)
+            Group {
+                Picker(selection: Binding(get: { state.speed }, set: { actions.speed($0) })) {
+                    ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { Text(JellyPlayerView.speedName(Float($0))).tag($0) }
+                } label: { Text("Speed") }.pickerStyle(.inline)
+            }
+            .onAppear { actions.opened() }.onDisappear { actions.closed() }
         } label: {
             JellyMenuParts.label("gauge.with.dots.needle.67percent", "Speed (" + name + ")", labelled: labelled)
         }
         .menuOrder(.fixed).menuIndicator(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { actions.opened() })
         .accessibilityLabel("Speed, " + name).accessibilityIdentifier("jellyspace-speed")
     }
 }
@@ -2336,22 +2349,24 @@ private struct JellyTracksMenu: View, Equatable {
 
     var body: some View {
         Menu {
-            if !state.subtitles.isEmpty {
-                Picker(selection: Binding(get: { state.subtitle }, set: { actions.subtitle($0) })) {
-                    JellyMenuParts.subtitleOptions(state.subtitles)
-                } label: { Text("Subtitles") }.pickerStyle(.inline)
+            Group {
+                if !state.subtitles.isEmpty {
+                    Picker(selection: Binding(get: { state.subtitle }, set: { actions.subtitle($0) })) {
+                        JellyMenuParts.subtitleOptions(state.subtitles)
+                    } label: { Text("Subtitles") }.pickerStyle(.inline)
+                }
+                if !state.audio.isEmpty {
+                    Picker(selection: Binding(get: { state.audioTrack }, set: { actions.audio($0) })) {
+                        JellyMenuParts.audioOptions(state.audio)
+                    } label: { Text("Audio") }.pickerStyle(.inline)
+                }
+                Button { actions.download() } label: { Label("Download subtitles", systemImage: "arrow.down.circle") }
             }
-            if !state.audio.isEmpty {
-                Picker(selection: Binding(get: { state.audioTrack }, set: { actions.audio($0) })) {
-                    JellyMenuParts.audioOptions(state.audio)
-                } label: { Text("Audio") }.pickerStyle(.inline)
-            }
-            Button { actions.download() } label: { Label("Download subtitles", systemImage: "arrow.down.circle") }
+            .onAppear { actions.opened() }.onDisappear { actions.closed() }
         } label: {
             JellyMenuParts.label("captions.bubble", "Audio & Subtitles", labelled: labelled)
         }
         .menuOrder(.fixed).menuIndicator(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { actions.opened() })
         .accessibilityLabel("Audio and subtitles").accessibilityIdentifier("jellyspace-tracks")
     }
 }
