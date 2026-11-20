@@ -46,6 +46,8 @@ struct SettingsView: View {
                         divider
                         NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
                         divider
+                        NavigationLink(value: AppDestination.jellyspaceSettings) { settingsRow("play.rectangle.on.rectangle.fill", .purple, "JellySpace", disclosure: true) }.accessibilityIdentifier("settings-jellyspace")
+                        divider
                         NavigationLink(value: AppDestination.trash) { settingsRow("trash.fill", .red, "Trash", value: trashCount == 0 ? "Empty" : String(trashCount), disclosure: true) }
                     }
                     settingsSection("TRACKING") {

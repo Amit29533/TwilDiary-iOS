@@ -42,6 +42,11 @@ struct JellyDetailPage: View {
     @State private var favourite = false
     @State private var fullOverview = false
     @State private var user: String?
+    /// Trailer files and special features.
+    @State private var extras: [JellyfinClient.Item] = []
+    /// The version of a film to play (when it's stored in more than one quality).
+    @State private var version: String?
+    @Environment(\.openURL) private var openURL
 
     private var series: Bool { detail?.kind == "Series" }
 
@@ -53,8 +58,9 @@ struct JellyDetailPage: View {
                     if let detail {
                         VStack(alignment: .leading, spacing: 18) {
                             facts(detail)
+                            if !series, let sources = detail.MediaSources, sources.count > 1 { versionMenu(sources) }
                             actions(detail, client: client)
-                            if !series, let source = detail.MediaSources?.first { videoInfo(source) }
+                            if !series, let source = detail.MediaSources?.first(where: { $0.Id == version }) ?? detail.MediaSources?.first { videoInfo(source) }
                             if let overview = detail.Overview.map(JellySpace.plainText), !overview.isEmpty {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text("Overview").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
@@ -65,6 +71,7 @@ struct JellyDetailPage: View {
                                 }
                             }
                             if series { seasonsSection(client) }
+                            if !extras.isEmpty { extrasRow(client) }
                             if let people = detail.People?.prefix(20), !people.isEmpty { castRow(Array(people), client: client) }
                             if !similar.isEmpty {
                                 VStack(alignment: .leading, spacing: 10) {
@@ -172,6 +179,53 @@ struct JellyDetailPage: View {
                 let now = favourite
                 Task { try? await client.setFavourite(route.id, user: user, now) }
             }
+            moreMenu(detail, client: client)
+        }
+    }
+    /// The trailer (online) and handing the film to another player.
+    @ViewBuilder private func moreMenu(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> some View {
+        let trailer = detail.RemoteTrailers?.compactMap { $0.Url.flatMap(URL.init(string:)) }.first
+        let stream = series ? nil : client.streamURL(route.id, source: version)
+        if trailer != nil || stream != nil {
+            Menu {
+                if let trailer { Button("Watch trailer", systemImage: "play.rectangle") { openURL(trailer) } }
+                if let stream {
+                    ForEach(JellySpace.otherPlayers, id: \.self) { app in
+                        Button("Open in " + app, systemImage: "arrow.up.forward.app") { JellySpace.open(stream, in: app) }
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 20, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    .frame(width: 48, height: 48).background(Color.primary.opacity(0.09), in: Circle()).contentShape(Circle())
+            }.accessibilityLabel("More").accessibilityIdentifier("jellyspace-detail-more")
+        }
+    }
+    /// "Version: 4K" when a film is stored in more than one quality.
+    private func versionMenu(_ sources: [JellyfinClient.Detail.Source]) -> some View {
+        let chosen = sources.first { $0.Id == version } ?? sources[0]
+        return Menu {
+            Picker("Version", selection: Binding(get: { chosen.Id ?? "" }, set: { version = $0 })) {
+                ForEach(sources.indices, id: \.self) { index in Text(sources[index].Name ?? "Version \(index + 1)").tag(sources[index].Id ?? "") }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.stack")
+                Text("Version: " + (chosen.Name ?? "")).lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+            }
+            .font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+            .padding(.horizontal, 12).frame(height: 32).background(Color.primary.opacity(0.09), in: Capsule())
+        }.accessibilityIdentifier("jellyspace-version")
+    }
+    /// Trailers and special features, as wide cards that play.
+    private func extrasRow(_ client: JellyfinClient) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Extras").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(extras, id: \.Id) { JellyWideCard(item: $0, client: client, playing: $playing).frame(width: 220) }
+                }
+            }.scrollIndicators(.hidden).scrollClipDisabled()
         }
     }
     private func roundToggle(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -197,7 +251,7 @@ struct JellyDetailPage: View {
         if series {
             if let next = nextEpisode ?? firstEpisode ?? episodes.first { playing = JellySpace.playback(next, client: client) }
         } else if let item {
-            playing = JellySpace.playback(item, client: client)
+            playing = JellySpace.playback(item, client: client, source: version)
         }
     }
 
@@ -306,6 +360,7 @@ struct JellyDetailPage: View {
             item = try? await client.item(route.id)
         }
         similar = (try? await client.similar(route.id, user: user)) ?? []
+        extras = await client.extras(route.id, user: user)
     }
     private func loadEpisodes() async {
         guard let client = JellySpace.client, let season else { return }

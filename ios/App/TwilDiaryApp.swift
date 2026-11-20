@@ -103,7 +103,7 @@ enum AppTab: String, CaseIterable, Hashable {
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, jellyspaceSettings, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -392,6 +392,7 @@ struct RootView: View {
                     case .files: FilesView()
                     case .jellyfin: JellyfinLibraryView()
                     case .jellyspace: JellySpaceView()
+                    case .jellyspaceSettings: JellySpaceSettingsView()
                     case .trash: TrashView()
                     case .appearance: AppearanceView()
                     case .trakt: TraktView(store: store)

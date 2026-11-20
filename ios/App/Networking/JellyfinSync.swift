@@ -324,17 +324,24 @@ struct JellyfinClient: Sendable {
         let CommunityRating: Double?
         let Width: Int?
         let Height: Int?
+        // Music: the song's album and artists.
+        let Album: String?
+        let AlbumId: String?
+        let AlbumArtist: String?
+        let Artists: [String]?
+        let AlbumPrimaryImageTag: String?
         struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool? }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
             case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
+            case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
     struct Server: Decodable { let ServerName: String?; let Version: String? }
 
-    private func get<T: Decodable & Sendable>(_ path: String, _ query: [URLQueryItem] = []) async throws -> T {
+    func get<T: Decodable & Sendable>(_ path: String, _ query: [URLQueryItem] = []) async throws -> T {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
@@ -513,7 +520,8 @@ struct JellyfinClient: Sendable {
             enum CodingKeys: String, CodingKey { case kind = "Type", Codec, Width, Height, VideoRangeType, RealFrameRate, Language, DisplayTitle }
         }
         struct NameID: Decodable, Sendable { let Name: String?; let Id: String }
-        struct Source: Decodable, Sendable { let Size: Int64?; let Bitrate: Int?; let Container: String?; let MediaStreams: [Stream]? }
+        struct Source: Decodable, Sendable { let Id: String?; let Name: String?; let Size: Int64?; let Bitrate: Int?; let Container: String?; let MediaStreams: [Stream]? }
+        struct Trailer: Decodable, Sendable { let Url: String? }
         struct UserState: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool?; let IsFavorite: Bool?; let UnplayedItemCount: Int? }
         let Id: String
         let Name: String?
@@ -531,10 +539,11 @@ struct JellyfinClient: Sendable {
         let BackdropImageTags: [String]?
         let People: [Person]?
         let MediaSources: [Source]?
+        let RemoteTrailers: [Trailer]?
         let UserData: UserState?
         enum CodingKeys: String, CodingKey {
             case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, GenreItems, OfficialRating, CommunityRating, CriticRating
-            case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData
+            case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData, RemoteTrailers
         }
     }
     func detail(_ id: String, user: String?) async throws -> Detail {

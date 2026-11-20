@@ -12,6 +12,8 @@ struct JellyPlayback: Identifiable {
     let title: String
     let item: JellyfinClient.Item
     let client: JellyfinClient
+    /// The version of a film (when it has more than one); nil plays the first.
+    var source: String? = nil
 }
 
 /// How the picture fills the screen: the whole picture, cropped to fill, or at its own pixel size.
@@ -33,6 +35,20 @@ struct JellyPlayerView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("jellyspace.subtitleSize") private var subtitleSize = 1.0
     @AppStorage("jellyspace.fill") private var fillRaw = JellyFill.fit.rawValue
+    // Settings → JellySpace.
+    @AppStorage(JellyPrefs.skipIntroKey) private var skipIntro = JellySkipMode.button.rawValue
+    @AppStorage(JellyPrefs.skipRecapKey) private var skipRecap = JellySkipMode.button.rawValue
+    @AppStorage(JellyPrefs.skipCreditsKey) private var skipCredits = JellySkipMode.button.rawValue
+    @AppStorage(JellyPrefs.introDBKey) private var introDB = true
+    @AppStorage(JellyPrefs.skipSecondsKey) private var skipSeconds = 15
+    @AppStorage(JellyPrefs.autoplayKey) private var autoplay = true
+    @AppStorage(JellyPrefs.countdownKey) private var countdownSeconds = 5
+    @AppStorage(JellyPrefs.resumeKey) private var resumeOn = true
+    @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
+    @AppStorage(JellyPrefs.rememberTracksKey) private var rememberTracks = true
+    @AppStorage(JellyPrefs.swipeSeekKey) private var swipeSeekOn = true
+    @AppStorage(JellyPrefs.swipeLevelsKey) private var swipeLevelsOn = true
+    @AppStorage(JellyPrefs.holdKey) private var holdOn = true
     /// Upscaling, for every video (it only acts on SDR below 1080p, and on iOS 26 GPUs that can).
     @AppStorage("jellyspace.upscale") private var upscaleOn = false
     @State private var current: JellyPlayback
@@ -103,6 +119,10 @@ struct JellyPlayerView: View {
     @State private var animated = false
     /// What the upscaler is doing now (nil when it isn't running).
     @State private var upscale: UpscaleStatus?
+    /// Stretches already skipped on their own (each once, so going back into one plays it).
+    @State private var skipped: Set<Int64> = []
+    /// The chosen subtitle's styles, when it's an ASS/SSA track.
+    @State private var assSheet: JellyASSSheet?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private enum Panel { case tracks, episodes, chapters, settings }
@@ -130,7 +150,7 @@ struct JellyPlayerView: View {
                 picture(engine)
             }
             GeometryReader { safe in
-                JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets,
+                JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets, sheet: assSheet,
                                fill: fill, originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale))
                     .ignoresSafeArea()
             }.allowsHitTesting(false)
@@ -142,7 +162,7 @@ struct JellyPlayerView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
                     if showsControls { scheduleHide() }
                 },
-                doubleTap: { left in skip(left ? -15 : 15) },
+                doubleTap: { left in skip(Double(left ? -skipSeconds : skipSeconds)) },
                 twoFingerTap: { togglePlay() },
                 hold: { began in if began { startHold() } else { endHold() } },
                 pan: { phase in panned(phase) },
@@ -169,7 +189,7 @@ struct JellyPlayerView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
             if let skipFlash {
-                Text(skipFlash < 0 ? "−15s" : "+15s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                Text((skipFlash < 0 ? "−" : "+") + "\(Int(abs(skipFlash)))s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
                     .padding(18).background(.black.opacity(0.45), in: Circle())
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing).padding(.horizontal, 90)
                     .transition(.opacity).allowsHitTesting(false)
@@ -180,7 +200,9 @@ struct JellyPlayerView: View {
                 if showsControls || failure != nil { controls.transition(.opacity) }
                 if showsControls, failure == nil, panel == nil { lockPill.transition(.opacity) }
             }
-            if let segment = activeSegment, panel == nil, countdown == nil, failure == nil, !screenLocked { skipButton(segment).transition(.opacity) }
+            if let segment = activeSegment, skipMode(segment.kind) == .button, panel == nil, countdown == nil, failure == nil, !screenLocked {
+                skipButton(segment).transition(.opacity)
+            }
             if let countdown, let next = nextEpisode { upNext(next, in: countdown) }
             if let panel { panelView(panel).transition(.opacity) }
             if let notice {
@@ -217,19 +239,26 @@ struct JellyPlayerView: View {
         }
         .onChange(of: state) { _, now in
             if now == .playing { scheduleHide() }
-            if now == .ended, nextEpisode != nil, countdown == nil { startCountdown() }
+            if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
         }
     }
 
     @ViewBuilder private func picture(_ engine: AetherEngine) -> some View {
         let surface = AetherPlayerSurface(engine: engine)
             .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
-            .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds) }
+            .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds); autoSkip() }
             .onReceive(engine.$duration) { duration = $0 }
             .onReceive(engine.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
-            .onReceive(engine.$subtitleTracks) { tracks in subtitleTracks = tracks; pickDefaultSubtitle(tracks) }
+            .onReceive(engine.$subtitleTracks) { tracks in
+                subtitleTracks = tracks
+                assSheet = JellyASSSheet(tracks.first { $0.id == activeSubtitle }?.assHeader)
+                pickDefaultSubtitle(tracks)
+            }
             .onReceive(engine.$activeAudioTrackIndex) { activeAudio = $0 }
-            .onReceive(engine.$activeSubtitleTrackIndex) { activeSubtitle = $0 }
+            .onReceive(engine.$activeSubtitleTrackIndex) { index in
+                activeSubtitle = index
+                assSheet = JellyASSSheet(subtitleTracks.first { $0.id == index }?.assHeader)
+            }
             .onReceive(engine.$subtitleCues) { cues = $0 }
             .onReceive(engine.$softwarePiPSource) { _ in pip.rebuild() }
             .onReceive(engine.$sourceVideoWidth) { videoSize.width = CGFloat($0) }
@@ -266,7 +295,7 @@ struct JellyPlayerView: View {
     }
     /// Hold: 2x while the finger stays down.
     private func startHold() {
-        guard !holding, state == .playing, swipeKind == nil else { return }
+        guard holdOn, !holding, state == .playing, swipeKind == nil else { return }
         withAnimation(.easeOut(duration: 0.15)) { holding = true }
         engine?.setRate(2)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -287,12 +316,12 @@ struct JellyPlayerView: View {
             guard !holding else { return }
             swipeArea = area
             if abs(velocity.x) > abs(velocity.y) {
-                guard duration > 0, state != .loading, state != .idle else { return }
+                guard swipeSeekOn, duration > 0, state != .loading, state != .idle else { return }
                 swipeKind = .seek
                 swipeStart = time
                 scrub = time
             } else {
-                guard at.y > 44, at.y < area.height - 44 else { return }
+                guard swipeLevelsOn, at.y > 44, at.y < area.height - 44 else { return }
                 let brightness = at.x < area.width / 2
                 if brightness, brightnessAtOpen == nil { brightnessAtOpen = JellyScreen.brightness }
                 swipeKind = brightness ? .brightness : .volume
@@ -428,6 +457,8 @@ struct JellyPlayerView: View {
 
     private func start() async {
         guard let engine else { failure = "The player couldn’t start."; return }
+        JellyMusic.shared.pause()
+        skipped = []
         pip.engine = engine
         finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false; time = 0
         segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil; quality = nil; buffered = 0
@@ -439,7 +470,7 @@ struct JellyPlayerView: View {
             season = ((try? await client.children(of: seasonID, user: user)) ?? []).filter { $0.kind == "Episode" }
         }
         var startAt: Double?
-        if let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
+        if resumeOn, let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
             startAt = Double(ticks) / 10_000_000
         }
         // Chapters, scrubbing thumbnails and separate subtitle files first (the files load with the
@@ -447,8 +478,10 @@ struct JellyPlayerView: View {
         let extras = try? await client.playerInfo(id, user: user)
         async let stretches = try? client.segments(id)
         var options = LoadOptions()
-        options.externalSubtitles = Self.subtitleFiles(extras, item: id, client: client)
-        quality = Self.qualityName(extras)
+        // ASS/SSA lines arrive with their styling, drawn by JellyASSLayer.
+        options.preserveASSMarkup = true
+        options.externalSubtitles = Self.subtitleFiles(extras, source: current.source, item: id, client: client)
+        quality = Self.qualityName(extras, source: current.source)
         // The upscaler: the line-art one for anime and animation, the general one for the rest.
         var genres = extras?.Genres ?? []
         if current.item.kind == "Episode", let series = current.item.SeriesId { genres = (try? await client.genres(series, user: user)) ?? genres }
@@ -461,7 +494,7 @@ struct JellyPlayerView: View {
         engine.ownsSoftwareNowPlaying = true
         engine.ownsVideoNowPlayingSession = true
         engine.ownsVideoNowPlayingCommands = true
-        engine.remoteSkipInterval = 15
+        engine.remoteSkipInterval = Double(skipSeconds)
         engine.setNowPlayingInfo(nowPlayingInfo(nil))
         do {
             if let startAt, startAt > 30 {
@@ -479,6 +512,7 @@ struct JellyPlayerView: View {
             return
         }
         segments = (await stretches) ?? []
+        if segments.isEmpty, introDB { segments = await introDBSegments(client: client, user: user) }
         chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
         if let entry = extras?.Trickplay?.first {
             let sorted = entry.value.values.sorted { $0.Width < $1.Width }
@@ -493,8 +527,9 @@ struct JellyPlayerView: View {
     }
 
     /// "4K HEVC", "1080p H.264": the file's picture size and codec.
-    static func qualityName(_ info: JellyfinClient.PlayerInfo?) -> String? {
-        guard let video = info?.MediaSources?.first?.MediaStreams?.first(where: { $0.kind == "Video" }) else { return nil }
+    static func qualityName(_ info: JellyfinClient.PlayerInfo?, source: String?) -> String? {
+        let sources = info?.MediaSources ?? []
+        guard let video = (sources.first { $0.Id == source } ?? sources.first)?.MediaStreams?.first(where: { $0.kind == "Video" }) else { return nil }
         let width = video.Width ?? 0, height = video.Height ?? 0
         let size: String? = width >= 3800 || height >= 2100 ? "4K" : width >= 1900 || height >= 1000 ? "1080p"
             : width >= 1260 || height >= 700 ? "720p" : height > 0 ? "\(height)p" : nil
@@ -505,8 +540,9 @@ struct JellyPlayerView: View {
 
     /// The video's separate subtitle files (.srt, .ass, .vtt and the like next to it), as tracks the
     /// player loads with the video. Picture subtitles in a separate file (.sup) are left out.
-    static func subtitleFiles(_ info: JellyfinClient.PlayerInfo?, item: String, client: JellyfinClient) -> [ExternalSubtitleTrack] {
-        guard let source = info?.MediaSources?.first, let sourceID = source.Id else { return [] }
+    static func subtitleFiles(_ info: JellyfinClient.PlayerInfo?, source chosen: String?, item: String, client: JellyfinClient) -> [ExternalSubtitleTrack] {
+        let sources = info?.MediaSources ?? []
+        guard let source = sources.first(where: { $0.Id == chosen }) ?? sources.first, let sourceID = source.Id else { return [] }
         return (source.MediaStreams ?? []).compactMap { stream in
             guard stream.kind == "Subtitle", stream.IsExternal == true else { return nil }
             let codec = (stream.Codec ?? "").lowercased()
@@ -543,7 +579,39 @@ struct JellyPlayerView: View {
     /// The intro, recap, preview or credits stretch playing now (not in its last second).
     private var activeSegment: JellyfinClient.Segment? {
         let ticks = Int64(time * 10_000_000)
-        return segments.first { ["Intro", "Recap", "Outro", "Preview", "Commercial"].contains($0.kind) && $0.StartTicks <= ticks && ticks < $0.EndTicks - 10_000_000 }
+        return segments.first {
+            ["Intro", "Recap", "Outro", "Preview", "Commercial"].contains($0.kind) && skipMode($0.kind) != .off
+                && $0.StartTicks <= ticks && ticks < $0.EndTicks - 10_000_000
+        }
+    }
+    /// Off, a button, or skipped on its own (Settings → JellySpace); previews and ads get the button.
+    private func skipMode(_ kind: String) -> JellySkipMode {
+        let raw: String = switch kind {
+        case "Intro": skipIntro
+        case "Recap": skipRecap
+        case "Outro": skipCredits
+        default: JellySkipMode.button.rawValue
+        }
+        return JellySkipMode(rawValue: raw) ?? .button
+    }
+    /// Automatic: past the stretch as it starts (the credits go to the next episode when that's on).
+    private func autoSkip() {
+        guard scrub == nil, state == .playing, let segment = activeSegment, skipMode(segment.kind) == .auto,
+              !skipped.contains(segment.StartTicks) else { return }
+        skipped.insert(segment.StartTicks)
+        if segment.kind == "Outro", autoplay, let next = nextEpisode { play(next); return }
+        Task { await seek(Double(segment.EndTicks) / 10_000_000) }
+        show(segment.kind == "Intro" ? "Skipped intro" : segment.kind == "Recap" ? "Skipped recap" : "Skipped credits")
+    }
+    /// IntroDB's times (by the show's IMDb id and the episode, or the film's) when Jellyfin has none.
+    private func introDBSegments(client: JellyfinClient, user: String?) async -> [JellyfinClient.Segment] {
+        let item = current.item
+        if item.kind == "Episode", let series = item.SeriesId, let season = item.ParentIndexNumber, let number = item.IndexNumber {
+            guard let imdb = (try? await client.item(series))?.ProviderIds?["Imdb"] else { return [] }
+            return await IntroDB.segments(imdb: imdb, season: season, episode: number)
+        }
+        if item.kind == "Movie", let imdb = item.ProviderIds?["Imdb"] { return await IntroDB.segments(imdb: imdb, season: nil, episode: nil) }
+        return []
     }
     /// Skip Intro (Recap, Preview); in the credits, Next Episode when there is one, else Skip Credits.
     private func skipButton(_ segment: JellyfinClient.Segment) -> some View {
@@ -599,6 +667,7 @@ struct JellyPlayerView: View {
         return defaults.string(forKey: "jellyspace.\(kind)")
     }
     private func remember(_ kind: String, _ value: String) {
+        guard rememberTracks else { return }
         let defaults = UserDefaults.standard
         defaults.set(value, forKey: "jellyspace.\(kind)")
         if let show = current.item.SeriesId { defaults.set(value, forKey: "jellyspace.\(kind).\(show)") }
@@ -606,6 +675,7 @@ struct JellyPlayerView: View {
     private func pickRememberedAudio(_ tracks: [TrackInfo]) {
         guard !pickedAudio, !tracks.isEmpty else { return }
         pickedAudio = true
+        guard rememberTracks else { return }
         guard let language = remembered("audioLanguage"),
               let track = tracks.first(where: { $0.language == language && !$0.isCommentary }),
               track.id != engine?.activeAudioTrackIndex else { return }
@@ -621,7 +691,7 @@ struct JellyPlayerView: View {
     }
 
     private func startCountdown() {
-        countdown = 5
+        countdown = countdownSeconds
         countdownTask?.cancel()
         countdownTask = Task {
             while let left = countdown, left > 0 {
@@ -650,7 +720,7 @@ struct JellyPlayerView: View {
                 try? await client.markPlayed(id, user: user)
                 try? await client.savePosition(id, user: user, seconds: 0)
             }
-            await markInDiary()
+            if diaryOn { await markInDiary() }
         }
     }
 
@@ -684,7 +754,7 @@ struct JellyPlayerView: View {
     private func pickDefaultSubtitle(_ tracks: [TrackInfo]) {
         guard !pickedSubtitle, !tracks.isEmpty else { return }
         pickedSubtitle = true
-        if let saved = remembered("subtitleLanguage") {
+        if rememberTracks, let saved = remembered("subtitleLanguage") {
             if saved == "off" { return }
             if let track = tracks.first(where: { $0.language == saved && !$0.isForced }) ?? tracks.first(where: { $0.language == saved }) {
                 engine?.selectSubtitleTrack(index: track.id)
@@ -720,7 +790,7 @@ struct JellyPlayerView: View {
                 ProgressView().controlSize(.large).tint(.white)
             } else {
                 HStack(spacing: verticalSizeClass == .compact ? 64 : 28) {
-                    transport("gobackward.15", label: "Back 15 seconds") { jump(-15) }
+                    transport("gobackward.\(skipSeconds)", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
                     Button {
                         if playingNow { engine?.pause() } else { engine?.play() }
                         scheduleHide()
@@ -735,7 +805,7 @@ struct JellyPlayerView: View {
                             }
                         }.frame(width: 78, height: 78).contentShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel(playingNow ? "Pause" : "Play")
-                    transport("goforward.15", label: "Forward 15 seconds") { jump(15) }
+                    transport("goforward.\(skipSeconds)", label: "Forward \(skipSeconds) seconds") { jump(Double(skipSeconds)) }
                 }
             }
             Spacer(minLength: 0)
@@ -1326,6 +1396,7 @@ private struct JellySubtitles: View {
     var insets = EdgeInsets()
     var fill = JellyFill.fit
     var originalSize = CGSize.zero
+    var sheet: JellyASSSheet? = nil
     var body: some View {
         let now = cues.filter { $0.startTime <= time && time < $0.endTime }
         GeometryReader { proxy in
@@ -1339,7 +1410,16 @@ private struct JellySubtitles: View {
                             .frame(width: frame.width, height: frame.height).position(x: frame.midX, y: frame.midY)
                     }
                 }
-                let lines = now.compactMap { cue -> String? in
+                if let sheet {
+                    let events = now.compactMap { cue -> String? in
+                        if case .image = cue.body { return nil }
+                        return cue.text
+                    }
+                    if !events.isEmpty {
+                        JellyASSLayer(events: events, sheet: sheet, size: proxy.size, safe: safe, fill: fill, originalSize: originalSize, userScale: scale)
+                    }
+                }
+                let lines = sheet != nil ? [] : now.compactMap { cue -> String? in
                     if case .image = cue.body { return nil }
                     return cue.text.map(Self.plain)
                 }.filter { !$0.isEmpty }
@@ -1416,7 +1496,14 @@ private struct JellyVolumeView: UIViewRepresentable {
 @MainActor enum JellyfinUser {
     private static let key = "jellyspace.userID"
     private static let serverKey = "jellyspace.userServer"
+    /// Watch as this user (Settings → JellySpace, with the server's API key).
+    static func choose(_ id: String, server: String) {
+        UserDefaults.standard.set(id, forKey: key)
+        UserDefaults.standard.set(server, forKey: serverKey)
+    }
     static func id(_ client: JellyfinClient) async -> String? {
+        // Signed in as a user: that user.
+        if let signedIn = JellyAccount.userID { return signedIn }
         let defaults = UserDefaults.standard, server = client.base.absoluteString
         // Kept for one server: connecting another finds that server's user afresh.
         if let saved = defaults.string(forKey: key), !saved.isEmpty, defaults.string(forKey: serverKey) == server { return saved }

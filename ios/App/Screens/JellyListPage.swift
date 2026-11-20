@@ -14,6 +14,7 @@ struct JellyListRoute: Hashable {
 struct JellyListPage: View {
     let route: JellyListRoute
     @AppStorage("jellyspace.sort") private var sortRaw = JellyfinClient.Sort.name.rawValue
+    @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @State private var unwatched = false
     @State private var items: [JellyfinClient.Item] = []
     @State private var person: JellyfinClient.Detail?
@@ -37,7 +38,8 @@ struct JellyListPage: View {
         .diaryScreenBackground()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched) } }
-        .task(id: sortRaw + String(unwatched)) { await load() }
+        .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
+        .task(id: sortRaw + String(unwatched) + hiddenRaw) { await load() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
     }
 
@@ -78,7 +80,8 @@ struct JellyListPage: View {
         case .collections: extra = [URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")]
         }
         do {
-            items = try await client.items(extra, filters: filters, user: user, sort: sort)
+            let hidden = JellyHidden.decode(hiddenRaw)
+            items = try await client.items(extra, filters: filters, user: user, sort: sort).filter { hidden[$0.Id] == nil }
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
         }
