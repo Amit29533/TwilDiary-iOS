@@ -23,6 +23,9 @@ struct JellyFolderRoute: Hashable {
     static var latest: [String: [JellyfinClient.Item]] = [:]
     static var nextUp: [JellyfinClient.Item] = []
     static var forYou: JellyForYou?
+    /// Discover's shelves, and the server, user and hidden libraries they were drawn for.
+    static var discover: JellyDiscover?
+    static var discoverKey: String?
 }
 
 /// JellySpace: your Jellyfin server, played by AetherEngine straight from the file (Jellyfin's static
@@ -47,6 +50,8 @@ struct JellySpaceView: View {
     @State private var nextUp: [JellyfinClient.Item] = []
     /// Jellyfin's picks from what you've watched.
     @State private var forYou: JellyForYou?
+    /// Discover: genres, the Top 10, hidden gems, tonight's genre, random shelves, your folders.
+    @State private var discover: JellyDiscover?
     @State private var query = ""
     @State private var searching = false
     @State private var searchRunning = false
@@ -126,6 +131,11 @@ struct JellySpaceView: View {
         }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task { await appear() }
+        .task(id: hiddenRaw + "|" + hiddenRowsRaw) { await loadDiscover() }
+        .refreshable {
+            await loadHome()
+            await loadDiscover(force: true)
+        }
         .task(id: query) {
             guard !query.isEmpty else { results = []; seerrResults = []; searchRunning = false; return }
             searchRunning = true
@@ -168,6 +178,21 @@ struct JellySpaceView: View {
             }
         case .forYou:
             if let forYou, !shown(forYou.items).isEmpty { forYouRow(forYou, client: client) }
+        case .genres:
+            if let genres = discover?.genres, !genres.isEmpty { genreChips(genres) }
+        case .top10:
+            if let top = discover?.top, !shown(top.items).isEmpty { topTenRow(top, client: client) }
+        case .gems:
+            let gems = gemItems
+            if !gems.isEmpty { gemsRow(gems, client: client) }
+        case .tonight:
+            if let tonight = discover?.tonight, !shown(tonight.items).isEmpty { tonightRow(tonight, client: client) }
+        case .random:
+            ForEach(discover?.random ?? []) { shelf in
+                if !shown(shelf.items).isEmpty { shuffledRow(shelf, client: client, wide: false) }
+            }
+        case .folders:
+            if let folders = discover?.folders, !shown(folders.items).isEmpty { shuffledRow(folders, client: client, wide: true) }
         case .collections:
             let items = shown(collections)
             if !items.isEmpty { tileRow("Collections", items: items, client: client, more: JellyListRoute(kind: .collections, name: "Collections")) }
@@ -220,6 +245,19 @@ struct JellySpaceView: View {
 
     /// Up to eight of the newest films and shows with a backdrop, taking turns between libraries.
     private var heroPicks: [JellyfinClient.Item] {
+        let newest = newestPicks
+        let spotlight = shown(discover?.gems ?? []).filter { !($0.BackdropImageTags ?? []).isEmpty }
+        var picks: [JellyfinClient.Item] = [], seen = Set<String>()
+        for index in 0..<max(newest.count, spotlight.count) where picks.count < 8 {
+            for item in [index < newest.count ? newest[index] : nil, index < spotlight.count ? spotlight[index] : nil].compactMap({ $0 })
+            where picks.count < 8 && seen.insert(item.Id).inserted {
+                picks.append(item)
+            }
+        }
+        return picks
+    }
+    /// The newest films and shows with a backdrop, taking turns between libraries.
+    private var newestPicks: [JellyfinClient.Item] {
         let rows = visibleLibraries.compactMap { latest[$0.id].map(shown) }
         var picks: [JellyfinClient.Item] = []
         var index = 0
@@ -315,6 +353,148 @@ struct JellySpaceView: View {
                 }
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
+    }
+
+    // MARK: Discover rows
+
+    /// The genres as pills; each opens its list.
+    private func genreChips(_ genres: [JellyfinClient.Item]) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(genres, id: \.Id) { genre in
+                    NavigationLink(value: JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre")) {
+                        Text(genre.Name ?? "").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            .padding(.horizontal, 14).frame(height: 34).background(Color.primary.opacity(0.09), in: Capsule()).contentShape(Capsule())
+                    }.buttonStyle(.springPress).accessibilityIdentifier("jellyspace-genre-" + genre.Id)
+                }
+            }
+        }.scrollIndicators(.hidden).scrollClipDisabled()
+    }
+    /// "Top 10 in Movies": the posters with their place in big numbers behind them.
+    private func topTenRow(_ shelf: JellyShelf, client: JellyfinClient) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            heading(shelf.title)
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .bottom, spacing: 4) {
+                    ForEach(Array(shown(shelf.items).prefix(10).enumerated()), id: \.element.Id) { index, item in
+                        NavigationLink(value: JellyDetailRoute(id: item.Id, name: item.Name ?? "")) {
+                            HStack(alignment: .bottom, spacing: -20) {
+                                Text("\(index + 1)").font(.system(size: 104, weight: .black)).tracking(-6)
+                                    .foregroundStyle(HomeStyle.primary.opacity(0.18)).fixedSize().offset(y: 16)
+                                JellyPosterImage(item: item, client: client)
+                                    .frame(width: posterSize.homeWidth, height: posterSize.homeWidth * 1.5)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
+                            }.contentShape(Rectangle())
+                        }
+                        .buttonStyle(.springPress).accessibilityLabel("Number \(index + 1): " + (item.Name ?? ""))
+                        .accessibilityIdentifier("jellyspace-top-\(index + 1)")
+                    }
+                }
+            }.scrollIndicators(.hidden).scrollClipDisabled()
+        }
+    }
+    /// Hidden gems: big posters with their rating, unwatched and rated 7.5 or more.
+    private func gemsRow(_ items: [JellyfinClient.Item], client: JellyfinClient) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                heading("Hidden gems")
+                Spacer(minLength: 8)
+                Text("Unwatched · 7.5+").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
+            }
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(items, id: \.Id) { item in
+                        JellyTile(item: item, client: client, playing: $playing, home: true)
+                            .overlay(alignment: .topLeading) { if let score = item.CommunityRating, score > 0 { PosterScoreBadge(score: score) } }
+                            .frame(width: posterSize.homeWidth * 1.4)
+                    }
+                }
+            }.scrollIndicators(.hidden).scrollClipDisabled()
+        }
+    }
+    /// "Tonight: Romance": wide cards from one genre, with See all.
+    private func tonightRow(_ shelf: JellyShelf, client: JellyfinClient) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                heading(shelf.title)
+                Spacer(minLength: 8)
+                if let genre = shelf.genre {
+                    NavigationLink(value: JellyListRoute(kind: .genre, id: String(shelf.id.dropFirst("tonight-".count)), name: genre)) { seeAll }
+                        .buttonStyle(.plain).accessibilityLabel("See all " + genre).accessibilityIdentifier("jellyspace-tonight-all")
+                }
+            }
+            wideShelf(shown(shelf.items), client: client, width: posterSize.homeWidth * 2.1)
+        }
+    }
+    /// A shelf with its own shuffle button: a library's random posters, or (a plain library) its
+    /// videos as wide frames.
+    private func shuffledRow(_ shelf: JellyShelf, client: JellyfinClient, wide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                heading(shelf.title)
+                Spacer(minLength: 8)
+                Button { reshuffle(shelf) } label: {
+                    Image(systemName: "shuffle").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        .frame(width: 36, height: 36).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("Shuffle " + shelf.title).accessibilityIdentifier("jellyspace-shuffle-" + shelf.id)
+            }
+            if wide { wideShelf(shown(shelf.items), client: client, width: posterSize.homeWidth * 1.6) } else { posterShelf(shown(shelf.items), client: client) }
+        }
+    }
+    private func wideShelf(_ items: [JellyfinClient.Item], client: JellyfinClient, width: CGFloat) -> some View {
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(items, id: \.Id) { item in
+                    JellyTile(item: item, client: client, playing: $playing, wide: true, home: true).frame(width: width)
+                }
+            }
+        }.scrollIndicators(.hidden).scrollClipDisabled()
+    }
+    private var seeAll: some View {
+        HStack(spacing: 3) {
+            Text("See all")
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
+        }.font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.secondary).fixedSize().contentShape(Rectangle())
+    }
+    /// Hidden gems not already on the top poster.
+    private var gemItems: [JellyfinClient.Item] {
+        let onPoster = JellyHomeRow.hidden(hiddenRowsRaw).contains(.hero) ? [] : Set(heroPicks.map(\.Id))
+        return shown(discover?.gems ?? []).filter { !onPoster.contains($0.Id) }
+    }
+    /// One shelf drawn again from its library.
+    private func reshuffle(_ shelf: JellyShelf) {
+        guard let client = JellySpace.client, let library = shelf.library else { return }
+        Task {
+            let user = await JellyfinUser.id(client)
+            let items = await JellyDiscover.random(client: client, user: user, library: library)
+            guard !items.isEmpty, var current = discover else { return }
+            if current.folders?.id == shelf.id { current.folders?.items = items }
+            if let index = current.random.firstIndex(where: { $0.id == shelf.id }) { current.random[index].items = items }
+            withAnimation(.smooth(duration: 0.3)) { discover = current }
+            JellyHomeCache.discover = current
+        }
+    }
+    /// Discover's shelves: kept for the session (the same server, user and hidden libraries), drawn
+    /// afresh on a pull to refresh. Skipped while none of them, nor the top poster, is shown.
+    private func loadDiscover(force: Bool = false) async {
+        let off = JellyHomeRow.hidden(hiddenRowsRaw)
+        guard !off.contains(.hero) || !JellyHomeRow.discoverRows.isSubset(of: off) else { return }
+        guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
+        let key = client.base.absoluteString + "|" + user + "|" + hiddenRaw
+        if !force, JellyHomeCache.discoverKey == key, let cached = JellyHomeCache.discover {
+            discover = cached
+            return
+        }
+        let all = libraries.isEmpty ? ((try? await client.libraries()) ?? []) : libraries
+        let hiddenIDs = self.hidden
+        let defaults = UserDefaults.standard, turn = defaults.integer(forKey: "jellyspace.discover.turn")
+        defaults.set(turn + 1, forKey: "jellyspace.discover.turn")
+        let found = await JellyDiscover.load(client: client, user: user, libraries: all.filter { hiddenIDs[$0.id] == nil }, turn: turn)
+        guard !Task.isCancelled else { return }
+        withAnimation(.smooth(duration: 0.3)) { discover = found }
+        JellyHomeCache.discover = found
+        JellyHomeCache.discoverKey = key
     }
 
     /// Off Continue Watching: its place is cleared in Jellyfin (it starts from the beginning next time).

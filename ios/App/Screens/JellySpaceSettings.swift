@@ -38,7 +38,7 @@ enum JellyPrefs {
 
 /// The home's rows, in the order you set; any you turned off are left out.
 enum JellyHomeRow: String, CaseIterable, Identifiable {
-    case hero, resume, media, libraries, forYou, favourites, collections
+    case hero, resume, media, genres, top10, libraries, gems, tonight, forYou, random, folders, favourites, collections
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -47,6 +47,12 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         case .resume: "Continue Watching"
         case .favourites: "Favourites"
         case .libraries: "Library rows"
+        case .genres: "Genres"
+        case .top10: "Top 10"
+        case .gems: "Hidden gems"
+        case .tonight: "Tonight's genre"
+        case .random: "Random picks"
+        case .folders: "From your folders"
         case .forYou: "For you"
         case .collections: "Collections"
         }
@@ -56,6 +62,8 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         let saved = raw.split(separator: ",").compactMap { JellyHomeRow(rawValue: String($0)) }.filter { $0 != .hero }
         return saved + allCases.filter { $0 != .hero && !saved.contains($0) }
     }
+    /// Discover's sections (loaded together, once a session).
+    static let discoverRows: Set<JellyHomeRow> = [.genres, .top10, .gems, .tonight, .random, .folders]
     static func hidden(_ raw: String) -> Set<JellyHomeRow> { Set(raw.split(separator: ",").compactMap { JellyHomeRow(rawValue: String($0)) }) }
 }
 
