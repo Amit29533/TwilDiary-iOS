@@ -28,6 +28,10 @@ enum JellyPrefs {
     static let seerrAddressKey = "jellyspace.seerr.address"
     static let fillKey = "jellyspace.fill"
     static let upscaleKey = "jellyspace.upscale"
+    static let skipDelayKey = "jellyspace.skip.delay"
+    static let batteryKey = "jellyspace.battery"
+    static let timeModeKey = "jellyspace.timeMode"
+    static let subtitleLanguageKey = "jellyspace.subtitleSearchLanguage"
 }
 
 /// The home's rows, in the order you set; any you turned off are left out.
@@ -142,6 +146,9 @@ struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.skipRecapKey) private var skipRecap = JellySkipMode.button.rawValue
     @AppStorage(JellyPrefs.skipCreditsKey) private var skipCredits = JellySkipMode.button.rawValue
     @AppStorage(JellyPrefs.introDBKey) private var introDB = true
+    @AppStorage(JellyPrefs.skipDelayKey) private var skipDelay = 0
+    @AppStorage(JellyPrefs.batteryKey) private var battery = true
+    @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.skipSecondsKey) private var skipSeconds = 15
     @AppStorage(JellyPrefs.autoplayKey) private var autoplay = true
     @AppStorage(JellyPrefs.countdownKey) private var countdown = 5
@@ -315,6 +322,11 @@ struct JellySpaceSettingsView: View {
             SettingsDivider()
             choiceLine("Skip credits", $skipCredits, JellySkipMode.allCases.map { ($0.rawValue, $0.rawValue) })
             SettingsDivider()
+            if [skipIntro, skipRecap, skipCredits].contains(JellySkipMode.auto.rawValue) {
+                SettingsDivider()
+                choiceLine("Skip after", $skipDelay, [("At once", 0), ("2 seconds", 2), ("5 seconds", 5)])
+            }
+            SettingsDivider()
             toggleLine("Intro times from IntroDB", $introDB)
             SettingsDivider()
             choiceLine("Skip by", $skipSeconds, [("10 seconds", 10), ("15 seconds", 15), ("30 seconds", 30)])
@@ -326,6 +338,10 @@ struct JellySpaceSettingsView: View {
             }
             SettingsDivider()
             toggleLine("Resume where you stopped", $resume)
+            SettingsDivider()
+            choiceLine("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
+            SettingsDivider()
+            toggleLine("Battery", $battery)
             SettingsDivider()
             choiceLine("Picture", $fill, JellyFill.allCases.map { ($0.rawValue, $0.rawValue) })
             SettingsDivider()

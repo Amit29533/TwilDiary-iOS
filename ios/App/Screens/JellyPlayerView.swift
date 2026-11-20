@@ -49,6 +49,10 @@ struct JellyPlayerView: View {
     @AppStorage(JellyPrefs.swipeSeekKey) private var swipeSeekOn = true
     @AppStorage(JellyPrefs.swipeLevelsKey) private var swipeLevelsOn = true
     @AppStorage(JellyPrefs.holdKey) private var holdOn = true
+    @AppStorage(JellyPrefs.skipDelayKey) private var skipDelay = 0
+    @AppStorage(JellyPrefs.batteryKey) private var batteryOn = true
+    @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
+    @AppStorage(JellyPrefs.subtitleLanguageKey) private var subtitleLanguage = "eng"
     /// Upscaling, for every video (it only acts on SDR below 1080p, and on iOS 26 GPUs that can).
     @AppStorage("jellyspace.upscale") private var upscaleOn = false
     @State private var current: JellyPlayback
@@ -104,7 +108,15 @@ struct JellyPlayerView: View {
     @State private var buffering = false
     @State private var buffered: Double = 0
     /// The time on the right: left (with when it ends) or the whole length.
-    @State private var showTotal = false
+    /// An automatic skip waiting out its delay: which stretch, and when it goes.
+    @State private var pendingSkip: (start: Int64, at: Date)?
+    /// Subtitle search (Jellyfin's providers): the results, and what's going on.
+    @State private var foundSubtitles: [JellyfinClient.RemoteSubtitle] = []
+    @State private var searchingSubtitles = false
+    @State private var downloadingSubtitle: String?
+    @State private var subtitleNotice: String?
+    /// The separate subtitle files the video had (a downloaded one is the new index).
+    @State private var knownSubtitles: Set<Int> = []
     /// "1080p HEVC", from the file's video stream.
     @State private var quality: String?
     /// The subtitle the CC button turns back on.
@@ -125,7 +137,7 @@ struct JellyPlayerView: View {
     @State private var assSheet: JellyASSSheet?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    private enum Panel { case tracks, episodes, chapters, settings }
+    private enum Panel { case tracks, episodes, chapters, settings, subtitleSearch }
     private enum SwipeKind { case brightness, volume, seek }
 
     init(playback: JellyPlayback) {
@@ -200,8 +212,9 @@ struct JellyPlayerView: View {
                 if showsControls || failure != nil { controls.transition(.opacity) }
                 if showsControls, failure == nil, panel == nil { lockPill.transition(.opacity) }
             }
-            if let segment = activeSegment, skipMode(segment.kind) == .button, panel == nil, countdown == nil, failure == nil, !screenLocked {
-                skipButton(segment).transition(.opacity)
+            if let segment = activeSegment, panel == nil, countdown == nil, failure == nil, !screenLocked {
+                if skipMode(segment.kind) == .button { skipButton(segment).transition(.opacity) }
+                else if let pendingSkip, pendingSkip.start == segment.StartTicks { autoSkipButton(segment, at: pendingSkip.at).transition(.opacity) }
             }
             if let countdown, let next = nextEpisode { upNext(next, in: countdown) }
             if let panel { panelView(panel).transition(.opacity) }
@@ -484,6 +497,8 @@ struct JellyPlayerView: View {
         // ASS/SSA lines arrive with their styling, drawn by JellyASSLayer.
         options.preserveASSMarkup = true
         options.externalSubtitles = Self.subtitleFiles(extras, source: current.source, item: id, client: client)
+        knownSubtitles = Set(Self.subtitleStreams(extras, source: current.source, item: id, client: client).map { $0.index })
+        pendingSkip = nil; foundSubtitles = []
         quality = Self.qualityName(extras, source: current.source)
         // The upscaler: the line-art one for anime and animation, the general one for the rest.
         var genres = extras?.Genres ?? []
@@ -545,9 +560,13 @@ struct JellyPlayerView: View {
     /// The video's separate subtitle files (.srt, .ass, .vtt and the like next to it), as tracks the
     /// player loads with the video. Picture subtitles in a separate file (.sup) are left out.
     static func subtitleFiles(_ info: JellyfinClient.PlayerInfo?, source chosen: String?, item: String, client: JellyfinClient) -> [ExternalSubtitleTrack] {
+        subtitleStreams(info, source: chosen, item: item, client: client).map { $0.track }
+    }
+    static func subtitleStreams(_ info: JellyfinClient.PlayerInfo?, source chosen: String?, item: String,
+                                client: JellyfinClient) -> [(index: Int, track: ExternalSubtitleTrack)] {
         let sources = info?.MediaSources ?? []
         guard let source = sources.first(where: { $0.Id == chosen }) ?? sources.first, let sourceID = source.Id else { return [] }
-        return (source.MediaStreams ?? []).compactMap { stream in
+        return (source.MediaStreams ?? []).compactMap { stream -> (index: Int, track: ExternalSubtitleTrack)? in
             guard stream.kind == "Subtitle", stream.IsExternal == true else { return nil }
             let codec = (stream.Codec ?? "").lowercased()
             let format: String
@@ -558,8 +577,8 @@ struct JellyPlayerView: View {
             default: format = "srt"
             }
             guard let url = client.subtitleURL(item, source: sourceID, index: stream.Index, format: format) else { return nil }
-            return ExternalSubtitleTrack(url: url, name: stream.DisplayTitle, language: stream.Language,
-                                         isForced: stream.IsForced == true, isDefault: stream.IsDefault == true, formatHint: format)
+            return (stream.Index, ExternalSubtitleTrack(url: url, name: stream.DisplayTitle, language: stream.Language,
+                                                        isForced: stream.IsForced == true, isDefault: stream.IsDefault == true, formatHint: format))
         }
     }
 
@@ -601,11 +620,44 @@ struct JellyPlayerView: View {
     /// Automatic: past the stretch as it starts (the credits go to the next episode when that's on).
     private func autoSkip() {
         guard scrub == nil, state == .playing, let segment = activeSegment, skipMode(segment.kind) == .auto,
-              !skipped.contains(segment.StartTicks) else { return }
+              !skipped.contains(segment.StartTicks) else {
+            if pendingSkip != nil, activeSegment?.StartTicks != pendingSkip?.start { pendingSkip = nil }
+            return
+        }
+        // With a delay (Settings → JellySpace), a countdown button first, which can skip now or cancel.
+        if skipDelay > 0 {
+            if pendingSkip?.start != segment.StartTicks {
+                withAnimation { pendingSkip = (segment.StartTicks, Date.now.addingTimeInterval(Double(skipDelay))) }
+                return
+            }
+            guard let pendingSkip, Date.now >= pendingSkip.at else { return }
+        }
+        skipNow(segment, automatic: true)
+    }
+    /// Past the stretch (the credits go to the next episode when that's on).
+    private func skipNow(_ segment: JellyfinClient.Segment, automatic: Bool) {
         skipped.insert(segment.StartTicks)
-        if segment.kind == "Outro", autoplay, let next = nextEpisode { play(next); return }
+        withAnimation { pendingSkip = nil }
+        if segment.kind == "Outro", automatic ? autoplay : true, let next = nextEpisode { play(next); return }
         Task { await seek(Double(segment.EndTicks) / 10_000_000) }
-        show(segment.kind == "Intro" ? "Skipped intro" : segment.kind == "Recap" ? "Skipped recap" : "Skipped credits")
+        if automatic { show(segment.kind == "Intro" ? "Skipped intro" : segment.kind == "Recap" ? "Skipped recap" : "Skipped credits") }
+    }
+    /// "Skipping intro in 2": a tap skips now; Cancel lets it play.
+    private func autoSkipButton(_ segment: JellyfinClient.Segment, at moment: Date) -> some View {
+        let left = max(1, Int(ceil(moment.timeIntervalSinceNow)))
+        let what = segment.kind == "Intro" ? "intro" : segment.kind == "Recap" ? "recap" : "credits"
+        return HStack(spacing: 10) {
+            Button { skipped.insert(segment.StartTicks); withAnimation { pendingSkip = nil } } label: {
+                Text("Cancel").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).frame(height: 44).background(.black.opacity(0.55), in: Capsule()).contentShape(Capsule())
+            }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-skip-cancel")
+            Button { skipNow(segment, automatic: true) } label: {
+                Label("Skipping \(what) in \(left)", systemImage: "forward.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+                    .padding(.horizontal, 18).frame(height: 44).background(.white, in: Capsule()).contentShape(Capsule())
+            }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-skip-auto")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.trailing, 28).padding(.bottom, showsControls ? 124 : 36)
     }
     /// IntroDB's times (by the show's IMDb id and the episode, or the film's) when Jellyfin has none.
     private func introDBSegments(client: JellyfinClient, user: String?) async -> [JellyfinClient.Segment] {
@@ -620,9 +672,7 @@ struct JellyPlayerView: View {
     /// Skip Intro (Recap, Preview); in the credits, Next Episode when there is one, else Skip Credits.
     private func skipButton(_ segment: JellyfinClient.Segment) -> some View {
         let next = segment.kind == "Outro" ? nextEpisode : nil
-        return Button {
-            if let next { play(next) } else { Task { await seek(Double(segment.EndTicks) / 10_000_000) } }
-        } label: {
+        return Button { skipNow(segment, automatic: false) } label: {
             Label(next != nil ? "Next Episode" : Self.skipName(segment.kind), systemImage: next != nil ? "forward.end.fill" : "forward.fill")
                 .font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
                 .padding(.horizontal, 18).frame(height: 44).background(.white, in: Capsule()).contentShape(Capsule())
@@ -809,13 +859,13 @@ struct JellyPlayerView: View {
             HStack {
                 Text(Self.clock(scrub ?? time))
                 Spacer(minLength: 8)
-                Button { showTotal.toggle(); scheduleHide() } label: {
-                    Text(showTotal ? Self.clock(duration) : "-" + Self.clock(max(0, duration - (scrub ?? time))) + endsText)
+                Button { timeMode = timeMode == "total" ? "left" : "total"; scheduleHide() } label: {
+                    Text(timeMode == "total" ? Self.clock(duration) : "-" + Self.clock(max(0, duration - (scrub ?? time))) + endsText)
                         .frame(minHeight: 30).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-time-left")
             }
             .font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 30)
-            JellyScrubber(time: time, duration: duration, buffered: buffered, marks: chapterMarks, credits: creditStretches,
+            JellyScrubber(time: time, duration: duration, buffered: buffered, marks: chapterMarks, stretches: coloredStretches,
                           tint: theme.accent, scrub: $scrub) { target in
                 Task { await seek(target); scrub = nil; scheduleHide() }
             }
@@ -847,6 +897,7 @@ struct JellyPlayerView: View {
             }
             .foregroundStyle(.white).shadow(color: .black.opacity(0.5), radius: 4)
             Spacer(minLength: 8)
+            if batteryOn { JellyBattery() }
             JellyAirPlayButton().frame(width: 40, height: 40).accessibilityLabel("AirPlay")
             if !subtitleTracks.isEmpty {
                 topButton(activeSubtitle == nil ? "captions.bubble" : "captions.bubble.fill", label: activeSubtitle == nil ? "Subtitles on" : "Subtitles off") {
@@ -901,10 +952,18 @@ struct JellyPlayerView: View {
     private var chapterMarks: [Double] {
         chapters.map { Double($0.StartPositionTicks) / 10_000_000 }.filter { $0 > 1 && $0 < duration - 1 }
     }
-    private var creditStretches: [ClosedRange<Double>] {
-        segments.filter { $0.kind == "Outro" }.compactMap { segment in
+    /// The intro (green), recap (purple) and credits (orange) on the bar.
+    private var coloredStretches: [JellyStretch] {
+        segments.compactMap { segment in
+            let color: Color
+            switch segment.kind {
+            case "Intro": color = Color(red: 0.25, green: 0.8, blue: 0.55)
+            case "Recap": color = Color(red: 0.65, green: 0.45, blue: 0.95)
+            case "Outro": color = .orange
+            default: return nil
+            }
             let from = Double(segment.StartTicks) / 10_000_000, to = Double(segment.EndTicks) / 10_000_000
-            return to > from ? from...to : nil
+            return to > from ? JellyStretch(range: from...to, color: color) : nil
         }
     }
     /// The thumbnail and time over the bar while you drag it.
@@ -953,7 +1012,7 @@ struct JellyPlayerView: View {
                 }
             } label: { actionFace("gauge.with.needle", Self.speedName(speed), labels: labels) }
                 .accessibilityLabel("Speed").accessibilityIdentifier("jellyspace-speed")
-            if audioTracks.count > 1 || !subtitleTracks.isEmpty {
+            do {
                 action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
             }
             action(fill.symbol, fill.rawValue, labels: labels) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
@@ -1016,6 +1075,7 @@ struct JellyPlayerView: View {
                 case .episodes: episodesContent
                 case .chapters: chaptersContent
                 case .settings: settingsContent
+                case .subtitleSearch: subtitleSearchContent
                 }
                 Button { withAnimation { self.panel = nil } } label: {
                     Text("Close").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -1027,6 +1087,7 @@ struct JellyPlayerView: View {
 
     /// Audio and Subtitles side by side, the chosen one of each ticked.
     private var tracksContent: some View {
+      VStack(alignment: .leading, spacing: 14) {
         HStack(alignment: .top, spacing: 40) {
             if audioTracks.count > 1 {
                 trackColumn("Audio", rows: audioTracks.map { ($0.id, Self.label($0, audio: true)) }, chosen: activeAudio) { id in
@@ -1048,6 +1109,104 @@ struct JellyPlayerView: View {
                 }
             }
         }
+        Button { withAnimation { panel = .subtitleSearch } } label: {
+            Label("Download subtitles", systemImage: "arrow.down.circle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-download-subtitles")
+      }
+    }
+
+    /// Subtitles from the server's providers (OpenSubtitles), in a language; a tap saves one on the
+    /// server and turns it on.
+    private var subtitleSearchContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Download subtitles").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                Spacer(minLength: 12)
+                Menu {
+                    Picker("Language", selection: $subtitleLanguage) {
+                        ForEach(Self.subtitleLanguages, id: \.1) { Text($0.0).tag($0.1) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(Self.subtitleLanguages.first { $0.1 == subtitleLanguage }?.0 ?? subtitleLanguage)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+                    }.font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).frame(height: 32).background(.white.opacity(0.15), in: Capsule())
+                }.accessibilityIdentifier("jellyspace-subtitle-language")
+            }
+            if searchingSubtitles {
+                ProgressView().tint(.white).frame(maxWidth: .infinity, minHeight: 80)
+            } else if foundSubtitles.isEmpty {
+                Text(subtitleNotice ?? "None found").font(.system(size: 14)).foregroundStyle(.white.opacity(0.7)).frame(maxWidth: .infinity, minHeight: 60)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(foundSubtitles) { found in
+                            Button { Task { await download(found) } } label: {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(found.Name ?? "Subtitle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+                                        Text([found.ProviderName, found.Format?.uppercased(), found.DownloadCount.map { "\($0) downloads" }].compactMap { $0 }.joined(separator: " · "))
+                                            .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                                    }
+                                    Spacer(minLength: 8)
+                                    if downloadingSubtitle == found.Id { ProgressView().tint(.white) }
+                                    else if found.IsHashMatch == true { Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).accessibilityLabel("Matches this file") }
+                                }.frame(minHeight: 48).contentShape(Rectangle())
+                            }.buttonStyle(.plain).disabled(downloadingSubtitle != nil)
+                        }
+                    }
+                }.frame(maxHeight: 200)
+                if let subtitleNotice { Text(subtitleNotice).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7)) }
+            }
+        }
+        .frame(maxWidth: 560)
+        .task(id: subtitleLanguage) { await searchSubtitles() }
+    }
+    static let subtitleLanguages: [(String, String)] = [
+        ("English", "eng"), ("Hindi", "hin"), ("Spanish", "spa"), ("French", "fre"), ("German", "ger"), ("Italian", "ita"),
+        ("Portuguese", "por"), ("Russian", "rus"), ("Japanese", "jpn"), ("Korean", "kor"), ("Chinese", "chi"), ("Arabic", "ara"),
+        ("Turkish", "tur"), ("Indonesian", "ind"), ("Thai", "tha"), ("Vietnamese", "vie"), ("Dutch", "dut"), ("Polish", "pol")
+    ]
+    private func searchSubtitles() async {
+        searchingSubtitles = true; subtitleNotice = nil
+        defer { searchingSubtitles = false }
+        do {
+            foundSubtitles = try await current.client.searchSubtitles(current.id, language: subtitleLanguage)
+                .sorted { ($0.IsHashMatch == true ? 1 : 0, $0.DownloadCount ?? 0) > ($1.IsHashMatch == true ? 1 : 0, $1.DownloadCount ?? 0) }
+        } catch {
+            foundSubtitles = []
+            if !Task.isCancelled { subtitleNotice = error.localizedDescription }
+        }
+    }
+    /// Saved on the server, then (once Jellyfin lists it with the video) added here and turned on.
+    private func download(_ found: JellyfinClient.RemoteSubtitle) async {
+        downloadingSubtitle = found.Id; subtitleNotice = nil
+        defer { downloadingSubtitle = nil }
+        let client = current.client, id = current.id
+        do {
+            try await client.downloadSubtitle(id, subtitle: found.Id)
+        } catch {
+            subtitleNotice = error.localizedDescription
+            return
+        }
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .seconds(1))
+            let info = try? await client.playerInfo(id, user: userID)
+            let files = Self.subtitleStreams(info, source: current.source, item: id, client: client)
+            if let fresh = files.first(where: { !knownSubtitles.contains($0.index) }) {
+                knownSubtitles = Set(files.map { $0.index })
+                if let added = engine?.addExternalSubtitleTrack(fresh.track) {
+                    engine?.selectSubtitleTrack(index: added.id)
+                    if let language = added.language { remember("subtitleLanguage", language) }
+                }
+                withAnimation { panel = nil }
+                show("Subtitles added")
+                return
+            }
+        }
+        subtitleNotice = "Saved on the server. It shows next time you open the video."
     }
 
     /// Speed, subtitle size, and the subtitle and audio delays.
@@ -1241,7 +1400,7 @@ private struct JellyScrubber: View {
     let duration: Double
     let buffered: Double
     let marks: [Double]
-    let credits: [ClosedRange<Double>]
+    let stretches: [JellyStretch]
     let tint: Color
     @Binding var scrub: Double?
     let commit: (Double) -> Void
@@ -1254,11 +1413,11 @@ private struct JellyScrubber: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.22))
                 Rectangle().fill(.white.opacity(0.38)).frame(width: width * min(1, max(0, buffered / total)))
-                ForEach(credits.indices, id: \.self) { index in
-                    let stretch = credits[index]
-                    Rectangle().fill(Color.orange.opacity(0.85))
-                        .frame(width: max(2, width * (stretch.upperBound - stretch.lowerBound) / total))
-                        .offset(x: width * stretch.lowerBound / total)
+                ForEach(stretches.indices, id: \.self) { index in
+                    let stretch = stretches[index]
+                    Rectangle().fill(stretch.color.opacity(0.85))
+                        .frame(width: max(2, width * (stretch.range.upperBound - stretch.range.lowerBound) / total))
+                        .offset(x: width * stretch.range.lowerBound / total)
                 }
                 Rectangle().fill(tint).frame(width: at)
                 ForEach(marks.indices, id: \.self) { index in
@@ -1368,6 +1527,41 @@ private struct JellyGestureLayer: UIViewRepresentable {
         @objc func pinched(_ gesture: UIPinchGestureRecognizer) {
             if gesture.state == .ended { layer.pinch(gesture.scale) }
         }
+    }
+}
+
+/// An intro, recap or credits stretch on the bar, in its colour.
+struct JellyStretch {
+    let range: ClosedRange<Double>
+    let color: Color
+}
+
+/// The phone's battery, by the player's top buttons.
+private struct JellyBattery: View {
+    @State private var level = UIDevice.current.batteryLevel
+    @State private var charging = false
+    var body: some View {
+        Group {
+            if level >= 0 {
+                HStack(spacing: 4) {
+                    Text("\(Int((level * 100).rounded()))%").monospacedDigit()
+                    Image(systemName: symbol)
+                }
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+                .accessibilityElement(children: .ignore).accessibilityLabel("Battery \(Int((level * 100).rounded())) percent")
+            }
+        }
+        .onAppear { UIDevice.current.isBatteryMonitoringEnabled = true; read() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in read() }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in read() }
+    }
+    private var symbol: String {
+        if charging { return "battery.100.bolt" }
+        return level > 0.87 ? "battery.100" : level > 0.62 ? "battery.75" : level > 0.37 ? "battery.50" : level > 0.12 ? "battery.25" : "battery.0"
+    }
+    private func read() {
+        level = UIDevice.current.batteryLevel
+        charging = [.charging, .full].contains(UIDevice.current.batteryState)
     }
 }
 

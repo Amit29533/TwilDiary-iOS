@@ -110,6 +110,23 @@ extension JellyfinClient {
         let page: Page = try await get("Shows/\(series)/Episodes", query)
         return page.Items
     }
+    /// A subtitle found by the server's subtitle providers (OpenSubtitles).
+    struct RemoteSubtitle: Decodable, Sendable, Identifiable {
+        let Id: String
+        let Name: String?
+        let ProviderName: String?
+        let Format: String?
+        let DownloadCount: Int?
+        let IsHashMatch: Bool?
+        var id: String { Id }
+    }
+    func searchSubtitles(_ item: String, language: String) async throws -> [RemoteSubtitle] {
+        try await get("Items/\(item)/RemoteSearch/Subtitles/\(language)", [URLQueryItem(name: "isPerfectMatch", value: "false")])
+    }
+    /// Saves the subtitle next to the video on the server (it then shows among its subtitles).
+    func downloadSubtitle(_ item: String, subtitle: String) async throws {
+        try await post("Items/\(item)/RemoteSearch/Subtitles/\(subtitle)", [], body: nil)
+    }
     /// A song as it is.
     func audioURL(_ id: String) -> URL? {
         var components = URLComponents(url: base.appending(path: "Audio/\(id)/stream"), resolvingAgainstBaseURL: false)
