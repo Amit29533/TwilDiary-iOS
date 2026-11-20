@@ -122,7 +122,7 @@ struct TitleDetailView: View {
                             .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }
                             .toolbar {
                                 ToolbarItem(placement: .principal) {
-                                    CompactTitleNavigation(name: title.name, poster: title.poster, state: headerState)
+                                    CompactTitleNavigation(name: title.name, poster: title.poster, state: headerState, pageWidth: geometry.size.width)
                                 }
                                 // One ••• button (owner's design) holds every action; files moved here from the page.
                                 ToolbarItem(placement: .topBarTrailing) {

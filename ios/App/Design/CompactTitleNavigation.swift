@@ -20,6 +20,9 @@ struct CompactTitleNavigation: View {
     let name: String
     let poster: String?
     let state: CompactHeaderState
+    /// The page's width: the title keeps clear of the bar's buttons on both sides (the bar gives a
+    /// centre item all the width it asks for, so a long name ran under the ••• button).
+    var pageWidth: CGFloat = 0
     private var progress: CGFloat { state.progress }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
@@ -27,6 +30,7 @@ struct CompactTitleNavigation: View {
             Artwork(path: poster, title: name, initialsOnly: false).frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 9))
             Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
         }.frame(height: 28)
+            .frame(maxWidth: pageWidth > 0 ? max(120, pageWidth - 160) : nil)
             .opacity(Double(progress))
             .offset(y: reduceMotion ? 0 : (1 - progress) * 6)
             .accessibilityElement(children: .ignore).accessibilityLabel(name).accessibilityIdentifier("compact-title-navigation")

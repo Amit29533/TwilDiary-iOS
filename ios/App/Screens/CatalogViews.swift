@@ -596,7 +596,7 @@ struct CatalogDetailView: View {
                 .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }
                 .toolbar {
                     ToolbarItem(placement: .principal) {
-                        if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), state: headerState) }
+                        if let details { CompactTitleNavigation(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), state: headerState, pageWidth: geometry.size.width) }
                     }
                     // The same ••• button as a saved title (owner's design), replacing ⓘ.
                     ToolbarItem(placement: .topBarTrailing) {

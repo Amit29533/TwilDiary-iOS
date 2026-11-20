@@ -65,6 +65,8 @@ struct JellySpaceView: View {
     @State private var header = CompactHeaderState()
     /// The status bar and top bar's height: the big title sits in the bar's row, My Media under it.
     @State private var topInset: CGFloat = 0
+    /// The top card on show (its colours light the top of the page).
+    @State private var heroSelected: String?
     @Environment(AppRouter.self) private var router
 
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
@@ -79,13 +81,17 @@ struct JellySpaceView: View {
                     // The first load: the page's own shape (the top poster, its title and Play, the first
                     // rows) under the bar, instead of a shelf of blanks behind the top buttons.
                     let firstLoad = loading && !loaded && !showsResults && failure == nil
-                    if firstLoad {
-                        JellyHomeSkeleton().overlay(alignment: .top) { homeHeader(onPoster: false) }
-                    } else if !picks.isEmpty {
-                        JellyHeroCarousel(items: picks, client: client, playing: $playing).overlay(alignment: .top) { homeHeader(onPoster: true) }
+                    if !showsResults {
+                        // Netflix's top: the title and your libraries on the page, under the back button's
+                        // row; then the poster as a card; the poster's colours glowing behind them.
+                        VStack(alignment: .leading, spacing: 14) {
+                            homeHeader()
+                            if firstLoad { JellyHomeSkeleton() }
+                            else if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client, playing: $playing, selected: $heroSelected) }
+                        }
+                        .background(alignment: .top) { heroGlow(picks, client: client) }
                     }
                     VStack(alignment: .leading, spacing: 22) {
-                        if !showsResults && !firstLoad && picks.isEmpty { homeHeader(onPoster: false, inline: true) }
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
                         if showsResults {
                             if results.isEmpty && !searchRunning { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
@@ -308,17 +314,16 @@ struct JellySpaceView: View {
     /// The top of the home: "JellySpace" with Jellyfin's logo, large, in the top bar's row (the search
     /// button beside it), and My Media's libraries under it as text on glass, in your order (Settings →
     /// JellySpace → My Media). White over the poster; the page's own colour without one.
-    private func homeHeader(onPoster: Bool, inline: Bool = false) -> some View {
-        let ink = onPoster ? Color.white : HomeStyle.primary
+    private func homeHeader() -> some View {
+        let ink = HomeStyle.primary
         let chips = JellyHomeRow.hidden(hiddenRowsRaw).contains(.media) ? [] : JellyMediaOrder.sorted(visibleLibraries, mediaOrderRaw)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 9) {
                 Image("jellyfin-mark").resizable().scaledToFit().frame(width: 30, height: 30).accessibilityHidden(true)
                 Text("JellySpace").font(.system(size: 30, weight: .bold)).tracking(-0.5).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
             }
-            .shadow(color: .black.opacity(onPoster ? 0.35 : 0), radius: 8, y: 1)
             .frame(height: 44)
-            .padding(.horizontal, inline ? 0 : 16)
+            .padding(.horizontal, 16)
             .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             .allowsHitTesting(false)
             if !chips.isEmpty {
@@ -348,7 +353,7 @@ struct JellySpaceView: View {
                     }
                 }
                 .scrollIndicators(.hidden).scrollClipDisabled()
-                .contentMargins(.horizontal, inline ? 0 : 16, for: .scrollContent)
+                .contentMargins(.horizontal, 16, for: .scrollContent)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -356,15 +361,33 @@ struct JellySpaceView: View {
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
             header.update(ScrollLinkedBarTitle.progress(headingBottom: bottom + (chips.isEmpty ? 46 : 0)))
         }
-        .padding(.top, max(0, topInset - 44))
-        .padding(.bottom, inline ? 4 : 0)
+        // Its own row, just under the back and search buttons.
+        .padding(.top, topInset + 2)
     }
 
-    /// One of the chips under the title, as Netflix has them: the name in a thin outline, nothing behind it.
+    /// The top card's picture, blurred and faded, behind the title, the chips and the card (as
+    /// Netflix tints its home with the poster's colours); it changes with the card.
+    @ViewBuilder private func heroGlow(_ picks: [JellyfinClient.Item], client: JellyfinClient) -> some View {
+        if let item = picks.first(where: { $0.Id == heroSelected }) ?? picks.first, let url = JellyHero.cardImage(item, base: client.base) {
+            JellyImage(url: url)
+                .frame(maxWidth: .infinity).frame(height: 780).clipped()
+                .blur(radius: 60).opacity(0.55)
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45), .init(color: .clear, location: 1)],
+                                     startPoint: .top, endPoint: .bottom))
+                .padding(.top, -topInset)
+                .id(item.Id).transition(.opacity)
+                .animation(.easeInOut(duration: 0.6), value: item.Id)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+
+    /// One of the chips under the title, as Netflix has them: the name on glass with a fine edge
+    /// (readable over any picture).
     private func chip(_ label: Text, ink: Color) -> some View {
-        label.font(.system(size: 14, weight: .medium)).foregroundStyle(ink).lineLimit(1)
-            .padding(.horizontal, 14).frame(height: 32)
-            .overlay { Capsule().strokeBorder(ink.opacity(0.55), lineWidth: 1) }
+        label.font(.system(size: 14, weight: .semibold)).foregroundStyle(ink).lineLimit(1)
+            .padding(.horizontal, 16).frame(height: 36)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .overlay { Capsule().strokeBorder(ink.opacity(0.18), lineWidth: 0.5) }
             .contentShape(Capsule())
     }
 
@@ -632,17 +655,20 @@ private struct JellyHeroCarousel: View {
     let items: [JellyfinClient.Item]
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
-    @State private var selected: String?
+    @Binding var selected: String?
     @State private var shown = false
     @State private var scrolledInto = true
     @State private var swiping = false
 
     var body: some View {
         let current = items.firstIndex { $0.Id == selected } ?? 0
+        VStack(spacing: 12) {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
                 ForEach(items, id: \.Id) { item in
-                    JellyHero(item: item, client: client, playing: $playing).containerRelativeFrame(.horizontal).id(item.Id)
+                    JellyHero(item: item, client: client, playing: $playing)
+                        .padding(.horizontal, 16)
+                        .containerRelativeFrame(.horizontal).id(item.Id)
                 }
             }.scrollTargetLayout()
         }
@@ -651,7 +677,6 @@ private struct JellyHeroCarousel: View {
         .scrollPosition(id: $selected)
         .onScrollPhaseChange { _, phase in swiping = phase == .interacting || phase == .decelerating }
         .haptic(.selection, trigger: selected) { _, _ in swiping }
-        .overlay(alignment: .bottom) {
             if items.count > 1 {
                 HStack(spacing: 5) {
                     ForEach(items.indices, id: \.self) { position in
@@ -660,7 +685,6 @@ private struct JellyHeroCarousel: View {
                     }
                 }
                 .animation(.snappy(duration: 0.25), value: current)
-                .padding(.bottom, 14)
                 .accessibilityHidden(true)
             }
         }
@@ -713,34 +737,37 @@ private struct JellyHero: View {
                     Text(String(format: "%.1f", score))
                 }
             }
-            .font(.system(size: 13, weight: .medium)).foregroundStyle(HomeStyle.primary.opacity(0.82)).lineLimit(1)
+            .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
             HStack(spacing: 10) {
                 playButton
                 favouriteButton
-            }.padding(.top, 5)
+            }.padding(.top, 4)
         }
-        .padding(.horizontal, 24).padding(.bottom, 36)
-        .frame(maxWidth: .infinity)
-        .frame(height: verticalSizeClass == .compact ? 280 : min(height, 600), alignment: .bottom)
+        .padding(.horizontal, 16).padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        // A tall card upright (as Netflix's), a wide one sideways.
+        .aspectRatio(verticalSizeClass == .compact ? 16 / 9 : 3 / 4, contentMode: .fit)
         .background {
-            // The poster itself opens the title's page.
-            NavigationLink(value: route) { backdrop }
+            // The picture itself opens the title's page.
+            NavigationLink(value: route) { cardArt }
                 .buttonStyle(.plain)
                 .accessibilityLabel("About " + (item.Name ?? "this title")).accessibilityIdentifier("jellyspace-hero-" + item.Id)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 0.5) }
+        .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
     }
 
-    /// Play: solid in the page's text colour (white on a dark theme), the page's colour on it.
+    /// Play: white with black writing, as Netflix's.
     private var playButton: some View {
-        let ink = ThemeStore.current.canvas
-        return Button { Task { await play() } } label: {
+        Button { Task { await play() } } label: {
             HStack(spacing: 7) {
-                if starting { ProgressView().controlSize(.small).tint(ink) } else { Image(systemName: "play.fill") }
+                if starting { ProgressView().controlSize(.small).tint(.black) } else { Image(systemName: "play.fill") }
                 Text(playLabel).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
-            .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
-            .background(HomeStyle.primary, in: Capsule()).contentShape(Capsule())
+            .font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+            .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 42)
+            .background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous)).contentShape(Rectangle())
         }
         .buttonStyle(.springPress).disabled(starting)
         .accessibilityLabel(playLabel + " " + (item.Name ?? "")).accessibilityIdentifier("jellyspace-hero-play-" + item.Id)
@@ -753,9 +780,10 @@ private struct JellyHero: View {
                 Image(systemName: symbol).contentTransition(.symbolEffect(.replace))
                 Text("Favourite").lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
-            .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
-            .glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
+            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 42)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous)).contentShape(Rectangle())
         }
         .buttonStyle(.springPress)
         .sensoryFeedback(.selection, trigger: isFavourite)
@@ -783,29 +811,26 @@ private struct JellyHero: View {
                 .frame(maxWidth: 260, maxHeight: 96).shadow(color: .black.opacity(0.4), radius: 10)
                 .accessibilityElement().accessibilityLabel(item.Name ?? "").accessibilityAddTraits(.isHeader)
         } else {
-            Text(item.Name ?? "").font(.system(size: 30, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+            Text(item.Name ?? "").font(.system(size: 30, weight: .bold)).tracking(-0.4).foregroundStyle(.white)
                 .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.7).accessibilityAddTraits(.isHeader)
         }
     }
 
-    /// The backdrop, washed toward the page's own colour where the text sits and faded out at the
-    /// foot, so it ends in the page (whatever the theme) rather than at an edge.
-    private var backdrop: some View {
-        let page = ThemeStore.current.canvas
-        return Color.clear
-            .overlay { JellyImage(url: item.BackdropImageTags?.first.flatMap { JellyfinClient.imageURL(base: client.base, item: item.Id, type: "Backdrop", tag: $0, width: 1280) }) }
+    /// The card's picture: the title's backdrop (no writing on it, unlike most posters) cropped to the
+    /// card, darkening toward the foot where the logo and buttons sit.
+    private var cardArt: some View {
+        Color.clear
+            .overlay { JellyImage(url: Self.cardImage(item, base: client.base)) }
             .overlay {
-                LinearGradient(stops: [
-                    .init(color: .black.opacity(0.55), location: 0),
-                    .init(color: .black.opacity(0.18), location: 0.2),
-                    .init(color: .clear, location: 0.34),
-                    .init(color: page.opacity(0.5), location: 0.58),
-                    .init(color: page.opacity(0.9), location: 0.84),
-                    .init(color: page, location: 1)
-                ], startPoint: .top, endPoint: .bottom)
+                LinearGradient(stops: [.init(color: .clear, location: 0.4), .init(color: .black.opacity(0.55), location: 0.7),
+                                       .init(color: .black.opacity(0.88), location: 1)], startPoint: .top, endPoint: .bottom)
             }
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0.86), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             .clipped()
+    }
+    /// The backdrop at card size; the poster when there's none.
+    static func cardImage(_ item: JellyfinClient.Item, base: URL) -> URL? {
+        if let tag = item.BackdropImageTags?.first { return JellyfinClient.imageURL(base: base, item: item.Id, type: "Backdrop", tag: tag, width: 1280) }
+        return item.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: base, item: item.Id, type: "Primary", tag: $0, width: 900) }
     }
 
     /// A film plays at once (from where you stopped); a show plays its next episode (its first when

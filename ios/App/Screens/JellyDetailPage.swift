@@ -28,6 +28,8 @@ struct JellyCompactTitle: View {
     let name: String
     let poster: URL?
     let state: CompactHeaderState
+    /// The page's width: the title keeps clear of the back and ••• buttons (see CompactTitleNavigation).
+    var pageWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         let progress = state.progress
@@ -37,6 +39,7 @@ struct JellyCompactTitle: View {
             Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
         }
         .frame(height: 28)
+        .frame(maxWidth: pageWidth > 0 ? max(120, pageWidth - 160) : nil)
         .opacity(Double(progress))
         .offset(y: reduceMotion ? 0 : (1 - progress) * 6)
         .accessibilityElement(children: .ignore).accessibilityLabel(name).accessibilityAddTraits(.isHeader)
@@ -77,6 +80,7 @@ struct JellyDetailPage: View {
     @State private var showFileInfo = false
     /// The poster and name in the top bar once the picture has scrolled under it.
     @State private var headerState = CompactHeaderState()
+    @State private var pageWidth: CGFloat = 0
 
     private var series: Bool { detail?.kind == "Series" }
     private var name: String { detail?.Name ?? route.name }
@@ -111,11 +115,12 @@ struct JellyDetailPage: View {
             }.padding(.bottom, 48)
         }
         .diaryScreenBackground()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 JellyCompactTitle(name: name, poster: JellySpace.client.flatMap { client in
                     detail?.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Primary", tag: $0, width: 200) }
-                }, state: headerState)
+                }, state: headerState, pageWidth: pageWidth)
             }
             if let detail, let client = JellySpace.client, hasMore(detail, client: client) {
                 ToolbarItem(placement: .topBarTrailing) { moreMenu(detail, client: client) }
