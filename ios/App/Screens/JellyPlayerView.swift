@@ -448,8 +448,10 @@ struct JellyPlayerView: View {
         }
         .padding(.vertical, 6).frame(width: 54)
         .glassEffect(.regular.interactive(), in: Capsule())
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: verticalSizeClass == .compact ? .leading : .topLeading)
-        .padding(.leading, 20).padding(.top, verticalSizeClass == .compact ? 0 : 90)
+        // Under the top-left buttons (sideways, centred on the left it sat on "Resumed at · Start over"
+        // and the title).
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.leading, 20).padding(.top, verticalSizeClass == .compact ? 68 : 90)
     }
     private func pillButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {

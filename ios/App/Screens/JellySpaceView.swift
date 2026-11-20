@@ -66,15 +66,19 @@ struct JellySpaceView: View {
             VStack(alignment: .leading, spacing: 22) {
                 if let client = JellySpace.client {
                     let picks = showsResults || JellyHomeRow.hidden(hiddenRowsRaw).contains(.hero) ? [] : heroPicks
-                    if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client, playing: $playing) }
+                    // The first load: the page's own shape (the top poster, its title and Play, the first
+                    // rows) under the bar, instead of a shelf of blanks behind the top buttons.
+                    let firstLoad = loading && !loaded && !showsResults && failure == nil
+                    if firstLoad { JellyHomeSkeleton() }
+                    else if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client, playing: $playing) }
                     VStack(alignment: .leading, spacing: 22) {
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
                         if showsResults {
                             if results.isEmpty && !searchRunning { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
                             JellyGrid(items: shown(results), client: client, playing: $playing)
                             if !seerrResults.isEmpty { requestSection }
-                        } else if loading && !loaded {
-                            DiaryLoadingPlaceholder(label: "Loading Jellyfin", layout: .posterShelf)
+                        } else if firstLoad {
+                            EmptyView()
                         } else {
                             // Your order and choice of rows (Settings → JellySpace).
                             let off = JellyHomeRow.hidden(hiddenRowsRaw)
@@ -86,7 +90,7 @@ struct JellySpaceView: View {
                     .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top in
                         header.update(ScrollLinkedBarTitle.progress(headingBottom: picks.isEmpty ? top + 58 : top - 22))
                     }
-                    .padding(.horizontal, 14).padding(.top, showsResults ? 64 : picks.isEmpty ? 72 : 0)
+                    .padding(.horizontal, 14).padding(.top, showsResults ? 64 : picks.isEmpty && !firstLoad ? 72 : 0)
                 } else {
                     NavigationLink(value: AppDestination.jellyfin) {
                         HStack(spacing: 10) {
@@ -532,6 +536,54 @@ private struct JellyHero: View {
         defer { starting = false }
         guard let user = await JellyfinUser.id(client), let next = try? await client.nextUp(series: item.Id, user: user) else { return }
         playing = JellySpace.playback(next, client: client)
+    }
+}
+
+/// The home while it first loads, in the shape it's about to take: the top poster fading into the
+/// page with the title, details and Play placed where they'll be, then Continue Watching's cards
+/// and My Media's pills. It breathes gently (still with Reduce Motion).
+private struct JellyHomeSkeleton: View {
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 430
+    @State private var dim = false
+
+    var body: some View {
+        let fill = Color.primary.opacity(dim ? 0.06 : 0.1)
+        VStack(alignment: .leading, spacing: 22) {
+            ZStack(alignment: .bottom) {
+                Rectangle().fill(Color.primary.opacity(dim ? 0.05 : 0.08))
+                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55), .init(color: .clear, location: 1)],
+                                         startPoint: .top, endPoint: .bottom))
+                VStack(spacing: 10) {
+                    Capsule().fill(fill).frame(width: 210, height: 30)
+                    Capsule().fill(fill).frame(width: 150, height: 12)
+                    HStack(spacing: 10) {
+                        Capsule().fill(fill).frame(width: 130, height: 42)
+                        Circle().fill(fill).frame(width: 42, height: 42)
+                    }.padding(.top, 5)
+                }.padding(.bottom, 36)
+            }
+            .frame(height: verticalSizeClass == .compact ? 280 : min(height, 560))
+            VStack(alignment: .leading, spacing: 10) {
+                Capsule().fill(fill).frame(width: 170, height: 18)
+                HStack(spacing: 12) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 8).fill(fill).aspectRatio(16 / 9, contentMode: .fit)
+                            Capsule().fill(fill).frame(width: 110, height: 12)
+                            Capsule().fill(fill).frame(width: 70, height: 10)
+                        }
+                    }
+                }
+            }.padding(.horizontal, 14)
+            VStack(alignment: .leading, spacing: 10) {
+                Capsule().fill(fill).frame(width: 110, height: 18)
+                HStack(spacing: 8) { ForEach([118, 104, 92], id: \.self) { Capsule().fill(fill).frame(width: CGFloat($0), height: 36) } }
+            }.padding(.horizontal, 14)
+        }
+        .onAppear { withAnimation(.easeInOut(duration: reduceMotion ? 1.6 : 0.9).repeatForever(autoreverses: true)) { dim = true } }
+        .accessibilityElement(children: .ignore).accessibilityLabel("Loading Jellyfin")
     }
 }
 
