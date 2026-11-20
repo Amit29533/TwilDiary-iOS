@@ -89,6 +89,7 @@ struct JellyPlayerView: View {
     @State private var resumedAt: Double?
     @State private var finished = false
     @State private var notice: String?
+    @State private var noticeID = 0
     @State private var userID: String?
     @State private var pickedSubtitle = false
     @State private var speed: Float = 1
@@ -1029,9 +1030,12 @@ struct JellyPlayerView: View {
         Task { await client.report(event, item: id, source: source, seconds: at, paused: paused) }
     }
 
-    private func show(_ text: String) {
+    private func show(_ text: String, for seconds: Double = 4) {
+        noticeID += 1
+        let id = noticeID
         withAnimation { notice = text }
-        Task { try? await Task.sleep(for: .seconds(4)); withAnimation { if notice == text { notice = nil } } }
+        // Only the latest notice clears it, so an earlier one's timer can't cut a newer one short.
+        Task { try? await Task.sleep(for: .seconds(seconds)); withAnimation { if noticeID == id { notice = nil } } }
     }
 
     /// Your remembered subtitle language (or off); else the file's default (or forced) subtitle, once
@@ -1415,7 +1419,7 @@ struct JellyPlayerView: View {
     private func setFill(_ next: JellyFill) {
         fillRaw = next.rawValue
         engine?.videoGravity = next == .fill ? .resizeAspectFill : .resizeAspect
-        show(next.rawValue)
+        show(next.rawValue, for: 1.2)
         scheduleHide()
     }
 
