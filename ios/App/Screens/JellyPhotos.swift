@@ -99,6 +99,8 @@ private struct JellyPhotoPage: View {
                 ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).onTapGesture(perform: tapped)
             }
         }
+        // The whole screen, under the camera and the home bar too: a zoomed photo isn't boxed in.
+        .ignoresSafeArea()
         .onDisappear { image = nil; failed = false }
         .task(id: url) {
             guard let url, image == nil else { return }
@@ -114,27 +116,32 @@ private struct JellyPhotoPage: View {
 }
 
 /// Pinch and double-tap zoom (UIKit's scroll view does it best); a single tap goes to `tapped`.
+/// The picture is sized to fit the screen and kept centred, so zoomed in it fills the whole screen
+/// and panning stops at the photo's edges (not at black bars around it).
 private struct JellyZoomImage: UIViewRepresentable {
     let image: UIImage
     let tapped: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
-    func makeUIView(context: Context) -> UIScrollView {
-        let scroll = UIScrollView()
+    func makeUIView(context: Context) -> JellyZoomScrollView {
+        let scroll = JellyZoomScrollView()
         scroll.delegate = context.coordinator
         scroll.minimumZoomScale = 1
-        scroll.maximumZoomScale = 5
+        scroll.maximumZoomScale = 6
         scroll.bouncesZoom = true
         scroll.showsHorizontalScrollIndicator = false
         scroll.showsVerticalScrollIndicator = false
         scroll.contentInsetAdjustmentBehavior = .never
+        scroll.decelerationRate = .fast
         scroll.backgroundColor = .clear
         let imageView = UIImageView(image: image)
         imageView.contentMode = .scaleAspectFit
-        imageView.frame = scroll.bounds
-        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scroll.addSubview(imageView)
         context.coordinator.imageView = imageView
+        scroll.resized = { [weak coordinator = context.coordinator, weak scroll] in
+            guard let coordinator, let scroll else { return }
+            coordinator.fit(scroll)
+        }
         let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTapped(_:)))
         double.numberOfTapsRequired = 2
         scroll.addGestureRecognizer(double)
@@ -143,11 +150,11 @@ private struct JellyZoomImage: UIViewRepresentable {
         scroll.addGestureRecognizer(single)
         return scroll
     }
-    func updateUIView(_ scroll: UIScrollView, context: Context) {
+    func updateUIView(_ scroll: JellyZoomScrollView, context: Context) {
         context.coordinator.tapped = tapped
         if context.coordinator.imageView?.image !== image {
             context.coordinator.imageView?.image = image
-            scroll.zoomScale = 1
+            context.coordinator.fit(scroll)
         }
     }
 
@@ -155,17 +162,51 @@ private struct JellyZoomImage: UIViewRepresentable {
         weak var imageView: UIImageView?
         var tapped: () -> Void = {}
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+        func scrollViewDidZoom(_ scrollView: UIScrollView) { centre(scrollView) }
+        /// Back to the whole photo, fitted to the screen.
+        func fit(_ scroll: UIScrollView) {
+            guard let imageView, let image = imageView.image, scroll.bounds.width > 0, scroll.bounds.height > 0,
+                  image.size.width > 0, image.size.height > 0 else { return }
+            scroll.zoomScale = 1
+            let scale = min(scroll.bounds.width / image.size.width, scroll.bounds.height / image.size.height)
+            let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            imageView.frame = CGRect(origin: .zero, size: size)
+            scroll.contentSize = size
+            centre(scroll)
+        }
+        /// While the photo is smaller than the screen, the room around it is shared equally.
+        private func centre(_ scroll: UIScrollView) {
+            guard let imageView else { return }
+            let size = imageView.frame.size
+            let x = max(0, (scroll.bounds.width - size.width) / 2), y = max(0, (scroll.bounds.height - size.height) / 2)
+            scroll.contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
+        }
         @objc func singleTapped() { tapped() }
         @objc func doubleTapped(_ gesture: UITapGestureRecognizer) {
-            guard let scroll = gesture.view as? UIScrollView else { return }
+            guard let scroll = gesture.view as? UIScrollView, let imageView else { return }
             if scroll.zoomScale > 1 {
                 scroll.setZoomScale(1, animated: true)
             } else {
+                // Zoomed so the photo fills the screen (at least 2.5x), around the tapped spot.
+                let fill = max(scroll.bounds.width / max(1, imageView.bounds.width), scroll.bounds.height / max(1, imageView.bounds.height))
+                let scale = min(scroll.maximumZoomScale, max(2.5, fill))
                 let point = gesture.location(in: imageView)
-                let size = CGSize(width: scroll.bounds.width / 2.5, height: scroll.bounds.height / 2.5)
+                let size = CGSize(width: scroll.bounds.width / scale, height: scroll.bounds.height / scale)
                 scroll.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
             }
         }
+    }
+}
+
+/// A scroll view that says when its size changes (the photo is fitted again then).
+final class JellyZoomScrollView: UIScrollView {
+    var resized: (() -> Void)?
+    private var laidOutSize = CGSize.zero
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != laidOutSize else { return }
+        laidOutSize = bounds.size
+        resized?()
     }
 }
 
