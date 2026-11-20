@@ -75,7 +75,8 @@ import TwilDiaryCore
     private func updateCommands() {
         let hasNext = index + 1 < queue.count || repeatMode == .all
         // Statements, not a lone `self?.next()` (that makes the closure return `Void?`).
-        let next: (@MainActor @Sendable () -> Void)? = hasNext ? { [weak self] in guard let self else { return }; self.next() } : nil
+        var next: (@MainActor @Sendable () -> Void)?
+        if hasNext { next = { [weak self] in guard let self else { return }; self.next() } }
         let previous: @MainActor @Sendable () -> Void = { [weak self] in guard let self else { return }; self.previous() }
         engine?.setNowPlayingTrackCommands(next: next, previous: previous)
     }
