@@ -94,15 +94,15 @@ struct JellyDetailPage: View {
     private func header(_ client: JellyfinClient) -> some View {
         let backdrop = detail?.BackdropImageTags?.first.flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Backdrop", tag: $0, width: 1200) }
         let logo = detail?.ImageTags?["Logo"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Logo", tag: $0, width: 800) }
-        return ZStack(alignment: .bottomLeading) {
-            Rectangle().fill(HomeStyle.card)
-            JellyImage(url: backdrop ?? detail?.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Primary", tag: $0, width: 900) })
-            LinearGradient(colors: [.clear, .clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
-            if let logo {
-                JellyImage(url: logo, mode: .fit).frame(maxWidth: 280, maxHeight: 110, alignment: .bottomLeading).padding(16)
+        // The picture fills a fixed box laid out at the screen's width; it never sizes the page (a
+        // filled picture in a plain stack made the whole page wider than the screen).
+        return Color.clear.frame(maxWidth: .infinity).frame(height: 330)
+            .overlay { JellyImage(url: backdrop ?? detail?.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Primary", tag: $0, width: 900) }) }
+            .overlay { LinearGradient(colors: [.clear, .clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom) }
+            .overlay(alignment: .bottomLeading) {
+                if let logo { JellyImage(url: logo, mode: .fit).frame(maxWidth: 260, maxHeight: 100, alignment: .bottomLeading).padding(16) }
             }
-        }
-        .frame(maxWidth: .infinity).frame(height: 360).clipped()
+            .background(HomeStyle.card).clipped()
     }
 
     private func facts(_ detail: JellyfinClient.Detail) -> some View {
@@ -114,7 +114,7 @@ struct JellyDetailPage: View {
                 }
                 if let critic = detail.CriticRating, critic > 0 { chip(Text("Critics \(Int(critic))%")) }
             }
-            Text(detail.Name ?? route.name).font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+            Text(detail.Name ?? route.name).font(.system(size: 24, weight: .bold)).tracking(-0.3).foregroundStyle(HomeStyle.primary)
             Text(yearLine(detail)).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
             if let genres = detail.GenreItems, !genres.isEmpty {
                 InlineFlowLayout(spacing: 8, rowSpacing: 8) {
@@ -144,7 +144,7 @@ struct JellyDetailPage: View {
     }
     private func chip(_ text: Text, tint: Color = HomeStyle.primary) -> some View {
         text.font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
-            .padding(.horizontal, 11).frame(height: 30).background(Color.primary.opacity(0.09), in: Capsule())
+            .padding(.horizontal, 10).frame(height: 28).background(Color.primary.opacity(0.09), in: Capsule())
     }
 
     // MARK: Play, watched and favourite
@@ -156,7 +156,7 @@ struct JellyDetailPage: View {
                     Image(systemName: "play.fill")
                     Text(playLabel(detail)).lineLimit(1)
                 }.font(.system(size: 16, weight: .bold)).foregroundStyle(WatchStyle.ink)
-                    .frame(maxWidth: .infinity).frame(height: 50).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
+                    .frame(maxWidth: .infinity).frame(height: 48).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
             }.buttonStyle(.springPress).accessibilityIdentifier("jellyspace-detail-play")
             roundToggle(played ? "checkmark.circle.fill" : "checkmark.circle", label: played ? "Mark unwatched" : "Mark watched") {
                 guard let user else { return }
@@ -175,7 +175,7 @@ struct JellyDetailPage: View {
     private func roundToggle(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                .frame(width: 50, height: 50).background(Color.primary.opacity(0.09), in: Circle()).contentShape(Circle())
+                .frame(width: 48, height: 48).background(Color.primary.opacity(0.09), in: Circle()).contentShape(Circle())
         }.buttonStyle(.springPress).accessibilityLabel(label)
     }
     /// "Play 1h 52m", "Resume · 23m left", or a show's "Play S1 E4".

@@ -405,14 +405,6 @@ struct JellyfinClient: Sendable {
         let page: Page = try await get("Items", query)
         return page.Items
     }
-    /// The genres of your films and shows.
-    func genres(user: String?) async throws -> [Item] {
-        var query = [URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series"), URLQueryItem(name: "Recursive", value: "true"),
-                     URLQueryItem(name: "SortBy", value: "SortName")]
-        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
-        let page: Page = try await get("Genres", query)
-        return page.Items
-    }
 
     // MARK: Player extras (JellySpace)
     /// An intro, recap, preview or credits stretch (Jellyfin's media segments, from a plugin such as
@@ -455,12 +447,6 @@ struct JellyfinClient: Sendable {
     func resume(user: String) async throws -> [Item] {
         let page: Page = try await get("UserItems/Resume", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "MediaTypes", value: "Video"),
                                                            URLQueryItem(name: "Fields", value: "ProviderIds"), URLQueryItem(name: "Limit", value: "20")])
-        return page.Items
-    }
-    /// Next up: the next episode of each show you're watching.
-    func nextUp(user: String) async throws -> [Item] {
-        let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "Fields", value: "ProviderIds"),
-                                                       URLQueryItem(name: "Limit", value: "20")])
         return page.Items
     }
 
