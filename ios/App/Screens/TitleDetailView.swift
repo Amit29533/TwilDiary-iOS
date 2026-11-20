@@ -70,6 +70,8 @@ struct TitleDetailView: View {
                         detailPresentations(title: title, content: ScrollView {
                             VStack(alignment: .leading, spacing: 20) {
                                 header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
+                                // On your Jellyfin: play it here (hidden otherwise).
+                                JellyPlayButton(title: title)
                                 progressPanel(title).padding(.top, -8)
                                 if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
                                 if title.isSeries { SeasonCardsSection(title: title) }
