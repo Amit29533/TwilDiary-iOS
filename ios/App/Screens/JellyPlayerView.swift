@@ -125,6 +125,8 @@ struct JellyPlayerView: View {
     @State private var quality: String?
     /// The subtitle the CC button turns back on.
     @State private var lastSubtitle: Int?
+    /// The phone's volume, shown in the top-right slider (kept current from the system).
+    @State private var volumeLevel = AVAudioSession.sharedInstance().outputVolume
     /// What a one-finger swipe is doing: brightness (left half, up or down), volume (right half), or
     /// moving through the video (sideways).
     @State private var swipeKind: SwipeKind?
@@ -290,6 +292,7 @@ struct JellyPlayerView: View {
                 upscale = status
             }
             .onReceive(engine.clock.$bufferedPosition) { buffered = $0 }
+            .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
         if fill == .original, videoSize.width > 0, videoSize.height > 0 {
             // Its own pixel size: one video pixel per screen pixel, cropped if it's bigger than the screen.
             surface.frame(width: videoSize.width / displayScale, height: videoSize.height / displayScale)
@@ -687,7 +690,7 @@ struct JellyPlayerView: View {
             }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-skip-auto")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(.trailing, 28).padding(.bottom, showsControls ? 124 : 36)
+        .padding(.trailing, 28).padding(.bottom, showsControls ? 160 : 36)
     }
     /// IntroDB's times (by the show's IMDb id and the episode, or the film's) when Jellyfin has none.
     private func introDBSegments(client: JellyfinClient, user: String?) async -> [JellyfinClient.Segment] {
@@ -709,7 +712,7 @@ struct JellyPlayerView: View {
         }
         .buttonStyle(.plain).accessibilityIdentifier("jellyspace-skip")
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(.trailing, 28).padding(.bottom, showsControls ? 124 : 36)
+        .padding(.trailing, 28).padding(.bottom, showsControls ? 160 : 36)
     }
     private static func skipName(_ kind: String) -> String {
         switch kind { case "Intro": "Skip Intro"; case "Recap": "Skip Recap"; case "Outro": "Skip Credits"; case "Preview": "Skip Preview"; default: "Skip" }
@@ -909,18 +912,31 @@ struct JellyPlayerView: View {
 
     private var playingNow: Bool { state == .playing }
 
+    /// Infuse's arrangement: close, picture fill, PiP and AirPlay at the top left, the volume at the top
+    /// right; back, play and on in the middle; the episode and title at the bottom left with subtitles,
+    /// settings, chapters, episodes and next at the bottom right; the bar across the bottom with the
+    /// times under it. Every button sits on Liquid Glass.
     private var controls: some View {
         VStack(spacing: 0) {
-            topBar
-            if let resumedAt {
-                // Under the title, out of the way of the bar.
-                Button { Task { await seek(0) }; withAnimation { self.resumedAt = nil } } label: {
-                    Text("Resumed at \(Self.clock(resumedAt)) · Start over").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 12).frame(height: 30).background(.black.opacity(0.55), in: Capsule()).contentShape(Capsule())
+            HStack(alignment: .center, spacing: 10) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 46, height: 46).contentShape(Circle())
                 }
-                .buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 76).padding(.top, 4)
-                .accessibilityIdentifier("jellyspace-start-over").transition(.opacity)
+                .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Circle())
+                .accessibilityLabel("Close player").accessibilityIdentifier("jellyspace-close")
+                HStack(spacing: 0) {
+                    glassIcon(fill.symbol, label: "Picture: " + fill.rawValue) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
+                    if pip.available { glassIcon("pip.enter", label: "Picture in Picture") { pip.start() } }
+                    JellyAirPlayButton().frame(width: 46, height: 46).accessibilityLabel("AirPlay")
+                }
+                .padding(.horizontal, 4).glassEffect(.regular.interactive(), in: Capsule())
+                Spacer(minLength: 8)
+                sleepBadge
+                if batteryOn { JellyBattery() }
+                volumeCapsule
             }
+            .padding(.horizontal, 20).padding(.top, 10)
             Spacer(minLength: 0)
             if let failure {
                 Text(failure).font(.system(size: 14)).foregroundStyle(.white).multilineTextAlignment(.center)
@@ -928,87 +944,112 @@ struct JellyPlayerView: View {
             } else if state == .loading || state == .idle {
                 ProgressView().controlSize(.large).tint(.white)
             } else {
-                HStack(spacing: verticalSizeClass == .compact ? 64 : 28) {
-                    transport("gobackward.\(skipSeconds)", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
+                HStack(spacing: verticalSizeClass == .compact ? 120 : 56) {
+                    transport("gobackward", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
                     Button {
                         if state == .ended { Task { await start() } }
                         else if playingNow { engine?.pause() } else { engine?.play() }
                         scheduleHide()
                     } label: {
-                        ZStack {
-                            Circle().fill(.white.opacity(0.18))
-                            if buffering {
-                                ProgressView().controlSize(.large).tint(.white)
-                            } else {
-                                Image(systemName: playingNow ? "pause.fill" : state == .ended ? "arrow.counterclockwise" : "play.fill").font(.system(size: 34, weight: .semibold))
-                                    .foregroundStyle(.white).offset(x: playingNow ? 0 : 2)
+                        Group {
+                            if buffering { ProgressView().controlSize(.large).tint(.white) }
+                            else {
+                                Image(systemName: playingNow ? "pause.fill" : state == .ended ? "arrow.counterclockwise" : "play.fill")
+                                    .font(.system(size: 52, weight: .semibold)).foregroundStyle(.white)
                             }
-                        }.frame(width: 78, height: 78).contentShape(Circle())
+                        }
+                        .frame(width: 84, height: 84).contentShape(Rectangle())
+                        .shadow(color: .black.opacity(0.35), radius: 8)
                     }.buttonStyle(.plain).accessibilityLabel(playingNow ? "Pause" : "Play")
-                    transport("goforward.\(skipSeconds)", label: "Forward \(skipSeconds) seconds") { jump(Double(skipSeconds)) }
+                    transport("goforward", label: "Forward \(skipSeconds) seconds") { jump(Double(skipSeconds)) }
                 }
             }
             Spacer(minLength: 0)
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let resumedAt {
+                        Button { Task { await seek(0) }; withAnimation { self.resumedAt = nil } } label: {
+                            Text("Resumed at \(Self.clock(resumedAt)) · Start over").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                                .padding(.horizontal, 12).frame(height: 30).contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Capsule()).padding(.bottom, 6)
+                        .accessibilityIdentifier("jellyspace-start-over").transition(.opacity)
+                    }
+                    if !infoLine.isEmpty {
+                        Text(infoLine).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    }
+                    Text(heading).font(.system(size: 26, weight: .bold)).tracking(-0.3).foregroundStyle(.white).lineLimit(1)
+                }
+                .shadow(color: .black.opacity(0.5), radius: 6)
+                Spacer(minLength: 8)
+                HStack(spacing: 0) {
+                    glassIcon("captions.bubble", label: "Audio and subtitles") { withAnimation { panel = .tracks } }
+                        .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in toggleSubtitles() })
+                        .accessibilityIdentifier("jellyspace-tracks")
+                    glassIcon("gearshape.fill", label: "Playback settings") { withAnimation { panel = .settings } }
+                        .accessibilityIdentifier("jellyspace-settings")
+                    if chapters.count > 1 {
+                        glassIcon("list.bullet.rectangle", label: "Chapters") { withAnimation { panel = .chapters } }
+                            .accessibilityIdentifier("jellyspace-chapters")
+                    }
+                    if current.item.kind == "Episode", season.count > 1 {
+                        glassIcon("rectangle.stack", label: "Episodes") { withAnimation { panel = .episodes } }
+                    }
+                    if let next = nextEpisode {
+                        glassIcon("forward.end.fill", label: "Next episode") { play(next) }.accessibilityIdentifier("jellyspace-next")
+                    }
+                }
+                .padding(.horizontal, 4).glassEffect(.regular.interactive(), in: Capsule())
+            }
+            .padding(.horizontal, 24).padding(.bottom, 8)
+            JellyScrubber(time: time, duration: duration, buffered: buffered, marks: chapterMarks, stretches: coloredStretches,
+                          tint: .white, scrub: $scrub) { target in
+                Task { await seek(target); scrub = nil; scheduleHide() }
+            }
+            .overlay(alignment: .topLeading) { scrubPreview }
+            .padding(.horizontal, 20)
+            .disabled(duration <= 0)
             // The time gone; the time left with when it ends (a tap shows the whole length instead).
             HStack {
                 Text(Self.clock(scrub ?? time))
                 Spacer(minLength: 8)
                 Button { timeMode = timeMode == "total" ? "left" : "total"; scheduleHide() } label: {
                     Text(timeMode == "total" ? Self.clock(duration) : "-" + Self.clock(max(0, duration - (scrub ?? time))) + endsText)
-                        .frame(minHeight: 30).contentShape(Rectangle())
+                        .frame(minHeight: 26).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-time-left")
             }
-            .font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 30)
-            JellyScrubber(time: time, duration: duration, buffered: buffered, marks: chapterMarks, stretches: coloredStretches,
-                          tint: theme.accent, scrub: $scrub) { target in
-                Task { await seek(target); scrub = nil; scheduleHide() }
-            }
-            .overlay(alignment: .topLeading) { scrubPreview }
-            .padding(.horizontal, 28)
-            .disabled(duration <= 0)
-            ViewThatFits(in: .horizontal) {
-                actionRow(labels: true)
-                actionRow(labels: false)
-                ScrollView(.horizontal) { actionRow(labels: false).padding(.horizontal, 20) }.scrollIndicators(.hidden)
-            }.padding(.top, 2).padding(.bottom, 12)
+            .font(.system(size: 13, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.75))
+            .padding(.horizontal, 24).padding(.bottom, 8)
         }
         .background {
-            LinearGradient(stops: [.init(color: .black.opacity(0.65), location: 0), .init(color: .clear, location: 0.3),
-                                   .init(color: .clear, location: 0.55), .init(color: .black.opacity(0.8), location: 1)],
+            LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .clear, location: 0.25),
+                                   .init(color: .clear, location: 0.6), .init(color: .black.opacity(0.7), location: 1)],
                            startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea().allowsHitTesting(false)
         }
     }
-
-    /// Back; the title with the episode (or the year, genre and quality) under it; AirPlay, subtitles
-    /// on or off, and the playback settings.
-    private var topBar: some View {
-        HStack(spacing: 10) {
-            round("chevron.left", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
-            VStack(alignment: .leading, spacing: 2) {
-                Text(heading).font(.system(size: 16, weight: .semibold)).lineLimit(1)
-                if !infoLine.isEmpty { Text(infoLine).font(.system(size: 12, weight: .medium)).opacity(0.75).lineLimit(1) }
-            }
-            .foregroundStyle(.white).shadow(color: .black.opacity(0.5), radius: 4)
-            Spacer(minLength: 8)
-            sleepBadge
-            if batteryOn { JellyBattery() }
-            JellyAirPlayButton().frame(width: 40, height: 40).accessibilityLabel("AirPlay")
-            if !subtitleTracks.isEmpty {
-                topButton(activeSubtitle == nil ? "captions.bubble" : "captions.bubble.fill", label: activeSubtitle == nil ? "Subtitles on" : "Subtitles off") {
-                    toggleSubtitles()
-                }.accessibilityIdentifier("jellyspace-cc")
-            }
-            topButton("slider.horizontal.3", label: "Playback settings") { withAnimation { panel = .settings } }
-                .accessibilityIdentifier("jellyspace-settings")
-        }.padding(.horizontal, 20).padding(.top, 10)
+    /// The phone's volume: the percentage, a slider and the speaker (shorter upright).
+    private var volumeCapsule: some View {
+        let wide = verticalSizeClass == .compact
+        return HStack(spacing: 10) {
+            if wide { Text("\(Int((volumeLevel * 100).rounded()))%").font(.system(size: 15, weight: .medium)).monospacedDigit().frame(width: 44, alignment: .leading) }
+            Slider(value: Binding(get: { Double(volumeLevel) }, set: { level in volumeLevel = Float(level); volume.set(Float(level)) }), in: 0...1)
+                .tint(.white).frame(width: wide ? 150 : 80)
+            Image(systemName: volumeLevel == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 15, weight: .semibold))
+        }
+        .foregroundStyle(.white).padding(.horizontal, 16).frame(height: 46)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .accessibilityElement(children: .contain).accessibilityLabel("Volume")
+        .onTapGesture { scheduleHide() }
     }
-    private func topButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+    /// One icon inside a glass capsule.
+    private func glassIcon(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button { action(); scheduleHide() } label: {
-            Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 40, height: 40).contentShape(Rectangle())
+            Image(systemName: symbol).font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 46, height: 46).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(label)
     }
+
     private var heading: String {
         current.item.kind == "Episode" ? (current.item.SeriesName ?? current.title) : (current.item.Name ?? current.title)
     }
@@ -1091,31 +1132,6 @@ struct JellyPlayerView: View {
         }
     }
 
-    private func actionRow(labels: Bool) -> some View {
-        HStack(spacing: labels ? 20 : 30) {
-            if current.item.kind == "Episode", season.count > 1 {
-                action("rectangle.stack", "Episodes", labels: labels) { withAnimation { panel = .episodes } }
-            }
-            if chapters.count > 1 {
-                action("list.bullet.rectangle", "Chapters", labels: labels) { withAnimation { panel = .chapters } }.accessibilityIdentifier("jellyspace-chapters")
-            }
-            Menu {
-                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
-                    Button { speed = Float(value); engine?.setRate(Float(value)) } label: {
-                        if speed == Float(value) { Label(Self.speedName(Float(value)), systemImage: "checkmark") } else { Text(Self.speedName(Float(value))) }
-                    }
-                }
-            } label: { actionFace("gauge.with.needle", Self.speedName(speed), labels: labels) }
-                .accessibilityLabel("Speed").accessibilityIdentifier("jellyspace-speed")
-            action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
-            action(fill.symbol, fill.rawValue, labels: labels) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
-            if pip.available { action("pip.enter", "PiP", labels: labels) { pip.start() } }
-            if let next = nextEpisode {
-                action("forward.end", "Next Episode", labels: labels) { play(next) }.accessibilityIdentifier("jellyspace-next")
-            }
-        }
-    }
-
     private func cycleFill() {
         let all = JellyFill.allCases
         setFill(all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count])
@@ -1125,16 +1141,6 @@ struct JellyPlayerView: View {
         engine?.videoGravity = next == .fill ? .resizeAspectFill : .resizeAspect
         show(next.rawValue)
         scheduleHide()
-    }
-
-    private func action(_ symbol: String, _ title: String, labels: Bool, perform: @escaping () -> Void) -> some View {
-        Button(action: perform) { actionFace(symbol, title, labels: labels) }.buttonStyle(.plain)
-    }
-    private func actionFace(_ symbol: String, _ title: String, labels: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: labels ? 15 : 18, weight: .semibold))
-            if labels { Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize() }
-        }.foregroundStyle(.white.opacity(0.92)).frame(minWidth: 44, minHeight: 40).contentShape(Rectangle()).accessibilityLabel(title)
     }
 
     /// "Up next" over the end of an episode: it plays after the countdown unless you cancel.
@@ -1154,7 +1160,7 @@ struct JellyPlayerView: View {
                 }.buttonStyle(.plain)
             }
         }.padding(16).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(.trailing, 28).padding(.bottom, 90)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(.trailing, 28).padding(.bottom, showsControls ? 160 : 40)
     }
 
     // MARK: Panels
@@ -1467,17 +1473,11 @@ struct JellyPlayerView: View {
         rate == 1 ? "1x" : String(format: rate == rate.rounded() ? "%.0fx" : "%gx", rate)
     }
 
-    /// The round back button: the whole circle takes the tap (a bare chevron was too small to hit).
-    private func round(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 44, height: 44).background(.black.opacity(0.45), in: Circle()).contentShape(Circle())
-        }.buttonStyle(.plain).accessibilityLabel(label)
-    }
+    /// Back or on: the bare arrow, as Infuse draws it.
     private func transport(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button { action() } label: {
-            Image(systemName: symbol).font(.system(size: 24, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 56, height: 56).background(.black.opacity(0.35), in: Circle()).contentShape(Circle())
+            Image(systemName: symbol).font(.system(size: 34, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 64, height: 64).contentShape(Rectangle()).shadow(color: .black.opacity(0.35), radius: 8)
         }.buttonStyle(.plain).accessibilityLabel(label)
     }
     private func jump(_ seconds: Double) {

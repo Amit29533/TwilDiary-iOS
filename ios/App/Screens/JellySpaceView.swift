@@ -226,12 +226,13 @@ struct JellySpaceView: View {
                                         }
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                                Text(library.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text(library.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                             }.contentShape(Rectangle())
                         }
                         .buttonStyle(.springPress).accessibilityLabel(library.name).accessibilityIdentifier("jellyspace-library-" + library.id)
                         .contextMenu { Button("Hide library", systemImage: "eye.slash") { JellyHidden.hide(library.id, name: library.name) } }
-                        .containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                        // Two and a half across, so the next one peeks in.
+                        .containerRelativeFrame(.horizontal, count: 5, span: 2, spacing: 12)
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
