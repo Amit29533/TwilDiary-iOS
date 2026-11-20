@@ -316,10 +316,15 @@ struct JellyfinClient: Sendable {
         let UserData: ItemUserData?
         let SeasonId: String?
         let Overview: String?
+        // Wide pictures: the item's backdrop, or (an episode) its show's.
+        let BackdropImageTags: [String]?
+        let ParentBackdropItemId: String?
+        let ParentBackdropImageTags: [String]?
         struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int? }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
+            case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
@@ -391,6 +396,94 @@ struct JellyfinClient: Sendable {
         return page.Items
     }
 
+    /// A film's or show's page: ratings, genres, people, the file's streams and your state.
+    struct Detail: Decodable, Sendable {
+        struct Person: Decodable, Sendable {
+            let Id: String
+            let Name: String?
+            let Role: String?
+            let kind: String?
+            let PrimaryImageTag: String?
+            enum CodingKeys: String, CodingKey { case Id, Name, Role, kind = "Type", PrimaryImageTag }
+        }
+        struct Stream: Decodable, Sendable {
+            let kind: String?
+            let Codec: String?
+            let Width: Int?
+            let Height: Int?
+            let VideoRangeType: String?
+            let RealFrameRate: Double?
+            let Language: String?
+            let DisplayTitle: String?
+            enum CodingKeys: String, CodingKey { case kind = "Type", Codec, Width, Height, VideoRangeType, RealFrameRate, Language, DisplayTitle }
+        }
+        struct Source: Decodable, Sendable { let Size: Int64?; let Bitrate: Int?; let Container: String?; let MediaStreams: [Stream]? }
+        struct UserState: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool?; let IsFavorite: Bool?; let UnplayedItemCount: Int? }
+        let Id: String
+        let Name: String?
+        let kind: String
+        let ProductionYear: Int?
+        let EndDate: String?
+        let Overview: String?
+        let Genres: [String]?
+        let OfficialRating: String?
+        let CommunityRating: Double?
+        let CriticRating: Double?
+        let RunTimeTicks: Int64?
+        let ImageTags: [String: String]?
+        let BackdropImageTags: [String]?
+        let People: [Person]?
+        let MediaSources: [Source]?
+        let UserData: UserState?
+        enum CodingKeys: String, CodingKey {
+            case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, OfficialRating, CommunityRating, CriticRating
+            case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData
+        }
+    }
+    func detail(_ id: String, user: String?) async throws -> Detail {
+        try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+    }
+    func similar(_ id: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Limit", value: "12"), URLQueryItem(name: "Fields", value: "ProviderIds")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items/\(id)/Similar", query)
+        return page.Items
+    }
+    func seasons(of series: String, user: String?) async throws -> [Item] {
+        let page: Page = try await get("Shows/\(series)/Seasons", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+        return page.Items
+    }
+    func episodes(of series: String, season: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "seasonId", value: season), URLQueryItem(name: "Fields", value: "ProviderIds,Overview")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items
+    }
+    /// The next episode of one show (Play on its page).
+    func nextUp(series: String, user: String) async throws -> Item? {
+        let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "seriesId", value: series), URLQueryItem(name: "userId", value: user),
+                                                       URLQueryItem(name: "Fields", value: "ProviderIds")])
+        return page.Items.first
+    }
+    /// What's newest in one library (its row on JellySpace's home).
+    func latest(in library: String, user: String) async throws -> [Item] {
+        try await get("Items/Latest", [URLQueryItem(name: "parentId", value: library), URLQueryItem(name: "userId", value: user),
+                                       URLQueryItem(name: "Limit", value: "16"), URLQueryItem(name: "Fields", value: "ProviderIds")])
+    }
+    func setPlayed(_ id: String, user: String, _ played: Bool) async throws {
+        try await post("UserPlayedItems/\(id)", [URLQueryItem(name: "userId", value: user)], body: nil, method: played ? "POST" : "DELETE")
+    }
+    func setFavourite(_ id: String, user: String, _ favourite: Bool) async throws {
+        try await post("UserFavoriteItems/\(id)", [URLQueryItem(name: "userId", value: user)], body: nil, method: favourite ? "POST" : "DELETE")
+    }
+    /// Any of an item's pictures (Primary, Backdrop, Logo, Thumb), sized for the phone.
+    static func imageURL(base: URL, item: String, type: String, tag: String?, width: Int = 600) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Items/\(item)/Images/\(type)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "maxWidth", value: String(width)), URLQueryItem(name: "quality", value: "90")]
+            + (tag.map { [URLQueryItem(name: "tag", value: $0)] } ?? [])
+        return components?.url
+    }
+
     // MARK: Playback state (JellySpace): read and written for one user, named in the request (an API
     // key has no user of its own, so the session routes would keep nothing).
     struct UserRow: Decodable, Sendable {
@@ -417,11 +510,11 @@ struct JellyfinClient: Sendable {
     func markPlayed(_ item: String, user: String) async throws {
         try await post("UserPlayedItems/\(item)", [URLQueryItem(name: "userId", value: user)], body: nil)
     }
-    private func post(_ path: String, _ query: [URLQueryItem], body: [String: Any]?) async throws {
+    private func post(_ path: String, _ query: [URLQueryItem], body: [String: Any]?, method: String = "POST") async throws {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue("MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"twildiary-ios\", Version=\"2.0\", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
