@@ -3,7 +3,7 @@ import TwilDiaryCore
 
 /// A list across the libraries: a person's films and shows, a genre, your favourites, or collections.
 struct JellyListRoute: Hashable {
-    enum Kind: String, Hashable { case person, genre, favourites, collections }
+    enum Kind: String, Hashable { case person, genre, favourites, collections, artist }
     let kind: Kind
     var id: String? = nil
     let name: String
@@ -78,6 +78,7 @@ struct JellyListPage: View {
             extra = [URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode")]
             filters.append("IsFavorite")
         case .collections: extra = [URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")]
+        case .artist: extra = [URLQueryItem(name: "IncludeItemTypes", value: "MusicAlbum"), URLQueryItem(name: "AlbumArtistIds", value: route.id)]
         }
         do {
             let hidden = JellyHidden.decode(hiddenRaw)

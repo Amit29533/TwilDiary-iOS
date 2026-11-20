@@ -13,13 +13,22 @@ import TwilDiaryCore
     private(set) var state: PlaybackState = .idle
     private(set) var time: Double = 0
     private(set) var duration: Double = 0
+    /// Repeat: off, the whole queue, or this song.
+    enum Repeat { case off, all, one }
+    private(set) var shuffled = false
+    private(set) var repeatMode = Repeat.off
     @ObservationIgnored private var engine: AetherEngine?
     @ObservationIgnored private var watchers: Set<AnyCancellable> = []
+    /// The queue before shuffling (shuffle off puts it back).
+    @ObservationIgnored private var original: [JellyfinClient.Item] = []
+    /// The song last reported to Jellyfin as playing.
+    @ObservationIgnored private var reported: String?
 
     var current: JellyfinClient.Item? { queue.indices.contains(index) ? queue[index] : nil }
     var playing: Bool { state == .playing }
 
     func play(_ tracks: [JellyfinClient.Item], from start: Int) {
+        shuffled = false; original = []
         queue = tracks
         index = min(max(0, start), max(0, tracks.count - 1))
         Task { await load() }
@@ -30,9 +39,48 @@ import TwilDiaryCore
     }
     func pause() { if playing { engine?.pause() } }
     func next() {
-        guard index + 1 < queue.count else { return }
-        index += 1
+        if index + 1 < queue.count { index += 1 }
+        else if repeatMode == .all, !queue.isEmpty { index = 0 }
+        else { return }
         Task { await load() }
+    }
+    /// A song in Up Next, played now.
+    func jump(to position: Int) {
+        guard queue.indices.contains(position) else { return }
+        index = position
+        Task { await load() }
+    }
+    /// Shuffle: the rest of the queue in a random order after this song; off: back as it was.
+    func toggleShuffle() {
+        guard let current else { return }
+        if shuffled {
+            queue = original
+            index = original.firstIndex { $0.Id == current.Id } ?? 0
+        } else {
+            original = queue
+            queue = [current] + queue.enumerated().filter { $0.offset != index }.map(\.element).shuffled()
+            index = 0
+        }
+        shuffled.toggle()
+        updateCommands()
+    }
+    func cycleRepeat() {
+        repeatMode = switch repeatMode { case .off: .all; case .all: .one; case .one: .off }
+        updateCommands()
+    }
+    /// At a song's end: again (repeat one), else the next (from the top with repeat all).
+    private func finished() {
+        if repeatMode == .one { Task { await load() } } else { next() }
+    }
+    private func updateCommands() {
+        engine?.setNowPlayingTrackCommands(next: index + 1 < queue.count || repeatMode == .all ? { [weak self] in self?.next() } : nil,
+                                           previous: { [weak self] in self?.previous() })
+    }
+    /// The song's play to Jellyfin (signed in only), so the server and its plugins see it.
+    private func report(_ event: String, _ id: String) {
+        guard JellyAccount.token != nil, let client = JellySpace.client else { return }
+        let at = time, paused = state == .paused
+        Task { await client.report(event, item: id, source: nil, seconds: at, paused: paused) }
     }
     /// Back to the start of the song, or (in its first seconds) the one before.
     func previous() {
@@ -42,6 +90,8 @@ import TwilDiaryCore
     }
     func seek(_ seconds: Double) async { _ = await engine?.seek(to: seconds) }
     func stop() {
+        if let reported { report("stop", reported) }
+        reported = nil
         engine?.stop()
         queue = []; index = 0; state = .idle; time = 0; duration = 0
     }
@@ -52,12 +102,15 @@ import TwilDiaryCore
         guard let engine else { return }
         engine.ownsAudioNowPlaying = true
         engine.setNowPlayingInfo(nowPlaying(track, artwork: nil))
-        engine.setNowPlayingTrackCommands(next: index + 1 < queue.count ? { [weak self] in self?.next() } : nil,
-                                          previous: { [weak self] in self?.previous() })
+        updateCommands()
+        if let reported { report("stop", reported) }
+        reported = nil
         time = 0; duration = 0
         do {
             try await engine.load(url: url)
             engine.play()
+            reported = track.Id
+            report("start", track.Id)
         } catch {
             state = .idle
             return
@@ -71,8 +124,13 @@ import TwilDiaryCore
         engine = made
         made.$state.receive(on: DispatchQueue.main).sink { [weak self] value in
             MainActor.assumeIsolated {
-                self?.state = value
-                if value == .ended { self?.next() }
+                guard let self else { return }
+                let was = self.state
+                self.state = value
+                if value == .ended { self.finished() }
+                else if let id = self.reported, (value == .paused && was == .playing) || (value == .playing && was == .paused) {
+                    self.report("progress", id)
+                }
             }
         }.store(in: &watchers)
         made.clock.$currentTime.receive(on: DispatchQueue.main).sink { [weak self] value in
@@ -175,17 +233,30 @@ struct JellyNowPlaying: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var scrub: Double?
+    /// What fills the top: the picture, the song's words, or Up Next.
+    @State private var view = Face.artwork
+    @State private var lyrics: [JellyfinClient.Lyrics.Line] = []
+    private enum Face { case artwork, lyrics, queue }
     var body: some View {
         let music = JellyMusic.shared
         VStack(spacing: 22) {
             Spacer(minLength: 10)
             if let track = music.current, let client = JellySpace.client {
-                ZStack {
-                    Rectangle().fill(HomeStyle.card)
-                    Image(systemName: "music.note").font(.system(size: 60)).foregroundStyle(HomeStyle.secondary)
-                    JellyImage(url: JellyMusic.artwork(track, base: client.base))
+                Group {
+                    switch view {
+                    case .artwork:
+                        ZStack {
+                            Rectangle().fill(HomeStyle.card)
+                            Image(systemName: "music.note").font(.system(size: 60)).foregroundStyle(HomeStyle.secondary)
+                            JellyImage(url: JellyMusic.artwork(track, base: client.base))
+                        }
+                        .aspectRatio(1, contentMode: .fit).frame(maxWidth: 320).clipShape(RoundedRectangle(cornerRadius: 18))
+                    case .lyrics: lyricsView(music)
+                    case .queue: queueView(music)
+                    }
                 }
-                .aspectRatio(1, contentMode: .fit).frame(maxWidth: 320).clipShape(RoundedRectangle(cornerRadius: 18))
+                .frame(maxHeight: 340)
+                .task(id: track.Id) { lyrics = await client.lyrics(track.Id) }
                 VStack(spacing: 4) {
                     Text(track.Name ?? "Song").font(.system(size: 21, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.center)
                     Text([JellyMusic.artist(track), track.Album].compactMap { $0 }.joined(separator: " · "))
@@ -207,6 +278,12 @@ struct JellyNowPlaying: View {
                     control(music.playing ? "pause.circle.fill" : "play.circle.fill", label: music.playing ? "Pause" : "Play", size: 64) { music.toggle() }
                     control("forward.fill", label: "Next song", size: 26) { music.next() }
                 }
+                HStack(spacing: 34) {
+                    toggle(music.shuffled ? "shuffle.circle.fill" : "shuffle", label: "Shuffle", on: music.shuffled) { music.toggleShuffle() }
+                    toggle(music.repeatMode == .one ? "repeat.1" : "repeat", label: "Repeat", on: music.repeatMode != .off) { music.cycleRepeat() }
+                    toggle("quote.bubble", label: "Lyrics", on: view == .lyrics) { view = view == .lyrics ? .artwork : .lyrics }
+                    toggle("list.bullet", label: "Up Next", on: view == .queue) { view = view == .queue ? .artwork : .queue }
+                }
                 Button("Stop") { music.stop(); dismiss() }
                     .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("jellyspace-music-stop")
             }
@@ -214,6 +291,48 @@ struct JellyNowPlaying: View {
         }
         .padding(24)
         .diaryScreenBackground()
+    }
+    private func toggle(_ symbol: String, label: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(on ? theme.accent : HomeStyle.secondary)
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(label).accessibilityAddTraits(on ? .isSelected : [])
+    }
+    /// The words, the line being sung lit and kept in view (when they're timed).
+    private func lyricsView(_ music: JellyMusic) -> some View {
+        let now = lyrics.lastIndex { ($0.Start ?? .max) <= Int64(music.time * 10_000_000) }
+        return ScrollViewReader { reader in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if lyrics.isEmpty { Text("No lyrics").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary) }
+                    ForEach(lyrics.indices, id: \.self) { index in
+                        Text(lyrics[index].Text ?? "").font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(index == now ? HomeStyle.primary : HomeStyle.secondary.opacity(0.7))
+                            .frame(maxWidth: .infinity, alignment: .leading).id(index)
+                    }
+                }.padding(.vertical, 8)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: now) { _, line in if let line { withAnimation { reader.scrollTo(line, anchor: .center) } } }
+        }
+    }
+    /// The songs after this one; a tap plays one now.
+    private func queueView(_ music: JellyMusic) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                let upcoming = Array(music.queue.indices.dropFirst(music.index + 1))
+                if upcoming.isEmpty { Text("Nothing after this").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).padding(.vertical, 8) }
+                ForEach(upcoming, id: \.self) { position in
+                    let track = music.queue[position]
+                    Button { music.jump(to: position) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(track.Name ?? "Song").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            if let artist = JellyMusic.artist(track) { Text(artist).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                        }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+            }
+        }.scrollIndicators(.hidden)
     }
     private func control(_ symbol: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {

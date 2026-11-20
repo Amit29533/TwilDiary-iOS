@@ -11,6 +11,7 @@ struct JellyPhotoSelection: Identifiable {
 struct JellyPhotoGrid: View {
     let photos: [JellyfinClient.Item]
     let client: JellyfinClient
+    var reachedEnd: (() -> Void)? = nil
     @State private var open: JellyPhotoSelection?
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 3), count: 3)
     var body: some View {
@@ -27,6 +28,7 @@ struct JellyPhotoGrid: View {
                         .clipShape(RoundedRectangle(cornerRadius: 4)).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).accessibilityLabel(photos[index].Name ?? "Photo").accessibilityIdentifier("jellyspace-photo-" + photos[index].Id)
+                .onAppear { if index == photos.count - 1 { reachedEnd?() } }
             }
         }
         .fullScreenCover(item: $open) { JellyPhotoViewer(photos: photos, client: client, start: $0.index) }

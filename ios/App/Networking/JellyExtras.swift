@@ -77,6 +77,39 @@ extension JellyfinClient {
         components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "mediaSourceId", value: source)]
         return components.url
     }
+    /// Playback told to Jellyfin as a session (only a signed-in user can): "start", "progress" or
+    /// "stop". The server then shows it under Activity and its plugins (ListenBrainz…) see the plays.
+    func report(_ event: String, item: String, source: String?, seconds: Double, paused: Bool = false) async {
+        var body: [String: Any] = ["ItemId": item, "PositionTicks": Int64(max(0, seconds) * 10_000_000), "IsPaused": paused,
+                                   "CanSeek": true, "PlayMethod": "DirectPlay"]
+        if let source { body["MediaSourceId"] = source }
+        let path = event == "start" ? "Sessions/Playing" : event == "stop" ? "Sessions/Playing/Stopped" : "Sessions/Playing/Progress"
+        try? await post(path, [], body: body)
+    }
+    /// A song's words, each line with when it starts (when the file has timed lyrics).
+    struct Lyrics: Decodable, Sendable {
+        struct Line: Decodable, Sendable { let Text: String?; let Start: Int64? }
+        let Lyrics: [Line]?
+    }
+    func lyrics(_ id: String) async -> [Lyrics.Line] {
+        let found: Lyrics? = try? await get("Audio/\(id)/Lyrics")
+        return found?.Lyrics ?? []
+    }
+    /// A music library's album artists.
+    func artists(in library: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "ParentId", value: library), URLQueryItem(name: "SortBy", value: "SortName"),
+                     URLQueryItem(name: "Limit", value: "2000")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Artists/AlbumArtists", query)
+        return page.Items
+    }
+    /// Every episode of a show, in order.
+    func allEpisodes(of series: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Fields", value: "ProviderIds")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items
+    }
     /// A song as it is.
     func audioURL(_ id: String) -> URL? {
         var components = URLComponents(url: base.appending(path: "Audio/\(id)/stream"), resolvingAgainstBaseURL: false)

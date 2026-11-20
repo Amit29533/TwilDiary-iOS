@@ -222,6 +222,7 @@ struct JellyPlayerView: View {
         .onDisappear {
             if let brightnessAtOpen { JellyScreen.brightness = brightnessAtOpen }
             countdownTask?.cancel()
+            report("stop")
             savePlace()
             engine?.stop()
             OrientationLock.set(.portrait, turnTo: .portrait)
@@ -235,10 +236,12 @@ struct JellyPlayerView: View {
                 try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled, state == .playing else { return }
                 savePlace()
+                report("progress")
             }
         }
         .onChange(of: state) { _, now in
             if now == .playing { scheduleHide() }
+            if now == .paused || now == .playing { report("progress") }
             if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
         }
     }
@@ -505,6 +508,7 @@ struct JellyPlayerView: View {
                 try await engine.load(url: current.url, options: options)
             }
             engine.play()
+            report("start")
             if speed != 1 { engine.setRate(speed) }
             if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
         } catch {
@@ -684,6 +688,7 @@ struct JellyPlayerView: View {
 
     /// Another episode in the same player: your place in this one is kept first.
     private func play(_ item: JellyfinClient.Item) {
+        report("stop")
         savePlace()
         countdown = nil; panel = nil
         guard let next = JellySpace.playback(item, client: current.client) else { return }
@@ -725,23 +730,14 @@ struct JellyPlayerView: View {
     }
 
     private func markInDiary() async {
-        let item = current.item
-        let episode = item.kind == "Episode"
-        var ids = item.ProviderIds
-        if episode, let series = item.SeriesId { ids = (try? await current.client.item(series))?.ProviderIds }
-        guard let tmdb = ids?["Tmdb"].flatMap(Int.init),
-              let titleID = store.libraryIdentity(CatalogItem(id: tmdb, mediaType: episode ? .tv : .movie, name: item.SeriesName ?? item.Name ?? "")),
-              let title = store.title(titleID) else { show("Not in your diary, so not marked"); return }
-        if episode {
-            guard let seasonNumber = item.ParentIndexNumber, let number = item.IndexNumber,
-                  let match = store.episodesForSeason(title.id, season: seasonNumber).first(where: { $0.number == number }) else {
-                show("Episode not found in your diary"); return
-            }
-            if await store.recordViewing(title, episode: match, watchedAt: store.now) { show("Marked S\(seasonNumber) E\(number) in your diary") }
-        } else {
-            let seen = store.titleScope(title.id).activeEvents.contains { $0.titleId == title.id && $0.episodeId == nil }
-            if await store.recordViewing(title, rewatch: seen, watchedAt: store.now) { show("Marked in your diary") }
-        }
+        let note = await JellyDiary.mark(current.item, client: current.client, store: store)
+        if !note.isEmpty { show(note) }
+    }
+    /// Tells Jellyfin what's playing (signed in only: the server's API key has no user to report as).
+    private func report(_ event: String) {
+        guard JellyAccount.token != nil else { return }
+        let client = current.client, id = current.id, source = current.source, at = time, paused = state == .paused
+        Task { await client.report(event, item: id, source: source, seconds: at, paused: paused) }
     }
 
     private func show(_ text: String) {

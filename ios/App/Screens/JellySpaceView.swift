@@ -6,6 +6,20 @@ struct JellyFolderRoute: Hashable {
     let id: String
     let name: String
     let kind: String
+    /// A library's type ("music" shows Albums, Artists and Folders).
+    var type: String? = nil
+}
+
+/// The home's last load, kept while the app runs: JellySpace opens on it at once and refreshes
+/// behind it (at most once a minute, and after watching something).
+@MainActor enum JellyHomeCache {
+    static var server: String?
+    static var at: Date?
+    static var libraries: [JellyfinLibrary] = []
+    static var resume: [JellyfinClient.Item] = []
+    static var favourites: [JellyfinClient.Item] = []
+    static var collections: [JellyfinClient.Item] = []
+    static var latest: [String: [JellyfinClient.Item]] = [:]
 }
 
 /// JellySpace: your Jellyfin server, played by AetherEngine straight from the file (Jellyfin's static
@@ -82,7 +96,7 @@ struct JellySpaceView: View {
             }
         }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
-        .task { await loadHome() }
+        .task { await appear() }
         .task(id: query) {
             guard !query.isEmpty else { results = []; seerrResults = []; searchRunning = false; return }
             searchRunning = true
@@ -121,7 +135,7 @@ struct JellySpaceView: View {
             ForEach(visibleLibraries) { library in
                 let items = shown(latest[library.id] ?? [])
                 if !items.isEmpty {
-                    tileRow(library.name, items: items, client: client, more: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder"))
+                    tileRow(library.name, items: items, client: client, more: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder", type: library.type))
                 }
             }
         case .collections:
@@ -200,7 +214,7 @@ struct JellySpaceView: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(visibleLibraries) { library in
-                        NavigationLink(value: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder")) {
+                        NavigationLink(value: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder", type: library.type)) {
                             VStack(spacing: 6) {
                                 Color.clear.aspectRatio(16 / 9, contentMode: .fit)
                                     .overlay {
@@ -229,8 +243,8 @@ struct JellySpaceView: View {
             heading(title)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(items, id: \.Id) {
-                        JellyWideCard(item: $0, client: client, playing: $playing)
+                    ForEach(items, id: \.Id) { item in
+                        JellyWideCard(item: item, client: client, playing: $playing, onRemove: title == "Continue Watching" ? { removeFromResume(item) } : nil)
                             .containerRelativeFrame(.horizontal, count: max(2, posterSize.columns - 1), spacing: 12)
                     }
                 }
@@ -257,9 +271,31 @@ struct JellySpaceView: View {
         }
     }
 
+    /// Off Continue Watching: its place is cleared in Jellyfin (it starts from the beginning next time).
+    private func removeFromResume(_ item: JellyfinClient.Item) {
+        withAnimation { resume.removeAll { $0.Id == item.Id } }
+        JellyHomeCache.resume = resume
+        guard let client = JellySpace.client else { return }
+        let id = item.Id
+        Task {
+            guard let user = await JellyfinUser.id(client) else { return }
+            try? await client.savePosition(id, user: user, seconds: 0)
+        }
+    }
+
+    /// What was loaded last time shows at once; it's fetched again when it's over a minute old.
+    private func appear() async {
+        let server = JellyfinSettings.address?.absoluteString
+        if libraries.isEmpty, JellyHomeCache.server == server, JellyHomeCache.at != nil {
+            libraries = JellyHomeCache.libraries; resume = JellyHomeCache.resume; favourites = JellyHomeCache.favourites
+            collections = JellyHomeCache.collections; latest = JellyHomeCache.latest; loaded = true
+        }
+        if JellyHomeCache.server == server, let at = JellyHomeCache.at, Date.now.timeIntervalSince(at) < 60, !libraries.isEmpty { return }
+        await loadHome()
+    }
     private func loadHome() async {
         guard let client = JellySpace.client else { return }
-        loading = true; failure = nil
+        loading = libraries.isEmpty; failure = nil
         defer { loading = false; loaded = true }
         do {
             libraries = try await client.libraries()
@@ -277,11 +313,18 @@ struct JellySpaceView: View {
         resume = (try? await started) ?? []
         favourites = (try? await liked) ?? []
         collections = (try? await sets) ?? []
-        var newest: [String: [JellyfinClient.Item]] = [:]
-        for library in libraries {
-            newest[library.id] = (try? await client.latest(in: library.id, user: user)) ?? []
+        // Every library's newest at once.
+        latest = await withTaskGroup(of: (String, [JellyfinClient.Item]).self) { group in
+            for id in libraries.map(\.id) {
+                group.addTask { (id, (try? await client.latest(in: id, user: user)) ?? []) }
+            }
+            var newest: [String: [JellyfinClient.Item]] = [:]
+            for await (id, items) in group { newest[id] = items }
+            return newest
         }
-        latest = newest
+        JellyHomeCache.server = client.base.absoluteString; JellyHomeCache.at = .now
+        JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
+        JellyHomeCache.collections = collections; JellyHomeCache.latest = latest
     }
 }
 
@@ -396,16 +439,28 @@ struct JellyFolderPage: View {
     let route: JellyFolderRoute
     @AppStorage("jellyspace.sort") private var sortRaw = JellyfinClient.Sort.name.rawValue
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
+    @AppStorage("jellyspace.music.view") private var musicView = "Albums"
     @State private var unwatched = false
     @State private var items: [JellyfinClient.Item] = []
     @State private var loading = true
     @State private var failure: String?
     @State private var playing: JellyPlayback?
+    /// How many the server has, and how many came so far (a big folder loads 200 at a time).
+    @State private var total = 0
+    @State private var fetched = 0
+    @State private var loadingMore = false
+    private let pageSize = 200
+    private var music: Bool { route.type == "music" }
 
     var body: some View {
         EdgeToEdgeScroll(frosted: true) {
             VStack(alignment: .leading, spacing: 14) {
                 if let client = JellySpace.client {
+                    if music {
+                        Picker("View", selection: $musicView) {
+                            ForEach(["Albums", "Artists", "Folders"], id: \.self) { Text($0).tag($0) }
+                        }.pickerStyle(.segmented).padding(.horizontal, 6).accessibilityIdentifier("jellyspace-music-view")
+                    }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                     else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
                     else if items.isEmpty { Text("Nothing in here.").font(.subheadline).foregroundStyle(.secondary) }
@@ -416,8 +471,9 @@ struct JellyFolderPage: View {
                         // list, after them.
                         let photos = items.filter { $0.kind == "Photo" }, songs = items.filter { $0.kind == "Audio" }
                         let rest = items.filter { $0.kind != "Photo" && $0.kind != "Audio" }
-                        if !rest.isEmpty { JellyGrid(items: rest, client: client, playing: $playing) }
-                        if !photos.isEmpty { JellyPhotoGrid(photos: photos, client: client) }
+                        if !rest.isEmpty { JellyGrid(items: rest, client: client, playing: $playing) { Task { await loadMore() } } }
+                        if !photos.isEmpty { JellyPhotoGrid(photos: photos, client: client) { Task { await loadMore() } } }
+                        if loadingMore { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
                         if !songs.isEmpty { JellyTrackList(tracks: songs) }
                     }
                 }
@@ -427,7 +483,7 @@ struct JellyFolderPage: View {
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .toolbar { if sortable { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched) } } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
-        .task(id: sortRaw + String(unwatched) + hiddenRaw) { await load() }
+        .task(id: sortRaw + String(unwatched) + hiddenRaw + musicView) { await load() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
     }
 
@@ -440,14 +496,45 @@ struct JellyFolderPage: View {
         defer { loading = false }
         do {
             let user = await JellyfinUser.id(client)
-            let found = try await client.children(of: route.id, user: user, sort: sortable ? JellyfinClient.Sort(rawValue: sortRaw) ?? .name : nil,
-                                                  unwatched: sortable && unwatched)
-            let hidden = JellyHidden.decode(hiddenRaw)
-            let kept = found.filter { hidden[$0.Id] == nil }
-            items = kept.filter { JellySpace.opens($0) } + kept.filter { !JellySpace.opens($0) }
+            let sort = sortable ? JellyfinClient.Sort(rawValue: sortRaw) ?? .name : nil
+            if music, musicView != "Folders" {
+                // A music library by album or by artist (the whole library, not its folders).
+                let found: [JellyfinClient.Item]
+                if musicView == "Artists" {
+                    found = try await client.artists(in: route.id, user: user)
+                } else {
+                    found = try await client.items([URLQueryItem(name: "IncludeItemTypes", value: "MusicAlbum"), URLQueryItem(name: "ParentId", value: route.id)],
+                                                   filters: unwatched ? ["IsUnplayed"] : [], user: user, sort: sort ?? .name, limit: 2000)
+                }
+                total = found.count; fetched = found.count
+                items = arrange(found)
+                return
+            }
+            let page = try await client.childrenPage(of: route.id, user: user, sort: sort, unwatched: sortable && unwatched, start: 0, limit: pageSize)
+            total = page.TotalRecordCount; fetched = page.Items.count
+            items = arrange(page.Items)
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
         }
+    }
+    /// The next 200, when you near the end.
+    private func loadMore() async {
+        guard !loadingMore, fetched < total, !(music && musicView != "Folders"), let client = JellySpace.client else { return }
+        loadingMore = true
+        defer { loadingMore = false }
+        let user = await JellyfinUser.id(client)
+        let sort = sortable ? JellyfinClient.Sort(rawValue: sortRaw) ?? .name : nil
+        guard let page = try? await client.childrenPage(of: route.id, user: user, sort: sort, unwatched: sortable && unwatched, start: fetched, limit: pageSize) else { return }
+        fetched += page.Items.count
+        total = page.TotalRecordCount
+        let known = Set(items.map(\.Id))
+        items = arrange(items + page.Items.filter { !known.contains($0.Id) })
+    }
+    /// Without what you hid; folders first.
+    private func arrange(_ found: [JellyfinClient.Item]) -> [JellyfinClient.Item] {
+        let hidden = JellyHidden.decode(hiddenRaw)
+        let kept = found.filter { hidden[$0.Id] == nil }
+        return kept.filter { JellySpace.opens($0) } + kept.filter { !JellySpace.opens($0) }
     }
 }
 
@@ -456,10 +543,15 @@ struct JellyGrid: View {
     let items: [JellyfinClient.Item]
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
+    /// Called as the last poster comes on screen (to load more).
+    var reachedEnd: (() -> Void)? = nil
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            ForEach(items, id: \.Id) { JellyTile(item: $0, client: client, playing: $playing) }
+            ForEach(items, id: \.Id) { item in
+                JellyTile(item: item, client: client, playing: $playing)
+                    .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
+            }
         }
     }
 }
@@ -489,6 +581,9 @@ struct JellyTile: View {
         } else if item.kind == "Photo" {
             Button { photo = JellyPhotoSelection(index: 0) } label: { face }
                 .buttonStyle(.springPress).accessibilityLabel(item.Name ?? "Photo").accessibilityIdentifier("jellyspace-photo-" + item.Id)
+        } else if item.kind == "MusicArtist" {
+            NavigationLink(value: JellyListRoute(kind: .artist, id: item.Id, name: item.Name ?? "Artist")) { face }
+                .buttonStyle(.springPress).accessibilityIdentifier("jellyspace-artist-" + item.Id)
         } else if item.kind == "Movie" || item.kind == "Series" {
             NavigationLink(value: JellyDetailRoute(id: item.Id, name: item.Name ?? "")) { face }
                 .buttonStyle(.springPress).accessibilityIdentifier("jellyspace-title-" + item.Id)
@@ -606,6 +701,7 @@ struct JellyWideCard: View {
     let item: JellyfinClient.Item
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
+    var onRemove: (() -> Void)? = nil
     @State private var played: Bool?
     @State private var favourite: Bool?
     var body: some View {
@@ -627,7 +723,7 @@ struct JellyWideCard: View {
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
         .buttonStyle(.springPress).accessibilityLabel("Play " + JellySpace.name(item))
-        .modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite, play: nil))
+        .modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite, play: nil, remove: onRemove))
     }
 }
 
@@ -637,7 +733,10 @@ struct JellyItemMenu: ViewModifier {
     @Binding var played: Bool?
     @Binding var favourite: Bool?
     let play: (() -> Void)?
+    var remove: (() -> Void)? = nil
     @Environment(AppRouter.self) private var router
+    @Environment(DiaryStore.self) private var store
+    @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
     @ViewBuilder func body(content: Content) -> some View {
         if ["CollectionFolder", "Photo", "PhotoAlbum"].contains(item.kind) {
             content
@@ -649,7 +748,13 @@ struct JellyItemMenu: ViewModifier {
                     played = !isPlayed
                     let id = item.Id, now = !isPlayed
                     send { client, user in try await client.setPlayed(id, user: user, now) }
+                    // Watched: in the diary too (as finishing it in the player does).
+                    if now, diaryOn, ["Movie", "Episode"].contains(item.kind), let client = JellySpace.client {
+                        let watched = item
+                        Task { _ = await JellyDiary.mark(watched, client: client, store: store) }
+                    }
                 }
+                if let remove { Button("Remove from Continue Watching", systemImage: "minus.circle", action: remove) }
                 let isFavourite = favourite ?? (item.UserData?.IsFavorite == true)
                 Button(isFavourite ? "Remove from favourites" : "Add to favourites", systemImage: isFavourite ? "heart.slash" : "heart") {
                     favourite = !isFavourite

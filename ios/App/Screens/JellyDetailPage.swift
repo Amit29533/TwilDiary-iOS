@@ -42,6 +42,7 @@ struct JellyDetailPage: View {
     @State private var favourite = false
     @State private var fullOverview = false
     @State private var user: String?
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     /// Trailer files and special features.
     @State private var extras: [JellyfinClient.Item] = []
     /// The version of a film to play (when it's stored in more than one quality).
@@ -63,7 +64,7 @@ struct JellyDetailPage: View {
                             if !series, let source = detail.MediaSources?.first(where: { $0.Id == version }) ?? detail.MediaSources?.first { videoInfo(source) }
                             if let overview = detail.Overview.map(JellySpace.plainText), !overview.isEmpty {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("Overview").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                    Text("Overview").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                                     Text(overview).font(.system(size: 15)).foregroundStyle(HomeStyle.primary.opacity(0.85))
                                         .lineLimit(fullOverview ? nil : 4)
                                     Button(fullOverview ? "Show less" : "Show more") { withAnimation { fullOverview.toggle() } }
@@ -75,10 +76,13 @@ struct JellyDetailPage: View {
                             if let people = detail.People?.prefix(20), !people.isEmpty { castRow(Array(people), client: client) }
                             if !similar.isEmpty {
                                 VStack(alignment: .leading, spacing: 10) {
-                                    Text("Similar").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                    Text("Similar").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                                     ScrollView(.horizontal) {
                                         LazyHStack(alignment: .top, spacing: 12) {
-                                            ForEach(similar, id: \.Id) { JellyTile(item: $0, client: client, playing: $playing).frame(width: 112) }
+                                            ForEach(similar, id: \.Id) {
+                                                JellyTile(item: $0, client: client, playing: $playing)
+                                                    .containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                                            }
                                         }
                                     }.scrollIndicators(.hidden).scrollClipDisabled()
                                 }
@@ -220,7 +224,7 @@ struct JellyDetailPage: View {
     /// Trailers and special features, as wide cards that play.
     private func extrasRow(_ client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Extras").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            Text("Extras").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(extras, id: \.Id) { JellyWideCard(item: $0, client: client, playing: $playing).frame(width: 220) }
@@ -269,7 +273,7 @@ struct JellyDetailPage: View {
         if let rate = source.Bitrate, rate > 0 { chips.append(("speedometer", String(format: "%.2f Mbps", Double(rate) / 1_000_000))) }
         if let fps = video?.RealFrameRate, fps > 0 { chips.append(("film", String(format: fps == fps.rounded() ? "%.0f fps" : "%.2f fps", fps))) }
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Video").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            Text("Video").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                 ForEach(chips, id: \.1) { chip in
                     chip_(Text("\(Image(systemName: chip.0)) \(chip.1)"))
@@ -300,7 +304,7 @@ struct JellyDetailPage: View {
                     }
                 }.scrollIndicators(.hidden)
             } else if let only = seasons.first {
-                Text(only.Name ?? "Episodes").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                Text(only.Name ?? "Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             }
             LazyVStack(spacing: 8) {
                 ForEach(episodes, id: \.Id) { JellyEpisodeRow(item: $0, client: client, playing: $playing) }
@@ -310,7 +314,7 @@ struct JellyDetailPage: View {
 
     private func castRow(_ people: [JellyfinClient.Detail.Person], client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Cast & crew").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            Text("Cast & crew").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(people, id: \.Id) { person in

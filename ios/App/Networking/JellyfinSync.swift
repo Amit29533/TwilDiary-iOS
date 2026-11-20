@@ -387,20 +387,25 @@ struct JellyfinClient: Sendable {
     // MARK: Browsing (JellySpace)
     /// What's directly inside a library, folder, show or season (one level), with your progress.
     func children(of parent: String, user: String?, sort: Sort? = nil, unwatched: Bool = false) async throws -> [Item] {
+        try await childrenPage(of: parent, user: user, sort: sort, unwatched: unwatched, start: 0, limit: 1000).Items
+    }
+    /// One page of a folder (a big one loads as you scroll).
+    func childrenPage(of parent: String, user: String?, sort: Sort?, unwatched: Bool, start: Int, limit: Int) async throws -> Page {
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"), URLQueryItem(name: "Limit", value: "1000")]
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))]
         query += sort?.query ?? [URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName")]
         if unwatched { query.append(URLQueryItem(name: "Filters", value: "IsUnplayed")) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
-        let page: Page = try await get("Items", query)
-        return page.Items
+        return try await get("Items", query)
     }
     /// How a folder or list is ordered.
     enum Sort: String, CaseIterable, Sendable {
         case name = "Name", added = "Date added", year = "Year", rating = "Rating"
         var query: [URLQueryItem] {
             switch self {
-            case .name: [URLQueryItem(name: "SortBy", value: "SortName"), URLQueryItem(name: "SortOrder", value: "Ascending")]
+            // Folders first, then A to Z (so a folder paged in later still sits with the others).
+            case .name: [URLQueryItem(name: "SortBy", value: "IsFolder,SortName"), URLQueryItem(name: "SortOrder", value: "Descending,Ascending")]
             case .added: [URLQueryItem(name: "SortBy", value: "DateCreated,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
             case .year: [URLQueryItem(name: "SortBy", value: "ProductionYear,PremiereDate,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
             case .rating: [URLQueryItem(name: "SortBy", value: "CommunityRating,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
@@ -616,7 +621,7 @@ struct JellyfinClient: Sendable {
     func markPlayed(_ item: String, user: String) async throws {
         try await post("UserPlayedItems/\(item)", [URLQueryItem(name: "userId", value: user)], body: nil)
     }
-    private func post(_ path: String, _ query: [URLQueryItem], body: [String: Any]?, method: String = "POST") async throws {
+    func post(_ path: String, _ query: [URLQueryItem], body: [String: Any]?, method: String = "POST") async throws {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
