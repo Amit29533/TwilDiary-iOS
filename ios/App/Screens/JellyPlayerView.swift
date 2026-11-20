@@ -162,6 +162,8 @@ struct JellyPlayerView: View {
     @State private var swipeArea = CGSize.zero
     /// The video's frame rate, from the server (0 when it doesn't say): Auto upscaling skips 50/60 fps.
     @State private var frameRate: Double = 0
+    /// Playback info over the corner (More → Playback info).
+    @State private var showsInfo = false
     /// What the upscaler is doing now (nil when it isn't running).
     @State private var upscale: UpscaleStatus?
     /// Stretches already skipped on their own (each once, so going back into one plays it).
@@ -240,6 +242,12 @@ struct JellyPlayerView: View {
             // With the controls up, the brightness bar at the left already shows a brightness swipe.
             if let level, !(showsControls && level.symbol == "sun.max.fill") {
                 levelHUD(level).transition(.opacity).allowsHitTesting(false)
+            }
+            if showsInfo, let engine, failure == nil, !screenLocked {
+                JellyPlaybackInfo(engine: engine, serverFrameRate: frameRate)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, verticalSizeClass == .compact ? 64 : 110).padding(.trailing, 16)
+                    .allowsHitTesting(false)
             }
             // Holding plays at 2x either way; the badge shows only with the controls up.
             if holding, showsControls {
@@ -1192,7 +1200,7 @@ struct JellyPlayerView: View {
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
-                       fill: fill, rotationLocked: rotationLocked)
+                       fill: fill, rotationLocked: rotationLocked, info: showsInfo)
     }
     /// What the menus' choices do.
     private var menuActions: JellyMenuActions {
@@ -1216,7 +1224,8 @@ struct JellyPlayerView: View {
                 applySound("Volume boost: " + (JellySound.boost.first { $0.1 == percent }?.0 ?? "Off"))
             },
             fill: { next in menuUsed(); setFill(next) },
-            rotation: { menuUsed(); toggleRotation() })
+            rotation: { menuUsed(); toggleRotation() },
+            info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } })
     }
     /// A subtitle picked (-1 for off): turned on, and its language remembered.
     private func pickSubtitle(_ id: Int) {
@@ -2232,6 +2241,7 @@ private struct JellyMenuState: Equatable, Sendable {
     var boost: Int
     var fill: JellyFill
     var rotationLocked: Bool
+    var info: Bool
 }
 
 /// What the menus' choices do (closures: they play no part in deciding a redraw).
@@ -2250,6 +2260,7 @@ private struct JellyMenuActions {
     let boost: (Int) -> Void
     let fill: (JellyFill) -> Void
     let rotation: () -> Void
+    let info: (Bool) -> Void
 }
 
 @MainActor private enum JellyMenuParts {
@@ -2310,6 +2321,7 @@ private struct JellyMoreMenu: View, Equatable {
                         ForEach(JellySound.boost, id: \.1) { Text($0.0).tag($0.1) }
                     } label: { Label("Volume boost", systemImage: "speaker.plus") }.pickerStyle(.menu)
                 }
+                Toggle(isOn: Binding(get: { state.info }, set: { actions.info($0) })) { Label("Playback info", systemImage: "info.circle") }
                 Button { actions.advanced() } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
             }
             .onAppear { actions.opened() }.onDisappear { actions.closed() }
