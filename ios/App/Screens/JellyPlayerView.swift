@@ -72,6 +72,13 @@ struct JellyPlayerView: View {
     @State private var levelTask: Task<Void, Never>?
     @State private var brightnessAtOpen: CGFloat?
     @State private var holding = false
+    /// Rotation locked (the default): the picture's own way up, sideways or upright; unlocked: it
+    /// turns with the phone.
+    @State private var rotationLocked = true
+    /// Screen locked: no controls and no touches until it's unlocked.
+    @State private var screenLocked = false
+    @State private var unlockShown = false
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private enum Panel { case tracks, episodes, chapters }
 
@@ -104,7 +111,7 @@ struct JellyPlayerView: View {
                     tapZone(seconds: -10, height: area.size.height)
                     tapZone(seconds: 10, height: area.size.height)
                 }
-            }.ignoresSafeArea()
+            }.ignoresSafeArea().allowsHitTesting(!screenLocked)
             JellyVolumeView(volume: volume).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false)
             if let level { levelHUD(level).transition(.opacity).allowsHitTesting(false) }
             if holding {
@@ -118,8 +125,13 @@ struct JellyPlayerView: View {
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing).padding(.horizontal, 90)
                     .transition(.opacity).allowsHitTesting(false)
             }
-            if showsControls || failure != nil { controls.transition(.opacity) }
-            if let segment = activeSegment, panel == nil, countdown == nil, failure == nil { skipButton(segment).transition(.opacity) }
+            if screenLocked {
+                lockedLayer
+            } else {
+                if showsControls || failure != nil { controls.transition(.opacity) }
+                if showsControls, failure == nil, panel == nil { lockPill.transition(.opacity) }
+            }
+            if let segment = activeSegment, panel == nil, countdown == nil, failure == nil, !screenLocked { skipButton(segment).transition(.opacity) }
             if let countdown, let next = nextEpisode { upNext(next, in: countdown) }
             if let panel { panelView(panel).transition(.opacity) }
             if let notice {
@@ -130,7 +142,12 @@ struct JellyPlayerView: View {
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .onAppear { OrientationLock.set(.landscape, turnTo: .landscapeRight) }
+        .onAppear {
+            if let width = current.item.Width, let height = current.item.Height, width > 0, height > 0 {
+                turnToPicture(CGSize(width: width, height: height))
+            }
+        }
+        .onChange(of: videoSize) { _, size in turnToPicture(size) }
         .onDisappear {
             if let brightnessAtOpen { JellyScreen.brightness = brightnessAtOpen }
             savePlace()
@@ -240,6 +257,78 @@ struct JellyPlayerView: View {
         }
         .foregroundStyle(.white).padding(.horizontal, 16).frame(height: 40).background(.black.opacity(0.6), in: Capsule())
         .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18)
+    }
+
+    // MARK: Orientation and locks
+
+    /// With rotation locked, the picture's own way up: upright for a tall video, sideways otherwise.
+    private func turnToPicture(_ size: CGSize) {
+        guard rotationLocked, size.width > 0, size.height > 0 else { return }
+        let upright = size.height > size.width * 1.05
+        OrientationLock.set(upright ? .portrait : .landscape, turnTo: upright ? .portrait : .landscape)
+    }
+    /// Lock: stays as it is now. Unlock: turns with the phone.
+    private func toggleRotation() {
+        rotationLocked.toggle()
+        if rotationLocked {
+            let now = OrientationLock.current
+            OrientationLock.set(now, turnTo: now)
+            show("Rotation locked")
+        } else {
+            OrientationLock.set(.allButUpsideDown, turnTo: .allButUpsideDown)
+            show("Rotation unlocked")
+        }
+        scheduleHide()
+    }
+    private func lockScreen() {
+        withAnimation(.easeInOut(duration: 0.2)) { screenLocked = true; showsControls = false; panel = nil }
+        flashUnlock()
+    }
+    private func flashUnlock() {
+        withAnimation { unlockShown = true }
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation { unlockShown = false }
+        }
+    }
+
+    /// Screen lock and rotation lock, one above the other, at the side.
+    private var lockPill: some View {
+        VStack(spacing: 4) {
+            pillButton(screenLocked ? "lock.fill" : "lock.open", label: "Lock screen") { lockScreen() }
+                .accessibilityIdentifier("jellyspace-lock-screen")
+            pillButton(rotationLocked ? "lock.rotation" : "lock.rotation.open", label: rotationLocked ? "Unlock rotation" : "Lock rotation") { toggleRotation() }
+                .accessibilityIdentifier("jellyspace-lock-rotation")
+        }
+        .padding(.vertical, 6).frame(width: 54).background(.black.opacity(0.55), in: Capsule())
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: verticalSizeClass == .compact ? .trailing : .topTrailing)
+        .padding(.trailing, 16).padding(.top, verticalSizeClass == .compact ? 0 : 90)
+    }
+    private func pillButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 19, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(label)
+    }
+    /// Locked: a tap anywhere shows the unlock button for a few seconds.
+    private var lockedLayer: some View {
+        ZStack {
+            Color.clear.contentShape(Rectangle()).ignoresSafeArea().onTapGesture { flashUnlock() }
+            if unlockShown {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { screenLocked = false; unlockShown = false; showsControls = true }
+                    scheduleHide()
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: "lock.fill").font(.system(size: 22, weight: .semibold))
+                        Text("Tap to unlock").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.white).padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 18)).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityIdentifier("jellyspace-unlock").transition(.opacity)
+            }
+        }
     }
 
     /// The controls fade on their own after a few seconds of playing.
@@ -493,7 +582,7 @@ struct JellyPlayerView: View {
             } else if state == .loading || state == .idle {
                 ProgressView().controlSize(.large).tint(.white)
             } else {
-                HStack(spacing: 84) {
+                HStack(spacing: verticalSizeClass == .compact ? 84 : 30) {
                     transport("gobackward.10", label: "Back 10 seconds", size: 34) { jump(-10) }
                     transport(playingNow ? "pause.fill" : "play.fill", label: playingNow ? "Pause" : "Play", size: 50) {
                         if playingNow { engine?.pause() } else { engine?.play() }
@@ -531,6 +620,7 @@ struct JellyPlayerView: View {
             ViewThatFits(in: .horizontal) {
                 actionRow(labels: true)
                 actionRow(labels: false)
+                ScrollView(.horizontal) { actionRow(labels: false).padding(.horizontal, 20) }.scrollIndicators(.hidden)
             }.padding(.top, 6).padding(.bottom, 14)
         }
         .background {

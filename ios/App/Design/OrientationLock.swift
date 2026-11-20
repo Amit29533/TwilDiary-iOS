@@ -1,9 +1,18 @@
 import UIKit
 
-/// The app stays upright; JellySpace's player turns sideways while it's open. The Info.plist allows
+/// The app stays upright; JellySpace's player turns to its picture's way up (or with the phone). The Info.plist allows
 /// landscape, and this mask (asked by the app delegate) narrows it to what's on screen.
 @MainActor enum OrientationLock {
     private(set) static var mask: UIInterfaceOrientationMask = .portrait
+
+    /// The way the screen faces now, as a mask (the player's rotation lock keeps it).
+    static var current: UIInterfaceOrientationMask {
+        switch UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first?.interfaceOrientation {
+        case .landscapeLeft: .landscapeLeft
+        case .landscapeRight: .landscapeRight
+        default: .portrait
+        }
+    }
 
     static func set(_ mask: UIInterfaceOrientationMask, turnTo orientation: UIInterfaceOrientationMask) {
         self.mask = mask

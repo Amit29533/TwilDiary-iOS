@@ -320,11 +320,15 @@ struct JellyfinClient: Sendable {
         let BackdropImageTags: [String]?
         let ParentBackdropItemId: String?
         let ParentBackdropImageTags: [String]?
+        // The top poster's rating; a video's size (which way the player turns before it loads).
+        let CommunityRating: Double?
+        let Width: Int?
+        let Height: Int?
         struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool? }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
-            case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags
+            case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
