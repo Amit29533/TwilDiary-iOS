@@ -56,8 +56,14 @@ struct JellySpaceView: View {
             playing = JellyPlayback(id: item.Id, url: url, title: Self.name(item))
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                Artwork(path: client.flatMap { Self.poster(item, base: $0.base) }?.absoluteString, title: item.Name ?? "", initialsOnly: false)
-                    .aspectRatio(2 / 3, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 10))
+                // Jellyfin's own posters come from its home-network address, which the public artwork
+                // loader refuses (it takes TMDB's and AniList's only): JellyfinPoster loads and keeps them.
+                Color.clear.aspectRatio(2 / 3, contentMode: .fit)
+                    .overlay {
+                        let fallback = Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
+                        if let url = client.flatMap({ Self.poster(item, base: $0.base) }) { JellyfinPoster(url: url) { fallback } } else { fallback }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 Text(item.SeriesName ?? item.Name ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 Text(Self.detail(item)).font(.system(size: 11)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
             }.contentShape(Rectangle())
