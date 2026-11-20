@@ -347,7 +347,7 @@ struct JellyfinClient: Sendable {
     /// Films and episodes for JellySpace: the newest first, or those matching a search.
     func videos(search: String, limit: Int = 60) async throws -> [Item] {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Episode"),
-                     URLQueryItem(name: "Limit", value: String(limit))]
+                     URLQueryItem(name: "Fields", value: "ProviderIds"), URLQueryItem(name: "Limit", value: String(limit))]
         if search.isEmpty { query += [URLQueryItem(name: "SortBy", value: "DateCreated"), URLQueryItem(name: "SortOrder", value: "Descending")] }
         else { query.append(URLQueryItem(name: "SearchTerm", value: search)) }
         let page: Page = try await get("Items", query)
@@ -358,6 +358,46 @@ struct JellyfinClient: Sendable {
         var components = URLComponents(url: base.appending(path: "Videos/\(id)/stream"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "static", value: "true"), URLQueryItem(name: "api_key", value: key)]
         return components?.url
+    }
+    // MARK: Playback state (JellySpace): read and written for one user, named in the request (an API
+    // key has no user of its own, so the session routes would keep nothing).
+    struct UserRow: Decodable, Sendable {
+        struct Policy: Decodable, Sendable { let IsAdministrator: Bool? }
+        let Id: String
+        let Policy: Policy?
+    }
+    struct UserData: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool? }
+    func users() async throws -> [UserRow] { try await get("Users") }
+    /// One item with its provider ids (an episode's show, for the diary match).
+    func item(_ id: String) async throws -> Item? {
+        let page: Page = try await get("Items", [URLQueryItem(name: "Ids", value: id), URLQueryItem(name: "Fields", value: "ProviderIds")])
+        return page.Items.first
+    }
+    func userData(_ item: String, user: String) async throws -> UserData {
+        try await get("UserItems/\(item)/UserData", [URLQueryItem(name: "userId", value: user)])
+    }
+    /// Where you stopped, so Jellyfin (and its other apps) resume there.
+    func savePosition(_ item: String, user: String, seconds: Double) async throws {
+        let body: [String: Any] = ["PlaybackPositionTicks": Int64(max(0, seconds) * 10_000_000),
+                                   "LastPlayedDate": Date.now.ISO8601Format()]
+        try await post("UserItems/\(item)/UserData", [URLQueryItem(name: "userId", value: user)], body: body)
+    }
+    func markPlayed(_ item: String, user: String) async throws {
+        try await post("UserPlayedItems/\(item)", [URLQueryItem(name: "userId", value: user)], body: nil)
+    }
+    private func post(_ path: String, _ query: [URLQueryItem], body: [String: Any]?) async throws {
+        var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { components.queryItems = query }
+        var request = URLRequest(url: components.url!, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.setValue("MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"twildiary-ios\", Version=\"2.0\", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw APIError.message("Jellyfin answered \(status).") }
     }
     /// Every item of the given types under a library, a page at a time.
     func items(in library: String, types: String) async throws -> [Item] {

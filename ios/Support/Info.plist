@@ -6,7 +6,7 @@
     <key>NSUserActivityTypes</key>
     <array><string>INSendMessageIntent</string></array>
     <key>UIBackgroundModes</key>
-    <array><string>fetch</string><string>processing</string></array>
+    <array><string>audio</string><string>fetch</string><string>processing</string></array>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array><string>com.amit29533.TwilDiary.sync</string><string>com.amit29533.TwilDiary.outbox</string><string>com.amit29533.TwilDiary.match.*</string></array>
 	<!-- Jellyfin on the home network usually serves plain HTTP (192.168.x.x:8096). This allows

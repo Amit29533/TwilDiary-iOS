@@ -66,7 +66,7 @@ targets:
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: TwilDiary saves the photos you download to your photo library.
         INFOPLIST_KEY_CFBundleDisplayName: TwilDiary
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates: YES
         # Settings → Sync & backup keeps daily copies in Files → On My iPhone → TwilDiary.

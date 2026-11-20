@@ -3,6 +3,8 @@ import UIKit
 import TwilDiaryCore
 
 @main struct TwilDiaryApp: App {
+    /// Answers the allowed orientations: upright, except JellySpace's player (OrientationLock).
+    @UIApplicationDelegateAdaptor(TwilDiaryAppDelegate.self) private var appDelegate
     @State private var store: DiaryStore
     @State private var router = AppRouter()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
