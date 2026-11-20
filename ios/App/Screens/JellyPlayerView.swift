@@ -83,6 +83,8 @@ struct JellyPlayerView: View {
     @State private var season: [JellyfinClient.Item] = []
     @State private var countdown: Int?
     @State private var skipFlash: Double?
+    /// Counts double taps, so each one runs the arrows again.
+    @State private var skipTaps = 0
     @State private var hideTask: Task<Void, Never>?
     @State private var pickedAudio = false
     @State private var segments: [JellyfinClient.Segment] = []
@@ -213,10 +215,10 @@ struct JellyPlayerView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
             if let skipFlash {
-                Image(systemName: skipFlash < 0 ? "chevron.backward.2" : "chevron.forward.2").font(.system(size: 28, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 76, height: 76).background(.black.opacity(0.45), in: Circle())
-                    .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing).padding(.horizontal, 90)
-                    .transition(.opacity).allowsHitTesting(false)
+                JellySeekArrows(forward: skipFlash > 0, tap: skipTaps)
+                    .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing)
+                    .padding(.horizontal, verticalSizeClass == .compact ? 130 : 44)
+                    .allowsHitTesting(false)
             }
             if screenLocked {
                 lockedLayer
@@ -312,11 +314,14 @@ struct JellyPlayerView: View {
         }
     }
 
-    /// Double tap: 15 seconds back or on, with the sign on that side.
+    /// Double tap: 15 seconds back or on, with three arrows running that way on that side (each tap
+    /// runs them again; they go a moment after the last).
     private func skip(_ seconds: Double) {
         jump(seconds)
-        withAnimation(.easeOut(duration: 0.15)) { skipFlash = seconds }
-        Task { try? await Task.sleep(for: .milliseconds(700)); withAnimation { if skipFlash == seconds { skipFlash = nil } } }
+        skipTaps += 1
+        let tap = skipTaps
+        skipFlash = seconds
+        Task { try? await Task.sleep(for: .milliseconds(900)); if skipTaps == tap { skipFlash = nil } }
     }
     /// Two-finger tap: pause or play, with a sign in the middle.
     private func togglePlay() {
@@ -1671,6 +1676,42 @@ private struct JellyGestureLayer: UIViewRepresentable {
         @objc func pinched(_ gesture: UIPinchGestureRecognizer) {
             if gesture.state == .ended { layer.pinch(gesture.scale) }
         }
+    }
+}
+
+/// A double tap's sign: three small solid arrows, no backing, lighting up one after another in the
+/// direction of the jump (80 ms apart), then fading out in the same order, all within 0.9 s.
+private struct JellySeekArrows: View {
+    let forward: Bool
+    /// The tap it belongs to: a new one starts the run again.
+    let tap: Int
+    @State private var start = Date.now
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let elapsed = context.date.timeIntervalSince(start)
+            HStack(spacing: 1) {
+                ForEach(0..<3, id: \.self) { slot in
+                    // The first to light is the one the jump starts from.
+                    let order = forward ? slot : 2 - slot
+                    Image(systemName: forward ? "arrowtriangle.forward.fill" : "arrowtriangle.backward.fill")
+                        .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        .opacity(reduceMotion ? (elapsed < 0.7 ? 1 : 0) : Self.opacity(elapsed, order: order))
+                }
+            }
+            .shadow(color: .black.opacity(0.45), radius: 4)
+        }
+        .onChange(of: tap) { _, _ in start = .now }
+        .accessibilityHidden(true)
+    }
+    /// In over 60 ms, 80 ms after the one before; out over 180 ms, from 0.42 s, in the same order.
+    static func opacity(_ elapsed: Double, order: Int) -> Double {
+        let appear = Double(order) * 0.08, fade = 0.42 + Double(order) * 0.1
+        if elapsed < appear { return 0 }
+        if elapsed < appear + 0.06 { return (elapsed - appear) / 0.06 }
+        if elapsed < fade { return 1 }
+        return max(0, 1 - (elapsed - fade) / 0.18)
     }
 }
 
