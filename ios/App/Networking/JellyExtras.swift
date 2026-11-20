@@ -228,3 +228,30 @@ struct JellySeerr: Sendable {
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
+
+// MARK: The home's Next up and For you
+
+extension JellyfinClient {
+    /// The next episode of each show you're following (the first episode of shows you haven't
+    /// started is left out, and so are ones you've started: they're in Continue Watching).
+    func nextUp(user: String) async throws -> [Item] {
+        let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "Limit", value: "20"),
+                                                       URLQueryItem(name: "Fields", value: "ProviderIds"),
+                                                       URLQueryItem(name: "disableFirstEpisode", value: "true"),
+                                                       URLQueryItem(name: "enableResumable", value: "false")])
+        return page.Items
+    }
+    /// One group of Jellyfin's film recommendations: why ("SimilarToRecentlyPlayed"), from what
+    /// ("Your Name"), and the films.
+    struct Recommendation: Decodable, Sendable {
+        let Items: [Item]?
+        let RecommendationType: String?
+        let BaselineItemName: String?
+    }
+    /// Recommendations from one library (Jellyfin otherwise mixes in every library, hidden ones too).
+    func recommendations(user: String, library: String) async throws -> [Recommendation] {
+        try await get("Movies/Recommendations", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "parentId", value: library),
+                                                 URLQueryItem(name: "categoryLimit", value: "4"), URLQueryItem(name: "itemLimit", value: "12"),
+                                                 URLQueryItem(name: "Fields", value: "ProviderIds,Genres")])
+    }
+}

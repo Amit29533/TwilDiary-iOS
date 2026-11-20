@@ -332,12 +332,14 @@ struct JellyfinClient: Sendable {
         let AlbumArtist: String?
         let Artists: [String]?
         let AlbumPrimaryImageTag: String?
+        /// When it first aired or came out ("2024-07-12T00:00:00.0000000Z").
+        let PremiereDate: String?
         struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool? }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
             case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
-            case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag
+            case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag, PremiereDate
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
@@ -524,7 +526,16 @@ struct JellyfinClient: Sendable {
             let RealFrameRate: Double?
             let Language: String?
             let DisplayTitle: String?
-            enum CodingKeys: String, CodingKey { case kind = "Type", Codec, Width, Height, VideoRangeType, RealFrameRate, Language, DisplayTitle }
+            // A track's own title, channels ("5.1"), and whether it's the default or forced one (File info).
+            let Title: String?
+            let Channels: Int?
+            let ChannelLayout: String?
+            let IsDefault: Bool?
+            let IsForced: Bool?
+            enum CodingKeys: String, CodingKey {
+                case kind = "Type", Codec, Width, Height, VideoRangeType, RealFrameRate, Language, DisplayTitle
+                case Title, Channels, ChannelLayout, IsDefault, IsForced
+            }
         }
         struct NameID: Decodable, Sendable { let Name: String?; let Id: String }
         struct Source: Decodable, Sendable { let Id: String?; let Name: String?; let Size: Int64?; let Bitrate: Int?; let Container: String?; let MediaStreams: [Stream]? }
@@ -581,7 +592,7 @@ struct JellyfinClient: Sendable {
     /// What's newest in one library (its row on JellySpace's home).
     func latest(in library: String, user: String) async throws -> [Item] {
         try await get("Items/Latest", [URLQueryItem(name: "parentId", value: library), URLQueryItem(name: "userId", value: user),
-                                       URLQueryItem(name: "Limit", value: "16"), URLQueryItem(name: "Fields", value: "ProviderIds")])
+                                       URLQueryItem(name: "Limit", value: "16"), URLQueryItem(name: "Fields", value: "ProviderIds,Genres")])
     }
     func setPlayed(_ id: String, user: String, _ played: Bool) async throws {
         try await post("UserPlayedItems/\(id)", [URLQueryItem(name: "userId", value: user)], body: nil, method: played ? "POST" : "DELETE")

@@ -37,7 +37,7 @@ enum JellyPrefs {
 
 /// The home's rows, in the order you set; any you turned off are left out.
 enum JellyHomeRow: String, CaseIterable, Identifiable {
-    case hero, media, resume, favourites, libraries, collections
+    case hero, resume, media, libraries, forYou, favourites, collections
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -46,6 +46,7 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         case .resume: "Continue Watching"
         case .favourites: "Favourites"
         case .libraries: "Library rows"
+        case .forYou: "For you"
         case .collections: "Collections"
         }
     }
