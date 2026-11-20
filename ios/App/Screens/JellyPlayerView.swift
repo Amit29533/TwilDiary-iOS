@@ -53,8 +53,9 @@ struct JellyPlayerView: View {
     @AppStorage(JellyPrefs.batteryKey) private var batteryOn = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.subtitleLanguageKey) private var subtitleLanguage = "eng"
-    /// Upscaling, for every video (it only acts on SDR below 1080p, and on iOS 26 GPUs that can).
-    @AppStorage("jellyspace.upscale") private var upscaleOn = false
+    /// Upscaling: Off, Auto (not 50/60 fps) or Always. It only acts on SDR below 1080p, on iOS 26 GPUs
+    /// that can, with Apple's super resolution and MetalFX (as Infuse does).
+    @AppStorage(JellyPrefs.upscaleModeKey) private var upscaleMode = JellyUpscale.initial
     @State private var current: JellyPlayback
     @State private var engine: AetherEngine?
     @State private var pip = JellyPiP()
@@ -137,8 +138,8 @@ struct JellyPlayerView: View {
     @State private var swipeArea = CGSize.zero
     /// The play or pause sign shown briefly after a two-finger tap.
     @State private var flash: String?
-    /// Anime or animation: the line-art upscaler instead of the general one.
-    @State private var animated = false
+    /// The video's frame rate, from the server (0 when it doesn't say): Auto upscaling skips 50/60 fps.
+    @State private var frameRate: Double = 0
     /// What the upscaler is doing now (nil when it isn't running).
     @State private var upscale: UpscaleStatus?
     /// Stretches already skipped on their own (each once, so going back into one plays it).
@@ -522,12 +523,12 @@ struct JellyPlayerView: View {
         knownSubtitles = Set(Self.subtitleStreams(extras, source: current.source, item: id, client: client).map { $0.index })
         pendingSkip = nil; foundSubtitles = []
         quality = Self.qualityName(extras, source: current.source)
-        // The upscaler: the line-art one for anime and animation, the general one for the rest.
-        var genres = extras?.Genres ?? []
-        if current.item.kind == "Episode", let series = current.item.SeriesId { genres = (try? await client.genres(series, user: user)) ?? genres }
-        animated = genres.contains { ["anime", "animation"].contains($0.lowercased()) }
-        options.upscalesLowResolutionVideo = upscaleOn
-        options.upscaleScaler = animated ? .lineArt : .automatic
+        // Upscaling as Infuse does it: Apple's super resolution and MetalFX for every kind of video (no
+        // separate network for anime: on a 1080p episode it cost about a third of each frame and a few
+        // hundred megabytes), and on Auto not for 50/60 fps.
+        frameRate = Self.frameRate(extras, source: current.source)
+        options.upscalesLowResolutionVideo = upscaleMode.applies(frameRate: frameRate)
+        options.upscaleScaler = .automatic
         upscale = nil
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
         // Picture subtitles (PGS) are kept decoded either side of the playhead as far as a subtitle
@@ -1069,9 +1070,9 @@ struct JellyPlayerView: View {
             Picker(selection: Binding(get: { Double(speed) }, set: { value in menuUsed(); speed = Float(value); engine?.setRate(Float(value)) })) {
                 ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { Text(Self.speedName(Float($0))).tag($0) }
             } label: { Label("Playback speed", systemImage: "gauge.with.dots.needle.67percent") }.pickerStyle(.menu)
-            Toggle(isOn: Binding(get: { upscaleOn }, set: { on in menuUsed(); setUpscale(on) })) {
-                Label("Upscaling", systemImage: "sparkles")
-            }
+            Picker(selection: Binding(get: { upscaleMode }, set: { mode in menuUsed(); setUpscale(mode) })) {
+                ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
+            } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
             Section {
                 if audioTracks.count > 1 {
                     Picker(selection: audioChoice) { audioOptions } label: { Label("Audio", systemImage: "music.note") }.pickerStyle(.menu)
@@ -1217,18 +1218,25 @@ struct JellyPlayerView: View {
         return "Upscaled from \(Int(upscale.sourceSize.height))p"
     }
     /// Turned on or off mid-video: the video reloads where it is with the new setting.
-    private func setUpscale(_ on: Bool) {
-        guard on != upscaleOn else { return }
-        upscaleOn = on
-        show(on ? "Upscaling on" : "Upscaling off")
-        guard let engine, state != .idle, state != .loading else { return }
-        let scaler: UpscaleScaler = animated ? .lineArt : .automatic
+    private func setUpscale(_ mode: JellyUpscale) {
+        guard mode != upscaleMode else { return }
+        let before = upscaleMode.applies(frameRate: frameRate), after = mode.applies(frameRate: frameRate)
+        upscaleMode = mode
+        show(mode == .auto && !after ? "Upscaling: Auto (not for 50/60 fps video)" : "Upscaling: " + mode.title)
+        // Only a change that turns it on or off for this video reloads it.
+        guard before != after, let engine, state != .idle, state != .loading else { return }
         Task {
             _ = try? await engine.reloadAtCurrentPosition { options in
-                options.upscalesLowResolutionVideo = on
-                options.upscaleScaler = scaler
+                options.upscalesLowResolutionVideo = after
+                options.upscaleScaler = .automatic
             }
         }
+    }
+    /// The video stream's frame rate (0 when the server doesn't say).
+    static func frameRate(_ info: JellyfinClient.PlayerInfo?, source: String?) -> Double {
+        let sources = info?.MediaSources ?? []
+        let video = (sources.first { $0.Id == source } ?? sources.first)?.MediaStreams?.first { $0.kind == "Video" }
+        return video?.RealFrameRate ?? 0
     }
     /// " · ends 11:42 PM", at the speed it plays.
     private var endsText: String {

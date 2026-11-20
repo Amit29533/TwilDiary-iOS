@@ -462,7 +462,8 @@ struct JellyfinClient: Sendable {
             let IsDefault: Bool?
             let Width: Int?
             let Height: Int?
-            enum CodingKeys: String, CodingKey { case kind = "Type", Index, IsExternal, Codec, Language, DisplayTitle, IsForced, IsDefault, Width, Height }
+            let RealFrameRate: Double?
+            enum CodingKeys: String, CodingKey { case kind = "Type", Index, IsExternal, Codec, Language, DisplayTitle, IsForced, IsDefault, Width, Height, RealFrameRate }
         }
         struct Source: Decodable, Sendable { let Id: String?; let MediaStreams: [Stream]? }
         let Chapters: [Chapter]?

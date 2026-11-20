@@ -28,6 +28,7 @@ enum JellyPrefs {
     static let seerrAddressKey = "jellyspace.seerr.address"
     static let fillKey = "jellyspace.fill"
     static let upscaleKey = "jellyspace.upscale"
+    static let upscaleModeKey = "jellyspace.upscaleMode"
     static let skipDelayKey = "jellyspace.skip.delay"
     static let batteryKey = "jellyspace.battery"
     static let timeModeKey = "jellyspace.timeMode"
@@ -59,6 +60,31 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
 }
 
 /// How an intro, recap or the credits are skipped: not at all, with a button, or on their own.
+/// Upscaling, as Infuse does it: Apple's own super resolution and MetalFX for video below 1080p.
+/// Auto leaves 50 and 60 fps video alone (twice the frames for the same budget); Always takes it too.
+enum JellyUpscale: String, CaseIterable {
+    case off, auto, always
+    var title: String {
+        switch self {
+        case .off: "Off"
+        case .auto: "Auto"
+        case .always: "Always"
+        }
+    }
+    /// Before there were three choices it was on or off: on becomes Auto.
+    static var initial: JellyUpscale {
+        UserDefaults.standard.bool(forKey: JellyPrefs.upscaleKey) ? .auto : .off
+    }
+    /// Whether a video at this frame rate is upscaled (an unknown rate counts as a usual one).
+    func applies(frameRate: Double) -> Bool {
+        switch self {
+        case .off: false
+        case .auto: frameRate < 49
+        case .always: true
+        }
+    }
+}
+
 enum JellySkipMode: String, CaseIterable {
     case off = "Off", button = "Button", auto = "Automatic"
 }
@@ -169,7 +195,7 @@ struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.swipeLevelsKey) private var swipeLevels = true
     @AppStorage(JellyPrefs.holdKey) private var hold = true
     @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
-    @AppStorage(JellyPrefs.upscaleKey) private var upscale = false
+    @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
     @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
     @State private var seerrKey = JellySecrets.read("seerr-key") ?? ""
     @State private var seerrNotice: String?
@@ -358,7 +384,7 @@ struct JellySpaceSettingsView: View {
             SettingsDivider()
             choiceLine("Picture", $fill, JellyFill.allCases.map { ($0.rawValue, $0.rawValue) })
             SettingsDivider()
-            toggleLine("Upscaling", $upscale)
+            choiceLine("Upscaling", $upscale, JellyUpscale.allCases.map { ($0.title, $0) })
             SettingsDivider()
             toggleLine("Remember audio and subtitles", $rememberTracks)
         }
