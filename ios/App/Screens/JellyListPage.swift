@@ -13,6 +13,12 @@ struct JellyListRoute: Hashable {
 /// photo and biography.
 struct JellyListPage: View {
     let route: JellyListRoute
+    /// Posters or landscape cards, remembered for this list (a genre, a person, favourites).
+    @AppStorage private var landscape: Bool
+    init(route: JellyListRoute) {
+        self.route = route
+        _landscape = AppStorage(wrappedValue: false, JellyLayout.key("list." + route.kind.rawValue + "." + (route.id ?? "")))
+    }
     @AppStorage("jellyspace.sort") private var sortRaw = JellyfinClient.Sort.name.rawValue
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @State private var unwatched = false
@@ -31,13 +37,13 @@ struct JellyListPage: View {
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                     else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
                     else if items.isEmpty { Text("Nothing here.").font(.subheadline).foregroundStyle(.secondary) }
-                    JellyGrid(items: items, client: client, playing: $playing)
+                    JellyGrid(items: items, client: client, playing: $playing, landscape: landscape)
                 }
             }.padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 110)
         }
         .diaryScreenBackground()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched) } }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched, landscape: $landscape) } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task(id: sortRaw + String(unwatched) + hiddenRaw) { await load() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }

@@ -265,9 +265,9 @@ struct JellySpaceView: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(continueItems, id: \.id) { entry in
-                        JellyWideCard(item: entry.item, client: client, playing: $playing, nextUp: entry.nextUp,
+                        JellyWideCard(item: entry.item, client: client, playing: $playing, nextUp: entry.nextUp, large: true,
                                       onRemove: entry.nextUp ? nil : { removeFromResume(entry.item) })
-                            .containerRelativeFrame(.horizontal, count: max(2, posterSize.columns - 1), spacing: 12)
+                            .containerRelativeFrame(.horizontal, count: 4, span: 3, spacing: 12)
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -311,8 +311,7 @@ struct JellySpaceView: View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 12) {
                 ForEach(items, id: \.Id) { item in
-                    JellyTile(item: item, client: client, playing: $playing, titleLines: 2)
-                        .containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                    JellyTile(item: item, client: client, playing: $playing, home: true).frame(width: posterSize.homeWidth)
                 }
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -661,6 +660,12 @@ struct JellyForYou: Sendable {
 /// season its episodes, and films, episodes and videos play. Sort and Unwatched sit in the ••• menu.
 struct JellyFolderPage: View {
     let route: JellyFolderRoute
+    /// Posters or landscape cards, remembered for this library or folder.
+    @AppStorage private var landscape: Bool
+    init(route: JellyFolderRoute) {
+        self.route = route
+        _landscape = AppStorage(wrappedValue: false, JellyLayout.key(route.id))
+    }
     @AppStorage("jellyspace.sort") private var sortRaw = JellyfinClient.Sort.name.rawValue
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @AppStorage("jellyspace.music.view") private var musicView = "Albums"
@@ -695,7 +700,7 @@ struct JellyFolderPage: View {
                         // list, after them.
                         let photos = items.filter { $0.kind == "Photo" }, songs = items.filter { $0.kind == "Audio" }
                         let rest = items.filter { $0.kind != "Photo" && $0.kind != "Audio" }
-                        if !rest.isEmpty { JellyGrid(items: rest, client: client, playing: $playing) { Task { await loadMore() } } }
+                        if !rest.isEmpty { JellyGrid(items: rest, client: client, playing: $playing, landscape: landscape) { Task { await loadMore() } } }
                         if !photos.isEmpty { JellyPhotoGrid(photos: photos, client: client) { Task { await loadMore() } } }
                         if loadingMore { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
                         if !songs.isEmpty { JellyTrackList(tracks: songs) }
@@ -705,7 +710,7 @@ struct JellyFolderPage: View {
         }
         .diaryScreenBackground()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-        .toolbar { if sortable { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched) } } }
+        .toolbar { if sortable { ToolbarItem(placement: .topBarTrailing) { JellySortMenu(sort: $sortRaw, unwatched: $unwatched, landscape: $landscape) } } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task(id: sortRaw + String(unwatched) + hiddenRaw + musicView) { await load() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
@@ -767,13 +772,15 @@ struct JellyGrid: View {
     let items: [JellyfinClient.Item]
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
+    /// Landscape cards (the backdrop or a video's frame), two across, instead of posters three across.
+    var landscape = false
     /// Called as the last poster comes on screen (to load more).
     var reachedEnd: (() -> Void)? = nil
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
     var body: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: landscape ? 2 : 3)
         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
             ForEach(items, id: \.Id) { item in
-                JellyTile(item: item, client: client, playing: $playing)
+                JellyTile(item: item, client: client, playing: $playing, wide: landscape)
                     .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
             }
         }
@@ -788,6 +795,11 @@ struct JellyTile: View {
     @Binding var playing: JellyPlayback?
     /// How many lines the name may take under the poster (two where names get cut short).
     var titleLines = 1
+    /// A landscape card (16:9: the backdrop, an episode's still or a video's frame) instead of a poster.
+    var wide = false
+    /// The app's own home poster (as the diary's rows draw it): rounder corners, a 14-point name on
+    /// two lines kept for every card so a row's cards line up.
+    var home = false
     @State private var played: Bool?
     @State private var favourite: Bool?
     @State private var photo: JellyPhotoSelection?
@@ -825,7 +837,7 @@ struct JellyTile: View {
         VStack(alignment: .leading, spacing: 2) {
             // Jellyfin's own posters come from its home-network address, which the public artwork
             // loader refuses (it takes TMDB's and AniList's only): JellyfinPoster loads and keeps them.
-            Color.clear.aspectRatio(square ? 1 : 2 / 3, contentMode: .fit)
+            Color.clear.aspectRatio(square ? 1 : wide ? 16 / 9 : 2 / 3, contentMode: .fit)
                 .overlay {
                     let fallback = ZStack {
                         Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
@@ -833,7 +845,9 @@ struct JellyTile: View {
                             Image(systemName: "folder.fill").font(.system(size: 30)).foregroundStyle(HomeStyle.chipText)
                         }
                     }
-                    if let url = JellySpace.poster(item, base: client.base) { JellyfinPoster(url: url) { fallback } } else { fallback }
+                    if let url = wide && !square ? JellySpace.wideImage(item, base: client.base) : JellySpace.poster(item, base: client.base) {
+                        JellyfinPoster(url: url) { fallback }
+                    } else { fallback }
                 }
                 .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
                 .overlay(alignment: .topTrailing) {
@@ -846,11 +860,13 @@ struct JellyTile: View {
                             .padding(.horizontal, 5).frame(minWidth: 22, minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
                     } else if ticks { JellyWatchedMark(item: item, played: played) }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: home ? 16 : 8))
+                .overlay { if home { RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline) } }
             if captions {
-                Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? "")).font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(HomeStyle.primary).lineLimit(titleLines).multilineTextAlignment(.leading).padding(.top, 8)
-                Text(JellySpace.detail(item)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 2)
+                Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
+                    .font(.system(size: home ? 14 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    .lineLimit(home ? 2 : titleLines, reservesSpace: home).multilineTextAlignment(.leading).padding(.top, home ? 9 : 8)
+                Text(JellySpace.detail(item)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, home ? 4 : 2)
             }
         }.contentShape(Rectangle())
     }
@@ -983,6 +999,8 @@ struct JellyWideCard: View {
     @Binding var playing: JellyPlayback?
     /// A show's next episode (not one you've started): tagged Next up.
     var nextUp = false
+    /// Continue Watching's big card: a play circle on the picture, rounder corners, a larger title.
+    var large = false
     var onRemove: (() -> Void)? = nil
     @State private var played: Bool?
     @State private var favourite: Bool?
@@ -1001,14 +1019,22 @@ struct JellyWideCard: View {
                     .overlay(alignment: .topLeading) {
                         if nextUp {
                             Text("NEXT UP").font(.system(size: 10, weight: .bold)).tracking(0.3).foregroundStyle(.white)
-                                .padding(.horizontal, 7).frame(height: 20).background(.black.opacity(0.6), in: Capsule()).padding(7)
+                                .padding(.horizontal, 7).frame(height: 20).background(.black.opacity(0.6), in: Capsule()).padding(large ? 10 : 7)
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        if large {
+                            Image(systemName: "play.fill").font(.system(size: 22, weight: .bold)).foregroundStyle(.white).offset(x: 2)
+                                .frame(width: 58, height: 58).background(.black.opacity(0.28), in: Circle())
+                                .overlay(Circle().strokeBorder(.white, lineWidth: 3)).shadow(color: .black.opacity(0.3), radius: 8)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: large ? 16 : 8))
                 Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 8)
-                Text(nextUp || (item.UserData?.PlayedPercentage ?? 0) > 0 ? JellySpace.continueLine(item) : JellySpace.detail(item))
-                    .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 2)
+                    .font(.system(size: large ? 16 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, large ? 10 : 8)
+                Text(large ? JellySpace.cardLine(item) : nextUp || (item.UserData?.PlayedPercentage ?? 0) > 0 ? JellySpace.continueLine(item) : JellySpace.detail(item))
+                    .font(.system(size: large ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, large ? 3 : 2)
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
         .buttonStyle(.springPress).accessibilityLabel("Play " + JellySpace.name(item))
@@ -1073,11 +1099,25 @@ struct JellyItemMenu: ViewModifier {
 }
 
 /// The ••• menu over a folder or list: Sort (name, date added, year, rating) and Unwatched only.
+/// Where each library, folder and list remembers posters or landscape cards.
+enum JellyLayout {
+    static func key(_ section: String) -> String { "jellyspace.layout." + section }
+}
+
 struct JellySortMenu: View {
     @Binding var sort: String
     @Binding var unwatched: Bool
+    /// Posters or landscape cards, remembered for this library, folder or list.
+    var landscape: Binding<Bool>? = nil
     var body: some View {
         Menu {
+            if let landscape {
+                Picker("Layout", selection: landscape) {
+                    Label("Posters", systemImage: "rectangle.portrait").tag(false)
+                    Label("Landscape", systemImage: "rectangle").tag(true)
+                }
+                Divider()
+            }
             Picker("Sort by", selection: $sort) {
                 ForEach(JellyfinClient.Sort.allCases, id: \.rawValue) { Text($0.rawValue).tag($0.rawValue) }
             }
@@ -1167,6 +1207,14 @@ struct JellySortMenu: View {
         html.replacingOccurrences(of: "<br>", with: "\n").replacingOccurrences(of: "<br/>", with: "\n")
             .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Continue Watching's big card: an episode's "S1 · E2 - Name", a film's "2023 · 1h 2m left".
+    static func cardLine(_ item: JellyfinClient.Item) -> String {
+        if item.kind == "Episode" {
+            let place = [item.ParentIndexNumber.map { "S\($0)" }, item.IndexNumber.map { "E\($0)" }].compactMap { $0 }.joined(separator: " · ")
+            return [place.isEmpty ? nil : place, item.Name].compactMap { $0 }.joined(separator: " - ")
+        }
+        return continueLine(item)
     }
     /// "S2:E5 · 14m left", a film's "2023 · 1h 2m left": a Continue Watching card's line.
     static func continueLine(_ item: JellyfinClient.Item) -> String {

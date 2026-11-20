@@ -526,8 +526,7 @@ struct JellyDetailPage: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(similar, id: \.Id) {
-                        JellyTile(item: $0, client: client, playing: $playing, titleLines: 2)
-                            .containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                        JellyTile(item: $0, client: client, playing: $playing, home: true).frame(width: posterSize.homeWidth)
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
