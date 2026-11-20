@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import MediaPlayer
 import AetherEngine
 import TwilDiaryCore
 
@@ -58,8 +59,15 @@ struct JellyPlayerView: View {
     @State private var countdown: Int?
     @State private var skipFlash: Double?
     @State private var hideTask: Task<Void, Never>?
+    @State private var pickedAudio = false
+    @State private var segments: [JellyfinClient.Segment] = []
+    @State private var chapters: [JellyfinClient.PlayerInfo.Chapter] = []
+    @State private var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
+    @State private var thumbnail: UIImage?
+    @State private var subtitleDelay: Double = 0
+    @State private var audioDelay: Double = 0
 
-    private enum Panel { case tracks, episodes }
+    private enum Panel { case tracks, episodes, chapters }
 
     init(playback: JellyPlayback) {
         _current = State(initialValue: playback)
@@ -78,7 +86,7 @@ struct JellyPlayerView: View {
             if let engine {
                 picture(engine)
             }
-            JellySubtitles(cues: cues, time: time, scale: subtitleSize).ignoresSafeArea().allowsHitTesting(false)
+            JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize).ignoresSafeArea().allowsHitTesting(false)
             // Single tap: the controls; a double tap on the left or right half: 10 seconds back or on.
             HStack(spacing: 0) {
                 tapZone(seconds: -10)
@@ -91,6 +99,7 @@ struct JellyPlayerView: View {
                     .transition(.opacity).allowsHitTesting(false)
             }
             if showsControls || failure != nil { controls.transition(.opacity) }
+            if let segment = activeSegment, panel == nil, countdown == nil, failure == nil { skipButton(segment).transition(.opacity) }
             if let countdown, let next = nextEpisode { upNext(next, in: countdown) }
             if let panel { panelView(panel).transition(.opacity) }
             if let notice {
@@ -108,6 +117,7 @@ struct JellyPlayerView: View {
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
         .task(id: current.id) { await start() }
+        .task(id: thumbnailIndex) { await loadThumbnail(thumbnailIndex) }
         .task(id: state == .playing) {
             // Your place, saved every 15 seconds while it plays.
             guard state == .playing else { return }
@@ -128,7 +138,7 @@ struct JellyPlayerView: View {
             .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
             .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds) }
             .onReceive(engine.$duration) { duration = $0 }
-            .onReceive(engine.$audioTracks) { audioTracks = $0 }
+            .onReceive(engine.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(engine.$subtitleTracks) { tracks in subtitleTracks = tracks; pickDefaultSubtitle(tracks) }
             .onReceive(engine.$activeAudioTrackIndex) { activeAudio = $0 }
             .onReceive(engine.$activeSubtitleTrackIndex) { activeSubtitle = $0 }
@@ -173,8 +183,9 @@ struct JellyPlayerView: View {
     private func start() async {
         guard let engine else { failure = "The player couldn’t start."; return }
         pip.engine = engine
-        finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; time = 0
-        let client = current.client
+        finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false; time = 0
+        segments = []; chapters = []; trickplay = nil; thumbnail = nil
+        let client = current.client, id = current.id
         // The user Jellyfin keeps your places for (the administrator, else the first), found once.
         let user = await JellyfinUser.id(client)
         userID = user
@@ -185,7 +196,15 @@ struct JellyPlayerView: View {
         if let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
             startAt = Double(ticks) / 10_000_000
         }
+        // Chapters, scrubbing thumbnails and the intro and credits stretches, fetched while it loads.
+        async let info = try? client.playerInfo(id, user: user)
+        async let stretches = try? client.segments(id)
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+        // The lock screen and Control Center: the title, its poster, play/pause and skipping.
+        engine.ownsSoftwareNowPlaying = true
+        engine.ownsVideoNowPlayingSession = true
+        engine.ownsVideoNowPlayingCommands = true
+        engine.setNowPlayingInfo(nowPlayingInfo(nil))
         do {
             if let startAt, startAt > 30 {
                 try await engine.load(url: current.url, startPosition: startAt)
@@ -196,9 +215,104 @@ struct JellyPlayerView: View {
             }
             engine.play()
             if speed != 1 { engine.setRate(speed) }
+            if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
+            return
         }
+        segments = (await stretches) ?? []
+        let extras = await info
+        chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
+        if let entry = extras?.Trickplay?.first {
+            let sorted = entry.value.values.sorted { $0.Width < $1.Width }
+            if let pick = sorted.first(where: { $0.Width >= 240 }) ?? sorted.last { trickplay = (pick, entry.key) }
+        }
+        if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
+            engine.setNowPlayingInfo(nowPlayingInfo(art))
+        }
+    }
+
+    private func nowPlayingInfo(_ artwork: UIImage?) -> [String: Any] {
+        let item = current.item
+        var info: [String: Any] = [MPMediaItemPropertyTitle: item.Name ?? current.title]
+        if item.kind == "Episode" {
+            if let show = item.SeriesName { info[MPMediaItemPropertyArtist] = show }
+            let place = [item.ParentIndexNumber.map { "Season \($0)" }, item.IndexNumber.map { "Episode \($0)" }].compactMap { $0 }.joined(separator: " · ")
+            if !place.isEmpty { info[MPMediaItemPropertyAlbumTitle] = place }
+        }
+        if let artwork {
+            let picture = artwork
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: picture.size) { @Sendable _ in picture }
+        }
+        return info
+    }
+
+    // MARK: Intro and credits, chapters, thumbnails
+
+    /// The intro, recap, preview or credits stretch playing now (not in its last second).
+    private var activeSegment: JellyfinClient.Segment? {
+        let ticks = Int64(time * 10_000_000)
+        return segments.first { ["Intro", "Recap", "Outro", "Preview", "Commercial"].contains($0.kind) && $0.StartTicks <= ticks && ticks < $0.EndTicks - 10_000_000 }
+    }
+    /// Skip Intro (Recap, Preview); in the credits, Next Episode when there is one, else Skip Credits.
+    private func skipButton(_ segment: JellyfinClient.Segment) -> some View {
+        let next = segment.kind == "Outro" ? nextEpisode : nil
+        return Button {
+            if let next { play(next) } else { Task { await seek(Double(segment.EndTicks) / 10_000_000) } }
+        } label: {
+            Label(next != nil ? "Next Episode" : Self.skipName(segment.kind), systemImage: next != nil ? "forward.end.fill" : "forward.fill")
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+                .padding(.horizontal, 18).frame(height: 44).background(.white, in: Capsule()).contentShape(Capsule())
+        }
+        .buttonStyle(.plain).accessibilityIdentifier("jellyspace-skip")
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.trailing, 28).padding(.bottom, showsControls ? 124 : 36)
+    }
+    private static func skipName(_ kind: String) -> String {
+        switch kind { case "Intro": "Skip Intro"; case "Recap": "Skip Recap"; case "Outro": "Skip Credits"; case "Preview": "Skip Preview"; default: "Skip" }
+    }
+    private var currentChapter: Int { chapters.lastIndex { Double($0.StartPositionTicks) / 10_000_000 <= time } ?? 0 }
+
+    /// Which scrubbing thumbnail the bar is on while you drag it.
+    private var thumbnailIndex: Int? {
+        guard let scrub, let trickplay else { return nil }
+        return min(Int(scrub * 1000) / max(1, trickplay.info.Interval), max(0, trickplay.info.ThumbnailCount - 1))
+    }
+    private var thumbnailHeight: CGFloat {
+        guard let info = trickplay?.info, info.Width > 0 else { return 90 }
+        return 160 * CGFloat(info.Height) / CGFloat(info.Width)
+    }
+    /// The thumbnail cut from its sheet (each sheet holds TileWidth x TileHeight of them).
+    private func loadThumbnail(_ index: Int?) async {
+        guard let index, let trickplay else { thumbnail = nil; return }
+        let info = trickplay.info, perSheet = max(1, info.TileWidth * info.TileHeight)
+        guard let url = current.client.trickplayURL(current.id, width: info.Width, sheet: index / perSheet, source: trickplay.source),
+              let sheet = await JellyfinPosterCache.shared.image(url), let picture = sheet.cgImage, !Task.isCancelled else { return }
+        let spot = index % perSheet
+        let rect = CGRect(x: (spot % max(1, info.TileWidth)) * info.Width, y: (spot / max(1, info.TileWidth)) * info.Height, width: info.Width, height: info.Height)
+        if let cut = picture.cropping(to: rect) { thumbnail = UIImage(cgImage: cut) }
+    }
+
+    // MARK: Remembered audio and subtitles
+
+    /// Your last audio and subtitle language: for this show if you chose one in it, else from anything.
+    private func remembered(_ kind: String) -> String? {
+        let defaults = UserDefaults.standard
+        if let show = current.item.SeriesId, let value = defaults.string(forKey: "jellyspace.\(kind).\(show)") { return value }
+        return defaults.string(forKey: "jellyspace.\(kind)")
+    }
+    private func remember(_ kind: String, _ value: String) {
+        let defaults = UserDefaults.standard
+        defaults.set(value, forKey: "jellyspace.\(kind)")
+        if let show = current.item.SeriesId { defaults.set(value, forKey: "jellyspace.\(kind).\(show)") }
+    }
+    private func pickRememberedAudio(_ tracks: [TrackInfo]) {
+        guard !pickedAudio, !tracks.isEmpty else { return }
+        pickedAudio = true
+        guard let language = remembered("audioLanguage"),
+              let track = tracks.first(where: { $0.language == language && !$0.isCommentary }),
+              track.id != engine?.activeAudioTrackIndex else { return }
+        engine?.selectAudioTrack(index: track.id)
     }
 
     /// Another episode in the same player: your place in this one is kept first.
@@ -267,10 +381,18 @@ struct JellyPlayerView: View {
         Task { try? await Task.sleep(for: .seconds(4)); withAnimation { if notice == text { notice = nil } } }
     }
 
-    /// The file's default (or forced) subtitle, turned on once when the tracks first arrive.
+    /// Your remembered subtitle language (or off); else the file's default (or forced) subtitle, once
+    /// when the tracks first arrive.
     private func pickDefaultSubtitle(_ tracks: [TrackInfo]) {
         guard !pickedSubtitle, !tracks.isEmpty else { return }
         pickedSubtitle = true
+        if let saved = remembered("subtitleLanguage") {
+            if saved == "off" { return }
+            if let track = tracks.first(where: { $0.language == saved && !$0.isForced }) ?? tracks.first(where: { $0.language == saved }) {
+                engine?.selectSubtitleTrack(index: track.id)
+                return
+            }
+        }
         if let track = tracks.first(where: { $0.isDefault }) ?? tracks.first(where: { $0.isForced }) {
             engine?.selectSubtitleTrack(index: track.id)
         }
@@ -319,33 +441,52 @@ struct JellyPlayerView: View {
                     guard !editing, let target = scrub else { return }
                     Task { await seek(target); scrub = nil; scheduleHide() }
                 }.tint(theme.accent).disabled(duration <= 0)
+                .overlay(alignment: .topLeading) {
+                    if let scrub, let thumbnail, duration > 0 {
+                        GeometryReader { proxy in
+                            let x = min(max(80, proxy.size.width * scrub / duration), max(80, proxy.size.width - 80))
+                            Image(uiImage: thumbnail).resizable().aspectRatio(contentMode: .fill)
+                                .frame(width: 160, height: thumbnailHeight).clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.85), lineWidth: 1.5))
+                                .position(x: x, y: -(thumbnailHeight / 2 + 10))
+                        }.allowsHitTesting(false)
+                    }
+                }
                 Text("-" + Self.clock(max(0, duration - (scrub ?? time)))).frame(minWidth: 56, alignment: .trailing)
             }.font(.system(size: 13, weight: .medium)).monospacedDigit().foregroundStyle(.white).padding(.horizontal, 28)
-            HStack(spacing: 26) {
-                if current.item.kind == "Episode", season.count > 1 {
-                    action("rectangle.stack", "Episodes") { withAnimation { panel = .episodes } }
-                }
-                Menu {
-                    ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
-                        Button { speed = Float(value); engine?.setRate(Float(value)) } label: {
-                            Label(Self.speedName(Float(value)), systemImage: speed == Float(value) ? "checkmark" : "")
-                        }
-                    }
-                } label: { actionFace("gauge.with.needle", "Speed (\(Self.speedName(speed)))") }
-                    .accessibilityIdentifier("jellyspace-speed")
-                if audioTracks.count > 1 || !subtitleTracks.isEmpty {
-                    action("captions.bubble", "Audio & Subtitles") { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
-                }
-                action(fill.symbol, fill.rawValue) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
-                if pip.available { action("pip.enter", "PiP") { pip.start() } }
-                if let next = nextEpisode {
-                    action("forward.end", "Next Episode") { play(next) }.accessibilityIdentifier("jellyspace-next")
-                }
+            ViewThatFits(in: .horizontal) {
+                actionRow(labels: true)
+                actionRow(labels: false)
             }.padding(.top, 6).padding(.bottom, 14)
         }
         .background {
             LinearGradient(colors: [.black.opacity(0.6), .clear, .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea().allowsHitTesting(false)
+        }
+    }
+
+    private func actionRow(labels: Bool) -> some View {
+        HStack(spacing: labels ? 22 : 34) {
+            if current.item.kind == "Episode", season.count > 1 {
+                action("rectangle.stack", "Episodes", labels: labels) { withAnimation { panel = .episodes } }
+            }
+            if chapters.count > 1 {
+                action("list.bullet.rectangle", "Chapters", labels: labels) { withAnimation { panel = .chapters } }.accessibilityIdentifier("jellyspace-chapters")
+            }
+            Menu {
+                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in
+                    Button { speed = Float(value); engine?.setRate(Float(value)) } label: {
+                        Label(Self.speedName(Float(value)), systemImage: speed == Float(value) ? "checkmark" : "")
+                    }
+                }
+            } label: { actionFace("gauge.with.needle", "Speed (\(Self.speedName(speed)))", labels: labels) }
+                .accessibilityIdentifier("jellyspace-speed")
+            action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
+            action(fill.symbol, fill.rawValue, labels: labels) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
+            if pip.available { action("pip.enter", "PiP", labels: labels) { pip.start() } }
+            if let next = nextEpisode {
+                action("forward.end", "Next Episode", labels: labels) { play(next) }.accessibilityIdentifier("jellyspace-next")
+            }
         }
     }
 
@@ -358,14 +499,14 @@ struct JellyPlayerView: View {
         scheduleHide()
     }
 
-    private func action(_ symbol: String, _ title: String, perform: @escaping () -> Void) -> some View {
-        Button(action: perform) { actionFace(symbol, title) }.buttonStyle(.plain)
+    private func action(_ symbol: String, _ title: String, labels: Bool, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) { actionFace(symbol, title, labels: labels) }.buttonStyle(.plain)
     }
-    private func actionFace(_ symbol: String, _ title: String) -> some View {
+    private func actionFace(_ symbol: String, _ title: String, labels: Bool) -> some View {
         HStack(spacing: 7) {
-            Image(systemName: symbol).font(.system(size: 16, weight: .semibold))
-            Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-        }.foregroundStyle(.white).frame(minHeight: 44).contentShape(Rectangle())
+            Image(systemName: symbol).font(.system(size: labels ? 16 : 19, weight: .semibold))
+            if labels { Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(1).fixedSize() }
+        }.foregroundStyle(.white).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle()).accessibilityLabel(title)
     }
 
     /// "Up next" over the end of an episode: it plays after the countdown unless you cancel.
@@ -397,6 +538,7 @@ struct JellyPlayerView: View {
                 switch panel {
                 case .tracks: tracksContent
                 case .episodes: episodesContent
+                case .chapters: chaptersContent
                 }
                 Button { withAnimation { self.panel = nil } } label: {
                     Text("Close").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -408,17 +550,26 @@ struct JellyPlayerView: View {
 
     /// Audio and Subtitles side by side, the chosen one of each ticked, and the subtitle size.
     private var tracksContent: some View {
+      VStack(alignment: .leading, spacing: 14) {
         HStack(alignment: .top, spacing: 40) {
             if audioTracks.count > 1 {
                 trackColumn("Audio", rows: audioTracks.map { ($0.id, Self.label($0, audio: true)) }, chosen: activeAudio) { id in
-                    if let id { engine?.selectAudioTrack(index: id) }
+                    guard let id, let track = audioTracks.first(where: { $0.id == id }) else { return }
+                    engine?.selectAudioTrack(index: id)
+                    if let language = track.language { remember("audioLanguage", language) }
                 }
             }
             VStack(alignment: .leading, spacing: 12) {
                 if !subtitleTracks.isEmpty {
                     trackColumn("Subtitles", rows: [(-1, "Off")] + subtitleTracks.map { ($0.id, Self.label($0, audio: false)) },
                                 chosen: activeSubtitle ?? -1) { id in
-                        if let id, id >= 0 { engine?.selectSubtitleTrack(index: id) } else { engine?.clearSubtitle() }
+                        if let id, id >= 0 {
+                            engine?.selectSubtitleTrack(index: id)
+                            if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
+                        } else {
+                            engine?.clearSubtitle()
+                            remember("subtitleLanguage", "off")
+                        }
                     }
                 }
                 HStack(spacing: 8) {
@@ -430,6 +581,61 @@ struct JellyPlayerView: View {
                         }.buttonStyle(.plain)
                     }
                 }
+            }
+        }
+        HStack(spacing: 32) {
+            if !subtitleTracks.isEmpty {
+                delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engine?.setSoftwareSubtitleDelay($0) }
+            }
+            delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engine?.setAudioDelay($0) }
+        }
+      }
+    }
+
+    /// −0.1 s, the delay (a tap puts it back to 0), +0.1 s.
+    private func delayControl(_ title: String, value: Double, set: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            delayStep("minus", label: title + " earlier") { set(((value - 0.1) * 10).rounded() / 10) }
+            Button { set(0) } label: {
+                Text(value == 0 ? "0.0s" : String(format: "%+.1fs", value)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                    .foregroundStyle(.white).frame(minWidth: 54, minHeight: 30)
+            }.buttonStyle(.plain)
+            delayStep("plus", label: title + " later") { set(((value + 0.1) * 10).rounded() / 10) }
+        }
+    }
+    private func delayStep(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 36, height: 30).background(Color.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityLabel(label)
+    }
+
+    /// The chapters as pictures; the one playing outlined, a tap jumps there.
+    private var chaptersContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Chapters").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+            ScrollViewReader { reader in
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
+                            let start = Double(chapter.StartPositionTicks) / 10_000_000
+                            let here = index == currentChapter
+                            Button { Task { await seek(start) }; withAnimation { panel = nil } } label: {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    ZStack {
+                                        Rectangle().fill(.white.opacity(0.1))
+                                        JellyImage(url: chapter.ImageTag.flatMap { JellyfinClient.imageURL(base: current.client.base, item: current.id, type: "Chapter/\(index)", tag: $0, width: 400) })
+                                    }
+                                    .frame(width: 176, height: 99).clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(here ? theme.accent : .clear, lineWidth: 2.5))
+                                    Text(chapter.Name ?? "Chapter \(index + 1)").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                                    Text(Self.clock(start)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.white.opacity(0.6))
+                                }.frame(width: 176, alignment: .leading).contentShape(Rectangle())
+                            }.buttonStyle(.plain).id(index)
+                        }
+                    }
+                }.scrollIndicators(.hidden).onAppear { reader.scrollTo(currentChapter, anchor: .center) }
             }
         }
     }
@@ -474,7 +680,7 @@ struct JellyPlayerView: View {
                         }.buttonStyle(.plain)
                     }
                 }
-            }.frame(maxHeight: 190)
+            }.frame(maxHeight: 150)
         }.frame(maxWidth: 300, alignment: .leading)
     }
 

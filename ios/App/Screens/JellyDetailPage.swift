@@ -116,7 +116,14 @@ struct JellyDetailPage: View {
             }
             Text(detail.Name ?? route.name).font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
             Text(yearLine(detail)).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
-            if let genres = detail.Genres, !genres.isEmpty {
+            if let genres = detail.GenreItems, !genres.isEmpty {
+                InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                    ForEach(genres, id: \.Id) { genre in
+                        NavigationLink(value: JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre")) { chip(Text(genre.Name ?? "")) }
+                            .buttonStyle(.springPress)
+                    }
+                }
+            } else if let genres = detail.Genres, !genres.isEmpty {
                 InlineFlowLayout(spacing: 8, rowSpacing: 8) { ForEach(genres, id: \.self) { chip(Text($0)) } }
             }
         }
@@ -251,6 +258,7 @@ struct JellyDetailPage: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(people, id: \.Id) { person in
+                      NavigationLink(value: JellyListRoute(kind: .person, id: person.Id, name: person.Name ?? "")) {
                         VStack(alignment: .leading, spacing: 4) {
                             ZStack {
                                 Rectangle().fill(HomeStyle.card)
@@ -259,7 +267,8 @@ struct JellyDetailPage: View {
                             }.frame(width: 104, height: 140).clipShape(RoundedRectangle(cornerRadius: 12))
                             Text(person.Name ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                             Text(person.Role ?? person.kind ?? "").font(.system(size: 11)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                        }.frame(width: 104, alignment: .leading)
+                        }.frame(width: 104, alignment: .leading).contentShape(Rectangle())
+                      }.buttonStyle(.springPress)
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()

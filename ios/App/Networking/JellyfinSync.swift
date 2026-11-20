@@ -320,7 +320,7 @@ struct JellyfinClient: Sendable {
         let BackdropImageTags: [String]?
         let ParentBackdropItemId: String?
         let ParentBackdropImageTags: [String]?
-        struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int? }
+        struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool? }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
@@ -375,14 +375,82 @@ struct JellyfinClient: Sendable {
     }
     // MARK: Browsing (JellySpace)
     /// What's directly inside a library, folder, show or season (one level), with your progress.
-    func children(of parent: String, user: String?) async throws -> [Item] {
+    func children(of parent: String, user: String?, sort: Sort? = nil, unwatched: Bool = false) async throws -> [Item] {
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
-                     URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName"), URLQueryItem(name: "Limit", value: "500")]
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"), URLQueryItem(name: "Limit", value: "500")]
+        query += sort?.query ?? [URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName")]
+        if unwatched { query.append(URLQueryItem(name: "Filters", value: "IsUnplayed")) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items", query)
         return page.Items
     }
+    /// How a folder or list is ordered.
+    enum Sort: String, CaseIterable, Sendable {
+        case name = "Name", added = "Date added", year = "Year", rating = "Rating"
+        var query: [URLQueryItem] {
+            switch self {
+            case .name: [URLQueryItem(name: "SortBy", value: "SortName"), URLQueryItem(name: "SortOrder", value: "Ascending")]
+            case .added: [URLQueryItem(name: "SortBy", value: "DateCreated,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
+            case .year: [URLQueryItem(name: "SortBy", value: "ProductionYear,PremiereDate,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
+            case .rating: [URLQueryItem(name: "SortBy", value: "CommunityRating,SortName"), URLQueryItem(name: "SortOrder", value: "Descending")]
+            }
+        }
+    }
+    /// Anything across the libraries: a person's films and shows, a genre, your favourites, collections.
+    func items(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, limit: Int = 300) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "Limit", value: String(limit))] + sort.query + extra
+        if !filters.isEmpty { query.append(URLQueryItem(name: "Filters", value: filters.joined(separator: ","))) }
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+    /// The genres of your films and shows.
+    func genres(user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series"), URLQueryItem(name: "Recursive", value: "true"),
+                     URLQueryItem(name: "SortBy", value: "SortName")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Genres", query)
+        return page.Items
+    }
+
+    // MARK: Player extras (JellySpace)
+    /// An intro, recap, preview or credits stretch (Jellyfin's media segments, from a plugin such as
+    /// Intro Skipper).
+    struct Segment: Decodable, Sendable {
+        let kind: String
+        let StartTicks: Int64
+        let EndTicks: Int64
+        enum CodingKeys: String, CodingKey { case kind = "Type", StartTicks, EndTicks }
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            kind = (try? container.decode(String.self, forKey: .kind)) ?? ""
+            StartTicks = try container.decode(Int64.self, forKey: .StartTicks)
+            EndTicks = try container.decode(Int64.self, forKey: .EndTicks)
+        }
+    }
+    private struct Segments: Decodable, Sendable { let Items: [Segment] }
+    func segments(_ id: String) async throws -> [Segment] {
+        let page: Segments = try await get("MediaSegments/\(id)")
+        return page.Items
+    }
+    /// A video's chapters and its scrubbing thumbnails (trickplay).
+    struct PlayerInfo: Decodable, Sendable {
+        struct Chapter: Decodable, Sendable { let StartPositionTicks: Int64; let Name: String?; let ImageTag: String? }
+        struct TrickplayInfo: Decodable, Sendable { let Width: Int; let Height: Int; let TileWidth: Int; let TileHeight: Int; let ThumbnailCount: Int; let Interval: Int }
+        let Chapters: [Chapter]?
+        let Trickplay: [String: [String: TrickplayInfo]]?
+    }
+    func playerInfo(_ id: String, user: String?) async throws -> PlayerInfo {
+        try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+    }
+    /// One sheet of scrubbing thumbnails (a grid of TileWidth x TileHeight).
+    func trickplayURL(_ id: String, width: Int, sheet: Int, source: String) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/Trickplay/\(width)/\(sheet).jpg"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "mediaSourceId", value: source), URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+
     /// Continue watching: films and episodes you stopped partway through.
     func resume(user: String) async throws -> [Item] {
         let page: Page = try await get("UserItems/Resume", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "MediaTypes", value: "Video"),
@@ -417,6 +485,7 @@ struct JellyfinClient: Sendable {
             let DisplayTitle: String?
             enum CodingKeys: String, CodingKey { case kind = "Type", Codec, Width, Height, VideoRangeType, RealFrameRate, Language, DisplayTitle }
         }
+        struct NameID: Decodable, Sendable { let Name: String?; let Id: String }
         struct Source: Decodable, Sendable { let Size: Int64?; let Bitrate: Int?; let Container: String?; let MediaStreams: [Stream]? }
         struct UserState: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool?; let IsFavorite: Bool?; let UnplayedItemCount: Int? }
         let Id: String
@@ -426,6 +495,7 @@ struct JellyfinClient: Sendable {
         let EndDate: String?
         let Overview: String?
         let Genres: [String]?
+        let GenreItems: [NameID]?
         let OfficialRating: String?
         let CommunityRating: Double?
         let CriticRating: Double?
@@ -436,7 +506,7 @@ struct JellyfinClient: Sendable {
         let MediaSources: [Source]?
         let UserData: UserState?
         enum CodingKeys: String, CodingKey {
-            case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, OfficialRating, CommunityRating, CriticRating
+            case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, GenreItems, OfficialRating, CommunityRating, CriticRating
             case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData
         }
     }
