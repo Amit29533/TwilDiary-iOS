@@ -100,7 +100,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// Jellyfin's separate subtitle files, added once the video has opened.
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
-    func start(layer: CAMetalLayer, url: URL, at seconds: Double?, subtitles: [ExternalSubtitleTrack]) {
+    func start(layer: CAMetalLayer, url: URL, at seconds: Double?, subtitles: [ExternalSubtitleTrack], smooth: Bool) {
         guard handle == nil, let raw = mpv_create() else { return }
         var wid = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
@@ -111,6 +111,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-readahead-secs", "20"),
         ]
         for (name, value) in options { mpv_set_option_string(raw, name, value) }
+        for (name, value) in Self.smoothOptions(smooth) { mpv_set_option_string(raw, name, value) }
         guard mpv_initialize(raw) >= 0 else { mpv_terminate_destroy(raw); return }
         let observed: [(String, mpv_format)] = [
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE), ("pause", MPV_FORMAT_FLAG),
@@ -141,6 +142,15 @@ private struct JellyMPVHandle: @unchecked Sendable {
     func setSpeed(_ value: Double) { set("speed", String(value)) }
     func selectAudio(_ id: Int) { set("aid", String(id)) }
     func selectSubtitle(_ id: Int?) { set("sid", id.map(String.init) ?? "no") }
+    /// Smooth motion: frames timed to the screen's 60 Hz and blended where they fall between two
+    /// refreshes (mpv's display-resample with interpolation), so pans and handheld shots don't judder.
+    func setSmooth(_ on: Bool) {
+        for (name, value) in Self.smoothOptions(on) { set(name, value) }
+    }
+    nonisolated private static func smoothOptions(_ on: Bool) -> [(String, String)] {
+        on ? [("display-fps-override", "60"), ("video-sync", "display-resample"), ("interpolation", "yes"), ("tscale", "oversample")]
+           : [("interpolation", "no"), ("video-sync", "audio")]
+    }
     /// The picture off in the background (mpv's Metal layer can't draw there) and back.
     func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
 
@@ -271,6 +281,7 @@ private struct JellyMPVSurface: UIViewRepresentable {
     let url: URL
     let start: Double?
     let subtitles: [ExternalSubtitleTrack]
+    let smooth: Bool
     @Environment(\.displayScale) private var displayScale
 
     func makeUIView(context: Context) -> JellyMPVSurfaceView {
@@ -280,7 +291,7 @@ private struct JellyMPVSurface: UIViewRepresentable {
             layer.contentsScale = displayScale
             layer.framebufferOnly = true
             layer.backgroundColor = UIColor.black.cgColor
-            player.start(layer: layer, url: url, at: start, subtitles: subtitles)
+            player.start(layer: layer, url: url, at: start, subtitles: subtitles, smooth: smooth)
         }
         return view
     }
@@ -305,6 +316,7 @@ struct JellyMPVPlayerView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage(JellyPrefs.resumeKey) private var resumeOn = true
     @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
+    @AppStorage("jellyspace.mpvSmooth") private var smoothMotion = false
     @StateObject private var mpv = JellyMPV()
     @State private var start: Double?
     @State private var subtitles: [ExternalSubtitleTrack] = []
@@ -320,7 +332,7 @@ struct JellyMPVPlayerView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if ready {
-                JellyMPVSurface(player: mpv, url: playback.url, start: start, subtitles: subtitles).ignoresSafeArea()
+                JellyMPVSurface(player: mpv, url: playback.url, start: start, subtitles: subtitles, smooth: smoothMotion).ignoresSafeArea()
             }
             Color.clear.contentShape(Rectangle()).ignoresSafeArea()
                 .onTapGesture {
@@ -459,15 +471,20 @@ struct JellyMPVPlayerView: View {
 
     private var decoderMenu: some View {
         Menu {
+            Toggle(isOn: Binding(get: { smoothMotion }, set: { on in
+                smoothMotion = on
+                mpv.setSmooth(on)
+                scheduleHide()
+            })) { Label("Smooth motion", systemImage: "wand.and.sparkles") }
             Picker(selection: Binding(get: { JellyDecoder.mpv }, set: { choice in
                 guard choice != .mpv else { return }
                 switching = true
                 toEngine(mpv.time)
             })) {
                 ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }
-            } label: { Text("Decoder") }.pickerStyle(.inline)
+            } label: { Label("Decoder", systemImage: "cpu") }.pickerStyle(.menu)
         } label: {
-            Label("Decoder", systemImage: "cpu")
+            Label("More", systemImage: "ellipsis.circle")
         }
         .menuIndicator(.hidden)
         .simultaneousGesture(TapGesture().onEnded { hideTask?.cancel() })
