@@ -83,9 +83,17 @@ struct JellyPlayerView: View {
     /// Screen locked: no controls and no touches until it's unlocked.
     @State private var screenLocked = false
     @State private var unlockShown = false
+    @State private var buffering = false
+    @State private var buffered: Double = 0
+    /// The time on the right: left (with when it ends) or the whole length.
+    @State private var showTotal = false
+    /// "1080p HEVC", from the file's video stream.
+    @State private var quality: String?
+    /// The subtitle the CC button turns back on.
+    @State private var lastSubtitle: Int?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    private enum Panel { case tracks, episodes, chapters }
+    private enum Panel { case tracks, episodes, chapters, settings }
 
     init(playback: JellyPlayback) {
         _current = State(initialValue: playback)
@@ -120,7 +128,18 @@ struct JellyPlayerView: View {
                     tapZone(seconds: -10, height: area.size.height)
                     tapZone(seconds: 10, height: area.size.height)
                 }
-            }.ignoresSafeArea().allowsHitTesting(!screenLocked)
+            }
+            .ignoresSafeArea().allowsHitTesting(!screenLocked)
+            // Pinch out fills the screen, pinch in fits the whole picture (as Photos does).
+            .simultaneousGesture(
+                MagnifyGesture().onEnded { pinch in
+                    if pinch.magnification > 1.15, fill != .fill { setFill(.fill) }
+                    else if pinch.magnification < 0.87, fill != .fit { setFill(.fit) }
+                }
+            )
+            if buffering, !showsControls, failure == nil {
+                ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)
+            }
             JellyVolumeView(volume: volume).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false)
             if let level { levelHUD(level).transition(.opacity).allowsHitTesting(false) }
             if holding {
@@ -194,6 +213,8 @@ struct JellyPlayerView: View {
             .onReceive(engine.$softwarePiPSource) { _ in pip.rebuild() }
             .onReceive(engine.$sourceVideoWidth) { videoSize.width = CGFloat($0) }
             .onReceive(engine.$sourceVideoHeight) { videoSize.height = CGFloat($0) }
+            .onReceive(engine.$isBuffering) { buffering = $0 }
+            .onReceive(engine.clock.$bufferedPosition) { buffered = $0 }
         if fill == .original, videoSize.width > 0, videoSize.height > 0 {
             // Its own pixel size: one video pixel per screen pixel, cropped if it's bigger than the screen.
             surface.frame(width: videoSize.width / displayScale, height: videoSize.height / displayScale)
@@ -357,7 +378,7 @@ struct JellyPlayerView: View {
         guard let engine else { failure = "The player couldn’t start."; return }
         pip.engine = engine
         finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false; time = 0
-        segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil
+        segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil; quality = nil; buffered = 0
         let client = current.client, id = current.id
         // The user Jellyfin keeps your places for (the administrator, else the first), found once.
         let user = await JellyfinUser.id(client)
@@ -375,6 +396,7 @@ struct JellyPlayerView: View {
         async let stretches = try? client.segments(id)
         var options = LoadOptions()
         options.externalSubtitles = Self.subtitleFiles(extras, item: id, client: client)
+        quality = Self.qualityName(extras)
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
         // The lock screen and Control Center: the title, its poster, play/pause and skipping.
         engine.ownsSoftwareNowPlaying = true
@@ -408,6 +430,17 @@ struct JellyPlayerView: View {
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
             engine.setNowPlayingInfo(nowPlayingInfo(art))
         }
+    }
+
+    /// "4K HEVC", "1080p H.264": the file's picture size and codec.
+    static func qualityName(_ info: JellyfinClient.PlayerInfo?) -> String? {
+        guard let video = info?.MediaSources?.first?.MediaStreams?.first(where: { $0.kind == "Video" }) else { return nil }
+        let width = video.Width ?? 0, height = video.Height ?? 0
+        let size: String? = width >= 3800 || height >= 2100 ? "4K" : width >= 1900 || height >= 1000 ? "1080p"
+            : width >= 1260 || height >= 700 ? "720p" : height > 0 ? "\(height)p" : nil
+        let codec = video.Codec.map { $0.lowercased() == "h264" ? "H.264" : $0.uppercased() }
+        let name = [size, codec].compactMap { $0 }.joined(separator: " ")
+        return name.isEmpty ? nil : name
     }
 
     /// The video's separate subtitle files (.srt, .ass, .vtt and the like next to it), as tracks the
@@ -609,14 +642,16 @@ struct JellyPlayerView: View {
 
     private var controls: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                round("chevron.left", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
-                Spacer(minLength: 0)
-                Text(current.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-                    .shadow(color: .black.opacity(0.6), radius: 4)
-                Spacer(minLength: 0)
-                Color.clear.frame(width: 44, height: 44)
-            }.padding(.horizontal, 20).padding(.top, 10)
+            topBar
+            if let resumedAt {
+                // Under the title, out of the way of the bar.
+                Button { Task { await seek(0) }; withAnimation { self.resumedAt = nil } } label: {
+                    Text("Resumed at \(Self.clock(resumedAt)) · Start over").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).frame(height: 30).background(.black.opacity(0.55), in: Capsule()).contentShape(Capsule())
+                }
+                .buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 76).padding(.top, 4)
+                .accessibilityIdentifier("jellyspace-start-over").transition(.opacity)
+            }
             Spacer(minLength: 0)
             if let failure {
                 Text(failure).font(.system(size: 14)).foregroundStyle(.white).multilineTextAlignment(.center)
@@ -624,55 +659,140 @@ struct JellyPlayerView: View {
             } else if state == .loading || state == .idle {
                 ProgressView().controlSize(.large).tint(.white)
             } else {
-                HStack(spacing: verticalSizeClass == .compact ? 84 : 30) {
-                    transport("gobackward.10", label: "Back 10 seconds", size: 34) { jump(-10) }
-                    transport(playingNow ? "pause.fill" : "play.fill", label: playingNow ? "Pause" : "Play", size: 50) {
+                HStack(spacing: verticalSizeClass == .compact ? 64 : 28) {
+                    transport("gobackward.10", label: "Back 10 seconds") { jump(-10) }
+                    Button {
                         if playingNow { engine?.pause() } else { engine?.play() }
                         scheduleHide()
-                    }
-                    transport("goforward.10", label: "Forward 10 seconds", size: 34) { jump(10) }
+                    } label: {
+                        ZStack {
+                            Circle().fill(.white.opacity(0.18))
+                            if buffering {
+                                ProgressView().controlSize(.large).tint(.white)
+                            } else {
+                                Image(systemName: playingNow ? "pause.fill" : "play.fill").font(.system(size: 34, weight: .semibold))
+                                    .foregroundStyle(.white).offset(x: playingNow ? 0 : 2)
+                            }
+                        }.frame(width: 78, height: 78).contentShape(Circle())
+                    }.buttonStyle(.plain).accessibilityLabel(playingNow ? "Pause" : "Play")
+                    transport("goforward.10", label: "Forward 10 seconds") { jump(10) }
                 }
             }
             Spacer(minLength: 0)
-            if let resumedAt {
-                Button { Task { await seek(0) }; withAnimation { self.resumedAt = nil } } label: {
-                    Text("Resumed at \(Self.clock(resumedAt)) · Start over").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 14).frame(height: 34).background(.black.opacity(0.6), in: Capsule()).contentShape(Capsule())
-                }.buttonStyle(.plain).padding(.bottom, 8).accessibilityIdentifier("jellyspace-start-over")
+            // The time gone; the time left with when it ends (a tap shows the whole length instead).
+            HStack {
+                Text(Self.clock(scrub ?? time))
+                Spacer(minLength: 8)
+                Button { showTotal.toggle(); scheduleHide() } label: {
+                    Text(showTotal ? Self.clock(duration) : "-" + Self.clock(max(0, duration - (scrub ?? time))) + endsText)
+                        .frame(minHeight: 30).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-time-left")
             }
-            HStack(spacing: 12) {
-                Text(Self.clock(scrub ?? time)).frame(minWidth: 52, alignment: .leading)
-                Slider(value: Binding(get: { scrub ?? time }, set: { scrub = $0 }), in: 0...max(duration, 1)) { editing in
-                    guard !editing, let target = scrub else { return }
-                    Task { await seek(target); scrub = nil; scheduleHide() }
-                }.tint(theme.accent).disabled(duration <= 0)
-                .overlay(alignment: .topLeading) {
-                    if let scrub, let thumbnail, duration > 0 {
-                        GeometryReader { proxy in
-                            let x = min(max(80, proxy.size.width * scrub / duration), max(80, proxy.size.width - 80))
-                            Image(uiImage: thumbnail).resizable().aspectRatio(contentMode: .fill)
-                                .frame(width: 160, height: thumbnailHeight).clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.85), lineWidth: 1.5))
-                                .position(x: x, y: -(thumbnailHeight / 2 + 10))
-                        }.allowsHitTesting(false)
-                    }
-                }
-                Text("-" + Self.clock(max(0, duration - (scrub ?? time)))).frame(minWidth: 56, alignment: .trailing)
-            }.font(.system(size: 13, weight: .medium)).monospacedDigit().foregroundStyle(.white).padding(.horizontal, 28)
+            .font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 30)
+            JellyScrubber(time: time, duration: duration, buffered: buffered, marks: chapterMarks, credits: creditStretches,
+                          tint: theme.accent, scrub: $scrub) { target in
+                Task { await seek(target); scrub = nil; scheduleHide() }
+            }
+            .overlay(alignment: .topLeading) { scrubPreview }
+            .padding(.horizontal, 28)
+            .disabled(duration <= 0)
             ViewThatFits(in: .horizontal) {
                 actionRow(labels: true)
                 actionRow(labels: false)
                 ScrollView(.horizontal) { actionRow(labels: false).padding(.horizontal, 20) }.scrollIndicators(.hidden)
-            }.padding(.top, 6).padding(.bottom, 14)
+            }.padding(.top, 2).padding(.bottom, 12)
         }
         .background {
-            LinearGradient(colors: [.black.opacity(0.6), .clear, .clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(stops: [.init(color: .black.opacity(0.65), location: 0), .init(color: .clear, location: 0.3),
+                                   .init(color: .clear, location: 0.55), .init(color: .black.opacity(0.8), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea().allowsHitTesting(false)
         }
     }
 
+    /// Back; the title with the episode (or the year, genre and quality) under it; AirPlay, subtitles
+    /// on or off, and the playback settings.
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            round("chevron.left", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(heading).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                if !infoLine.isEmpty { Text(infoLine).font(.system(size: 12, weight: .medium)).opacity(0.75).lineLimit(1) }
+            }
+            .foregroundStyle(.white).shadow(color: .black.opacity(0.5), radius: 4)
+            Spacer(minLength: 8)
+            JellyAirPlayButton().frame(width: 40, height: 40).accessibilityLabel("AirPlay")
+            if !subtitleTracks.isEmpty {
+                topButton(activeSubtitle == nil ? "captions.bubble" : "captions.bubble.fill", label: activeSubtitle == nil ? "Subtitles on" : "Subtitles off") {
+                    toggleSubtitles()
+                }.accessibilityIdentifier("jellyspace-cc")
+            }
+            topButton("slider.horizontal.3", label: "Playback settings") { withAnimation { panel = .settings } }
+                .accessibilityIdentifier("jellyspace-settings")
+        }.padding(.horizontal, 20).padding(.top, 10)
+    }
+    private func topButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button { action(); scheduleHide() } label: {
+            Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 40, height: 40).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(label)
+    }
+    private var heading: String {
+        current.item.kind == "Episode" ? (current.item.SeriesName ?? current.title) : (current.item.Name ?? current.title)
+    }
+    /// "S1:E3 - Name" for an episode; "2000 · Drama · 1080p HEVC" for a film.
+    private var infoLine: String {
+        let item = current.item
+        if item.kind == "Episode" { return JellySpace.detail(item) }
+        return [item.ProductionYear.map(String.init), item.Genres?.first, quality].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+    /// " · ends 11:42 PM", at the speed it plays.
+    private var endsText: String {
+        guard duration > 0 else { return "" }
+        let left = max(0, duration - (scrub ?? time)) / Double(max(0.1, speed))
+        return " · ends " + Date.now.addingTimeInterval(left).formatted(date: .omitted, time: .shortened)
+    }
+    private var chapterMarks: [Double] {
+        chapters.map { Double($0.StartPositionTicks) / 10_000_000 }.filter { $0 > 1 && $0 < duration - 1 }
+    }
+    private var creditStretches: [ClosedRange<Double>] {
+        segments.filter { $0.kind == "Outro" }.compactMap { segment in
+            let from = Double(segment.StartTicks) / 10_000_000, to = Double(segment.EndTicks) / 10_000_000
+            return to > from ? from...to : nil
+        }
+    }
+    /// The thumbnail and time over the bar while you drag it.
+    @ViewBuilder private var scrubPreview: some View {
+        if let scrub, duration > 0 {
+            GeometryReader { proxy in
+                let x = min(max(80, proxy.size.width * scrub / duration), max(80, proxy.size.width - 80))
+                VStack(spacing: 4) {
+                    if let thumbnail {
+                        Image(uiImage: thumbnail).resizable().aspectRatio(contentMode: .fill)
+                            .frame(width: 160, height: thumbnailHeight).clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.85), lineWidth: 1.5))
+                    }
+                    Text(Self.clock(scrub)).font(.system(size: 13, weight: .bold)).monospacedDigit().foregroundStyle(.white)
+                        .padding(.horizontal, 8).frame(height: 22).background(.black.opacity(0.6), in: Capsule())
+                }
+                .position(x: x, y: -((thumbnail == nil ? 22 : thumbnailHeight + 26) / 2 + 6))
+            }.allowsHitTesting(false)
+        }
+    }
+    /// CC: off, or back on with the subtitle you had (else the first one).
+    private func toggleSubtitles() {
+        if let on = activeSubtitle {
+            lastSubtitle = on
+            engine?.clearSubtitle()
+            remember("subtitleLanguage", "off")
+        } else if let track = subtitleTracks.first(where: { $0.id == lastSubtitle }) ?? subtitleTracks.first(where: { !$0.isForced }) ?? subtitleTracks.first {
+            engine?.selectSubtitleTrack(index: track.id)
+            if let language = track.language { remember("subtitleLanguage", language) }
+        }
+    }
+
     private func actionRow(labels: Bool) -> some View {
-        HStack(spacing: labels ? 22 : 34) {
+        HStack(spacing: labels ? 20 : 30) {
             if current.item.kind == "Episode", season.count > 1 {
                 action("rectangle.stack", "Episodes", labels: labels) { withAnimation { panel = .episodes } }
             }
@@ -685,9 +805,11 @@ struct JellyPlayerView: View {
                         Label(Self.speedName(Float(value)), systemImage: speed == Float(value) ? "checkmark" : "")
                     }
                 }
-            } label: { actionFace("gauge.with.needle", "Speed (\(Self.speedName(speed)))", labels: labels) }
-                .accessibilityIdentifier("jellyspace-speed")
-            action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
+            } label: { actionFace("gauge.with.needle", Self.speedName(speed), labels: labels) }
+                .accessibilityLabel("Speed").accessibilityIdentifier("jellyspace-speed")
+            if audioTracks.count > 1 || !subtitleTracks.isEmpty {
+                action("captions.bubble", "Audio & Subtitles", labels: labels) { withAnimation { panel = .tracks } }.accessibilityIdentifier("jellyspace-tracks")
+            }
             action(fill.symbol, fill.rawValue, labels: labels) { cycleFill() }.accessibilityIdentifier("jellyspace-fill")
             if pip.available { action("pip.enter", "PiP", labels: labels) { pip.start() } }
             if let next = nextEpisode {
@@ -698,7 +820,9 @@ struct JellyPlayerView: View {
 
     private func cycleFill() {
         let all = JellyFill.allCases
-        let next = all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count]
+        setFill(all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count])
+    }
+    private func setFill(_ next: JellyFill) {
         fillRaw = next.rawValue
         engine?.videoGravity = next == .fill ? .resizeAspectFill : .resizeAspect
         show(next.rawValue)
@@ -709,10 +833,10 @@ struct JellyPlayerView: View {
         Button(action: perform) { actionFace(symbol, title, labels: labels) }.buttonStyle(.plain)
     }
     private func actionFace(_ symbol: String, _ title: String, labels: Bool) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: symbol).font(.system(size: labels ? 16 : 19, weight: .semibold))
-            if labels { Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(1).fixedSize() }
-        }.foregroundStyle(.white).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle()).accessibilityLabel(title)
+        HStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: labels ? 15 : 18, weight: .semibold))
+            if labels { Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize() }
+        }.foregroundStyle(.white.opacity(0.92)).frame(minWidth: 44, minHeight: 40).contentShape(Rectangle()).accessibilityLabel(title)
     }
 
     /// "Up next" over the end of an episode: it plays after the countdown unless you cancel.
@@ -745,6 +869,7 @@ struct JellyPlayerView: View {
                 case .tracks: tracksContent
                 case .episodes: episodesContent
                 case .chapters: chaptersContent
+                case .settings: settingsContent
                 }
                 Button { withAnimation { self.panel = nil } } label: {
                     Text("Close").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -754,9 +879,8 @@ struct JellyPlayerView: View {
         }
     }
 
-    /// Audio and Subtitles side by side, the chosen one of each ticked, and the subtitle size.
+    /// Audio and Subtitles side by side, the chosen one of each ticked.
     private var tracksContent: some View {
-      VStack(alignment: .leading, spacing: 14) {
         HStack(alignment: .top, spacing: 40) {
             if audioTracks.count > 1 {
                 trackColumn("Audio", rows: audioTracks.map { ($0.id, Self.label($0, audio: true)) }, chosen: activeAudio) { id in
@@ -765,37 +889,51 @@ struct JellyPlayerView: View {
                     if let language = track.language { remember("audioLanguage", language) }
                 }
             }
-            VStack(alignment: .leading, spacing: 12) {
-                if !subtitleTracks.isEmpty {
-                    trackColumn("Subtitles", rows: [(-1, "Off")] + subtitleTracks.map { ($0.id, Self.label($0, audio: false)) },
-                                chosen: activeSubtitle ?? -1) { id in
-                        if let id, id >= 0 {
-                            engine?.selectSubtitleTrack(index: id)
-                            if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
-                        } else {
-                            engine?.clearSubtitle()
-                            remember("subtitleLanguage", "off")
-                        }
-                    }
-                }
-                HStack(spacing: 8) {
-                    Text("Size").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
-                    ForEach([("S", 0.8), ("M", 1.0), ("L", 1.3), ("XL", 1.6)], id: \.1) { option in
-                        Button { subtitleSize = option.1 } label: {
-                            Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(subtitleSize == option.1 ? .black : .white)
-                                .frame(width: 40, height: 30).background(subtitleSize == option.1 ? Color.white : Color.white.opacity(0.15), in: Capsule())
-                        }.buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        HStack(spacing: 32) {
             if !subtitleTracks.isEmpty {
-                delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engine?.setSoftwareSubtitleDelay($0) }
+                trackColumn("Subtitles", rows: [(-1, "Off")] + subtitleTracks.map { ($0.id, Self.label($0, audio: false)) },
+                            chosen: activeSubtitle ?? -1) { id in
+                    if let id, id >= 0 {
+                        engine?.selectSubtitleTrack(index: id)
+                        if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
+                    } else {
+                        engine?.clearSubtitle()
+                        remember("subtitleLanguage", "off")
+                    }
+                }
             }
-            delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engine?.setAudioDelay($0) }
         }
-      }
+    }
+
+    /// Speed, subtitle size, and the subtitle and audio delays.
+    private var settingsContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Playback").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+            optionRow("Speed", options: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map { (Self.speedName(Float($0)), $0) }, chosen: Double(speed)) { value in
+                speed = Float(value)
+                engine?.setRate(Float(value))
+            }
+            if !subtitleTracks.isEmpty {
+                optionRow("Subtitle size", options: [("S", 0.8), ("M", 1.0), ("L", 1.3), ("XL", 1.6)], chosen: subtitleSize) { subtitleSize = $0 }
+            }
+            HStack(spacing: 32) {
+                if !subtitleTracks.isEmpty {
+                    delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engine?.setSoftwareSubtitleDelay($0) }
+                }
+                delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engine?.setAudioDelay($0) }
+            }
+        }.frame(maxWidth: 600, alignment: .leading)
+    }
+    private func optionRow(_ title: String, options: [(String, Double)], chosen: Double, pick: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 104, alignment: .leading)
+            ForEach(options, id: \.1) { option in
+                let on = abs(chosen - option.1) < 0.001
+                Button { pick(option.1) } label: {
+                    Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .black : .white)
+                        .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 30).background(on ? Color.white : Color.white.opacity(0.15), in: Capsule())
+                }.buttonStyle(.plain)
+            }
+        }
     }
 
     /// −0.1 s, the delay (a tap puts it back to 0), +0.1 s.
@@ -918,10 +1056,10 @@ struct JellyPlayerView: View {
                 .frame(width: 44, height: 44).background(.black.opacity(0.45), in: Circle()).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(label)
     }
-    private func transport(_ symbol: String, label: String, size: CGFloat = 26, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: size, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 72, height: 72).contentShape(Circle())
+    private func transport(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button { action() } label: {
+            Image(systemName: symbol).font(.system(size: 24, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 56, height: 56).background(.black.opacity(0.35), in: Circle()).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel(label)
     }
     private func jump(_ seconds: Double) {
@@ -938,6 +1076,79 @@ struct JellyPlayerView: View {
         let whole = Int(seconds)
         return whole >= 3600 ? String(format: "%d:%02d:%02d", whole / 3600, (whole / 60) % 60, whole % 60) : String(format: "%d:%02d", whole / 60, whole % 60)
     }
+}
+
+/// The progress bar: a thin line with a dot (both grow while you drag), the part already loaded in
+/// a lighter band, small ticks at the chapters, and the credits in orange.
+private struct JellyScrubber: View {
+    let time: Double
+    let duration: Double
+    let buffered: Double
+    let marks: [Double]
+    let credits: [ClosedRange<Double>]
+    let tint: Color
+    @Binding var scrub: Double?
+    let commit: (Double) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = max(1, proxy.size.width), total = max(duration, 1)
+            let shown = scrub ?? time, dragging = scrub != nil
+            let at = width * min(1, max(0, shown / total))
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.22))
+                Rectangle().fill(.white.opacity(0.38)).frame(width: width * min(1, max(0, buffered / total)))
+                ForEach(credits.indices, id: \.self) { index in
+                    let stretch = credits[index]
+                    Rectangle().fill(Color.orange.opacity(0.85))
+                        .frame(width: max(2, width * (stretch.upperBound - stretch.lowerBound) / total))
+                        .offset(x: width * stretch.lowerBound / total)
+                }
+                Rectangle().fill(tint).frame(width: at)
+                ForEach(marks.indices, id: \.self) { index in
+                    Rectangle().fill(.black.opacity(0.6)).frame(width: 2).offset(x: width * marks[index] / total - 1)
+                }
+            }
+            .frame(height: dragging ? 8 : 4).clipShape(Capsule())
+            .overlay(alignment: .leading) {
+                Circle().fill(.white).frame(width: dragging ? 18 : 12, height: dragging ? 18 : 12).offset(x: at - (dragging ? 9 : 6))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        guard duration > 0 else { return }
+                        scrub = min(max(0, drag.location.x / width), 1) * duration
+                    }
+                    .onEnded { _ in if let target = scrub { commit(target) } }
+            )
+            .animation(.easeOut(duration: 0.15), value: dragging)
+        }
+        .frame(height: 30)
+        .accessibilityElement()
+        .accessibilityLabel("Position")
+        .accessibilityValue(JellyPlayerView.clock(time))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: commit(min(duration, time + 10))
+            case .decrement: commit(max(0, time - 10))
+            @unknown default: break
+            }
+        }
+    }
+}
+
+/// The system's AirPlay button.
+private struct JellyAirPlayButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.tintColor = .white
+        picker.activeTintColor = .systemBlue
+        picker.prioritizesVideoDevices = true
+        return picker
+    }
+    func updateUIView(_ picker: AVRoutePickerView, context: Context) {}
 }
 
 /// The subtitles on screen now: text cues at the bottom, picture cues (PGS, DVD) where the file
