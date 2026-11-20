@@ -452,6 +452,13 @@ struct JellyfinClient: Sendable {
         let Chapters: [Chapter]?
         let Trickplay: [String: [String: TrickplayInfo]]?
         let MediaSources: [Source]?
+        let Genres: [String]?
+    }
+    private struct GenresOnly: Decodable, Sendable { let Genres: [String]? }
+    /// A title's genres (an episode has none of its own: ask for its show's).
+    func genres(_ id: String, user: String?) async throws -> [String] {
+        let found: GenresOnly = try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+        return found.Genres ?? []
     }
     func playerInfo(_ id: String, user: String?) async throws -> PlayerInfo {
         try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])

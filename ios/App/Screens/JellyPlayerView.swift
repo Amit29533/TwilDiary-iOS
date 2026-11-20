@@ -33,6 +33,8 @@ struct JellyPlayerView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("jellyspace.subtitleSize") private var subtitleSize = 1.0
     @AppStorage("jellyspace.fill") private var fillRaw = JellyFill.fit.rawValue
+    /// Upscaling, for every video (it only acts on SDR below 1080p, and on iOS 26 GPUs that can).
+    @AppStorage("jellyspace.upscale") private var upscaleOn = false
     @State private var current: JellyPlayback
     @State private var engine: AetherEngine?
     @State private var pip = JellyPiP()
@@ -97,6 +99,10 @@ struct JellyPlayerView: View {
     @State private var swipeArea = CGSize.zero
     /// The play or pause sign shown briefly after a two-finger tap.
     @State private var flash: String?
+    /// Anime or animation: the line-art upscaler instead of the general one.
+    @State private var animated = false
+    /// What the upscaler is doing now (nil when it isn't running).
+    @State private var upscale: UpscaleStatus?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private enum Panel { case tracks, episodes, chapters, settings }
@@ -229,6 +235,10 @@ struct JellyPlayerView: View {
             .onReceive(engine.$sourceVideoWidth) { videoSize.width = CGFloat($0) }
             .onReceive(engine.$sourceVideoHeight) { videoSize.height = CGFloat($0) }
             .onReceive(engine.$isBuffering) { buffering = $0 }
+            .onReceive(engine.$activeUpscale) { status in
+                if status?.disabledReason != nil, upscale?.disabledReason == nil { show("Upscaling paused for this video") }
+                upscale = status
+            }
             .onReceive(engine.clock.$bufferedPosition) { buffered = $0 }
         if fill == .original, videoSize.width > 0, videoSize.height > 0 {
             // Its own pixel size: one video pixel per screen pixel, cropped if it's bigger than the screen.
@@ -439,6 +449,13 @@ struct JellyPlayerView: View {
         var options = LoadOptions()
         options.externalSubtitles = Self.subtitleFiles(extras, item: id, client: client)
         quality = Self.qualityName(extras)
+        // The upscaler: the line-art one for anime and animation, the general one for the rest.
+        var genres = extras?.Genres ?? []
+        if current.item.kind == "Episode", let series = current.item.SeriesId { genres = (try? await client.genres(series, user: user)) ?? genres }
+        animated = genres.contains { ["anime", "animation"].contains($0.lowercased()) }
+        options.upscalesLowResolutionVideo = upscaleOn
+        options.upscaleScaler = animated ? .lineArt : .automatic
+        upscale = nil
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
         // The lock screen and Control Center: the title, its poster, play/pause and skipping.
         engine.ownsSoftwareNowPlaying = true
@@ -786,8 +803,28 @@ struct JellyPlayerView: View {
     /// "S1:E3 - Name" for an episode; "2000 · Drama · 1080p HEVC" for a film.
     private var infoLine: String {
         let item = current.item
-        if item.kind == "Episode" { return JellySpace.detail(item) }
-        return [item.ProductionYear.map(String.init), item.Genres?.first, quality].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        let base = item.kind == "Episode" ? JellySpace.detail(item)
+            : [item.ProductionYear.map(String.init), item.Genres?.first, quality].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return [base, upscaleLabel].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+    /// "Upscaled from 720p", only while the upscaler is running.
+    private var upscaleLabel: String? {
+        guard let upscale, upscale.disabledReason == nil, upscale.sourceSize.height > 0 else { return nil }
+        return "Upscaled from \(Int(upscale.sourceSize.height))p"
+    }
+    /// Turned on or off mid-video: the video reloads where it is with the new setting.
+    private func setUpscale(_ on: Bool) {
+        guard on != upscaleOn else { return }
+        upscaleOn = on
+        show(on ? "Upscaling on" : "Upscaling off")
+        guard let engine, state != .idle, state != .loading else { return }
+        let scaler: UpscaleScaler = animated ? .lineArt : .automatic
+        Task {
+            _ = try? await engine.reloadAtCurrentPosition { options in
+                options.upscalesLowResolutionVideo = on
+                options.upscaleScaler = scaler
+            }
+        }
     }
     /// " · ends 11:42 PM", at the speed it plays.
     private var endsText: String {
@@ -954,6 +991,16 @@ struct JellyPlayerView: View {
             optionRow("Speed", options: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map { (Self.speedName(Float($0)), $0) }, chosen: Double(speed)) { value in
                 speed = Float(value)
                 engine?.setRate(Float(value))
+            }
+            HStack(spacing: 8) {
+                Text("Upscaling").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 104, alignment: .leading)
+                ForEach([("Off", false), ("On", true)], id: \.1) { option in
+                    let on = upscaleOn == option.1
+                    Button { setUpscale(option.1) } label: {
+                        Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .black : .white)
+                            .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 30).background(on ? Color.white : Color.white.opacity(0.15), in: Capsule())
+                    }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-upscale-" + option.0.lowercased())
+                }
             }
             if !subtitleTracks.isEmpty {
                 optionRow("Subtitle size", options: [("S", 0.8), ("M", 1.0), ("L", 1.3), ("XL", 1.6)], chosen: subtitleSize) { subtitleSize = $0 }
