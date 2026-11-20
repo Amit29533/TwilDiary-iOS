@@ -91,9 +91,16 @@ struct JellyPlayerView: View {
     @State private var quality: String?
     /// The subtitle the CC button turns back on.
     @State private var lastSubtitle: Int?
+    /// What a one-finger swipe is doing: brightness (left half, up or down), volume (right half), or
+    /// moving through the video (sideways).
+    @State private var swipeKind: SwipeKind?
+    @State private var swipeArea = CGSize.zero
+    /// The play or pause sign shown briefly after a two-finger tap.
+    @State private var flash: String?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private enum Panel { case tracks, episodes, chapters, settings }
+    private enum SwipeKind { case brightness, volume, seek }
 
     init(playback: JellyPlayback) {
         _current = State(initialValue: playback)
@@ -121,22 +128,30 @@ struct JellyPlayerView: View {
                                fill: fill, originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale))
                     .ignoresSafeArea()
             }.allowsHitTesting(false)
-            // Single tap: the controls; a double tap on the left or right half: 10 seconds back or on;
-            // a swipe up or down on the left: brightness, on the right: volume.
-            GeometryReader { area in
-                HStack(spacing: 0) {
-                    tapZone(seconds: -10, height: area.size.height)
-                    tapZone(seconds: 10, height: area.size.height)
-                }
-            }
-            .ignoresSafeArea().allowsHitTesting(!screenLocked)
-            // Pinch out fills the screen, pinch in fits the whole picture (as Photos does).
-            .simultaneousGesture(
-                MagnifyGesture().onEnded { pinch in
-                    if pinch.magnification > 1.15, fill != .fill { setFill(.fill) }
-                    else if pinch.magnification < 0.87, fill != .fit { setFill(.fit) }
+            // One finger: tap for the controls, double tap 15 seconds back (left) or on (right), hold
+            // for 2x, swipe sideways to move through the video, up or down for brightness (left) or
+            // volume (right). Two fingers: tap to pause or play, pinch for Fill or Fit.
+            JellyGestureLayer(
+                tap: {
+                    withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
+                    if showsControls { scheduleHide() }
+                },
+                doubleTap: { left in skip(left ? -15 : 15) },
+                twoFingerTap: { togglePlay() },
+                hold: { began in if began { startHold() } else { endHold() } },
+                pan: { phase in panned(phase) },
+                pinch: { scale in
+                    if scale > 1.15, fill != .fill { setFill(.fill) }
+                    else if scale < 0.87, fill != .fit { setFill(.fit) }
                 }
             )
+            .ignoresSafeArea().allowsHitTesting(!screenLocked)
+            if swipeKind == .seek, let scrub { seekCard(scrub).transition(.opacity).allowsHitTesting(false) }
+            if let flash, !showsControls {
+                Image(systemName: flash).font(.system(size: 36, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 84, height: 84).background(.black.opacity(0.45), in: Circle())
+                    .transition(.opacity.combined(with: .scale(scale: 0.85))).allowsHitTesting(false)
+            }
             if buffering, !showsControls, failure == nil {
                 ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)
             }
@@ -148,7 +163,7 @@ struct JellyPlayerView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
             if let skipFlash {
-                Text(skipFlash < 0 ? "−10s" : "+10s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                Text(skipFlash < 0 ? "−15s" : "+15s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
                     .padding(18).background(.black.opacity(0.45), in: Circle())
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing).padding(.horizontal, 90)
                     .transition(.opacity).allowsHitTesting(false)
@@ -224,61 +239,88 @@ struct JellyPlayerView: View {
         }
     }
 
-    private func tapZone(seconds: Double, height: CGFloat) -> some View {
-        Color.clear.contentShape(Rectangle())
-            // Hold anywhere: 2x while the finger stays down, back to the chosen speed on release.
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.4)
-                    .sequenced(before: DragGesture(minimumDistance: 0))
-                    .onChanged { value in
-                        if case .second(true, _) = value, !holding, state == .playing, swipeStart == nil {
-                            withAnimation(.easeOut(duration: 0.15)) { holding = true }
-                            engine?.setRate(2)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    }
-                    .onEnded { _ in endHold() }
-            )
-            .gesture(
-                DragGesture(minimumDistance: 14)
-                    .onChanged { drag in swiped(drag, brightness: seconds < 0, height: height) }
-                    .onEnded { _ in
-                        swipeStart = nil
-                        levelTask?.cancel()
-                        levelTask = Task { try? await Task.sleep(for: .milliseconds(900)); if !Task.isCancelled { withAnimation { level = nil } } }
-                    }
-            )
-            .onTapGesture(count: 2) {
-                jump(seconds)
-                withAnimation(.easeOut(duration: 0.15)) { skipFlash = seconds }
-                Task { try? await Task.sleep(for: .milliseconds(700)); withAnimation { if skipFlash == seconds { skipFlash = nil } } }
-            }
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
-                if showsControls { scheduleHide() }
-            }
+    /// Double tap: 15 seconds back or on, with the sign on that side.
+    private func skip(_ seconds: Double) {
+        jump(seconds)
+        withAnimation(.easeOut(duration: 0.15)) { skipFlash = seconds }
+        Task { try? await Task.sleep(for: .milliseconds(700)); withAnimation { if skipFlash == seconds { skipFlash = nil } } }
     }
-
+    /// Two-finger tap: pause or play, with a sign in the middle.
+    private func togglePlay() {
+        guard state == .playing || state == .paused else { return }
+        let pausing = state == .playing
+        if pausing { engine?.pause() } else { engine?.play() }
+        let sign = pausing ? "pause.fill" : "play.fill"
+        withAnimation(.easeOut(duration: 0.15)) { flash = sign }
+        Task { try? await Task.sleep(for: .milliseconds(650)); withAnimation { if flash == sign { flash = nil } } }
+    }
+    /// Hold: 2x while the finger stays down.
+    private func startHold() {
+        guard !holding, state == .playing, swipeKind == nil else { return }
+        withAnimation(.easeOut(duration: 0.15)) { holding = true }
+        engine?.setRate(2)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
     private func endHold() {
         guard holding else { return }
         withAnimation(.easeOut(duration: 0.15)) { holding = false }
         engine?.setRate(speed)
     }
 
-    /// Up raises, down lowers: the whole height of the screen goes from 0 to full. Swipes that start at
-    /// the very top or bottom are the system's, and mostly-sideways ones are ignored.
-    private func swiped(_ drag: DragGesture.Value, brightness: Bool, height: CGFloat) {
-        if swipeStart == nil {
-            guard !holding, abs(drag.translation.height) > abs(drag.translation.width) * 1.4,
-                  drag.startLocation.y > 44, drag.startLocation.y < height - 44 else { return }
-            if brightness, brightnessAtOpen == nil { brightnessAtOpen = JellyScreen.brightness }
-            swipeStart = brightness ? Double(JellyScreen.brightness) : Double(volume.level)
+    /// A one-finger swipe. Sideways: through the video (the whole width is three minutes, so a short
+    /// swipe is a fine move), shown on a card and played from where you let go. Up or down: brightness
+    /// on the left, volume on the right (the whole height is 0 to full; swipes from the very top or
+    /// bottom edge are the system's).
+    private func panned(_ phase: JellyPan) {
+        switch phase {
+        case .began(let at, let velocity, let area):
+            guard !holding else { return }
+            swipeArea = area
+            if abs(velocity.x) > abs(velocity.y) {
+                guard duration > 0, state != .loading, state != .idle else { return }
+                swipeKind = .seek
+                swipeStart = time
+                scrub = time
+            } else {
+                guard at.y > 44, at.y < area.height - 44 else { return }
+                let brightness = at.x < area.width / 2
+                if brightness, brightnessAtOpen == nil { brightnessAtOpen = JellyScreen.brightness }
+                swipeKind = brightness ? .brightness : .volume
+                swipeStart = brightness ? Double(JellyScreen.brightness) : Double(volume.level)
+            }
+        case .changed(let move):
+            guard let kind = swipeKind, let start = swipeStart else { return }
+            if kind == .seek {
+                scrub = min(max(0, start + Double(move.x) * 180 / Double(max(1, swipeArea.width))), duration)
+            } else {
+                let value = min(1, max(0, start - Double(move.y / max(1, swipeArea.height * 0.85))))
+                if kind == .brightness { JellyScreen.brightness = CGFloat(value) } else { volume.set(Float(value)) }
+                levelTask?.cancel()
+                level = (kind == .brightness ? "sun.max.fill" : value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill", value)
+            }
+        case .ended:
+            if swipeKind == .seek, let target = scrub {
+                Task { await seek(target); scrub = nil; scheduleHide() }
+            } else if swipeKind != nil {
+                levelTask?.cancel()
+                levelTask = Task { try? await Task.sleep(for: .milliseconds(900)); if !Task.isCancelled { withAnimation { level = nil } } }
+            }
+            withAnimation(.easeOut(duration: 0.2)) { swipeKind = nil }
+            swipeStart = nil
         }
-        guard let start = swipeStart else { return }
-        let value = min(1, max(0, start - Double(drag.translation.height / max(1, height * 0.85))))
-        if brightness { JellyScreen.brightness = CGFloat(value) } else { volume.set(Float(value)) }
-        levelTask?.cancel()
-        level = (brightness ? "sun.max.fill" : value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill", value)
+    }
+    /// While swiping sideways: the thumbnail there (when the server has them), how far, and where.
+    private func seekCard(_ target: Double) -> some View {
+        let change = target - (swipeStart ?? target)
+        return VStack(spacing: 6) {
+            if let thumbnail {
+                Image(uiImage: thumbnail).resizable().aspectRatio(contentMode: .fill)
+                    .frame(width: 200, height: thumbnailHeight * 200 / 160).clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            Text((change < 0 ? "−" : "+") + Self.clock(abs(change))).font(.system(size: 26, weight: .bold)).monospacedDigit()
+            Text(Self.clock(target) + " / " + Self.clock(duration)).font(.system(size: 13, weight: .medium)).monospacedDigit().opacity(0.8)
+        }
+        .foregroundStyle(.white).padding(16).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 18))
     }
     private func levelHUD(_ level: (symbol: String, value: Double)) -> some View {
         HStack(spacing: 10) {
@@ -402,6 +444,7 @@ struct JellyPlayerView: View {
         engine.ownsSoftwareNowPlaying = true
         engine.ownsVideoNowPlayingSession = true
         engine.ownsVideoNowPlayingCommands = true
+        engine.remoteSkipInterval = 15
         engine.setNowPlayingInfo(nowPlayingInfo(nil))
         do {
             if let startAt, startAt > 30 {
@@ -660,7 +703,7 @@ struct JellyPlayerView: View {
                 ProgressView().controlSize(.large).tint(.white)
             } else {
                 HStack(spacing: verticalSizeClass == .compact ? 64 : 28) {
-                    transport("gobackward.10", label: "Back 10 seconds") { jump(-10) }
+                    transport("gobackward.15", label: "Back 15 seconds") { jump(-15) }
                     Button {
                         if playingNow { engine?.pause() } else { engine?.play() }
                         scheduleHide()
@@ -675,7 +718,7 @@ struct JellyPlayerView: View {
                             }
                         }.frame(width: 78, height: 78).contentShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel(playingNow ? "Pause" : "Play")
-                    transport("goforward.10", label: "Forward 10 seconds") { jump(10) }
+                    transport("goforward.15", label: "Forward 15 seconds") { jump(15) }
                 }
             }
             Spacer(minLength: 0)
@@ -763,7 +806,7 @@ struct JellyPlayerView: View {
     }
     /// The thumbnail and time over the bar while you drag it.
     @ViewBuilder private var scrubPreview: some View {
-        if let scrub, duration > 0 {
+        if let scrub, duration > 0, swipeKind != .seek {
             GeometryReader { proxy in
                 let x = min(max(80, proxy.size.width * scrub / duration), max(80, proxy.size.width - 80))
                 VStack(spacing: 4) {
@@ -1135,6 +1178,82 @@ private struct JellyScrubber: View {
             case .decrement: commit(max(0, time - 10))
             @unknown default: break
             }
+        }
+    }
+}
+
+/// A one-finger swipe as the touch layer reports it: where it started, which way it was going and
+/// the area's size; then how far it has moved; then the end.
+private enum JellyPan {
+    case began(CGPoint, CGPoint, CGSize)
+    case changed(CGPoint)
+    case ended
+}
+
+/// The player's touches, read by UIKit's recognizers (SwiftUI has no two-finger tap, and these sort
+/// out taps, double taps, holds, swipes and pinches between them reliably).
+private struct JellyGestureLayer: UIViewRepresentable {
+    let tap: () -> Void
+    let doubleTap: (_ leftHalf: Bool) -> Void
+    let twoFingerTap: () -> Void
+    let hold: (_ began: Bool) -> Void
+    let pan: (JellyPan) -> Void
+    let pinch: (_ scale: CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isMultipleTouchEnabled = true
+        let coordinator = context.coordinator
+        let double = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.doubleTapped(_:)))
+        double.numberOfTapsRequired = 2
+        let single = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.tapped))
+        single.require(toFail: double)
+        let twoFingers = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.twoFingerTapped))
+        twoFingers.numberOfTouchesRequired = 2
+        let press = UILongPressGestureRecognizer(target: coordinator, action: #selector(Coordinator.held(_:)))
+        press.minimumPressDuration = 0.4
+        press.allowableMovement = 24
+        let swipe = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.panned(_:)))
+        swipe.maximumNumberOfTouches = 1
+        let squeeze = UIPinchGestureRecognizer(target: coordinator, action: #selector(Coordinator.pinched(_:)))
+        for recognizer in [double, single, twoFingers, press, swipe, squeeze] as [UIGestureRecognizer] {
+            view.addGestureRecognizer(recognizer)
+        }
+        return view
+    }
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.layer = self }
+
+    @MainActor final class Coordinator: NSObject {
+        var layer: JellyGestureLayer
+        init(_ layer: JellyGestureLayer) { self.layer = layer }
+        @objc func tapped() { layer.tap() }
+        @objc func doubleTapped(_ gesture: UITapGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            layer.doubleTap(gesture.location(in: view).x < view.bounds.midX)
+        }
+        @objc func twoFingerTapped() { layer.twoFingerTap() }
+        @objc func held(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began: layer.hold(true)
+            case .ended, .cancelled, .failed: layer.hold(false)
+            default: break
+            }
+        }
+        @objc func panned(_ gesture: UIPanGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            switch gesture.state {
+            case .began:
+                let now = gesture.location(in: view), moved = gesture.translation(in: view)
+                layer.pan(.began(CGPoint(x: now.x - moved.x, y: now.y - moved.y), gesture.velocity(in: view), view.bounds.size))
+            case .changed: layer.pan(.changed(gesture.translation(in: view)))
+            case .ended, .cancelled, .failed: layer.pan(.ended)
+            default: break
+            }
+        }
+        @objc func pinched(_ gesture: UIPinchGestureRecognizer) {
+            if gesture.state == .ended { layer.pinch(gesture.scale) }
         }
     }
 }
