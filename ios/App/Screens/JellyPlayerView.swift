@@ -60,6 +60,8 @@ struct JellyPlayerView: View {
     @State private var pip = JellyPiP()
     @State private var state: PlaybackState = .idle
     @State private var time: Double = 0
+    /// The source time of the frame on screen: what subtitle cues are timed against.
+    @State private var subtitleTime: Double = 0
     @State private var duration: Double = 0
     @State private var videoSize = CGSize.zero
     @State private var scrub: Double?
@@ -123,8 +125,10 @@ struct JellyPlayerView: View {
     @State private var fadingOut = false
     /// "1080p HEVC", from the file's video stream.
     @State private var quality: String?
-    /// The subtitle the CC button turns back on.
-    @State private var lastSubtitle: Int?
+    /// A control's menu is open: the controls stay up until it's used or the screen is tapped.
+    @State private var menuOpen = false
+    /// The sleep timer's choice in its menu: -1 off, 0 the end of this video, else minutes.
+    @State private var sleepChoice = -1
     /// The phone's volume, shown in the top-right slider (kept current from the system).
     @State private var volumeLevel = AVAudioSession.sharedInstance().outputVolume
     /// What a one-finger swipe is doing: brightness (left half, up or down), volume (right half), or
@@ -143,7 +147,7 @@ struct JellyPlayerView: View {
     @State private var assSheet: JellyASSSheet?
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    private enum Panel { case tracks, episodes, chapters, settings, subtitleSearch }
+    private enum Panel { case episodes, chapters, advanced, subtitleSearch }
     private enum SwipeKind { case brightness, volume, seek }
 
     init(playback: JellyPlayback) {
@@ -167,8 +171,9 @@ struct JellyPlayerView: View {
                 picture(engine)
             }
             GeometryReader { safe in
-                JellySubtitles(cues: cues, time: time - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets,
-                               fill: fill, originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale), sheet: assSheet)
+                JellySubtitles(cues: cues, time: subtitleTime - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets,
+                               fill: fill, videoPixels: videoSize,
+                               originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale), sheet: assSheet)
                     .ignoresSafeArea()
             }.allowsHitTesting(false)
             // One finger: tap for the controls, double tap 15 seconds back (left) or on (right), hold
@@ -176,6 +181,7 @@ struct JellyPlayerView: View {
             // volume (right). Two fingers: tap to pause or play, pinch for Fill or Fit.
             JellyGestureLayer(
                 tap: {
+                    menuOpen = false
                     withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
                     if showsControls { scheduleHide() }
                 },
@@ -206,15 +212,15 @@ struct JellyPlayerView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
             if let skipFlash {
-                Text((skipFlash < 0 ? "−" : "+") + "\(Int(abs(skipFlash)))s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                    .padding(18).background(.black.opacity(0.45), in: Circle())
+                Image(systemName: skipFlash < 0 ? "chevron.backward.2" : "chevron.forward.2").font(.system(size: 28, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 76, height: 76).background(.black.opacity(0.45), in: Circle())
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing).padding(.horizontal, 90)
                     .transition(.opacity).allowsHitTesting(false)
             }
             if screenLocked {
                 lockedLayer
             } else {
-                if showsControls || failure != nil { controls.transition(.opacity) }
+                if showsControls || failure != nil { controls.transition(.opacity); centerControls.transition(.opacity) }
                 if showsControls, failure == nil, panel == nil { lockPill.transition(.opacity) }
             }
             if let segment = activeSegment, panel == nil, countdown == nil, failure == nil, !screenLocked {
@@ -222,7 +228,9 @@ struct JellyPlayerView: View {
                 else if let pendingSkip, pendingSkip.start == segment.StartTicks { autoSkipButton(segment, at: pendingSkip.at).transition(.opacity) }
             }
             if let countdown, let next = nextEpisode { upNext(next, in: countdown) }
-            if let panel { panelView(panel).transition(.opacity) }
+            if let panel {
+                if panel == .advanced { advancedCard.transition(.opacity) } else { panelView(panel).transition(.opacity) }
+            }
             if let notice {
                 Text(notice).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).frame(height: 34).background(.black.opacity(0.7), in: Capsule())
@@ -231,17 +239,17 @@ struct JellyPlayerView: View {
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        // The menus (Liquid Glass) dark over the picture, as the controls are.
+        .preferredColorScheme(.dark)
         .onAppear {
             if let width = current.item.Width, let height = current.item.Height, width > 0, height > 0 {
                 turnToPicture(CGSize(width: width, height: height))
             }
         }
         .onChange(of: videoSize) { _, size in turnToPicture(size) }
-        .onChange(of: speed) { _, _ in updateActivity() }
         .onDisappear {
             if let brightnessAtOpen { JellyScreen.brightness = brightnessAtOpen }
             countdownTask?.cancel()
-            JellyLiveActivity.end()
             report("stop")
             savePlace()
             engine?.stop()
@@ -261,7 +269,7 @@ struct JellyPlayerView: View {
         }
         .onChange(of: state) { _, now in
             if now == .playing { scheduleHide() }
-            if now == .paused || now == .playing { report("progress"); updateActivity() }
+            if now == .paused || now == .playing { report("progress") }
             if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
         }
     }
@@ -270,6 +278,7 @@ struct JellyPlayerView: View {
         let surface = AetherPlayerSurface(engine: engine)
             .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
             .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds); autoSkip(); checkSleep() }
+            .onReceive(engine.clock.$sourceTime) { subtitleTime = $0 }
             .onReceive(engine.$duration) { duration = $0 }
             .onReceive(engine.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(engine.$subtitleTracks) { tracks in
@@ -417,6 +426,7 @@ struct JellyPlayerView: View {
         scheduleHide()
     }
     private func lockScreen() {
+        menuOpen = false
         withAnimation(.easeInOut(duration: 0.2)) { screenLocked = true; showsControls = false; panel = nil }
         flashUnlock()
     }
@@ -428,7 +438,7 @@ struct JellyPlayerView: View {
         }
     }
 
-    /// Screen lock and rotation lock, one above the other, at the side.
+    /// Screen lock and rotation lock, one above the other, on glass at the left side.
     private var lockPill: some View {
         VStack(spacing: 4) {
             pillButton(screenLocked ? "lock.fill" : "lock.open", label: "Lock screen") { lockScreen() }
@@ -436,9 +446,10 @@ struct JellyPlayerView: View {
             pillButton(rotationLocked ? "lock.rotation" : "lock.rotation.open", label: rotationLocked ? "Unlock rotation" : "Lock rotation") { toggleRotation() }
                 .accessibilityIdentifier("jellyspace-lock-rotation")
         }
-        .padding(.vertical, 6).frame(width: 54).background(.black.opacity(0.55), in: Capsule())
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: verticalSizeClass == .compact ? .trailing : .topTrailing)
-        .padding(.trailing, 16).padding(.top, verticalSizeClass == .compact ? 0 : 90)
+        .padding(.vertical, 6).frame(width: 54)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: verticalSizeClass == .compact ? .leading : .topLeading)
+        .padding(.leading, 20).padding(.top, verticalSizeClass == .compact ? 0 : 90)
     }
     private func pillButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -472,7 +483,7 @@ struct JellyPlayerView: View {
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled, state == .playing, panel == nil, scrub == nil else { return }
+            guard !Task.isCancelled, state == .playing, panel == nil, scrub == nil, !menuOpen else { return }
             withAnimation(.easeInOut(duration: 0.3)) { showsControls = false }
         }
     }
@@ -517,6 +528,10 @@ struct JellyPlayerView: View {
         options.upscaleScaler = animated ? .lineArt : .automatic
         upscale = nil
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+        // Picture subtitles (PGS) are kept decoded either side of the playhead as far as a subtitle
+        // delay can reach; the delay control stops at 15 s, so that's all that's kept (the default 60 s
+        // of full-colour pictures each way, on a busy track, is enough to run the phone out of memory).
+        engine.maximumSubtitleOffsetSeconds = 15
         // The lock screen and Control Center: the title, its poster, play/pause and skipping.
         engine.ownsSoftwareNowPlaying = true
         engine.ownsVideoNowPlayingSession = true
@@ -533,7 +548,6 @@ struct JellyPlayerView: View {
             }
             engine.play()
             report("start")
-            updateActivity()
             if speed != 1 { engine.setRate(speed) }
             if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
         } catch {
@@ -780,7 +794,6 @@ struct JellyPlayerView: View {
 
     private func startCountdown() {
         countdown = countdownSeconds
-        updateActivity()
         countdownTask?.cancel()
         countdownTask = Task {
             while let left = countdown, left > 0 {
@@ -790,21 +803,6 @@ struct JellyPlayerView: View {
             }
             if countdown == 0, let next = nextEpisode { play(next) }
         }
-    }
-
-    /// The Live Activity's state now (the bar runs on from these times by itself).
-    private func updateActivity(at position: Double? = nil) {
-        guard duration > 0, state != .idle, state != .loading else { return }
-        let at = position ?? time, rate = Double(max(0.1, speed)), now = Date.now
-        let item = current.item
-        var next: (String, Date)?
-        if let countdown, let episode = nextEpisode {
-            next = ([episode.IndexNumber.map { "E\($0)" }, episode.Name].compactMap { $0 }.joined(separator: " · "), now.addingTimeInterval(Double(countdown)))
-        }
-        let detail = item.kind == "Episode" ? JellySpace.detail(item) : (item.ProductionYear.map(String.init) ?? "")
-        JellyLiveActivity.show(JellyPlaybackAttributes.ContentState(
-            title: heading, detail: detail, startedAt: now.addingTimeInterval(-at / rate), endsAt: now.addingTimeInterval(max(0, duration - at) / rate),
-            paused: state == .paused, position: at, duration: duration, nextTitle: next?.0, nextAt: next?.1), item: current.id)
     }
 
     // MARK: Sleep timer
@@ -831,7 +829,7 @@ struct JellyPlayerView: View {
             engine?.pause()
             engine?.volume = 1
             countdown = nil
-            fadingOut = false; sleepAt = nil; sleepAtEnd = false
+            fadingOut = false; sleepAt = nil; sleepAtEnd = false; sleepChoice = -1
             show("Sleep timer: paused")
         }
     }
@@ -839,6 +837,7 @@ struct JellyPlayerView: View {
         fadingOut = false
         engine?.volume = 1
         sleepAtEnd = minutes == 0
+        sleepChoice = minutes ?? -1
         sleepAt = minutes.flatMap { $0 > 0 ? Date.now.addingTimeInterval(Double($0) * 60) : nil }
         show(minutes == nil ? "Sleep timer off" : minutes == 0 ? "Sleeps at the end of this episode" : "Sleeps in \(minutes ?? 0) min")
     }
@@ -938,33 +937,6 @@ struct JellyPlayerView: View {
             }
             .padding(.horizontal, 20).padding(.top, 10)
             Spacer(minLength: 0)
-            if let failure {
-                Text(failure).font(.system(size: 14)).foregroundStyle(.white).multilineTextAlignment(.center)
-                    .padding(14).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 24)
-            } else if state == .loading || state == .idle {
-                ProgressView().controlSize(.large).tint(.white)
-            } else {
-                HStack(spacing: verticalSizeClass == .compact ? 120 : 56) {
-                    transport("gobackward", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
-                    Button {
-                        if state == .ended { Task { await start() } }
-                        else if playingNow { engine?.pause() } else { engine?.play() }
-                        scheduleHide()
-                    } label: {
-                        Group {
-                            if buffering { ProgressView().controlSize(.large).tint(.white) }
-                            else {
-                                Image(systemName: playingNow ? "pause.fill" : state == .ended ? "arrow.counterclockwise" : "play.fill")
-                                    .font(.system(size: 52, weight: .semibold)).foregroundStyle(.white)
-                            }
-                        }
-                        .frame(width: 84, height: 84).contentShape(Rectangle())
-                        .shadow(color: .black.opacity(0.35), radius: 8)
-                    }.buttonStyle(.plain).accessibilityLabel(playingNow ? "Pause" : "Play")
-                    transport("goforward", label: "Forward \(skipSeconds) seconds") { jump(Double(skipSeconds)) }
-                }
-            }
-            Spacer(minLength: 0)
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     if let resumedAt {
@@ -983,11 +955,8 @@ struct JellyPlayerView: View {
                 .shadow(color: .black.opacity(0.5), radius: 6)
                 Spacer(minLength: 8)
                 HStack(spacing: 0) {
-                    glassIcon("captions.bubble", label: "Audio and subtitles") { withAnimation { panel = .tracks } }
-                        .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in toggleSubtitles() })
-                        .accessibilityIdentifier("jellyspace-tracks")
-                    glassIcon("gearshape.fill", label: "Playback settings") { withAnimation { panel = .settings } }
-                        .accessibilityIdentifier("jellyspace-settings")
+                    if !subtitleTracks.isEmpty || audioTracks.count > 1 { tracksMenu }
+                    settingsMenu
                     if chapters.count > 1 {
                         glassIcon("list.bullet.rectangle", label: "Chapters") { withAnimation { panel = .chapters } }
                             .accessibilityIdentifier("jellyspace-chapters")
@@ -1028,6 +997,176 @@ struct JellyPlayerView: View {
                 .ignoresSafeArea().allowsHitTesting(false)
         }
     }
+    /// Back, play and on, in the middle of the whole screen (not of the space between the top and
+    /// bottom rows, which aren't the same height); the error or the spinner there instead.
+    private var centerControls: some View {
+        Group {
+            if let failure {
+                Text(failure).font(.system(size: 14)).foregroundStyle(.white).multilineTextAlignment(.center)
+                    .padding(14).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 24)
+            } else if state == .loading || state == .idle {
+                ProgressView().controlSize(.large).tint(.white)
+            } else {
+                HStack(spacing: verticalSizeClass == .compact ? 120 : 56) {
+                    transport("gobackward", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
+                    Button {
+                        if state == .ended { Task { await start() } }
+                        else if playingNow { engine?.pause() } else { engine?.play() }
+                        scheduleHide()
+                    } label: {
+                        Group {
+                            if buffering { ProgressView().controlSize(.large).tint(.white) }
+                            else {
+                                Image(systemName: playingNow ? "pause.fill" : state == .ended ? "arrow.counterclockwise" : "play.fill")
+                                    .font(.system(size: 52, weight: .semibold)).foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 84, height: 84).contentShape(Rectangle())
+                        .shadow(color: .black.opacity(0.35), radius: 8)
+                    }.buttonStyle(.plain).accessibilityLabel(playingNow ? "Pause" : "Play")
+                    transport("goforward", label: "Forward \(skipSeconds) seconds") { jump(Double(skipSeconds)) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+    }
+
+    // MARK: Menus
+
+    /// The speech bubble: subtitles and audio, as the system's menu.
+    private var tracksMenu: some View {
+        Menu {
+            if !subtitleTracks.isEmpty {
+                Picker(selection: subtitleChoice) { subtitleOptions } label: { Text("Subtitles") }.pickerStyle(.inline)
+            }
+            if audioTracks.count > 1 {
+                Picker(selection: audioChoice) { audioOptions } label: { Text("Audio") }.pickerStyle(.inline)
+            }
+            Button { openPanel(.subtitleSearch) } label: { Label("Download subtitles", systemImage: "arrow.down.circle") }
+        } label: {
+            menuIcon("captions.bubble")
+        }
+        .menuOrder(.fixed).menuIndicator(.hidden)
+        .simultaneousGesture(TapGesture().onEnded { menuShown() })
+        .accessibilityLabel("Audio and subtitles").accessibilityIdentifier("jellyspace-tracks")
+    }
+
+    /// The gear: everything about how it plays, each choice a submenu showing what it's on now.
+    private var settingsMenu: some View {
+        Menu {
+            Button { lockScreen() } label: { Label("Lock screen", systemImage: "lock") }
+            Picker(selection: Binding(get: { sleepChoice }, set: { choice in menuUsed(); setSleep(choice < 0 ? nil : choice) })) {
+                Text("Off").tag(-1)
+                Text("15 minutes").tag(15)
+                Text("30 minutes").tag(30)
+                Text("60 minutes").tag(60)
+                Text(current.item.kind == "Episode" ? "End of episode" : "End of film").tag(0)
+            } label: { Label("Sleep timer", systemImage: "moon.zzz") }.pickerStyle(.menu)
+            Picker(selection: Binding(get: { Double(speed) }, set: { value in menuUsed(); speed = Float(value); engine?.setRate(Float(value)) })) {
+                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { Text(Self.speedName(Float($0))).tag($0) }
+            } label: { Label("Playback speed", systemImage: "gauge.with.dots.needle.67percent") }.pickerStyle(.menu)
+            Toggle(isOn: Binding(get: { upscaleOn }, set: { on in menuUsed(); setUpscale(on) })) {
+                Label("Upscaling", systemImage: "sparkles")
+            }
+            Section {
+                if audioTracks.count > 1 {
+                    Picker(selection: audioChoice) { audioOptions } label: { Label("Audio", systemImage: "music.note") }.pickerStyle(.menu)
+                }
+                if !subtitleTracks.isEmpty {
+                    Picker(selection: subtitleChoice) { subtitleOptions } label: { Label("Subtitles", systemImage: "captions.bubble") }.pickerStyle(.menu)
+                    Picker(selection: Binding(get: { subtitleSize }, set: { size in menuUsed(); subtitleSize = size })) {
+                        ForEach([("Small", 0.8), ("Medium", 1.0), ("Large", 1.3), ("Extra large", 1.6)], id: \.1) { Text($0.0).tag($0.1) }
+                    } label: { Label("Subtitle size", systemImage: "textformat.size") }.pickerStyle(.menu)
+                }
+            }
+            Button { openPanel(.advanced) } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
+        } label: {
+            menuIcon("gearshape.fill")
+        }
+        .menuOrder(.fixed).menuIndicator(.hidden)
+        .simultaneousGesture(TapGesture().onEnded { menuShown() })
+        .accessibilityLabel("Playback settings").accessibilityIdentifier("jellyspace-settings")
+    }
+
+    @ViewBuilder private var subtitleOptions: some View {
+        Text("Off").tag(-1)
+        ForEach(subtitleTracks, id: \.id) { Text(Self.label($0, audio: false)).tag($0.id) }
+    }
+    @ViewBuilder private var audioOptions: some View {
+        ForEach(audioTracks, id: \.id) { Text(Self.label($0, audio: true)).tag($0.id) }
+    }
+    /// The subtitle on (-1 for off); picking one turns it on and remembers its language.
+    private var subtitleChoice: Binding<Int> {
+        Binding(get: { activeSubtitle ?? -1 }, set: { id in
+            menuUsed()
+            guard id != (activeSubtitle ?? -1) else { return }
+            if id >= 0 {
+                engine?.selectSubtitleTrack(index: id)
+                if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
+            } else {
+                engine?.clearSubtitle()
+                remember("subtitleLanguage", "off")
+            }
+        })
+    }
+    private var audioChoice: Binding<Int> {
+        Binding(get: { activeAudio ?? -1 }, set: { id in
+            menuUsed()
+            guard id != activeAudio, let track = audioTracks.first(where: { $0.id == id }) else { return }
+            engine?.selectAudioTrack(index: id)
+            if let language = track.language { remember("audioLanguage", language) }
+        })
+    }
+    private func menuIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
+            .frame(width: 46, height: 46).contentShape(Rectangle())
+    }
+    /// A menu opened: the controls stay up meanwhile.
+    private func menuShown() {
+        menuOpen = true
+        hideTask?.cancel()
+    }
+    /// A choice made in a menu (which closes it).
+    private func menuUsed() {
+        menuOpen = false
+        scheduleHide()
+    }
+    private func openPanel(_ next: Panel) {
+        menuOpen = false
+        withAnimation { panel = next }
+    }
+
+    /// Advanced options: the subtitle and audio delays and subtitle downloads, on a glass card over
+    /// the corner (a tap anywhere else closes it).
+    private var advancedCard: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Color.black.opacity(0.001).ignoresSafeArea().onTapGesture { withAnimation { panel = nil }; scheduleHide() }
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Advanced options").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                    Spacer(minLength: 12)
+                    Button { withAnimation { panel = nil }; scheduleHide() } label: {
+                        Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                            .frame(width: 30, height: 30).background(.white.opacity(0.15), in: Circle()).contentShape(Circle())
+                    }.buttonStyle(.plain).accessibilityLabel("Close")
+                }
+                if !subtitleTracks.isEmpty {
+                    delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engine?.setSoftwareSubtitleDelay($0) }
+                }
+                delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engine?.setAudioDelay($0) }
+                Button { withAnimation { panel = .subtitleSearch } } label: {
+                    Label("Download subtitles", systemImage: "arrow.down.circle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-download-subtitles")
+            }
+            .padding(18).frame(width: 330)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26))
+            .padding(.trailing, 24).padding(.bottom, 96)
+        }
+        .accessibilityIdentifier("jellyspace-advanced")
+    }
+
     /// The phone's volume: the percentage, a slider and the speaker (shorter upright).
     private var volumeCapsule: some View {
         let wide = verticalSizeClass == .compact
@@ -1120,18 +1259,6 @@ struct JellyPlayerView: View {
             }.allowsHitTesting(false)
         }
     }
-    /// CC: off, or back on with the subtitle you had (else the first one).
-    private func toggleSubtitles() {
-        if let on = activeSubtitle {
-            lastSubtitle = on
-            engine?.clearSubtitle()
-            remember("subtitleLanguage", "off")
-        } else if let track = subtitleTracks.first(where: { $0.id == lastSubtitle }) ?? subtitleTracks.first(where: { !$0.isForced }) ?? subtitleTracks.first {
-            engine?.selectSubtitleTrack(index: track.id)
-            if let language = track.language { remember("subtitleLanguage", language) }
-        }
-    }
-
     private func cycleFill() {
         let all = JellyFill.allCases
         setFill(all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count])
@@ -1154,7 +1281,7 @@ struct JellyPlayerView: View {
                     Label("Play now", systemImage: "play.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.black)
                         .padding(.horizontal, 14).frame(height: 34).background(.white, in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(.plain)
-                Button { countdown = nil; updateActivity() } label: {
+                Button { countdown = nil } label: {
                     Text("Cancel").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 14).frame(height: 34).background(.white.opacity(0.18), in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(.plain)
@@ -1170,11 +1297,10 @@ struct JellyPlayerView: View {
             Color.black.opacity(0.85).ignoresSafeArea().onTapGesture { withAnimation { self.panel = nil } }
             VStack(spacing: 16) {
                 switch panel {
-                case .tracks: tracksContent
                 case .episodes: episodesContent
                 case .chapters: chaptersContent
-                case .settings: settingsContent
                 case .subtitleSearch: subtitleSearchContent
+                case .advanced: EmptyView()
                 }
                 Button { withAnimation { self.panel = nil } } label: {
                     Text("Close").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -1182,37 +1308,6 @@ struct JellyPlayerView: View {
                 }.buttonStyle(.plain)
             }.padding(.horizontal, 40).padding(.vertical, 20)
         }
-    }
-
-    /// Audio and Subtitles side by side, the chosen one of each ticked.
-    private var tracksContent: some View {
-      VStack(alignment: .leading, spacing: 14) {
-        HStack(alignment: .top, spacing: 40) {
-            if audioTracks.count > 1 {
-                trackColumn("Audio", rows: audioTracks.map { ($0.id, Self.label($0, audio: true)) }, chosen: activeAudio) { id in
-                    guard let id, let track = audioTracks.first(where: { $0.id == id }) else { return }
-                    engine?.selectAudioTrack(index: id)
-                    if let language = track.language { remember("audioLanguage", language) }
-                }
-            }
-            if !subtitleTracks.isEmpty {
-                trackColumn("Subtitles", rows: [(-1, "Off")] + subtitleTracks.map { ($0.id, Self.label($0, audio: false)) },
-                            chosen: activeSubtitle ?? -1) { id in
-                    if let id, id >= 0 {
-                        engine?.selectSubtitleTrack(index: id)
-                        if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
-                    } else {
-                        engine?.clearSubtitle()
-                        remember("subtitleLanguage", "off")
-                    }
-                }
-            }
-        }
-        Button { withAnimation { panel = .subtitleSearch } } label: {
-            Label("Download subtitles", systemImage: "arrow.down.circle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
-        }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-download-subtitles")
-      }
     }
 
     /// Subtitles from the server's providers (OpenSubtitles), in a language; a tap saves one on the
@@ -1308,68 +1403,16 @@ struct JellyPlayerView: View {
         subtitleNotice = "Saved on the server. It shows next time you open the video."
     }
 
-    /// Speed, subtitle size, and the subtitle and audio delays.
-    private var settingsContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Playback").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-            HStack(spacing: 8) {
-                Text("Sleep timer").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 104, alignment: .leading)
-                ForEach([("Off", Int?.none), ("15m", 15), ("30m", 30), ("60m", 60), ("Episode end", 0)], id: \.0) { option in
-                    let on = option.1 == nil ? (sleepAt == nil && !sleepAtEnd) : option.1 == 0 ? sleepAtEnd : false
-                    Button { setSleep(option.1) } label: {
-                        Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .black : .white)
-                            .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 30).background(on ? Color.white : Color.white.opacity(0.15), in: Capsule())
-                    }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-sleep-" + option.0)
-                }
-            }
-            optionRow("Speed", options: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map { (Self.speedName(Float($0)), $0) }, chosen: Double(speed)) { value in
-                speed = Float(value)
-                engine?.setRate(Float(value))
-            }
-            HStack(spacing: 8) {
-                Text("Upscaling").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 104, alignment: .leading)
-                ForEach([("Off", false), ("On", true)], id: \.1) { option in
-                    let on = upscaleOn == option.1
-                    Button { setUpscale(option.1) } label: {
-                        Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .black : .white)
-                            .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 30).background(on ? Color.white : Color.white.opacity(0.15), in: Capsule())
-                    }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-upscale-" + option.0.lowercased())
-                }
-            }
-            if !subtitleTracks.isEmpty {
-                optionRow("Subtitle size", options: [("S", 0.8), ("M", 1.0), ("L", 1.3), ("XL", 1.6)], chosen: subtitleSize) { subtitleSize = $0 }
-            }
-            HStack(spacing: 32) {
-                if !subtitleTracks.isEmpty {
-                    delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engine?.setSoftwareSubtitleDelay($0) }
-                }
-                delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engine?.setAudioDelay($0) }
-            }
-        }.frame(maxWidth: 600, alignment: .leading)
-    }
-    private func optionRow(_ title: String, options: [(String, Double)], chosen: Double, pick: @escaping (Double) -> Void) -> some View {
-        HStack(spacing: 8) {
-            Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 104, alignment: .leading)
-            ForEach(options, id: \.1) { option in
-                let on = abs(chosen - option.1) < 0.001
-                Button { pick(option.1) } label: {
-                    Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .black : .white)
-                        .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 30).background(on ? Color.white : Color.white.opacity(0.15), in: Capsule())
-                }.buttonStyle(.plain)
-            }
-        }
-    }
-
     /// −0.1 s, the delay (a tap puts it back to 0), +0.1 s.
     private func delayControl(_ title: String, value: Double, set: @escaping (Double) -> Void) -> some View {
         HStack(spacing: 8) {
             Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
-            delayStep("minus", label: title + " earlier") { set(((value - 0.1) * 10).rounded() / 10) }
+            delayStep("minus", label: title + " earlier") { set(max(-15, ((value - 0.1) * 10).rounded() / 10)) }
             Button { set(0) } label: {
                 Text(value == 0 ? "0.0s" : String(format: "%+.1fs", value)).font(.system(size: 13, weight: .bold)).monospacedDigit()
                     .foregroundStyle(.white).frame(minWidth: 54, minHeight: 30)
             }.buttonStyle(.plain)
-            delayStep("plus", label: title + " later") { set(((value + 0.1) * 10).rounded() / 10) }
+            delayStep("plus", label: title + " later") { set(min(15, ((value + 0.1) * 10).rounded() / 10)) }
         }
     }
     private func delayStep(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -1434,24 +1477,6 @@ struct JellyPlayerView: View {
         }.frame(maxWidth: 520)
     }
 
-    private func trackColumn(_ heading: String, rows: [(Int, String)], chosen: Int?, pick: @escaping (Int?) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(heading).font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(rows, id: \.0) { row in
-                        Button { pick(row.0) } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).opacity(row.0 == chosen ? 1 : 0)
-                                Text(row.1).font(.system(size: 15, weight: row.0 == chosen ? .semibold : .regular)).lineLimit(1)
-                            }.foregroundStyle(row.0 == chosen ? .white : .white.opacity(0.7)).frame(minHeight: 36).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                    }
-                }
-            }.frame(maxHeight: 150)
-        }.frame(maxWidth: 300, alignment: .leading)
-    }
-
     /// "English · AC3 5.1", "Japanese (Forced)", or the track's own name.
     static func label(_ track: TrackInfo, audio: Bool) -> String {
         let language = track.language.flatMap { Locale.current.localizedString(forLanguageCode: $0) }
@@ -1488,7 +1513,6 @@ struct JellyPlayerView: View {
     private func seek(_ seconds: Double) async {
         guard let engine else { return }
         _ = await engine.seek(to: seconds)
-        updateActivity(at: seconds)
     }
     static func clock(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds >= 0 else { return "--:--" }
@@ -1685,6 +1709,8 @@ private struct JellySubtitles: View {
     var scale: Double = 1
     var insets = EdgeInsets()
     var fill = JellyFill.fit
+    /// The video's coded size in pixels (what a picture cue's canvas maps onto).
+    var videoPixels = CGSize.zero
     var originalSize = CGSize.zero
     var sheet: JellyASSSheet? = nil
     var body: some View {
@@ -1695,7 +1721,7 @@ private struct JellySubtitles: View {
             ZStack {
                 ForEach(now) { cue in
                     if case .image(let picture) = cue.body {
-                        let frame = Self.keep(Self.place(picture, in: proxy.size, fill: fill, originalSize: originalSize), inside: safe)
+                        let frame = Self.keep(Self.place(picture, in: proxy.size, fill: fill, videoPixels: videoPixels, originalSize: originalSize), inside: safe)
                         Image(decorative: picture.cgImage, scale: 1).resizable()
                             .frame(width: frame.width, height: frame.height).position(x: frame.midX, y: frame.midY)
                     }
@@ -1724,19 +1750,31 @@ private struct JellySubtitles: View {
             }
         }
     }
-    /// A picture cue's rectangle: its canvas laid over the picture as it is shown (fitted, filled or
-    /// at its own size), so the cue sits where the film puts it.
-    static func place(_ picture: SubtitleImage, in size: CGSize, fill: JellyFill, originalSize: CGSize) -> CGRect {
-        let canvas = picture.canvasSize
-        guard canvas.width > 0, canvas.height > 0 else { return .zero }
-        let scale: CGFloat = switch fill {
-        case .fit: min(size.width / canvas.width, size.height / canvas.height)
-        case .fill: max(size.width / canvas.width, size.height / canvas.height)
-        case .original: originalSize.width > 0 ? originalSize.width / canvas.width : min(size.width / canvas.width, size.height / canvas.height)
+    /// A picture cue's rectangle on screen. Its position is a fraction (0 to 1) of its canvas (the
+    /// disc's, say 1920x1080); the canvas lies across the video's full width, centred up and down (a
+    /// cropped rip's canvas is taller than the video), and the video is shown fitted, filled or at its
+    /// own size. AetherEngine's own compositor maps it the same way.
+    static func place(_ picture: SubtitleImage, in size: CGSize, fill: JellyFill, videoPixels: CGSize, originalSize: CGSize) -> CGRect {
+        let canvas = picture.canvasSize.width > 0 && picture.canvasSize.height > 0 ? picture.canvasSize : videoPixels
+        let video = videoPixels.width > 0 && videoPixels.height > 0 ? videoPixels : canvas
+        guard video.width > 0, video.height > 0, canvas.width > 0, canvas.height > 0 else { return .zero }
+        // The picture as it is shown.
+        let shown: CGSize
+        switch fill {
+        case .fit, .fill:
+            let scale = fill == .fit ? min(size.width / video.width, size.height / video.height) : max(size.width / video.width, size.height / video.height)
+            shown = CGSize(width: video.width * scale, height: video.height * scale)
+        case .original:
+            shown = originalSize.width > 0 && originalSize.height > 0 ? originalSize
+                : CGSize(width: video.width * min(size.width / video.width, size.height / video.height), height: video.height * min(size.width / video.width, size.height / video.height))
         }
-        let origin = CGPoint(x: (size.width - canvas.width * scale) / 2, y: (size.height - canvas.height * scale) / 2)
+        let frame = CGRect(x: (size.width - shown.width) / 2, y: (size.height - shown.height) / 2, width: shown.width, height: shown.height)
+        let scale = frame.width / canvas.width
         let spot = picture.position
-        return CGRect(x: origin.x + spot.minX * scale, y: origin.y + spot.minY * scale, width: spot.width * scale, height: spot.height * scale)
+        return CGRect(x: frame.minX + spot.minX * canvas.width * scale,
+                      y: frame.midY + (spot.minY * canvas.height - canvas.height / 2) * scale,
+                      width: spot.width * canvas.width * scale,
+                      height: spot.height * canvas.height * scale)
     }
     /// Moved (and if need be shrunk) to lie within the screen's safe area: never cut off by the edges,
     /// the camera or a zoomed picture.

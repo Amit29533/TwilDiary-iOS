@@ -412,6 +412,8 @@ struct SearchField: View {
     var ai: Binding<Bool>? = nil
     /// The keyboard's Search key.
     var onSearch: (() -> Void)? = nil
+    /// On Liquid Glass (see-through, for a field floating over a page) instead of the theme's fill.
+    var glass = false
     @State private var didAutoFocus = false
     @State private var spin = 0.0
     @FocusState private var focused: Bool
@@ -434,7 +436,9 @@ struct SearchField: View {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 17)).foregroundStyle(.tertiary).frame(width: 26, height: 32)
                 }.buttonStyle(.plain).accessibilityLabel("Clear search")
             }
-        }.padding(.horizontal, 14).frame(minHeight: 48).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: fieldRadius, style: .continuous), field: true) }
+        }.padding(.horizontal, 14).frame(minHeight: 48)
+            .background { if !glass { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: fieldRadius, style: .continuous), field: true) } }
+            .glassEffect(glass ? .regular.interactive() : .identity, in: RoundedRectangle(cornerRadius: fieldRadius, style: .continuous))
             // The assistant's glow while AI search is on, in every theme (owner's request).
             .overlay { if aiOn { geminiGlow.transition(.opacity) } }
             .animation(.smooth(duration: 0.3), value: aiOn)

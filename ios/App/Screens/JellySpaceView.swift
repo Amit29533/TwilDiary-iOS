@@ -52,27 +52,28 @@ struct JellySpaceView: View {
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
     /// at Explore's sizes.
     var body: some View {
-        EdgeToEdgeScroll(artworkUnderBar: true) {
+        // Searching with something typed: the results start under the top bar and the search field.
+        let showsResults = searching && !query.isEmpty
+        EdgeToEdgeScroll(artworkUnderBar: !showsResults) {
             VStack(alignment: .leading, spacing: 22) {
                 if let client = JellySpace.client {
-                    let picks = searching || JellyHomeRow.hidden(hiddenRowsRaw).contains(.hero) ? [] : heroPicks
+                    let picks = showsResults || JellyHomeRow.hidden(hiddenRowsRaw).contains(.hero) ? [] : heroPicks
                     if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client) }
                     VStack(alignment: .leading, spacing: 22) {
-                        if searching { SearchField(placeholder: "Search Jellyfin", text: $query, label: "Search Jellyfin") }
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
-                        if searching && !query.isEmpty {
+                        if showsResults {
                             if results.isEmpty && !searchRunning { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
                             JellyGrid(items: shown(results), client: client, playing: $playing)
                             if !seerrResults.isEmpty { requestSection }
                         } else if loading && !loaded {
                             DiaryLoadingPlaceholder(label: "Loading Jellyfin", layout: .posterShelf)
-                        } else if !searching {
+                        } else {
                             // Your order and choice of rows (Settings → JellySpace).
                             let off = JellyHomeRow.hidden(hiddenRowsRaw)
                             ForEach(JellyHomeRow.order(rowsRaw).filter { !off.contains($0) }) { row in homeRow(row, client: client) }
                         }
                     }
-                    .padding(.horizontal, 14).padding(.top, picks.isEmpty ? 72 : 0)
+                    .padding(.horizontal, 14).padding(.top, showsResults ? 64 : picks.isEmpty ? 72 : 0)
                 } else {
                     NavigationLink(value: AppDestination.jellyfin) {
                         HStack(spacing: 10) {
@@ -86,6 +87,15 @@ struct JellySpaceView: View {
             }.padding(.bottom, 110)
         }
         .diaryScreenBackground()
+        // The search field floats on glass just under the top bar's buttons, over the page (which
+        // stays as it is until something's typed).
+        .overlay(alignment: .top) {
+            if searching {
+                SearchField(placeholder: "Search Jellyfin", text: $query, label: "Search Jellyfin", autoFocus: true, glass: true)
+                    .padding(.horizontal, 14).padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .toolbar {
             if JellySpace.client != nil {
                 ToolbarItem(placement: .topBarTrailing) {

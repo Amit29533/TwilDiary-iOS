@@ -303,6 +303,7 @@ struct RootView: View {
             }
             .onChange(of: readyToShow) { _, _ in liftSplash() }
             .task { try? await Task.sleep(for: .seconds(2.5)); splashWaited = true; liftSplash() }
+            .task { JellyLiveActivity.endLeftovers() }
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     // The anime map, weekly on Wi-Fi, for Simkl's and AniList's syncs (in the background).
