@@ -71,6 +71,7 @@ struct JellyPlayerView: View {
     @State private var level: (symbol: String, value: Double)?
     @State private var levelTask: Task<Void, Never>?
     @State private var brightnessAtOpen: CGFloat?
+    @State private var holding = false
 
     private enum Panel { case tracks, episodes, chapters }
 
@@ -106,6 +107,11 @@ struct JellyPlayerView: View {
             }.ignoresSafeArea()
             JellyVolumeView(volume: volume).frame(width: 1, height: 1).opacity(0.01).allowsHitTesting(false)
             if let level { levelHUD(level).transition(.opacity).allowsHitTesting(false) }
+            if holding {
+                Label("2x", systemImage: "forward.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 16).frame(height: 38).background(.black.opacity(0.6), in: Capsule())
+                    .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
+            }
             if let skipFlash {
                 Text(skipFlash < 0 ? "−10s" : "+10s").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
                     .padding(18).background(.black.opacity(0.45), in: Circle())
@@ -172,6 +178,19 @@ struct JellyPlayerView: View {
 
     private func tapZone(seconds: Double, height: CGFloat) -> some View {
         Color.clear.contentShape(Rectangle())
+            // Hold anywhere: 2x while the finger stays down, back to the chosen speed on release.
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.4)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        if case .second(true, _) = value, !holding, state == .playing, swipeStart == nil {
+                            withAnimation(.easeOut(duration: 0.15)) { holding = true }
+                            engine?.setRate(2)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+                    .onEnded { _ in endHold() }
+            )
             .gesture(
                 DragGesture(minimumDistance: 14)
                     .onChanged { drag in swiped(drag, brightness: seconds < 0, height: height) }
@@ -192,11 +211,17 @@ struct JellyPlayerView: View {
             }
     }
 
+    private func endHold() {
+        guard holding else { return }
+        withAnimation(.easeOut(duration: 0.15)) { holding = false }
+        engine?.setRate(speed)
+    }
+
     /// Up raises, down lowers: the whole height of the screen goes from 0 to full. Swipes that start at
     /// the very top or bottom are the system's, and mostly-sideways ones are ignored.
     private func swiped(_ drag: DragGesture.Value, brightness: Bool, height: CGFloat) {
         if swipeStart == nil {
-            guard abs(drag.translation.height) > abs(drag.translation.width) * 1.4,
+            guard !holding, abs(drag.translation.height) > abs(drag.translation.width) * 1.4,
                   drag.startLocation.y > 44, drag.startLocation.y < height - 44 else { return }
             if brightness, brightnessAtOpen == nil { brightnessAtOpen = JellyScreen.brightness }
             swipeStart = brightness ? Double(JellyScreen.brightness) : Double(volume.level)
