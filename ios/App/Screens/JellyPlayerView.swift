@@ -117,6 +117,10 @@ struct JellyPlayerView: View {
     @State private var subtitleNotice: String?
     /// The separate subtitle files the video had (a downloaded one is the new index).
     @State private var knownSubtitles: Set<Int> = []
+    /// Sleep timer: a time to stop at, or the end of this episode; the sound fades before it pauses.
+    @State private var sleepAt: Date?
+    @State private var sleepAtEnd = false
+    @State private var fadingOut = false
     /// "1080p HEVC", from the file's video stream.
     @State private var quality: String?
     /// The subtitle the CC button turns back on.
@@ -232,9 +236,11 @@ struct JellyPlayerView: View {
             }
         }
         .onChange(of: videoSize) { _, size in turnToPicture(size) }
+        .onChange(of: speed) { _, _ in updateActivity() }
         .onDisappear {
             if let brightnessAtOpen { JellyScreen.brightness = brightnessAtOpen }
             countdownTask?.cancel()
+            JellyLiveActivity.end()
             report("stop")
             savePlace()
             engine?.stop()
@@ -254,7 +260,7 @@ struct JellyPlayerView: View {
         }
         .onChange(of: state) { _, now in
             if now == .playing { scheduleHide() }
-            if now == .paused || now == .playing { report("progress") }
+            if now == .paused || now == .playing { report("progress"); updateActivity() }
             if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
         }
     }
@@ -262,7 +268,7 @@ struct JellyPlayerView: View {
     @ViewBuilder private func picture(_ engine: AetherEngine) -> some View {
         let surface = AetherPlayerSurface(engine: engine)
             .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
-            .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds); autoSkip() }
+            .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds); autoSkip(); checkSleep() }
             .onReceive(engine.$duration) { duration = $0 }
             .onReceive(engine.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(engine.$subtitleTracks) { tracks in
@@ -524,6 +530,7 @@ struct JellyPlayerView: View {
             }
             engine.play()
             report("start")
+            updateActivity()
             if speed != 1 { engine.setRate(speed) }
             if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
         } catch {
@@ -747,6 +754,7 @@ struct JellyPlayerView: View {
 
     private func startCountdown() {
         countdown = countdownSeconds
+        updateActivity()
         countdownTask?.cancel()
         countdownTask = Task {
             while let left = countdown, left > 0 {
@@ -755,6 +763,68 @@ struct JellyPlayerView: View {
                 countdown = left - 1
             }
             if countdown == 0, let next = nextEpisode { play(next) }
+        }
+    }
+
+    /// The Live Activity's state now (the bar runs on from these times by itself).
+    private func updateActivity(at position: Double? = nil) {
+        guard duration > 0, state != .idle, state != .loading else { return }
+        let at = position ?? time, rate = Double(max(0.1, speed)), now = Date.now
+        let item = current.item
+        var next: (String, Date)?
+        if let countdown, let episode = nextEpisode {
+            next = ([episode.IndexNumber.map { "E\($0)" }, episode.Name].compactMap { $0 }.joined(separator: " · "), now.addingTimeInterval(Double(countdown)))
+        }
+        let detail = item.kind == "Episode" ? JellySpace.detail(item) : (item.ProductionYear.map(String.init) ?? "")
+        JellyLiveActivity.show(JellyPlaybackAttributes.ContentState(
+            title: heading, detail: detail, startedAt: now.addingTimeInterval(-at / rate), endsAt: now.addingTimeInterval(max(0, duration - at) / rate),
+            paused: state == .paused, position: at, duration: duration, nextTitle: next?.0, nextAt: next?.1), item: current.id)
+    }
+
+    // MARK: Sleep timer
+
+    /// The fade starts eight seconds before the time (or before the credits, or the last ten seconds,
+    /// at the end of an episode).
+    private func checkSleep() {
+        guard !fadingOut, state == .playing, sleepAt != nil || sleepAtEnd else { return }
+        if let sleepAt, Date.now >= sleepAt.addingTimeInterval(-8) { fadeOut(); return }
+        if sleepAtEnd, duration > 0 {
+            let credits = segments.first { $0.kind == "Outro" }.map { Double($0.StartTicks) / 10_000_000 }
+            if time >= min(credits ?? .infinity, duration - 10) - 8 { fadeOut() }
+        }
+    }
+    /// The sound down to nothing over eight seconds, then paused (and the sound put back).
+    private func fadeOut() {
+        fadingOut = true
+        Task {
+            for step in 1...16 {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard fadingOut else { engine?.volume = 1; return }
+                engine?.volume = max(0, 1 - Float(step) / 16)
+            }
+            engine?.pause()
+            engine?.volume = 1
+            countdown = nil
+            fadingOut = false; sleepAt = nil; sleepAtEnd = false
+            show("Sleep timer: paused")
+        }
+    }
+    private func setSleep(_ minutes: Int?) {
+        fadingOut = false
+        engine?.volume = 1
+        sleepAtEnd = minutes == 0
+        sleepAt = minutes.flatMap { $0 > 0 ? Date.now.addingTimeInterval(Double($0) * 60) : nil }
+        show(minutes == nil ? "Sleep timer off" : minutes == 0 ? "Sleeps at the end of this episode" : "Sleeps in \(minutes ?? 0) min")
+    }
+    /// The moon and time left, by the battery, while a sleep timer is on.
+    @ViewBuilder private var sleepBadge: some View {
+        if sleepAtEnd || sleepAt != nil {
+            HStack(spacing: 3) {
+                Image(systemName: "moon.zzz.fill")
+                if let sleepAt { Text(timerInterval: Date.now...max(Date.now, sleepAt), countsDown: true).monospacedDigit() }
+            }
+            .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+            .accessibilityElement(children: .ignore).accessibilityLabel("Sleep timer on")
         }
     }
 
@@ -897,6 +967,7 @@ struct JellyPlayerView: View {
             }
             .foregroundStyle(.white).shadow(color: .black.opacity(0.5), radius: 4)
             Spacer(minLength: 8)
+            sleepBadge
             if batteryOn { JellyBattery() }
             JellyAirPlayButton().frame(width: 40, height: 40).accessibilityLabel("AirPlay")
             if !subtitleTracks.isEmpty {
@@ -1055,7 +1126,7 @@ struct JellyPlayerView: View {
                     Label("Play now", systemImage: "play.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.black)
                         .padding(.horizontal, 14).frame(height: 34).background(.white, in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(.plain)
-                Button { countdown = nil } label: {
+                Button { countdown = nil; updateActivity() } label: {
                     Text("Cancel").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 14).frame(height: 34).background(.white.opacity(0.18), in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(.plain)
@@ -1213,6 +1284,16 @@ struct JellyPlayerView: View {
     private var settingsContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Playback").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+            HStack(spacing: 8) {
+                Text("Sleep timer").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7)).frame(width: 104, alignment: .leading)
+                ForEach([("Off", Int?.none), ("15m", 15), ("30m", 30), ("60m", 60), ("Episode end", 0)], id: \.0) { option in
+                    let on = option.1 == nil ? (sleepAt == nil && !sleepAtEnd) : option.1 == 0 ? sleepAtEnd : false
+                    Button { setSleep(option.1) } label: {
+                        Text(option.0).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .black : .white)
+                            .padding(.horizontal, 10).frame(minWidth: 44, minHeight: 30).background(on ? Color.white : Color.white.opacity(0.15), in: Capsule())
+                    }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-sleep-" + option.0)
+                }
+            }
             optionRow("Speed", options: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map { (Self.speedName(Float($0)), $0) }, chosen: Double(speed)) { value in
                 speed = Float(value)
                 engine?.setRate(Float(value))
@@ -1385,6 +1466,7 @@ struct JellyPlayerView: View {
     private func seek(_ seconds: Double) async {
         guard let engine else { return }
         _ = await engine.seek(to: seconds)
+        updateActivity(at: seconds)
     }
     static func clock(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds >= 0 else { return "--:--" }
@@ -1445,11 +1527,7 @@ private struct JellyScrubber: View {
         .accessibilityLabel("Position")
         .accessibilityValue(JellyPlayerView.clock(time))
         .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: commit(min(duration, time + 10))
-            case .decrement: commit(max(0, time - 10))
-            @unknown default: break
-            }
+            if direction == .increment { commit(min(duration, time + 10)) } else if direction == .decrement { commit(max(0, time - 10)) }
         }
     }
 }
