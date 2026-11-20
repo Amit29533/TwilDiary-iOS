@@ -933,6 +933,12 @@ struct JellyPlayerView: View {
                 }
                 .padding(.horizontal, 4).glassEffect(.regular.interactive(), in: Capsule())
                 Spacer(minLength: 8)
+                // Sideways, "Resumed at · Start over" sits in the top row's free middle: over the title
+                // it ran into the back button.
+                if verticalSizeClass == .compact, let resumedAt {
+                    resumePill(resumedAt)
+                    Spacer(minLength: 8)
+                }
                 sleepBadge
                 if batteryOn { JellyBattery() }
                 volumeCapsule
@@ -941,13 +947,8 @@ struct JellyPlayerView: View {
             Spacer(minLength: 0)
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    if let resumedAt {
-                        Button { Task { await seek(0) }; withAnimation { self.resumedAt = nil } } label: {
-                            Text("Resumed at \(Self.clock(resumedAt)) · Start over").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                                .padding(.horizontal, 12).frame(height: 30).contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Capsule()).padding(.bottom, 6)
-                        .accessibilityIdentifier("jellyspace-start-over").transition(.opacity)
+                    if verticalSizeClass != .compact, let resumedAt {
+                        resumePill(resumedAt).padding(.bottom, 6)
                     }
                     if !infoLine.isEmpty {
                         Text(infoLine).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
@@ -1182,6 +1183,15 @@ struct JellyPlayerView: View {
         .glassEffect(.regular.interactive(), in: Capsule())
         .accessibilityElement(children: .contain).accessibilityLabel("Volume")
         .onTapGesture { scheduleHide() }
+    }
+    /// "Resumed at 10:55 · Start over": a tap plays from the beginning.
+    private func resumePill(_ at: Double) -> some View {
+        Button { Task { await seek(0) }; withAnimation { resumedAt = nil } } label: {
+            Text("Resumed at \(Self.clock(at)) · Start over").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                .padding(.horizontal, 12).frame(height: 30).contentShape(Capsule())
+        }
+        .buttonStyle(.plain).glassEffect(.regular.interactive(), in: Capsule())
+        .accessibilityIdentifier("jellyspace-start-over").transition(.opacity)
     }
     /// One icon inside a glass capsule.
     private func glassIcon(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -1851,18 +1861,31 @@ private struct JellyVolumeView: UIViewRepresentable {
     private var controller: AVPictureInPictureController?
     var available: Bool { controller != nil }
 
+    /// What the controller was built for (the software source or the native layer), so the same one
+    /// isn't built again: the engine republishes on every change, a track or setting included.
+    private var builtFor: ObjectIdentifier?
+
     func rebuildIfNeeded() { if controller == nil { rebuild() } }
     func rebuild() {
-        guard let engine, AVPictureInPictureController.isPictureInPictureSupported() else { controller = nil; return }
+        guard let engine, AVPictureInPictureController.isPictureInPictureSupported() else { release(); return }
+        let target: AnyObject? = engine.softwarePiPSource ?? engine.nativePlayerLayer
+        if let target, controller != nil, builtFor == ObjectIdentifier(target) { return }
+        // The old controller goes first (its delegate off, its window closed when it isn't this one's).
+        release()
         if let software = engine.softwarePiPSource {
             controller = software.makePictureInPictureController()
         } else if let layer = engine.nativePlayerLayer {
             controller = AVPictureInPictureController(contentSource: .init(playerLayer: layer))
-        } else {
-            controller = nil
         }
+        builtFor = controller == nil ? nil : target.map(ObjectIdentifier.init)
         controller?.delegate = self
         controller?.canStartPictureInPictureAutomaticallyFromInline = true
+    }
+    private func release() {
+        controller?.delegate = nil
+        if controller?.isPictureInPictureActive == true { controller?.stopPictureInPicture() }
+        controller = nil
+        builtFor = nil
     }
     func start() { controller?.startPictureInPicture() }
 

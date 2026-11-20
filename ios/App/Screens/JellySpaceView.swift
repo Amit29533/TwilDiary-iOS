@@ -857,8 +857,8 @@ struct JellyTile: View {
 }
 
 /// A season's episode: its still (a ✓ on it once watched, your progress along its foot), "3. Name"
-/// on up to two lines, the length with "Watched" or when it aired, and two lines of its story (left
-/// out once watched). The next one to watch sits on a light card with Up next and a play sign.
+/// on up to two lines, and the length with "Watched" or when it aired. The next one to watch sits on
+/// a light card with Up next, a play sign and two lines of its story.
 struct JellyEpisodeRow: View {
     let item: JellyfinClient.Item
     let client: JellyfinClient
@@ -882,7 +882,8 @@ struct JellyEpisodeRow: View {
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(watched ? HomeStyle.secondary : HomeStyle.primary)
                         .lineLimit(2).multilineTextAlignment(.leading)
                     if !meta.isEmpty { Text(meta).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
-                    if !watched, let overview = item.Overview.map(JellySpace.plainText), !overview.isEmpty {
+                    // Only the next one's story: under every episode it made the list a wall of text.
+                    if upNext, let overview = item.Overview.map(JellySpace.plainText), !overview.isEmpty {
                         Text(overview).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).multilineTextAlignment(.leading)
                     }
                 }
@@ -896,7 +897,7 @@ struct JellyEpisodeRow: View {
             .accessibilityIdentifier("jellyspace-episode-" + item.Id)
     }
     private var still: some View {
-        Color.clear.frame(width: 128, height: 72)
+        Color.clear.frame(width: 120, height: 68)
             .overlay {
                 let fallback = Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
                 if let url = JellyfinClient.posterURL(base: client.base, item: item.Id, tag: item.ImageTags?["Primary"]) ?? JellySpace.poster(item, base: client.base) {
