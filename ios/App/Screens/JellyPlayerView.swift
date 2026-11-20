@@ -165,6 +165,8 @@ struct JellyPlayerView: View {
     @State private var frameRate: Double = 0
     /// Playback info over the corner (More → Playback info).
     @State private var showsInfo = false
+    /// Who decodes the video (More → Decoder): the engine's choice, or the app's own decoder.
+    @State private var decodePath: DecodePath = .automatic
     /// What the upscaler is doing now (nil when it isn't running).
     @State private var upscale: UpscaleStatus?
     /// Stretches already skipped on their own (each once, so going back into one plays it).
@@ -624,6 +626,7 @@ struct JellyPlayerView: View {
         frameRate = Self.frameRate(extras, source: current.source)
         options.upscalesLowResolutionVideo = upscaleMode.applies(frameRate: frameRate)
         options.upscaleScaler = .automatic
+        options.preferredDecodePath = decodePath
         options.audioShaping = Self.shaping(dialogue: dialogueBoost, night: nightMode, boost: volumeBoost)
         upscale = nil
         engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
@@ -1206,7 +1209,7 @@ struct JellyPlayerView: View {
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
-                       fill: fill, rotationLocked: rotationLocked, info: showsInfo)
+                       fill: fill, rotationLocked: rotationLocked, info: showsInfo, decoder: decodePath)
     }
     /// What the menus' choices do.
     private var menuActions: JellyMenuActions {
@@ -1231,7 +1234,8 @@ struct JellyPlayerView: View {
             },
             fill: { next in menuUsed(); setFill(next) },
             rotation: { menuUsed(); toggleRotation() },
-            info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } })
+            info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } },
+            decoder: { path in menuUsed(); setDecoder(path) })
     }
     /// A subtitle picked (-1 for off): turned on, and its language remembered.
     private func pickSubtitle(_ id: Int) {
@@ -1330,6 +1334,14 @@ struct JellyPlayerView: View {
     private var upscaleLabel: String? {
         guard let upscale, upscale.disabledReason == nil, upscale.sourceSize.height > 0 else { return nil }
         return "Upscaled from \(Int(upscale.sourceSize.height))p"
+    }
+    /// Auto or the app's own decoder: the video reloads where it is on the new one.
+    private func setDecoder(_ path: DecodePath) {
+        guard path != decodePath else { return }
+        decodePath = path
+        show("Decoder: " + JellyMenuParts.decoderName(path))
+        guard let engine, state != .idle, state != .loading else { return }
+        Task { _ = try? await engine.reloadAtCurrentPosition { $0.preferredDecodePath = path } }
     }
     /// Turned on or off mid-video: the video reloads where it is with the new setting.
     private func setUpscale(_ mode: JellyUpscale) {
@@ -2248,6 +2260,7 @@ private struct JellyMenuState: Equatable, Sendable {
     var fill: JellyFill
     var rotationLocked: Bool
     var info: Bool
+    var decoder: DecodePath
 }
 
 /// What the menus' choices do (closures: they play no part in deciding a redraw).
@@ -2267,9 +2280,17 @@ private struct JellyMenuActions {
     let fill: (JellyFill) -> Void
     let rotation: () -> Void
     let info: (Bool) -> Void
+    let decoder: (DecodePath) -> Void
 }
 
 @MainActor private enum JellyMenuParts {
+    /// "Auto" (the engine picks, usually the phone's own player) or "App" (the app's own decoder).
+    static func decoderName(_ path: DecodePath) -> String {
+        switch path {
+        case .automatic: "Auto"
+        case .software: "App"
+        }
+    }
     /// A button in the bottom row: its symbol and, where there's room, its name.
     static func label(_ symbol: String, _ title: String, labelled: Bool) -> some View {
         HStack(spacing: 8) {
@@ -2317,6 +2338,9 @@ private struct JellyMoreMenu: View, Equatable {
                     Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
                         ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
                     } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
+                    Picker(selection: Binding(get: { state.decoder }, set: { actions.decoder($0) })) {
+                        ForEach(DecodePath.allCases, id: \.self) { Text(JellyMenuParts.decoderName($0)).tag($0) }
+                    } label: { Label("Decoder", systemImage: "cpu") }.pickerStyle(.menu)
                 }
                 Section {
                     Picker(selection: Binding(get: { state.dialogue }, set: { actions.dialogue($0) })) {
