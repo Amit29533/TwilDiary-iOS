@@ -445,15 +445,19 @@ struct JellyPlayerView: View {
         let whole = Int(seconds.rounded())
         return whole >= 3600 ? String(format: "%d:%02d:%02d", whole / 3600, (whole / 60) % 60, whole % 60) : String(format: "%02d:%02d", whole / 60, whole % 60)
     }
+    /// The level as a standing bar at the middle of its side: brightness on the left, volume on the
+    /// right (the side the swipe is on), the icon above it.
     private func levelHUD(_ level: (symbol: String, value: Double)) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: level.symbol).font(.system(size: 16, weight: .semibold)).frame(width: 22)
-            Capsule().fill(.white.opacity(0.25)).frame(width: 140, height: 6)
-                .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: 140 * level.value, height: 6) }
+        let brightness = level.symbol.hasPrefix("sun")
+        let height: CGFloat = verticalSizeClass == .compact ? 130 : 170
+        return VStack(spacing: 12) {
+            Image(systemName: level.symbol).font(.system(size: 17, weight: .semibold)).frame(height: 22)
+            Capsule().fill(.white.opacity(0.25)).frame(width: 6, height: height)
+                .overlay(alignment: .bottom) { Capsule().fill(.white).frame(width: 6, height: height * level.value) }
         }
-        .foregroundStyle(.white).padding(.horizontal, 16).frame(height: 40).glassEffect(.regular, in: Capsule())
-        .frame(maxHeight: .infinity, alignment: .top).padding(.top, showsControls ? 72 : 18)
-        .animation(.smooth(duration: 0.25), value: showsControls)
+        .foregroundStyle(.white).padding(.vertical, 16).frame(width: 44).glassEffect(.regular, in: Capsule())
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: brightness ? .leading : .trailing)
+        .padding(.horizontal, 24)
     }
 
     // MARK: Orientation and locks
