@@ -256,8 +256,13 @@ struct JellyPlayerView: View {
             if screenLocked {
                 lockedLayer
             } else {
-                if showsControls || failure != nil { controls.transition(.opacity); centerControls.transition(.opacity) }
-                if showsControls, failure == nil, panel == nil { brightnessBar.transition(.opacity) }
+                // The controls stay built and only fade: building them again on every tap (their glass
+                // included) held up the picture for a moment as they came back.
+                let controlsUp = showsControls || failure != nil
+                let barUp = showsControls && failure == nil && panel == nil
+                Group { controls; centerControls }
+                    .opacity(controlsUp ? 1 : 0).allowsHitTesting(controlsUp).accessibilityHidden(!controlsUp)
+                brightnessBar.opacity(barUp ? 1 : 0).allowsHitTesting(barUp).accessibilityHidden(!barUp)
             }
             if let segment = activeSegment, panel == nil, countdown == nil, failure == nil, !screenLocked {
                 if skipMode(segment.kind) == .button { skipButton(segment).transition(.opacity) }
