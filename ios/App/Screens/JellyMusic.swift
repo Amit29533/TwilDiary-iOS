@@ -74,8 +74,9 @@ import TwilDiaryCore
     }
     private func updateCommands() {
         let hasNext = index + 1 < queue.count || repeatMode == .all
-        let next: (@MainActor () -> Void)? = hasNext ? { [weak self] in self?.next() } : nil
-        let previous: @MainActor () -> Void = { [weak self] in self?.previous() }
+        // Statements, not a lone `self?.next()` (that makes the closure return `Void?`).
+        let next: (@MainActor @Sendable () -> Void)? = hasNext ? { [weak self] in guard let self else { return }; self.next() } : nil
+        let previous: @MainActor @Sendable () -> Void = { [weak self] in guard let self else { return }; self.previous() }
         engine?.setNowPlayingTrackCommands(next: next, previous: previous)
     }
     /// The song's play to Jellyfin (signed in only), so the server and its plugins see it.
