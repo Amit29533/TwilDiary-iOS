@@ -382,7 +382,7 @@ import UIKit
         // The header scrolls with the page now (true full screen): back to the top for the logo.
         for _ in 0..<8 where !logo.isHittable { app.swipeDown() }
         wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: logo)], timeout: 5)
-        logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        logo.press(forDuration: 0.8)
         XCTAssertTrue(name.waitForExistence(timeout: 5)); let previous = name.label
         let again = app.buttons["random-pick-again"]
         wait(for: [expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: again)], timeout: 5)
@@ -398,11 +398,11 @@ import UIKit
         let logo = app.buttons["random-pick-logo"], empty = app.staticTexts["Your next story starts here"]
         // Let the empty diary finish loading first: a session change closes an open pick.
         XCTAssertTrue(app.descendants(matching: .any)["glance-content"].waitForExistence(timeout: 10))
-        // The logo (and its triple-tap random pick) lives on Home only.
+        // The logo (and its long-press random pick) lives on Home only.
         app.tabBars.buttons["Home"].tap()
         wait(for: [expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: logo)], timeout: 5)
         for _ in 0..<3 where !empty.exists {
-            logo.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+            logo.press(forDuration: 0.8)
             _ = empty.waitForExistence(timeout: 3)
         }
         XCTAssertTrue(empty.exists)

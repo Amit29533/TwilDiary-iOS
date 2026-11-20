@@ -18,20 +18,3 @@ import TwilDiaryTestSupport
     #expect(RandomPick.choose(titles, sample: 0.99999)?.id == active.last?.id)
 }
 
-@Test func rapidLogoTapUsesOneBoundedGestureAndResets() {
-    var result = RandomPick.tap(previous: [], now: 1)
-    #expect(!result.triggered)
-    result = RandomPick.tap(previous: result.taps, now: 1.2)
-    #expect(!result.triggered)
-    result = RandomPick.tap(previous: result.taps, now: 1.7)
-    #expect(result.triggered); #expect(result.taps.isEmpty)
-    #expect(!RandomPick.tap(previous: result.taps, now: 1.8).triggered)
-    var taps: [Double] = []
-    for instant in [1.0, 2.0, 3.0, 4.5] {
-        let slow = RandomPick.tap(previous: taps, now: instant)
-        #expect(!slow.triggered); taps = slow.taps
-    }
-    #expect(RandomPick.tap(previous: [0, 0.4], now: 0.85).triggered)
-    #expect(!RandomPick.tap(previous: [0, 0.4], now: 0.851).triggered)
-    #expect(RandomPick.tap(previous: [10, 20], now: 1).taps == [1])
-}

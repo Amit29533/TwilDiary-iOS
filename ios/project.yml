@@ -15,6 +15,9 @@ settings:
 packages:
   TwilDiaryCore:
     path: Packages/TwilDiaryCore
+  AetherEngine:
+    url: https://github.com/superuser404notfound/AetherEngine
+    from: 7.71.0
 targets:
   TwilDiary:
     type: application
@@ -32,6 +35,8 @@ targets:
         embed: true
       - sdk: AppIntents.framework
       - package: TwilDiaryCore
+      - package: AetherEngine
+        product: AetherEngine
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary

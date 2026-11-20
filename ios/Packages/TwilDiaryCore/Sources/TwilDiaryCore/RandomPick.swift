@@ -1,6 +1,7 @@
 import Foundation
 
-/// Mirrors domain/random-pick.ts, including its sample bounds and 850ms logo gesture.
+/// Mirrors domain/random-pick.ts, including its sample bounds. (The logo's triple tap is now a long
+/// press; a tap opens JellySpace.)
 public enum RandomPick {
     public static func choose(_ titles: [MediaTitle], previousID: String? = nil, sample: Double = Double.random(in: 0..<1)) -> MediaTitle? {
         let active = titles.filter { $0.deletedAt == nil }
@@ -11,8 +12,4 @@ public enum RandomPick {
         return candidates[index]
     }
 
-    public static func tap(previous: [Double], now: Double) -> (triggered: Bool, taps: [Double]) {
-        let taps = previous.filter { now >= $0 && now - $0 <= 0.85 } + [now]
-        return taps.count >= 3 ? (true, []) : (false, taps)
-    }
 }

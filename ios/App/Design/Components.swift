@@ -339,7 +339,7 @@ struct PageHeader: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @State private var taps: [Double] = []
+    @State private var heldForPick = false
     @State private var angle = 0.0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
@@ -354,10 +354,10 @@ struct PageHeader: View {
     private var isHome: Bool { name == "TwilDiary" }
     private var logo: some View {
         Button {
-            let gesture = RandomPick.tap(previous: taps, now: ProcessInfo.processInfo.systemUptime)
-            taps = gesture.taps
+            // The release that ends a long press (the random pick) isn't a tap.
+            if heldForPick { heldForPick = false; return }
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
-            if gesture.triggered { presentPick() }
+            router.paths[router.selectedTab, default: NavigationPath()].append(AppDestination.jellyspace)
         } label: {
             // The original Liquid Glass logo (owner's choice): the mark in the theme's accent on glass.
             BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))
@@ -369,14 +369,12 @@ struct PageHeader: View {
                 // The tap shape sits outside the glass; otherwise the interactive glass takes the tap.
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain)
-            // Quick taps can reach the button as one; a real triple tap opens the pick too.
-            .simultaneousGesture(TapGesture(count: 3).onEnded { presentPick() })
-            .haptic(.impact(weight: .light), trigger: angle).accessibilityLabel("Spin TwilDiary logo").accessibilityHint("Tap three times for a random pick")
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in heldForPick = true; presentPick() })
+            .haptic(.impact(weight: .light), trigger: angle).accessibilityLabel("JellySpace").accessibilityHint("Press and hold for a random pick")
             .accessibilityAction(named: "Random pick") { presentPick() }
             .accessibilityIdentifier("random-pick-logo")
     }
     private func presentPick() {
-        taps = []
         if router.randomPick == nil { router.presentRandomPick() }
     }
     @ViewBuilder private var title: some View {

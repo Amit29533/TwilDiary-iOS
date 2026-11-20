@@ -307,7 +307,11 @@ struct JellyfinClient: Sendable {
         let ProductionYear: Int?
         let ImageTags: [String: String]?
         let Genres: [String]?
-        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres }
+        // JellySpace: an episode's show and number, and the show's poster.
+        let SeriesName: String?
+        let IndexNumber: Int?
+        let SeriesPrimaryImageTag: String?
+        enum CodingKeys: String, CodingKey { case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres, SeriesName, IndexNumber, SeriesPrimaryImageTag }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
     struct Server: Decodable { let ServerName: String?; let Version: String? }
@@ -339,6 +343,21 @@ struct JellyfinClient: Sendable {
     func libraries() async throws -> [JellyfinLibrary] {
         let folders: [Folder] = try await get("Library/VirtualFolders")
         return folders.compactMap { folder in folder.ItemId.map { JellyfinLibrary(id: $0, name: folder.Name, type: folder.CollectionType?.lowercased()) } }
+    }
+    /// Films and episodes for JellySpace: the newest first, or those matching a search.
+    func videos(search: String, limit: Int = 60) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Episode"),
+                     URLQueryItem(name: "Limit", value: String(limit))]
+        if search.isEmpty { query += [URLQueryItem(name: "SortBy", value: "DateCreated"), URLQueryItem(name: "SortOrder", value: "Descending")] }
+        else { query.append(URLQueryItem(name: "SearchTerm", value: search)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+    /// The file as it is (Jellyfin's static stream): AetherEngine plays it with nothing converted on the server.
+    func streamURL(_ id: String) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/stream"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "static", value: "true"), URLQueryItem(name: "api_key", value: key)]
+        return components?.url
     }
     /// Every item of the given types under a library, a page at a time.
     func items(in library: String, types: String) async throws -> [Item] {
