@@ -98,6 +98,7 @@ struct JellyPlayerView: View {
     @State private var panelSeasons: [JellyfinClient.Item] = []
     @State private var panelSeasonID: String?
     @State private var panelEpisodes: [JellyfinClient.Item] = []
+    @State private var panelLoading = false
     /// The brightness bar at the left (the screen's own brightness, kept in step with swipes).
     @State private var brightnessLevel: Double = 0.5
     @State private var countdown: Int?
@@ -515,8 +516,10 @@ struct JellyPlayerView: View {
             scheduleHide()
         }
         .accessibilityIdentifier("jellyspace-brightness")
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(.leading, compact ? 30 : 14)
+        // Sideways it's centred on the left; upright that's where back sits, so it goes up under the
+        // top row instead.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: compact ? .leading : .topLeading)
+        .padding(.leading, compact ? 30 : 14).padding(.top, compact ? 0 : 100)
     }
     private func setBrightness(_ value: Double) {
         let level = min(1, max(0, value))
@@ -1577,6 +1580,16 @@ struct JellyPlayerView: View {
         panelSeasonID = current.item.SeasonId
         panelEpisodes = season
         withAnimation { panel = .episodes }
+        // The season playing hadn't loaded (or has no id): fetched here.
+        if season.isEmpty, let seasonID = current.item.SeasonId {
+            let client = current.client, user = userID
+            panelLoading = true
+            Task {
+                let found = ((try? await client.children(of: seasonID, user: user)) ?? []).filter { $0.kind == "Episode" }
+                if panelSeasonID == seasonID { panelEpisodes = found }
+                panelLoading = false
+            }
+        }
         guard panelSeasons.isEmpty, let series = current.item.SeriesId else { return }
         let client = current.client, user = userID
         Task {
@@ -1590,8 +1603,15 @@ struct JellyPlayerView: View {
         guard id != panelSeasonID, let series = current.item.SeriesId else { return }
         panelSeasonID = id
         panelEpisodes = []
+        panelLoading = true
         let client = current.client, user = userID
-        Task { panelEpisodes = (try? await client.episodes(of: series, season: id, user: user)) ?? [] }
+        Task {
+            let found = (try? await client.episodes(of: series, season: id, user: user)) ?? []
+            // A season picked meanwhile wins.
+            guard panelSeasonID == id else { return }
+            panelEpisodes = found
+            panelLoading = false
+        }
     }
     private func closePanel() {
         withAnimation { panel = nil }
@@ -1630,7 +1650,10 @@ struct JellyPlayerView: View {
                 }
                 .padding(.horizontal, side)
                 if shown.isEmpty {
-                    ProgressView().tint(.white).frame(maxWidth: .infinity).frame(height: 160)
+                    Group {
+                        if panelLoading { ProgressView().tint(.white) }
+                        else { Text("No episodes here.").font(.system(size: 14)).foregroundStyle(.white.opacity(0.7)) }
+                    }.frame(maxWidth: .infinity).frame(height: 160)
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView(.horizontal) {

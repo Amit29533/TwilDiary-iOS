@@ -72,6 +72,8 @@ struct JellyDetailPage: View {
     @State private var version: String?
     @Environment(\.openURL) private var openURL
     @Environment(AppRouter.self) private var router
+    @Environment(DiaryStore.self) private var store
+    @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
     @State private var showFileInfo = false
     /// The poster and name in the top bar once the picture has scrolled under it.
     @State private var headerState = CompactHeaderState()
@@ -342,6 +344,10 @@ struct JellyDetailPage: View {
                 played.toggle()
                 let now = played
                 Task { try? await client.setPlayed(route.id, user: user, now) }
+                // A film marked watched goes in the diary too (as the long-press menu does).
+                if now, diaryOn, let film = item, film.kind == "Movie" {
+                    Task { _ = await JellyDiary.mark(film, client: client, store: store) }
+                }
             }
             ShareLink(item: shareText(detail)) { actionLabel("paperplane", title: "Share") }
                 .buttonStyle(.springPress).accessibilityLabel("Share " + name)

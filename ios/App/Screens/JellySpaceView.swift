@@ -715,31 +715,8 @@ private struct JellyHero: View {
             }
             .font(.system(size: 13, weight: .medium)).foregroundStyle(HomeStyle.primary.opacity(0.82)).lineLimit(1)
             HStack(spacing: 10) {
-                // Play: solid in the page's text colour (white on a dark theme), the page's colour on it.
-                Button { Task { await play() } } label: {
-                    HStack(spacing: 7) {
-                        if starting { ProgressView().controlSize(.small).tint(ThemeStore.current.canvas) } else { Image(systemName: "play.fill") }
-                        Text(playLabel).lineLimit(1).minimumScaleFactor(0.8)
-                    }
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(ThemeStore.current.canvas)
-                    .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
-                    .background(HomeStyle.primary, in: Capsule()).contentShape(Capsule())
-                }
-                .buttonStyle(.springPress).disabled(starting)
-                .accessibilityLabel(playLabel + " " + (item.Name ?? "")).accessibilityIdentifier("jellyspace-hero-play-" + item.Id)
-                Button { toggleFavourite() } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: isFavourite ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace))
-                        Text("Favourite").lineLimit(1).minimumScaleFactor(0.8)
-                    }
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                    .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
-                    .glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
-                }
-                .buttonStyle(.springPress)
-                .sensoryFeedback(.selection, trigger: isFavourite)
-                .accessibilityLabel(isFavourite ? "Remove " + (item.Name ?? "this title") + " from favourites" : "Add " + (item.Name ?? "this title") + " to favourites")
-                .accessibilityIdentifier("jellyspace-hero-favourite-" + item.Id)
+                playButton
+                favouriteButton
             }.padding(.top, 5)
         }
         .padding(.horizontal, 24).padding(.bottom, 36)
@@ -751,6 +728,43 @@ private struct JellyHero: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("About " + (item.Name ?? "this title")).accessibilityIdentifier("jellyspace-hero-" + item.Id)
         }
+    }
+
+    /// Play: solid in the page's text colour (white on a dark theme), the page's colour on it.
+    private var playButton: some View {
+        let ink = ThemeStore.current.canvas
+        return Button { Task { await play() } } label: {
+            HStack(spacing: 7) {
+                if starting { ProgressView().controlSize(.small).tint(ink) } else { Image(systemName: "play.fill") }
+                Text(playLabel).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
+            .background(HomeStyle.primary, in: Capsule()).contentShape(Capsule())
+        }
+        .buttonStyle(.springPress).disabled(starting)
+        .accessibilityLabel(playLabel + " " + (item.Name ?? "")).accessibilityIdentifier("jellyspace-hero-play-" + item.Id)
+    }
+    /// Favourite, on glass beside Play.
+    private var favouriteButton: some View {
+        let symbol = isFavourite ? "heart.fill" : "heart"
+        return Button { toggleFavourite() } label: {
+            HStack(spacing: 7) {
+                Image(systemName: symbol).contentTransition(.symbolEffect(.replace))
+                Text("Favourite").lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 44)
+            .glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
+        }
+        .buttonStyle(.springPress)
+        .sensoryFeedback(.selection, trigger: isFavourite)
+        .accessibilityLabel(favouriteLabel)
+        .accessibilityIdentifier("jellyspace-hero-favourite-" + item.Id)
+    }
+    private var favouriteLabel: String {
+        let name = item.Name ?? "this title"
+        return isFavourite ? "Remove \(name) from favourites" : "Add \(name) to favourites"
     }
 
     private func toggleFavourite() {
@@ -1343,6 +1357,8 @@ struct JellyEpisodeRow: View {
     var upNext = false
     @State private var played: Bool?
     @State private var favourite: Bool?
+    @Environment(DiaryStore.self) private var store
+    @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
     var body: some View {
         row.modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite, play: nil))
     }
@@ -1392,6 +1408,11 @@ struct JellyEpisodeRow: View {
         Task {
             guard let user = await JellyfinUser.id(client) else { return }
             do { try await client.setPlayed(id, user: user, now) } catch { played = !now }
+        }
+        // Watched: in the diary too, as the long-press menu and finishing it in the player do.
+        if now, diaryOn {
+            let episode = item
+            Task { _ = await JellyDiary.mark(episode, client: client, store: store) }
         }
     }
     private var still: some View {
