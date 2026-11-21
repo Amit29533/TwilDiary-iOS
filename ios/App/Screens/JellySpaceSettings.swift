@@ -277,9 +277,10 @@ enum JellySecrets {
 
 /// The pages under Settings → JellySpace, each holding one kind of setting.
 enum JellySettingsPage: String, Hashable, CaseIterable {
-    case home, libraries, playback, skipping, subtitles, sound, gestures, requests, musicDiary
+    case preferences, home, libraries, playback, skipping, subtitles, sound, gestures, requests, musicDiary
     var title: String {
         switch self {
+        case .preferences: "Preferences"
         case .home: "Home"
         case .libraries: "Libraries"
         case .playback: "Playback"
@@ -293,6 +294,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
     }
     var symbol: String {
         switch self {
+        case .preferences: "slider.horizontal.3"
         case .home: "house.fill"
         case .libraries: "books.vertical.fill"
         case .playback: "play.rectangle.fill"
@@ -306,6 +308,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
     }
     var tint: SettingsView.TileTint {
         switch self {
+        case .preferences: .cyan
         case .home: .blue
         case .libraries: .indigo
         case .playback: .red
@@ -356,6 +359,8 @@ struct JellySpaceSettingsView: View {
                     JellySettingsLink(page: .libraries, value: libraries.isEmpty ? nil : "\(shownCount) of \(libraries.count) shown")
                 }
                 SettingsGroup(label: "Player") {
+                    JellyPreferencesLink()
+                    SettingsDivider()
                     JellySettingsLink(page: .playback)
                     SettingsDivider()
                     JellySettingsLink(page: .skipping)
@@ -444,6 +449,7 @@ struct JellySettingsPageView: View {
                     JellyPostersGroup()
                 case .libraries:
                     JellyLibrariesGroup(libraries: libraries, hiddenItems: hiddenItems, hiddenRaw: $hiddenRaw)
+                case .preferences: JellyPreferencesGroups()
                 case .playback: JellyPlaybackGroups()
                 case .skipping: JellySkippingGroups()
                 case .subtitles: JellySubtitlesGroups()
@@ -678,13 +684,10 @@ private struct JellyPlaybackGroups: View {
     @AppStorage(JellyPrefs.countdownKey) private var countdown = 5
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatching = 3
     @AppStorage(JellyPrefs.resumeKey) private var resume = true
-    @AppStorage(JellyPrefs.rememberTracksKey) private var rememberTracks = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.batteryKey) private var battery = true
-    @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
 
-    private static let fills = JellyFill.allCases.map { ($0.rawValue, $0.rawValue) }
     private static let upscales = JellyUpscale.allCases.map { ($0.title, $0) }
 
     var body: some View {
@@ -702,14 +705,9 @@ private struct JellyPlaybackGroups: View {
             SettingsGroup(label: "Watching") {
                 JellySettingsRows.toggle("Resume where you stopped", $resume, accent: accent)
                 SettingsDivider()
-                JellySettingsRows.toggle("Remember audio and subtitles", $rememberTracks, accent: accent)
-                SettingsDivider()
                 JellySettingsRows.choice("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
                 SettingsDivider()
                 JellySettingsRows.toggle("Battery", $battery, accent: accent)
-            }
-            SettingsGroup(label: "Picture") {
-                JellySettingsRows.choice("Picture", $fill, Self.fills)
             }
             // Upscaling is AetherEngine's; mpv has its own (More → Super resolution while it plays).
             SettingsGroup(label: "Default decoder") {
@@ -756,6 +754,83 @@ private struct JellySkippingGroups: View {
     }
 }
 
+// MARK: Preferences
+
+/// The row on the JellySpace page: your audio language and aspect ratio at a glance.
+private struct JellyPreferencesLink: View {
+    @AppStorage(JellyPreferences.audioLanguageKey) private var audio = ""
+    @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
+    var body: some View {
+        let language = JellySubtitleChoices.languages.first { $0.1 == audio && !audio.isEmpty }?.0
+        JellySettingsLink(page: .preferences, value: [language, fill].compactMap { $0 }.joined(separator: " · "))
+    }
+}
+
+/// Preferences: what a video starts with (audio and subtitle languages, the aspect ratio), and what
+/// the player remembers of your choices. A video starts with what you picked in its show, then
+/// these, then the file's own.
+private struct JellyPreferencesGroups: View {
+    var body: some View {
+        Group {
+            JellyAudioLanguageGroup()
+            JellySubtitleLanguageGroup()
+            JellyAspectGroup()
+            JellyRememberGroup()
+        }
+    }
+}
+
+private struct JellyAudioLanguageGroup: View {
+    @AppStorage(JellyPreferences.audioLanguageKey) private var language = ""
+    @AppStorage(JellyPreferences.audioSecondKey) private var second = ""
+
+    var body: some View {
+        let languages = JellySubtitleChoices.languages
+        SettingsGroup(label: "Audio") {
+            JellySettingsRows.choice("Default audio language", $language, languages)
+            if !language.isEmpty {
+                SettingsDivider()
+                JellySettingsRows.choice("Second choice", $second, languages.map { $0.1.isEmpty ? ("None", "") : $0 })
+            }
+        }
+        JellyDecoderNote(text: "File's choice plays the track the file marks as its default.")
+    }
+}
+
+private struct JellyAspectGroup: View {
+    @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
+    private static let fills = JellyFill.allCases.map { ($0.rawValue, $0.rawValue) }
+
+    var body: some View {
+        SettingsGroup(label: "Picture") {
+            JellySettingsRows.choice("Default aspect ratio", $fill, Self.fills)
+        }
+    }
+}
+
+private struct JellyRememberGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.rememberTracksKey) private var rememberTracks = true
+    @AppStorage(JellyPreferences.perShowKey) private var perShow = true
+    @AppStorage(JellyPreferences.fillPerShowKey) private var fillPerShow = false
+
+    var body: some View {
+        let accent = theme.accent
+        SettingsGroup(label: "Remembering") {
+            JellySettingsRows.toggle("Remember audio and subtitles", $rememberTracks, accent: accent)
+            if rememberTracks {
+                SettingsDivider()
+                JellySettingsRows.toggle("Carry across a show's episodes", $perShow, accent: accent)
+            }
+            SettingsDivider()
+            JellySettingsRows.toggle("Remember aspect ratio per show", $fillPerShow, accent: accent)
+        }
+        JellyDecoderNote(text: rememberTracks && perShow
+            ? "Each show keeps its own: Japanese audio for an anime, English for a sitcom. Then your defaults, then the file's own."
+            : rememberTracks ? "Your last choice anywhere, then your defaults, then the file's own." : "Your defaults, then the file's own.")
+    }
+}
+
 // MARK: Subtitles
 
 /// Subtitles: a preview, then the text, its edge, the box, where they sit, which ones a video starts
@@ -769,7 +844,6 @@ private struct JellySubtitlesGroups: View {
             JellySubtitleEdgeGroup()
             JellySubtitleBoxGroup()
             JellySubtitlePositionGroup()
-            JellySubtitleLanguageGroup()
             JellySubtitleStyledGroup()
             JellySubtitleTimingGroup()
         }
@@ -949,11 +1023,11 @@ private struct JellySubtitleLanguageGroup: View {
 
     var body: some View {
         let languages = JellySubtitleChoices.languages
-        SettingsGroup(label: "Languages") {
+        SettingsGroup(label: "Subtitles") {
             JellySettingsRows.choice("Show subtitles", $show, JellySubtitleChoices.show)
             if show != "off" {
                 SettingsDivider()
-                JellySettingsRows.choice("Preferred language", $language, languages)
+                JellySettingsRows.choice("Default subtitle language", $language, languages)
                 if !language.isEmpty {
                     SettingsDivider()
                     JellySettingsRows.choice("Second choice", $second, languages.map { $0.1.isEmpty ? ("None", "") : $0 })

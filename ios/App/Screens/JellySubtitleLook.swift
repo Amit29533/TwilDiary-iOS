@@ -28,6 +28,27 @@ enum JellySubtitlePrefs {
     static let delayStepKey = "jellyspace.subtitle.delayStep"
 }
 
+/// Settings → JellySpace → Preferences, beyond the subtitle languages (JellySubtitlePrefs), the
+/// aspect ratio (JellyPrefs.fillKey) and remembering tracks (JellyPrefs.rememberTracksKey).
+enum JellyPreferences {
+    /// ISO 639-2 codes ("" for the file's own choice).
+    static let audioLanguageKey = "jellyspace.audio.language"
+    static let audioSecondKey = "jellyspace.audio.language2"
+    /// Audio and subtitles remembered for each show (its episodes carry them), not only overall.
+    static let perShowKey = "jellyspace.remember.perShow"
+    /// The aspect ratio kept for each show (a pinch to Fill stays for its episodes).
+    static let fillPerShowKey = "jellyspace.fill.perShow"
+
+    static var perShow: Bool { UserDefaults.standard.object(forKey: perShowKey) as? Bool ?? true }
+    static var fillPerShow: Bool { UserDefaults.standard.bool(forKey: fillPerShowKey) }
+    static func fillKey(show: String) -> String { "jellyspace.fill." + show }
+    /// Your default audio languages, first then second (none set: empty).
+    static var audioLanguages: [String] {
+        let defaults = UserDefaults.standard
+        return [defaults.string(forKey: audioLanguageKey) ?? "", defaults.string(forKey: audioSecondKey) ?? ""].filter { !$0.isEmpty }
+    }
+}
+
 /// The choices the Subtitles page offers.
 enum JellySubtitleChoices {
     struct Swatch: Sendable {

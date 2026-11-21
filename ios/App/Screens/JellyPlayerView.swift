@@ -188,6 +188,8 @@ struct JellyPlayerView: View {
     /// mpv, the second engine (More → Decoder → mpv), and whether this video plays on it.
     @StateObject private var mpv = JellyMPV()
     @State private var usesMPV: Bool
+    /// The show's own aspect ratio (Preferences → Remember aspect ratio per show), nil for your default.
+    @State private var showFill: JellyFill?
     /// Counts mpv's starts on a new output (its view and the video's opening follow it).
     @State private var mpvRun = 0
     /// Where the other engine was when you switched (the next start begins there).
@@ -202,9 +204,17 @@ struct JellyPlayerView: View {
     init(playback: JellyPlayback) {
         _current = State(initialValue: playback)
         _usesMPV = State(initialValue: JellyMPVChoice.isOn(playback.id))
+        _showFill = State(initialValue: Self.savedFill(playback.item))
     }
 
-    private var fill: JellyFill { JellyFill(rawValue: fillRaw) ?? .fit }
+    /// The aspect ratio: this show's (Preferences → Remember aspect ratio per show), else your default.
+    private var fill: JellyFill { showFill ?? JellyFill(rawValue: fillRaw) ?? .fit }
+    /// The aspect ratio kept for the show playing, when Preferences keeps one per show.
+    static func savedFill(_ item: JellyfinClient.Item) -> JellyFill? {
+        guard JellyPreferences.fillPerShow, let show = item.SeriesId,
+              let saved = UserDefaults.standard.string(forKey: JellyPreferences.fillKey(show: show)) else { return nil }
+        return JellyFill(rawValue: saved)
+    }
     private var nextEpisode: JellyfinClient.Item? {
         guard current.item.kind == "Episode" else { return nil }
         if let number = current.item.IndexNumber,
@@ -686,6 +696,7 @@ struct JellyPlayerView: View {
         finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
         quality = nil; buffered = 0
         if !handingOver {
+            showFill = Self.savedFill(current.item)
             skipped = []; time = 0
             segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil
         }
@@ -1018,9 +1029,15 @@ struct JellyPlayerView: View {
     // MARK: Remembered audio and subtitles
 
     /// Your last audio and subtitle language: for this show if you chose one in it, else from anything.
+    /// Your remembered audio or subtitle language. Carried across a show's episodes (Preferences):
+    /// what you picked in this show, and nothing for a film or a show you haven't picked in (your
+    /// defaults then apply). Otherwise your last choice anywhere.
     private func remembered(_ kind: String) -> String? {
         let defaults = UserDefaults.standard
-        if let show = current.item.SeriesId, let value = defaults.string(forKey: "jellyspace.\(kind).\(show)") { return value }
+        if JellyPreferences.perShow {
+            guard let show = current.item.SeriesId else { return nil }
+            return defaults.string(forKey: "jellyspace.\(kind).\(show)")
+        }
         return defaults.string(forKey: "jellyspace.\(kind)")
     }
     private func remember(_ kind: String, _ value: String) {
@@ -1040,11 +1057,16 @@ struct JellyPlayerView: View {
             }
             return
         }
-        guard rememberTracks else { return }
-        guard let language = remembered("audioLanguage"),
-              let track = tracks.first(where: { $0.language == language && !$0.isCommentary }),
-              track.id != activeAudio else { return }
-        engineAudio(track.id)
+        // What you picked (in this show, or anywhere), then your default languages (Preferences),
+        // else the file's own default, which is already playing.
+        var wanted: [String] = []
+        if rememberTracks, let language = remembered("audioLanguage") { wanted.append(language) }
+        wanted += JellyPreferences.audioLanguages
+        for language in wanted {
+            guard let track = tracks.first(where: { JellySubtitlePick.same($0.language, language) && !$0.isCommentary }) else { continue }
+            if track.id != activeAudio { engineAudio(track.id) }
+            return
+        }
     }
 
     /// The next episode on its own (after the countdown, or past the credits): first "Are you still
@@ -1691,7 +1713,13 @@ struct JellyPlayerView: View {
         setFill(all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count])
     }
     private func setFill(_ next: JellyFill) {
-        fillRaw = next.rawValue
+        // Kept for this show (Preferences), else as your default.
+        if JellyPreferences.fillPerShow, let show = current.item.SeriesId {
+            UserDefaults.standard.set(next.rawValue, forKey: JellyPreferences.fillKey(show: show))
+            showFill = next
+        } else {
+            fillRaw = next.rawValue
+        }
         engine?.videoGravity = next == .fill ? .resizeAspectFill : .resizeAspect
         mpv.setFill(next)
         show(next.rawValue, for: 1.2)
