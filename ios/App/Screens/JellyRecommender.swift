@@ -30,13 +30,21 @@ struct JellyLibraryIndex: Sendable {
     let entries: [JellyIndexEntry]
     let position: [String: Int]
     let frequency: [String: Int]
+    /// How many titles each tag is on (a tag on many, "Romcom", says little; on three, a lot).
+    var tagFrequency: [String: Int] = [:]
 
     func idf(_ word: String) -> Double {
         log(Double(entries.count + 1) / Double((frequency[word] ?? 0) + 1))
     }
+    func tagIDF(_ tag: String) -> Double {
+        log(Double(entries.count + 1) / Double((tagFrequency[tag] ?? 0) + 1))
+    }
 
     static func build(_ items: [JellyfinClient.Item]) -> JellyLibraryIndex {
         let tagger = NLTagger(tagSchemes: [.lemma])
+        // The same names come round again and again (a show's name in each of its files, a folder in
+        // each of its videos): each is read once.
+        var known: [String: [(String, String)]] = [:]
         var entries: [JellyIndexEntry] = []
         var frequency: [String: Int] = [:]
         entries.reserveCapacity(items.count)
@@ -50,7 +58,9 @@ struct JellyLibraryIndex: Sendable {
             // The name, the file and the folder all count (a clip in "Goa Trip 2023" is about Goa).
             var words: [String: String] = [:]
             for source in [item.Name ?? "", file, folder] {
-                for (root, written) in JellyWords.words(source, tagger: tagger) where words[root] == nil { words[root] = written }
+                let found: [(String, String)]
+                if let seen = known[source] { found = seen } else { found = JellyWords.words(source, tagger: tagger); known[source] = found }
+                for (root, written) in found where words[root] == nil { words[root] = written }
             }
             for root in words.keys { frequency[root, default: 0] += 1 }
             let date = item.kind == "Video"
@@ -66,7 +76,9 @@ struct JellyLibraryIndex: Sendable {
                                            tmdb: tmdb, titled: titled, duplicateKey: key))
         }
         let position = Dictionary(entries.enumerated().map { ($0.element.item.Id, $0.offset) }, uniquingKeysWith: { first, _ in first })
-        return JellyLibraryIndex(entries: entries, position: position, frequency: frequency)
+        var tagFrequency: [String: Int] = [:]
+        for entry in entries { for tag in entry.tags { tagFrequency[tag, default: 0] += 1 } }
+        return JellyLibraryIndex(entries: entries, position: position, frequency: frequency, tagFrequency: tagFrequency)
     }
 }
 
@@ -174,14 +186,24 @@ enum JellyRecommender {
         for (offset, candidate) in index.entries.enumerated() where offset != spot {
             guard candidate.titled == target.titled, candidate.duplicateKey != target.duplicateKey,
                   ["Movie", "Series", "Video"].contains(candidate.item.kind) else { continue }
+            // Short reasons: one line under a poster.
             var strong: [(Double, String)] = []
-            if let tmdb = candidate.tmdb, let rank = tmdbRank[tmdb] { strong.append((7 - Double(min(rank, 10)) * 0.25, "Recommended by TMDB")) }
+            if let tmdb = candidate.tmdb, let rank = tmdbRank[tmdb] { strong.append((7 - Double(min(rank, 10)) * 0.25, "TMDB pick")) }
             for person in signals.people where person.titles.contains(candidate.item.Id) {
-                strong.append(person.director ? (6, "Same director · " + person.name) : (4.5, "Also with " + person.name))
+                strong.append(person.director ? (6, "By " + person.name) : (4.5, "With " + person.name))
             }
-            if signals.jellyfin.contains(candidate.item.Id) { strong.append((3, "Similar on Jellyfin")) }
+            if signals.jellyfin.contains(candidate.item.Id) { strong.append((3, "Jellyfin pick")) }
+            // What it's about (tags, words, studio): for films and shows only with a genre in common
+            // (or a third as much): one shared tag or word made an anime "like" a drama.
+            let sameKind = !target.titled || target.genres.isEmpty || !target.genres.isDisjoint(with: candidate.genres)
+            let about = sameKind ? 1.0 : 0.33
             let tags = target.tags.intersection(candidate.tags)
-            if let tag = tags.first { strong.append((3 * Double(tags.count), "Tag · " + tag.capitalized)) }
+            if !tags.isEmpty {
+                // Rare tags weigh more: "Romcom" on a hundred titles barely counts, one on three does.
+                let ranked = tags.sorted { index.tagIDF($0) > index.tagIDF($1) }
+                let weight = tags.reduce(0) { $0 + index.tagIDF($1) } * 0.6 * about
+                strong.append((weight, "#" + (ranked.first ?? "").capitalized))
+            }
             // Words in the names: rare ones weigh more; a titled film's own title words count less
             // (its genres and people say more than "dark" in "The Dark Knight").
             let shared = target.words.keys.filter { candidate.words[$0] != nil }
@@ -191,12 +213,12 @@ enum JellyRecommender {
             if wordScore > 0 {
                 let named = shared.sorted { index.idf($0) > index.idf($1) }.prefix(2).compactMap { target.words[$0] }
                 let label = named.isEmpty ? near.keys.prefix(2).map { $0.capitalized }.joined(separator: " · ") : named.joined(separator: " · ")
-                strong.append((wordScore * (target.titled ? 0.35 : 1), label))
+                strong.append((wordScore * (target.titled ? 0.35 : 1) * about, label))
             }
             if target.titled {
                 let genres = target.genres.intersection(candidate.genres)
                 if !genres.isEmpty { strong.append((1.4 * Double(genres.count), genres.sorted().prefix(2).map { $0.capitalized }.joined(separator: " · "))) }
-                if let studio = target.studios.intersection(candidate.studios).first { strong.append((1.5, "Same studio · " + studio.capitalized)) }
+                if let studio = target.studios.intersection(candidate.studios).first { strong.append((1.5 * about, studio.capitalized)) }
             } else if let a = target.date, let b = candidate.date {
                 // Home videos: taken at the same moment (within a few hours), day or week.
                 let apart = abs(a.timeIntervalSince(b))
@@ -207,14 +229,14 @@ enum JellyRecommender {
             // The weak part: the same folder, a close date or length, unwatched, and a little chance.
             var weak: [(Double, String)] = []
             if !target.folder.isEmpty, candidate.folder == target.folder {
-                weak.append((target.titled ? 0.3 : 1.2, "Random from " + target.folder))
+                weak.append((target.titled ? 0.3 : 1.2, "From " + target.folder))
             }
             if target.minutes > 0, candidate.minutes > 0 {
                 let closeness = 1 - min(1, abs(target.minutes - candidate.minutes) / max(target.minutes, candidate.minutes))
                 weak.append((closeness * 0.6, "Similar length"))
             }
             if target.titled, let a = target.date, let b = candidate.date, abs(a.timeIntervalSince(b)) < 2 * 365 * 86_400 {
-                weak.append((0.3, "Around the same time"))
+                weak.append((0.3, "Same years"))
             }
             let unwatched = candidate.played ? 0 : 0.5
             let chance = Double.random(in: 0..<0.4, using: &random)
@@ -258,13 +280,15 @@ struct JellyTheme: Identifiable, Sendable {
 }
 
 extension JellyRecommender {
-    /// Three themed rows from the words and tags across the server: one from what you watched lately,
-    /// one random, one of the best rated. A theme is a word or tag a handful of titles share (in three
-    /// or more, not half the library). They change day to day.
-    static func themes(in index: JellyLibraryIndex) -> [JellyTheme] {
-        let count = index.entries.count
-        guard count >= 6 else { return [] }
-        let ceiling = max(8, count / 6)
+    /// Themed rows from the words and tags across the server, `wanted` of them (Settings → JellySpace →
+    /// Home → Dynamic recommendations, 1 to 5). A theme is a word or tag a handful of titles share (in
+    /// three or more, not half the library). The kinds take turns: from what you watched lately, a
+    /// random one, the best rated, random, from what you watched; a kind with nothing left gives its
+    /// place to a random theme. They change day to day.
+    static func themes(in index: JellyLibraryIndex, count wanted: Int = 3) -> [JellyTheme] {
+        let total = index.entries.count
+        guard total >= 6, wanted > 0 else { return [] }
+        let ceiling = max(8, total / 6)
         var random = SeededRandom(seed: SeededRandom.hash("themes" + today))
         // Themes: words and tags in between rare and everywhere.
         var members: [String: [Int]] = [:], names: [String: String] = [:]
@@ -274,39 +298,69 @@ extension JellyRecommender {
         }
         let eligible = members.filter { $0.value.count >= 3 && $0.value.count <= ceiling }
         guard !eligible.isEmpty else { return [] }
-        var used = Set<String>(), rows: [JellyTheme] = []
         func unique(_ offsets: [Int]) -> [JellyfinClient.Item] {
             var keys = Set<String>()
             return offsets.map { index.entries[$0] }.filter { keys.insert($0.duplicateKey).inserted }.prefix(15).map(\.item)
         }
-        // 1. From what you watched lately.
-        let recent = index.entries.filter { $0.lastPlayed != nil }.sorted { ($0.lastPlayed ?? .distantPast) > ($1.lastPlayed ?? .distantPast) }.prefix(6)
-        if let theme = recent.lazy.flatMap({ $0.words.keys.sorted { index.idf($0) > index.idf($1) } }).first(where: { eligible[$0] != nil }) {
-            used.insert(theme)
-            let offsets = (eligible[theme] ?? []).sorted { a, b in
+        func unwatchedThenRated(_ offsets: [Int]) -> [Int] {
+            offsets.sorted { a, b in
                 let x = index.entries[a], y = index.entries[b]
                 if x.played != y.played { return !x.played }
                 return (x.item.CommunityRating ?? 0) > (y.item.CommunityRating ?? 0)
             }
-            rows.append(JellyTheme(id: "for-" + theme, title: "Recommendations for " + (names[theme] ?? theme), items: unique(offsets)))
         }
-        // 2. A random theme, shuffled.
-        let pool = eligible.keys.filter { !used.contains($0) }.sorted()
-        if let theme = pool.randomElement(using: &random) {
-            used.insert(theme)
-            rows.append(JellyTheme(id: "random-" + theme, title: "Random picks for " + (names[theme] ?? theme),
-                                   items: unique((eligible[theme] ?? []).shuffled(using: &random))))
+        // From what you watched lately: the rarest words of its titles that make a theme, newest first.
+        let recent = index.entries.filter { $0.lastPlayed != nil }.sorted { ($0.lastPlayed ?? .distantPast) > ($1.lastPlayed ?? .distantPast) }.prefix(10)
+        var recentThemes: [String] = []
+        for entry in recent {
+            for word in entry.words.keys.sorted(by: { index.idf($0) > index.idf($1) }) where eligible[word] != nil && !recentThemes.contains(word) {
+                recentThemes.append(word)
+            }
         }
-        // 3. The best rated theme.
-        let rated = eligible.filter { !used.contains($0.key) }.compactMap { theme -> (String, Double)? in
+        // The best rated themes (three or more rated titles), best first.
+        let bestThemes = eligible.compactMap { theme -> (String, Double)? in
             let ratings = theme.value.compactMap { index.entries[$0].item.CommunityRating }
             return ratings.count >= 3 ? (theme.key, ratings.reduce(0, +) / Double(ratings.count)) : nil
-        }.sorted { $0.1 > $1.1 }.prefix(5)
-        if let theme = rated.randomElement(using: &random)?.0 {
-            let offsets = (eligible[theme] ?? []).sorted { (index.entries[$0].item.CommunityRating ?? 0) > (index.entries[$1].item.CommunityRating ?? 0) }
-            rows.append(JellyTheme(id: "best-" + theme, title: "Must watch " + (names[theme] ?? theme), items: unique(offsets)))
+        }.sorted { $0.1 > $1.1 }.map(\.0)
+        let all = eligible.keys.sorted()
+
+        enum Kind { case forYou, random, best }
+        let turns: [Kind] = [.forYou, .random, .best, .random, .forYou]
+        var used = Set<String>(), rows: [JellyTheme] = []
+        var turn = 0
+        while rows.count < wanted, turn < 40 {
+            let kind = turn < turns.count ? turns[turn] : .random
+            turn += 1
+            var theme: String?, title = "", offsets: [Int] = []
+            switch kind {
+            case .forYou:
+                theme = recentThemes.first { !used.contains($0) }
+                title = "Recommendations for "
+            case .best:
+                // One of the few best, not always the very best.
+                theme = Array(bestThemes.filter { !used.contains($0) }.prefix(5)).randomElement(using: &random)
+                title = "Must watch "
+            case .random:
+                break
+            }
+            if theme == nil {
+                theme = all.filter { !used.contains($0) }.randomElement(using: &random)
+                title = "Random picks for "
+            }
+            guard let chosen = theme else { break }
+            used.insert(chosen)
+            let found = eligible[chosen] ?? []
+            switch title {
+            case "Random picks for ": offsets = found.shuffled(using: &random)
+            case "Must watch ": offsets = found.sorted { (index.entries[$0].item.CommunityRating ?? 0) > (index.entries[$1].item.CommunityRating ?? 0) }
+            default: offsets = unwatchedThenRated(found)
+            }
+            let items = unique(offsets)
+            guard items.count >= 3 else { continue }
+            let kindID = title == "Random picks for " ? "random-" : title == "Must watch " ? "best-" : "for-"
+            rows.append(JellyTheme(id: kindID + chosen, title: title + (names[chosen] ?? chosen), items: items))
         }
-        return rows.filter { $0.items.count >= 3 }
+        return rows
     }
 }
 
@@ -319,7 +373,19 @@ extension JellyRecommender {
 
     static func index(client: JellyfinClient, user: String?) async -> JellyLibraryIndex? {
         let key = client.base.absoluteString + "|" + (user ?? "")
-        if let kept, kept.key == key, Date.now.timeIntervalSince(kept.at) < 900 { return kept.index }
+        if let kept, kept.key == key {
+            // Older than a quarter of an hour: this one at once, a fresh one built behind it.
+            if Date.now.timeIntervalSince(kept.at) >= 900, building == nil { Task { _ = await rebuild(client: client, user: user, key: key) } }
+            return kept.index
+        }
+        if let building { return await building.value }
+        return await rebuild(client: client, user: user, key: key)
+    }
+    /// Starts building it now (as the home opens), so More like this finds it ready.
+    static func warm(client: JellyfinClient, user: String?) {
+        Task { _ = await index(client: client, user: user) }
+    }
+    private static func rebuild(client: JellyfinClient, user: String?, key: String) async -> JellyLibraryIndex? {
         if let building { return await building.value }
         let task = Task<JellyLibraryIndex?, Never> {
             guard let items = try? await client.libraryIndex(user: user), !items.isEmpty else { return nil }

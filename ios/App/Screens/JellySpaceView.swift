@@ -54,6 +54,8 @@ struct JellySpaceView: View {
     @State private var forYou: JellyForYou?
     /// "Recommendations for Rain", "Random picks for Dance", "Must watch Parks" (JellyRecommender.themes).
     @State private var themes: [JellyTheme] = []
+    /// How many of them (Settings → JellySpace → Home → Dynamic recommendations).
+    @AppStorage(JellyPrefs.themeCountKey) private var themeCount = 3
     /// Discover: genres, the Top 10, hidden gems, tonight's genre, and every library's random shelf.
     @State private var discover: JellyDiscover?
     @State private var query = ""
@@ -147,6 +149,8 @@ struct JellySpaceView: View {
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task { await appear() }
         .task(id: hiddenRaw + "|" + hiddenRowsRaw) { await loadDiscover() }
+        // A new number of Dynamic recommendations rows: made again from the kept index (no network).
+        .onChange(of: themeCount) { _, _ in Task { await loadThemes() } }
         .refreshable {
             await loadHome()
             await loadDiscover(force: true)
@@ -598,6 +602,8 @@ struct JellySpaceView: View {
     /// Continue Watching, favourites, each library's newest and collections (they change after each watch).
     private func loadRows() async {
         guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
+        // The library index for recommending, built beside the rows (More like this then finds it ready).
+        JellyIndexStore.warm(client: client, user: user)
         async let started = client.resume(user: user)
         async let liked = client.items([URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode")], filters: ["IsFavorite"], user: user, sort: .added, limit: 20)
         async let sets = client.items([URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")], user: user, limit: 20)
@@ -625,11 +631,16 @@ struct JellySpaceView: View {
         JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
         JellyHomeCache.collections = collections; JellyHomeCache.latest = latest
         JellyHomeCache.nextUp = nextUp; JellyHomeCache.forYou = forYou
-        // Themed rows across the whole server, from the library index (built once in the background).
-        if let index = await JellyIndexStore.index(client: client, user: user) {
-            let found = await Task.detached(priority: .utility) { JellyRecommender.themes(in: index) }.value
-            withAnimation(.smooth) { themes = found }
-        }
+        await loadThemes()
+    }
+    /// The Dynamic recommendations rows across the whole server, from the library index (built once in
+    /// the background), as many as the setting says.
+    private func loadThemes() async {
+        guard let client = JellySpace.client, let user = await JellyfinUser.id(client),
+              let index = await JellyIndexStore.index(client: client, user: user) else { return }
+        let count = min(5, max(1, themeCount))
+        let found = await Task.detached(priority: .utility) { JellyRecommender.themes(in: index, count: count) }.value
+        withAnimation(.smooth) { themes = found }
     }
 }
 

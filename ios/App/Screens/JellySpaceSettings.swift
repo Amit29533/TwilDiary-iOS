@@ -9,6 +9,8 @@ import TwilDiaryCore
 enum JellyPrefs {
     static let rowsKey = "jellyspace.home.rows"
     static let hiddenRowsKey = "jellyspace.home.hiddenRows"
+    /// How many Dynamic recommendations rows the home shows (1 to 5): themed rows from words and tags.
+    static let themeCountKey = "jellyspace.home.themeCount"
     /// My Media's order: library ids, comma-separated (any library not in it follows, in the server's order).
     static let mediaOrderKey = "jellyspace.home.mediaOrder"
     static let hiddenKey = "jellyspace.hidden"
@@ -79,7 +81,7 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         case .tonight: "Tonight's genre"
         case .random: "Random picks"
         case .forYou: "For you"
-        case .themes: "Themed picks"
+        case .themes: "Dynamic recommendations"
         case .collections: "Collections"
         }
     }
@@ -453,6 +455,7 @@ struct JellySettingsPageView: View {
                 switch page {
                 case .home:
                     JellyHomeRowsGroup(shown: shown)
+                    JellyDynamicGroup()
                     JellyMyMediaGroup(shown: shown)
                     JellyPostersGroup()
                 case .libraries:
@@ -554,6 +557,19 @@ private struct JellyAccountGroup: View {
 }
 
 // MARK: Home rows, My Media and what's hidden
+
+/// Dynamic recommendations: how many themed rows the home shows ("Recommendations for Rain",
+/// "Random picks for Dance", "Must watch Parks"), from the words and tags across your server.
+private struct JellyDynamicGroup: View {
+    @AppStorage(JellyPrefs.themeCountKey) private var count = 3
+    private static let counts = (1...5).map { ($0 == 1 ? "1 row" : "\($0) rows", $0) }
+    var body: some View {
+        SettingsGroup(label: "Dynamic recommendations") {
+            JellySettingsRows.choice("Rows on the home", $count, Self.counts)
+        }
+        JellyDecoderNote(text: "Rows from words and tags your titles share: Recommendations for, Random picks for, Must watch. They change every day.")
+    }
+}
 
 private struct JellyHomeRowsGroup: View {
     let shown: [JellyfinLibrary]

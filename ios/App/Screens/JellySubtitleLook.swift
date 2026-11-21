@@ -239,6 +239,17 @@ enum JellySubtitlePick {
     }
 
     /// Two language codes for the same language ("en", "eng", "en-US"; "fre"/"fra", "ger"/"deu").
+    /// A language code in its forms, in order: as given, ISO 639-2/T, two-letter ("ger" → ger, deu,
+    /// de). For an engine that matches codes as written.
+    static func forms(_ code: String) -> [String] {
+        let lower = code.lowercased()
+        let bibliographic = ["fre": "fra", "ger": "deu", "chi": "zho", "dut": "nld", "cze": "ces", "gre": "ell", "per": "fas", "rum": "ron"]
+        let terminology = bibliographic[lower] ?? lower
+        let short = Locale.Language(identifier: terminology).languageCode?.identifier(.alpha2) ?? terminology
+        var out: [String] = []
+        for form in [code, terminology, short] where !out.contains(form) { out.append(form) }
+        return out
+    }
     static func same(_ code: String?, _ wanted: String) -> Bool {
         guard let code, !code.isEmpty, !wanted.isEmpty else { return false }
         func base(_ text: String) -> String {

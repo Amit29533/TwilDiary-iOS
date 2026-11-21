@@ -63,7 +63,7 @@ struct JellyDetailPage: View {
     /// A show you haven't started: its first episode (season 1's, not a special's).
     @State private var firstEpisode: JellyfinClient.Item?
     @State private var similar: [JellyfinClient.Item] = []
-    /// Why each of More like this is there ("Same director · …", "Kevin · Rain", "Same day").
+    /// Why each of More like this is there ("By …", "Kevin · Rain", "Same day"): kept, not shown under the posters.
     @State private var similarReasons: [String: String] = [:]
     @State private var failure: String?
     @State private var playing: JellyPlayback?
@@ -533,7 +533,7 @@ struct JellyDetailPage: View {
                 .background(alignment: .top) { Rectangle().fill(HomeStyle.primary.opacity(0.12)).frame(height: 1) }
                 switch current {
                 case .episodes: episodesTab(client)
-                case .similar: JellyGrid(items: similar, client: client, playing: $playing, notes: similarReasons)
+                case .similar: JellyGrid(items: similar, client: client, playing: $playing)
                 case .extras:
                     LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(extras, id: \.Id) { JellyWideCard(item: $0, client: client, playing: $playing, large: true) }
@@ -698,17 +698,33 @@ struct JellyDetailPage: View {
     /// similar ones as signals. Without the library index (the server out of reach mid-way), the
     /// earlier way below.
     private func recommendations(client: JellyfinClient, user: String?) async -> [JellyRecommendation] {
-        guard let index = await JellyIndexStore.index(client: client, user: user), index.position[route.id] != nil else {
+        // Everything at once (it took the sum of them, one after another): the library index, TMDB's
+        // recommendations, the leads' and director's other titles and Jellyfin's similar ones.
+        let id = route.id
+        let tmdbRoute = detail?.ProviderIds?.first(where: { $0.key.lowercased() == "tmdb" }).flatMap({ Int($0.value) })
+            .map { CatalogRoute(kind: series ? .tv : .movie, id: $0) }
+        let people = Array((detail?.People ?? []).filter { $0.kind == "Actor" }.prefix(3))
+            + Array((detail?.People ?? []).filter { $0.kind == "Director" }.prefix(1))
+        async let indexed = JellyIndexStore.index(client: client, user: user)
+        async let jellyfinSimilar = try? client.similar(id, user: user)
+        async let others = Self.othersOf(people, client: client, user: user)
+        let related = Task { () -> [Int] in
+            guard let tmdbRoute, let found = try? await store.related(tmdbRoute) else { return [] }
+            return found.items.map(\.id)
+        }
+        guard let index = await indexed, index.position[id] != nil else {
+            related.cancel()
             return await moreLikeThis(client: client, user: user).map { JellyRecommendation(item: $0, reason: "") }
         }
         var signals = JellyRecommender.Signals()
-        if let detail, let tmdb = detail.ProviderIds?.first(where: { $0.key.lowercased() == "tmdb" }).flatMap({ Int($0.value) }),
-           let related = try? await store.related(CatalogRoute(kind: series ? .tv : .movie, id: tmdb)) {
-            signals.tmdb = related.items.map(\.id)
-        }
-        // The three leads and the director: their other titles on your server.
-        let people = Array((detail?.People ?? []).filter { $0.kind == "Actor" }.prefix(3))
-            + Array((detail?.People ?? []).filter { $0.kind == "Director" }.prefix(1))
+        signals.tmdb = await related.value
+        signals.people = await others
+        signals.jellyfin = Set(((await jellyfinSimilar) ?? []).map(\.Id))
+        let collected = signals
+        return await Task.detached(priority: .userInitiated) { JellyRecommender.similar(to: id, in: index, signals: collected) }.value
+    }
+    /// The leads' and director's other titles on your server, looked up together.
+    private static func othersOf(_ people: [JellyfinClient.Detail.Person], client: JellyfinClient, user: String?) async -> [JellyRecommender.Signals.Person] {
         await withTaskGroup(of: JellyRecommender.Signals.Person?.self) { group in
             for person in people {
                 group.addTask {
@@ -717,11 +733,10 @@ struct JellyDetailPage: View {
                                                            titles: Set(page.Items.map(\.Id)))
                 }
             }
-            for await person in group { if let person { signals.people.append(person) } }
+            var found: [JellyRecommender.Signals.Person] = []
+            for await person in group { if let person { found.append(person) } }
+            return found
         }
-        signals.jellyfin = Set(((try? await client.similar(route.id, user: user)) ?? []).map(\.Id))
-        let id = route.id, collected = signals
-        return await Task.detached(priority: .userInitiated) { JellyRecommender.similar(to: id, in: index, signals: collected) }.value
     }
     /// More like this, from three places in turn, up to twelve:
     /// - Jellyfin's similar titles. It counts genres, tags, studios and people in common and needs

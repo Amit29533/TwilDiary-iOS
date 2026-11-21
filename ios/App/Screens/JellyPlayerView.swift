@@ -792,6 +792,16 @@ struct JellyPlayerView: View {
             // first frame. The fonts come from Jellyfin instead (JellyASSFonts, fetched alongside and
             // kept), so the file opens without them: a quicker start and less memory (as Swiftly does).
             options.skipsContainerAttachments = true
+            // Audio in your language from the first frame, chosen as mpv's is (carried over from the
+            // other player, else what you picked in this show or anywhere, then Preferences). Picked
+            // after the load instead, AetherEngine reloads the video to switch (a re-buffer at the start).
+            let audioWanted = audioLanguagesWanted()
+            if !audioWanted.isEmpty {
+                // Each in all its forms ("ger", "deu", "de"): files tag languages either way.
+                options.preferredAudioLanguages = audioWanted.flatMap(JellySubtitlePick.forms)
+                pickedAudio = true
+                carriedTracks?.audio = nil
+            }
             options.upscalesLowResolutionVideo = upscaleWanted
             options.upscaleScaler = .automatic
             options.preferredDecodePath = decodePath
@@ -1068,6 +1078,16 @@ struct JellyPlayerView: View {
         let defaults = UserDefaults.standard
         defaults.set(value, forKey: "jellyspace.\(kind)")
         if let show = current.item.SeriesId { defaults.set(value, forKey: "jellyspace.\(kind).\(show)") }
+    }
+    /// The audio languages to start in, best first, as pickRememberedAudio chooses: the one carried
+    /// over from the other player alone; else what you picked (in this show, or anywhere), then
+    /// Preferences. Empty: the file's own default.
+    private func audioLanguagesWanted() -> [String] {
+        if let carried = carriedTracks?.audio, !carried.isEmpty { return [carried] }
+        var wanted: [String] = []
+        if rememberTracks, let language = remembered("audioLanguage") { wanted.append(language) }
+        for language in JellyPreferences.audioLanguages where !wanted.contains(language) { wanted.append(language) }
+        return wanted
     }
     private func pickRememberedAudio(_ tracks: [TrackInfo]) {
         guard !pickedAudio, !tracks.isEmpty else { return }
@@ -1781,13 +1801,12 @@ struct JellyPlayerView: View {
         setFill(all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count])
     }
     private func setFill(_ next: JellyFill) {
-        // Kept for this show (Preferences), else as your default.
+        // For this video, and kept for its show when Preferences says so. Never your default: that's
+        // Preferences → Default aspect ratio (a pinch used to rewrite it), so the next video starts there.
         if JellyPreferences.fillPerShow, let show = current.item.SeriesId {
             UserDefaults.standard.set(next.rawValue, forKey: JellyPreferences.fillKey(show: show))
-            showFill = next
-        } else {
-            fillRaw = next.rawValue
         }
+        showFill = next
         engine?.videoGravity = next == .fill ? .resizeAspectFill : .resizeAspect
         mpv.setFill(next)
         show(next.rawValue, for: 1.2)
