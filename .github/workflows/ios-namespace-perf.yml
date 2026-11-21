@@ -66,6 +66,10 @@ jobs:
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 \
             -i "$RUNNER_TEMP/perf/subs.ass" -t 120 -map 0:v -map 1:a -map 2:s -c:v libx264 -preset veryfast -pix_fmt yuv420p \
             -c:a aac -b:a 128k -c:s ass -disposition:s:0 default "$RUNNER_TEMP/perf/perf.mkv"
+          # The same at 720p, for the upscalers (they work only below 1080p).
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 \
+            -i "$RUNNER_TEMP/perf/subs.ass" -t 120 -map 0:v -map 1:a -map 2:s -c:v libx264 -preset veryfast -pix_fmt yuv420p \
+            -c:a aac -b:a 128k -c:s ass -disposition:s:0 default "$RUNNER_TEMP/perf/perf720.mkv"
           ls -l "$RUNNER_TEMP/perf"
           cp ios/tools/perf/serve.py "$RUNNER_TEMP/serve.py"
           nohup python3 "$RUNNER_TEMP/serve.py" "$RUNNER_TEMP/perf" 8765 > "$RUNNER_TEMP/serve.log" 2>&1 &
@@ -89,7 +93,9 @@ jobs:
             echo "|---|---|---|---|---|"
           } > ios/.artifacts/perf/results.md
           # The list on its own file handle (3), so nothing in the loop reads it from standard input.
-          while read -r rev name <&3; do
+          # Each line: a commit, its name, and (optional) "features" to measure the upscalers and smooth
+          # motion on and off instead of the three usual cases.
+          while read -r rev name kind <&3; do
             [ -n "${rev:-}" ] || continue
             short="$name"
             git checkout --force -q "$rev"
@@ -115,10 +121,24 @@ jobs:
             # Each measured twice ("(2)"), to tell a real difference from the Simulator's run-to-run noise.
             for pass in 1 2; do
               again=""; [ "$pass" = 2 ] && again=" (2)"
-              bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short AetherEngine$again"
-              bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv$again" --jellyspace-perf-mpv
-              # mpv with its subtitles composited into the frames (a launch argument sets the default).
-              bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv composited$again" --jellyspace-perf-mpv -jellyspace.mpv.compositeOSD YES
+              if [ "${kind:-}" = "features" ]; then
+                # Upscalers on a 720p video: AetherEngine's (Apple's super resolution and MetalFX) off and
+                # Auto; mpv's Super Resolution off, FSR and Anime4K.
+                PERF_VIDEO=perf720.mkv bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short 720p AetherEngine upscaler off$again" -jellyspace.upscaleMode off
+                PERF_VIDEO=perf720.mkv bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short 720p AetherEngine upscaler on$again" -jellyspace.upscaleMode auto
+                PERF_VIDEO=perf720.mkv bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short 720p mpv Super Resolution off$again" --jellyspace-perf-mpv -jellyspace.mpvSuperResolution off
+                PERF_VIDEO=perf720.mkv bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short 720p mpv FSR$again" --jellyspace-perf-mpv -jellyspace.mpvSuperResolution fsr
+                PERF_VIDEO=perf720.mkv bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short 720p mpv Anime4K$again" --jellyspace-perf-mpv -jellyspace.mpvSuperResolution anime
+                # Smooth motion (mpv) on the 1080p24 video: off, and 60 Hz (the Simulator's rate: 24 fps
+                # there is blended, the costly case).
+                bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv smooth motion off$again" --jellyspace-perf-mpv -jellyspace.mpvSmoothRate '<integer>0</integer>'
+                bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv smooth motion 60 Hz$again" --jellyspace-perf-mpv -jellyspace.mpvSmoothRate '<integer>60</integer>'
+              else
+                bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short AetherEngine$again"
+                bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv$again" --jellyspace-perf-mpv
+                # mpv with its subtitles composited into the frames (a launch argument sets the default).
+                bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv composited$again" --jellyspace-perf-mpv -jellyspace.mpv.compositeOSD YES
+              fi
             done
             xcrun simctl uninstall "$SIMULATOR_ID" com.amit29533.TwilDiary || true
             mkdir -p ios/.artifacts/perf/crashes

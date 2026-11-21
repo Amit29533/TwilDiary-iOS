@@ -2,6 +2,7 @@
 # Plays the performance video in the simulator and measures the app while it plays with the controls
 # hidden (how a film is watched): the CPU time it used over 45 seconds, its CPU share sampled once a
 # second, and its memory. Usage: measure.sh <simulator id> <label> [extra launch arguments...]
+# PERF_VIDEO picks the served file (perf.mkv, 1080p, unless set: perf720.mkv for the upscalers).
 set -uo pipefail
 SIM=$1; LABEL=$2; shift 2
 OUT=ios/.artifacts/perf
@@ -9,7 +10,7 @@ BUNDLE=com.amit29533.TwilDiary
 mkdir -p "$OUT"
 file=$(echo "$LABEL" | tr ' ' '-')
 xcrun simctl terminate "$SIM" "$BUNDLE" 2>/dev/null || true
-launch=$(xcrun simctl launch "$SIM" "$BUNDLE" --ui-testing --jellyspace-perf "http://127.0.0.1:8765/perf.mkv" "$@")
+launch=$(xcrun simctl launch "$SIM" "$BUNDLE" --ui-testing --jellyspace-perf "http://127.0.0.1:8765/${PERF_VIDEO:-perf.mkv}" "$@")
 pid=${launch##*: }
 echo "$LABEL: pid $pid"
 # Opening the video, then the controls hide four seconds after it plays.
