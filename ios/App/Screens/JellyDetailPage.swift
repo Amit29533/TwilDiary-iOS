@@ -674,8 +674,40 @@ struct JellyDetailPage: View {
         } else {
             item = try? await client.item(route.id)
         }
-        similar = (try? await client.similar(route.id, user: user)) ?? []
+        similar = await moreLikeThis(client: client, user: user)
         extras = await client.extras(route.id, user: user)
+    }
+    /// More like this, from three places in turn, up to twelve:
+    /// - Jellyfin's similar titles. It counts genres, tags, studios and people in common and needs
+    ///   enough of them, so a title whose details share little with the library (many dramas and
+    ///   anime) got none, and the tab never showed.
+    /// - TMDB's recommendations for it (what people watch together) that are on your server.
+    /// - Titles on your server in its genres, best rated first, when that's still not many.
+    private func moreLikeThis(client: JellyfinClient, user: String?) async -> [JellyfinClient.Item] {
+        var picks = (try? await client.similar(route.id, user: user)) ?? []
+        var seen = Set(picks.map(\.Id) + [route.id])
+        let wanted = 12
+        if picks.count < wanted, let detail,
+           let tmdb = detail.ProviderIds?.first(where: { $0.key.lowercased() == "tmdb" }).flatMap({ Int($0.value) }),
+           let related = try? await store.related(CatalogRoute(kind: series ? .tv : .movie, id: tmdb)) {
+            let shelf = JellyfinShelf.shared.entries
+            let ids = related.items.compactMap { item in shelf.first { $0.tmdb == item.id && $0.movie == !series }?.id }
+                .filter { !seen.contains($0) }
+            if let found = try? await client.items(ids: Array(ids.prefix(wanted)), user: user) {
+                // In TMDB's order (the most recommended first).
+                let byID = Dictionary(found.map { ($0.Id, $0) }, uniquingKeysWith: { first, _ in first })
+                let ordered = ids.compactMap { byID[$0] }
+                picks += ordered
+                seen.formUnion(ordered.map(\.Id))
+            }
+        }
+        if picks.count < 6, let genres = detail?.Genres, !genres.isEmpty {
+            let query = [URLQueryItem(name: "IncludeItemTypes", value: series ? "Series" : "Movie"),
+                         URLQueryItem(name: "Genres", value: genres.prefix(2).joined(separator: "|"))]
+            let same = (try? await client.items(query, user: user, sort: .rating, limit: 24)) ?? []
+            picks += same.filter { seen.insert($0.Id).inserted }
+        }
+        return Array(picks.prefix(wanted))
     }
     private func loadEpisodes() async {
         guard let client = JellySpace.client, let season else { return }

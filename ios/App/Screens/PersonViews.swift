@@ -15,6 +15,8 @@ struct PersonView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @State private var person: PersonDetails?
     @State private var actor: AniVoiceActorDetail?
+    /// Them on your Jellyfin server (the In JellySpace card), when they're there.
+    @State private var jellyPerson: JellyPersonLinks.Found?
     @State private var failure: String?
     @State private var missing = false
     @State private var matching = false
@@ -43,6 +45,8 @@ struct PersonView: View {
                             intro
                             about
                         }
+                        // Their films and shows on your Jellyfin server, just above what you've watched.
+                        if let jellyPerson { JellyPersonCard(found: jellyPerson) }
                         watched
                         if let person {
                             let sections = store.personSections(person)
@@ -67,6 +71,12 @@ struct PersonView: View {
             }
         }.task(id: start) { if person == nil && actor == nil { await load() } }
             .task(id: "\(person?.id ?? 0):\(actor?.id ?? 0)") { await loadMorePhotos() }
+            // On your Jellyfin server? Found by their names, matched by TMDB id.
+            .task(id: person?.id) {
+                guard let person, JellySpace.client != nil else { return }
+                let found = await JellyPersonLinks.find(tmdb: person.id, names: [person.name] + (person.aliases ?? []))
+                withAnimation(.smooth) { jellyPerson = found }
+            }
     }
 
     /// Their best-known title's cover: for a voice actor, the cover of their most popular anime (AniList

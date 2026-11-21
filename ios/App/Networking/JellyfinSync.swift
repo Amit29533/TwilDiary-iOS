@@ -497,6 +497,15 @@ struct JellyfinClient: Sendable {
         return page.Items
     }
 
+    /// These items, as your server has them (order not kept: the caller puts them back in its order).
+    func items(ids: [String], user: String?) async throws -> [Item] {
+        guard !ids.isEmpty else { return [] }
+        var query = [URLQueryItem(name: "Ids", value: ids.joined(separator: ",")), URLQueryItem(name: "Fields", value: "ProviderIds")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+
     // MARK: Player extras (JellySpace)
     /// An intro, recap, preview or credits stretch (Jellyfin's media segments, from a plugin such as
     /// Intro Skipper).
@@ -645,6 +654,22 @@ struct JellyfinClient: Sendable {
             case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, GenreItems, OfficialRating, CommunityRating, CriticRating
             case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData, RemoteTrailers, ProviderIds
         }
+    }
+    /// The person on this server with this TMDB id: looked for by name (Jellyfin can't look a person up
+    /// by their TMDB id), kept only if the TMDB id it has for them is this one. Nil: not on the server.
+    func person(tmdb: Int, name: String) async throws -> Item? {
+        let query = [URLQueryItem(name: "searchTerm", value: name), URLQueryItem(name: "fields", value: "ProviderIds"),
+                     URLQueryItem(name: "limit", value: "20")]
+        let page: Page = try await get("Persons", query)
+        return page.Items.first { item in item.ProviderIds?.first { $0.key.lowercased() == "tmdb" }?.value == String(tmdb) }
+    }
+    /// A person's films and shows on this server, newest first (the first ten), and how many in all.
+    func titles(person id: String, user: String?) async throws -> Page {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series"),
+                     URLQueryItem(name: "PersonIds", value: id), URLQueryItem(name: "SortBy", value: "PremiereDate,ProductionYear"),
+                     URLQueryItem(name: "SortOrder", value: "Descending"), URLQueryItem(name: "Limit", value: "10")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
     }
     func detail(_ id: String, user: String?) async throws -> Detail {
         try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])

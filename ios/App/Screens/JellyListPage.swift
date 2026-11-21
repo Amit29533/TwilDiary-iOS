@@ -59,18 +59,36 @@ struct JellyListPage: View {
         .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
     }
 
+    /// The person's photo and biography from Jellyfin, and (when Jellyfin knows their TMDB id) a link
+    /// to the diary's profile of them: their whole career, awards, photos and what you've watched.
     private func personHeader(_ person: JellyfinClient.Detail, client: JellyfinClient) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            ZStack {
-                Rectangle().fill(HomeStyle.card)
-                Image(systemName: "person.fill").font(.system(size: 34)).foregroundStyle(HomeStyle.secondary)
-                JellyImage(url: person.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: person.Id, type: "Primary", tag: $0, width: 400) })
-            }.frame(width: 110, height: 150).clipShape(RoundedRectangle(cornerRadius: 14))
-            if let bio = person.Overview.map(JellySpace.plainText), !bio.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
+        let profile = person.ProviderIds?.first { $0.key.lowercased() == "tmdb" }.flatMap { Int($0.value) }.map { PersonRoute(id: $0) }
+        let photo = ZStack {
+            Rectangle().fill(HomeStyle.card)
+            Image(systemName: "person.fill").font(.system(size: 34)).foregroundStyle(HomeStyle.secondary)
+            JellyImage(url: person.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: person.Id, type: "Primary", tag: $0, width: 400) })
+        }.frame(width: 110, height: 150).clipShape(RoundedRectangle(cornerRadius: 14))
+        return HStack(alignment: .top, spacing: 14) {
+            if let profile {
+                NavigationLink(value: profile) { photo }.buttonStyle(.springPress)
+                    .accessibilityLabel("Open " + (person.Name ?? "this person") + "'s profile")
+            } else {
+                photo
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                if let bio = person.Overview.map(JellySpace.plainText), !bio.isEmpty {
                     Text(bio).font(.system(size: 14)).foregroundStyle(HomeStyle.primary.opacity(0.85)).lineLimit(fullBio ? nil : 6)
                     Button(fullBio ? "Show less" : "Show more") { withAnimation { fullBio.toggle() } }
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(ThemeStore.accent)
+                }
+                if let profile {
+                    NavigationLink(value: profile) {
+                        Label("Full profile", systemImage: "person.text.rectangle")
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .padding(.horizontal, 14).frame(height: 36).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
+                    }
+                    .buttonStyle(.springPress).padding(.top, 4)
+                    .accessibilityIdentifier("jellyspace-person-profile")
                 }
             }
         }
