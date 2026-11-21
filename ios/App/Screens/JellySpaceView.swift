@@ -65,7 +65,7 @@ struct JellySpaceView: View {
     /// The status bar and top bar's height: the big title sits in the bar's row, My Media under it.
     @State private var topInset: CGFloat = 0
     /// The top card on show (its colours light the top of the page).
-    @State private var heroSelected: String?
+    @State private var hero = JellyHeroSelection()
     @Environment(AppRouter.self) private var router
 
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
@@ -86,9 +86,9 @@ struct JellySpaceView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             homeHeader()
                             if firstLoad { JellyHomeSkeleton() }
-                            else if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client, playing: $playing, selected: $heroSelected) }
+                            else if !picks.isEmpty { JellyHeroCarousel(items: picks, client: client, playing: $playing, selection: hero) }
                         }
-                        .background(alignment: .top) { heroGlow(picks, client: client) }
+                        .background(alignment: .top) { JellyHeroGlow(picks: picks, client: client, selection: hero, topInset: topInset) }
                     }
                     VStack(alignment: .leading, spacing: 22) {
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
@@ -346,22 +346,6 @@ struct JellySpaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // Just under the back and search buttons (with "JellySpace" between them).
         .padding(.top, topInset + 6)
-    }
-
-    /// The top card's picture, blurred and faded, behind the title, the chips and the card (as
-    /// Netflix tints its home with the poster's colours); it changes with the card.
-    @ViewBuilder private func heroGlow(_ picks: [JellyfinClient.Item], client: JellyfinClient) -> some View {
-        if let item = picks.first(where: { $0.Id == heroSelected }) ?? picks.first, let url = JellyHero.cardImage(item, base: client.base) {
-            JellyImage(url: url)
-                .frame(maxWidth: .infinity).frame(height: 780).clipped()
-                .blur(radius: 60).opacity(0.55)
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45), .init(color: .clear, location: 1)],
-                                     startPoint: .top, endPoint: .bottom))
-                .padding(.top, -topInset)
-                .id(item.Id).transition(.opacity)
-                .animation(.easeInOut(duration: 0.6), value: item.Id)
-                .allowsHitTesting(false).accessibilityHidden(true)
-        }
     }
 
     /// One of the chips under the title, as Netflix has them: the name on glass with a fine edge
@@ -632,16 +616,50 @@ struct JellySpaceView: View {
     }
 }
 
+/// Which top poster is on show. Only the poster row and the glow behind it read it, so the poster
+/// changing every five seconds doesn't redraw the whole home (which sent an open Categories menu,
+/// or a long-press menu, back to its top).
+@MainActor @Observable final class JellyHeroSelection {
+    var id: String?
+}
+
+/// The top card's picture, blurred and faded, behind the title, the chips and the card (as Netflix
+/// tints its home with the poster's colours); it changes with the card.
+private struct JellyHeroGlow: View {
+    let picks: [JellyfinClient.Item]
+    let client: JellyfinClient
+    let selection: JellyHeroSelection
+    let topInset: CGFloat
+
+    var body: some View {
+        if let item = picks.first(where: { $0.Id == selection.id }) ?? picks.first, let url = JellyHero.cardImage(item, base: client.base) {
+            JellyImage(url: url)
+                .frame(maxWidth: .infinity).frame(height: 780).clipped()
+                .blur(radius: 60).opacity(0.55)
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45), .init(color: .clear, location: 1)],
+                                     startPoint: .top, endPoint: .bottom))
+                .padding(.top, -topInset)
+                .id(item.Id).transition(.opacity)
+                .animation(.easeInOut(duration: 0.6), value: item.Id)
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+}
+
 /// JellySpace's top poster, as Explore's: the newest films and shows, a new one every five seconds
 /// while it's on screen, swipeable; a tap opens its page.
 private struct JellyHeroCarousel: View {
     let items: [JellyfinClient.Item]
     let client: JellyfinClient
     @Binding var playing: JellyPlayback?
-    @Binding var selected: String?
+    @Bindable var selection: JellyHeroSelection
     @State private var shown = false
     @State private var scrolledInto = true
     @State private var swiping = false
+    private var selected: String? {
+        get { selection.id }
+        nonmutating set { selection.id = newValue }
+    }
 
     var body: some View {
         let current = items.firstIndex { $0.Id == selected } ?? 0
@@ -657,7 +675,7 @@ private struct JellyHeroCarousel: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
-        .scrollPosition(id: $selected)
+        .scrollPosition(id: $selection.id)
         .onScrollPhaseChange { _, phase in swiping = phase == .interacting || phase == .decelerating }
         .haptic(.selection, trigger: selected) { _, _ in swiping }
             if items.count > 1 {

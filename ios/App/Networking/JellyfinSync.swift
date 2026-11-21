@@ -509,7 +509,9 @@ struct JellyfinClient: Sendable {
             let RealFrameRate: Double?
             enum CodingKeys: String, CodingKey { case kind = "Type", Index, IsExternal, Codec, Language, DisplayTitle, IsForced, IsDefault, Width, Height, RealFrameRate }
         }
-        struct Source: Decodable, Sendable { let Id: String?; let MediaStreams: [Stream]? }
+        /// A file inside the video (in an anime's MKV, the fonts its ASS subtitles are drawn in).
+        struct Attachment: Decodable, Sendable { let Index: Int; let FileName: String?; let MimeType: String?; let Codec: String? }
+        struct Source: Decodable, Sendable { let Id: String?; let MediaStreams: [Stream]?; let MediaAttachments: [Attachment]? }
         let Chapters: [Chapter]?
         let Trickplay: [String: [String: TrickplayInfo]]?
         let MediaSources: [Source]?
@@ -527,6 +529,12 @@ struct JellyfinClient: Sendable {
     /// A separate subtitle file, served by Jellyfin in a format the player reads (srt, ass or vtt).
     func subtitleURL(_ id: String, source: String, index: Int, format: String) -> URL? {
         var components = URLComponents(url: base.appending(path: "Videos/\(id)/\(source)/Subtitles/\(index)/Stream.\(format)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+    /// A file inside the video (a font the subtitles use), as Jellyfin serves it.
+    func attachmentURL(_ id: String, source: String, index: Int) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/\(source)/Attachments/\(index)"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "api_key", value: key)]
         return components?.url
     }

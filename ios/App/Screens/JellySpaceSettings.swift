@@ -275,111 +275,245 @@ enum JellySecrets {
 
 // MARK: The settings page
 
-/// Settings → JellySpace: who you watch as, the home's rows, what's hidden, posters, the player,
-/// gestures, the diary, Jellyseerr requests and the picture cache.
+/// The pages under Settings → JellySpace, each holding one kind of setting.
+enum JellySettingsPage: String, Hashable, CaseIterable {
+    case home, libraries, playback, skipping, subtitles, sound, gestures, requests, musicDiary
+    var title: String {
+        switch self {
+        case .home: "Home"
+        case .libraries: "Libraries"
+        case .playback: "Playback"
+        case .skipping: "Skipping"
+        case .subtitles: "Subtitles"
+        case .sound: "Sound"
+        case .gestures: "Gestures"
+        case .requests: "Requests"
+        case .musicDiary: "Music and diary"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .home: "house.fill"
+        case .libraries: "books.vertical.fill"
+        case .playback: "play.rectangle.fill"
+        case .skipping: "forward.end.fill"
+        case .subtitles: "captions.bubble.fill"
+        case .sound: "speaker.wave.2.fill"
+        case .gestures: "hand.draw.fill"
+        case .requests: "tray.and.arrow.down.fill"
+        case .musicDiary: "music.note"
+        }
+    }
+    var tint: SettingsView.TileTint {
+        switch self {
+        case .home: .blue
+        case .libraries: .indigo
+        case .playback: .red
+        case .skipping: .orange
+        case .subtitles: .yellow
+        case .sound: .pink
+        case .gestures: .teal
+        case .requests: .purple
+        case .musicDiary: .green
+        }
+    }
+}
+
+/// The server's libraries, kept while the app runs so the Home and Libraries pages open with them.
+@MainActor enum JellySettingsLibraries {
+    static var cached: [JellyfinLibrary] = []
+    static func load() async -> [JellyfinLibrary] {
+        guard let client = JellySpace.client else { return cached }
+        if let found = try? await client.libraries() { cached = found }
+        return cached
+    }
+}
+
+/// Settings → JellySpace, as iOS Settings is: your account at the top, then a row for each page in
+/// three sections (JellySpace, Player, More), and the picture cache at the foot.
 struct JellySpaceSettingsView: View {
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(JellyPrefs.rowsKey) private var rowsRaw = ""
-    @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
-    @AppStorage(JellyPrefs.hiddenRowsKey) private var hiddenRowsRaw = ""
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
-    @AppStorage(JellyPrefs.countsKey) private var counts = true
-    @AppStorage(JellyPrefs.ticksKey) private var ticks = true
-    @AppStorage(JellyPrefs.captionsKey) private var captions = true
-    @AppStorage(JellyPrefs.skipIntroKey) private var skipIntro = JellySkipMode.button.rawValue
-    @AppStorage(JellyPrefs.skipRecapKey) private var skipRecap = JellySkipMode.button.rawValue
-    @AppStorage(JellyPrefs.skipCreditsKey) private var skipCredits = JellySkipMode.button.rawValue
-    @AppStorage(JellyPrefs.introDBKey) private var introDB = true
-    @AppStorage(JellyPrefs.skipDelayKey) private var skipDelay = 0
-    @AppStorage(JellyPrefs.batteryKey) private var battery = true
-    @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
-    @AppStorage(JellyPrefs.lrclibKey) private var lrclib = true
-    @AppStorage(JellyPrefs.skipSecondsKey) private var skipSeconds = 15
-    @AppStorage(JellyPrefs.autoplayKey) private var autoplay = true
-    @AppStorage(JellyPrefs.countdownKey) private var countdown = 5
-    @AppStorage(JellyPrefs.resumeKey) private var resume = true
-    @AppStorage(JellyPrefs.diaryKey) private var diary = true
-    @AppStorage(JellyPrefs.rememberTracksKey) private var rememberTracks = true
-    @AppStorage(JellyPrefs.swipeSeekKey) private var swipeSeek = true
-    @AppStorage(JellyPrefs.swipeLevelsKey) private var swipeLevels = true
-    @AppStorage(JellyPrefs.holdKey) private var hold = true
-    @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
-    @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
     @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
-    @AppStorage(JellyPrefs.dialogueKey) private var dialogue = 0
-    @AppStorage(JellyPrefs.nightKey) private var night = false
-    @AppStorage(JellyPrefs.boostKey) private var boost = 0
-    @AppStorage(JellyPrefs.subtitleSizeKey) private var subtitleSize = 1.0
-    @AppStorage(JellyPrefs.subtitleColorKey) private var subtitleColor = "white"
-    @AppStorage(JellyPrefs.subtitleBoxKey) private var subtitleBox = false
-    @AppStorage(JellyPrefs.subtitleRaiseKey) private var subtitleRaise = 0.0
-    @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatching = 3
-    /// Read from the Keychain once the page is up (building the page happens far more often).
-    @State private var seerrKey = ""
-    @State private var seerrNotice: String?
-    @State private var libraries: [JellyfinLibrary] = []
+    @State private var libraries: [JellyfinLibrary] = JellySettingsLibraries.cached
     @State private var profiles: [JellyfinClient.Profile] = []
     @State private var watchingAs: String?
-    @State private var signedIn = JellyAccount.userName
+    /// Read once the page is up (building the page happens far more often).
+    @State private var signedIn: String?
     @State private var signIn: JellySignInSheet.Mode?
     @State private var notice: String?
 
     var body: some View {
+        let hiddenItems = JellyHidden.decode(hiddenRaw)
+        let shownCount = libraries.filter { hiddenItems[$0.id] == nil }.count
         EdgeToEdgeScroll {
-            VStack(alignment: .leading, spacing: 22) {
-                account
-                home
-                myMedia
-                hidden
-                SettingsGroup(label: "Posters") {
-                    toggleLine("Unwatched counts", $counts)
+            LazyVStack(alignment: .leading, spacing: 22) {
+                JellyAccountGroup(signedIn: $signedIn, watchingAs: $watchingAs, signIn: $signIn, profiles: profiles) {
+                    Task { await load() }
+                }
+                SettingsGroup(label: "JellySpace") {
+                    JellySettingsLink(page: .home)
                     SettingsDivider()
-                    toggleLine("Watched ticks", $ticks)
+                    JellySettingsLink(page: .libraries, value: libraries.isEmpty ? nil : "\(shownCount) of \(libraries.count) shown")
+                }
+                SettingsGroup(label: "Player") {
+                    JellySettingsLink(page: .playback)
                     SettingsDivider()
-                    toggleLine("Titles", $captions)
-                }
-                player
-                SettingsGroup(label: "Gestures") {
-                    toggleLine("Swipe to move through", $swipeSeek)
+                    JellySettingsLink(page: .skipping)
                     SettingsDivider()
-                    toggleLine("Brightness and volume swipes", $swipeLevels)
+                    JellySettingsLink(page: .subtitles)
                     SettingsDivider()
-                    toggleLine("Hold for 2x", $hold)
+                    JellySettingsLink(page: .sound)
+                    SettingsDivider()
+                    JellySettingsLink(page: .gestures)
                 }
-                SettingsGroup(label: "Music") {
-                    toggleLine("Lyrics from LRCLIB", $lrclib)
+                SettingsGroup(label: "More") {
+                    JellySettingsLink(page: .requests, value: seerrAddress.isEmpty ? "Off" : "On")
+                    SettingsDivider()
+                    JellySettingsLink(page: .musicDiary)
                 }
-                SettingsGroup(label: "Diary") {
-                    toggleLine("Mark watched in diary", $diary)
-                }
-                requests
-                SettingsGroup(label: "Storage") {
-                    Button {
-                        Task { await JellyfinPosterCache.shared.removeAll() }
-                        notice = "Picture cache cleared"
-                    } label: {
-                        Text("Clear picture cache").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
-                            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-clear-cache")
-                }
+                JellyStorageGroup(notice: $notice)
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
         }
         .diaryScreenBackground().diaryPageNavigation("JellySpace")
-        .task { await load() }
+        .task {
+            signedIn = JellyAccount.userName
+            await load()
+        }
         .sheet(item: $signIn, onDismiss: { signedIn = JellyAccount.userName; Task { await load() } }) { JellySignInSheet(mode: $0) }
     }
 
-    // MARK: Account
+    /// The libraries, who you watch as and the server's users, set together at the end (each set
+    /// redraws the page).
+    private func load() async {
+        guard let client = JellySpace.client else { return }
+        let found = await JellySettingsLibraries.load()
+        let user = await JellyfinUser.id(client)
+        let people = JellyAccount.token == nil ? ((try? await client.profiles()) ?? []) : []
+        if found != libraries { libraries = found }
+        watchingAs = user
+        profiles = people
+    }
+}
 
-    private var account: some View {
+/// A row on the main page: the page's tile and name, what it's set to (when that says something),
+/// and the chevron; it opens the page.
+private struct JellySettingsLink: View {
+    let page: JellySettingsPage
+    var value: String? = nil
+    var body: some View {
+        NavigationLink(value: page) {
+            HStack(spacing: 14) {
+                tile
+                Text(page.title).font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                    .foregroundStyle(HomeStyle.primary).lineLimit(1).layoutPriority(1)
+                Spacer(minLength: 4)
+                if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                SettingsChevron()
+            }
+            .settingsRowFrame().contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("jellyspace-settings-" + page.rawValue)
+    }
+    @ViewBuilder private var tile: some View {
+        if ThemeStore.current.native {
+            NativeTile(symbol: page.symbol, size: 30, color: page.tint.system)
+        } else {
+            Image(systemName: page.symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+                .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
+        }
+    }
+}
+
+/// One page under Settings → JellySpace, in sections.
+struct JellySettingsPageView: View {
+    let page: JellySettingsPage
+    @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
+    @State private var libraries: [JellyfinLibrary] = JellySettingsLibraries.cached
+
+    var body: some View {
+        let hiddenItems = JellyHidden.decode(hiddenRaw)
+        let shown = libraries.filter { hiddenItems[$0.id] == nil }
+        EdgeToEdgeScroll {
+            LazyVStack(alignment: .leading, spacing: 22) {
+                switch page {
+                case .home:
+                    JellyHomeRowsGroup(shown: shown)
+                    JellyMyMediaGroup(shown: shown)
+                    JellyPostersGroup()
+                case .libraries:
+                    JellyLibrariesGroup(libraries: libraries, hiddenItems: hiddenItems, hiddenRaw: $hiddenRaw)
+                case .playback: JellyPlaybackGroups()
+                case .skipping: JellySkippingGroups()
+                case .subtitles: JellySubtitlesGroups()
+                case .sound: JellySoundGroup()
+                case .gestures: JellyGesturesGroup()
+                case .requests: JellyRequestsGroup()
+                case .musicDiary: JellyMusicDiaryGroups()
+                }
+            }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
+        }
+        .diaryScreenBackground().diaryPageNavigation(page.title)
+        .task {
+            guard page == .home || page == .libraries else { return }
+            let found = await JellySettingsLibraries.load()
+            if found != libraries { libraries = found }
+        }
+    }
+}
+
+/// The rows the settings groups are made of.
+@MainActor private enum JellySettingsRows {
+    static func toggle(_ title: String, _ value: Binding<Bool>, accent: Color) -> some View {
+        SettingsLine(title: title) { Toggle("", isOn: value).labelsHidden().tint(accent).accessibilityLabel(title) }
+    }
+    static func choice<Value: Hashable>(_ title: String, _ value: Binding<Value>, _ options: [(String, Value)]) -> some View {
+        SettingsLine(title: title) {
+            Menu {
+                Picker(title, selection: value) { ForEach(options, id: \.1) { Text($0.0).tag($0.1) } }
+            } label: { menuLabel(options.first { $0.1 == value.wrappedValue }?.0 ?? "") }
+                .accessibilityLabel(title)
+        }
+    }
+    static func menuLabel(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Text(text).font(.system(size: 15))
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+        }.foregroundStyle(HomeStyle.secondary)
+    }
+    static func button(_ title: String, accent: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(accent)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+    static func move(_ symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                .frame(width: 34, height: 34).background(Color.primary.opacity(0.07), in: Circle())
+        }.buttonStyle(.plain).disabled(disabled).opacity(disabled ? 0.35 : 1).accessibilityLabel(label)
+    }
+}
+
+// MARK: Account
+
+private struct JellyAccountGroup: View {
+    @Binding var signedIn: String?
+    @Binding var watchingAs: String?
+    @Binding var signIn: JellySignInSheet.Mode?
+    let profiles: [JellyfinClient.Profile]
+    let reload: () -> Void
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+
+    var body: some View {
         SettingsGroup(label: "Account") {
             if let signedIn {
                 SettingsLine(title: signedIn) {
                     Button("Sign out") {
                         JellyAccount.signOut()
                         self.signedIn = nil
-                        Task { await load() }
+                        reload()
                     }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("jellyspace-sign-out")
                 }
             } else {
@@ -392,39 +526,44 @@ struct JellySpaceSettingsView: View {
                                     watchingAs = profile.Id
                                 } label: { Label(profile.Name ?? "User", systemImage: watchingAs == profile.Id ? "checkmark" : "person") }
                             }
-                        } label: { menuLabel(profiles.first { $0.Id == watchingAs }?.Name ?? "Choose") }
+                        } label: { JellySettingsRows.menuLabel(profiles.first { $0.Id == watchingAs }?.Name ?? "Choose") }
                             .accessibilityIdentifier("jellyspace-watching-as")
                     }
                     SettingsDivider()
                 }
-                buttonLine("Sign in with Quick Connect") { signIn = .quick }
+                JellySettingsRows.button("Sign in with Quick Connect", accent: theme.accent) { signIn = .quick }
                 SettingsDivider()
-                buttonLine("Sign in with password") { signIn = .password }
+                JellySettingsRows.button("Sign in with password", accent: theme.accent) { signIn = .password }
             }
         }
     }
+}
 
-    // MARK: Home rows and what's hidden
+// MARK: Home rows, My Media and what's hidden
 
-    private var home: some View {
-        let hiddenItems = JellyHidden.decode(hiddenRaw)
-        let shown = libraries.filter { hiddenItems[$0.id] == nil }
+private struct JellyHomeRowsGroup: View {
+    let shown: [JellyfinLibrary]
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.rowsKey) private var rowsRaw = ""
+    @AppStorage(JellyPrefs.hiddenRowsKey) private var hiddenRowsRaw = ""
+
+    var body: some View {
         let order = JellyHomeRow.sections(rowsRaw, libraries: shown)
         let off = JellyHomeRow.hiddenSections(hiddenRowsRaw, libraries: shown)
-        return SettingsGroup(label: "Home") {
+        SettingsGroup(label: "Home") {
             ForEach([JellyHomeRow.hero, .media]) { row in
                 if row == .media { SettingsDivider() }
-                toggleLine(row.title, Binding(get: { !off.contains(row.rawValue) }, set: { on in
+                JellySettingsRows.toggle(row.title, Binding(get: { !off.contains(row.rawValue) }, set: { on in
                     setHidden(row.rawValue, hidden: !on, in: off)
-                }))
+                }), accent: theme.accent)
             }
             ForEach(Array(order.enumerated()), id: \.element.id) { position, section in
                 SettingsDivider()
                 HStack(spacing: 10) {
                     Text(section.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                     Spacer(minLength: 8)
-                    moveButton("chevron.up", label: "Move \(section.title) up", disabled: position == 0) { move(section, by: -1, in: order) }
-                    moveButton("chevron.down", label: "Move \(section.title) down", disabled: position == order.count - 1) { move(section, by: 1, in: order) }
+                    JellySettingsRows.move("chevron.up", label: "Move \(section.title) up", disabled: position == 0) { move(section, by: -1, in: order) }
+                    JellySettingsRows.move("chevron.down", label: "Move \(section.title) down", disabled: position == order.count - 1) { move(section, by: 1, in: order) }
                     Toggle("", isOn: Binding(get: { !off.contains(section.id) }, set: { on in
                         setHidden(section.id, hidden: !on, in: off)
                     })).labelsHidden().tint(theme.accent).accessibilityLabel(section.title)
@@ -432,10 +571,26 @@ struct JellySpaceSettingsView: View {
             }
         }
     }
-    /// My Media: the libraries shown on the home, in the order of their pills, each moved with ▲ ▼.
-    @ViewBuilder private var myMedia: some View {
-        let hiddenItems = JellyHidden.decode(hiddenRaw)
-        let order = JellyMediaOrder.sorted(libraries.filter { hiddenItems[$0.id] == nil }, mediaOrderRaw)
+    private func setHidden(_ id: String, hidden: Bool, in off: Set<String>) {
+        var next = off
+        if hidden { next.insert(id) } else { next.remove(id) }
+        hiddenRowsRaw = next.sorted().joined(separator: ",")
+    }
+    private func move(_ section: JellyHomeSection, by step: Int, in order: [JellyHomeSection]) {
+        guard let at = order.firstIndex(of: section), order.indices.contains(at + step) else { return }
+        var next = order
+        next.swapAt(at, at + step)
+        rowsRaw = next.map(\.id).joined(separator: ",")
+    }
+}
+
+/// My Media: the libraries shown on the home, in the order of their pills, each moved with ▲ ▼.
+private struct JellyMyMediaGroup: View {
+    let shown: [JellyfinLibrary]
+    @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
+
+    var body: some View {
+        let order = JellyMediaOrder.sorted(shown, mediaOrderRaw)
         if !order.isEmpty {
             SettingsGroup(label: "My Media") {
                 ForEach(Array(order.enumerated()), id: \.element.id) { position, library in
@@ -444,8 +599,8 @@ struct JellySpaceSettingsView: View {
                         Label(library.name, systemImage: JellySpace.symbol(library.type))
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 8)
-                        moveButton("chevron.up", label: "Move \(library.name) up", disabled: position == 0) { moveLibrary(library, by: -1, in: order) }
-                        moveButton("chevron.down", label: "Move \(library.name) down", disabled: position == order.count - 1) { moveLibrary(library, by: 1, in: order) }
+                        JellySettingsRows.move("chevron.up", label: "Move \(library.name) up", disabled: position == 0) { moveLibrary(library, by: -1, in: order) }
+                        JellySettingsRows.move("chevron.down", label: "Move \(library.name) down", disabled: position == order.count - 1) { moveLibrary(library, by: 1, in: order) }
                     }.padding(.horizontal, 16).frame(minHeight: 50).accessibilityIdentifier("jellyspace-media-order-" + library.id)
                 }
             }
@@ -459,38 +614,28 @@ struct JellySpaceSettingsView: View {
         let kept = mediaOrderRaw.split(separator: ",").map(String.init).filter { id in !next.contains { $0.id == id } }
         mediaOrderRaw = (next.map(\.id) + kept).joined(separator: ",")
     }
-    private func setHidden(_ id: String, hidden: Bool, in off: Set<String>) {
-        var next = off
-        if hidden { next.insert(id) } else { next.remove(id) }
-        hiddenRowsRaw = next.sorted().joined(separator: ",")
-    }
-    private func move(_ section: JellyHomeSection, by step: Int, in order: [JellyHomeSection]) {
-        guard let at = order.firstIndex(of: section), order.indices.contains(at + step) else { return }
-        var next = order
-        next.swapAt(at, at + step)
-        rowsRaw = next.map(\.id).joined(separator: ",")
-    }
-    private func moveButton(_ symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
-                .frame(width: 34, height: 34).background(Color.primary.opacity(0.07), in: Circle())
-        }.buttonStyle(.plain).disabled(disabled).opacity(disabled ? 0.35 : 1).accessibilityLabel(label)
-    }
+}
 
-    private var hidden: some View {
-        let items = JellyHidden.decode(hiddenRaw)
+/// Every library with its switch, then anything else you hid (a folder, a show) to show again.
+private struct JellyLibrariesGroup: View {
+    let libraries: [JellyfinLibrary]
+    let hiddenItems: [String: String]
+    @Binding var hiddenRaw: String
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+
+    var body: some View {
         let libraryIDs = Set(libraries.map(\.id))
-        let others = items.filter { !libraryIDs.contains($0.key) }.sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
-        return SettingsGroup(label: "Libraries") {
+        let others = hiddenItems.filter { !libraryIDs.contains($0.key) }.sorted { $0.value.localizedCaseInsensitiveCompare($1.value) == .orderedAscending }
+        SettingsGroup(label: "Libraries") {
             if libraries.isEmpty && others.isEmpty {
                 SettingsLine(title: "No libraries") { EmptyView() }
             }
             ForEach(Array(libraries.enumerated()), id: \.element.id) { position, library in
                 if position > 0 { SettingsDivider() }
-                toggleLine(library.name, Binding(get: { items[library.id] == nil }, set: { on in
+                JellySettingsRows.toggle(library.name, Binding(get: { hiddenItems[library.id] == nil }, set: { on in
                     if on { JellyHidden.show(library.id) } else { JellyHidden.hide(library.id, name: library.name) }
                     hiddenRaw = UserDefaults.standard.string(forKey: JellyPrefs.hiddenKey) ?? "{}"
-                }))
+                }), accent: theme.accent)
             }
             ForEach(others, id: \.key) { entry in
                 SettingsDivider()
@@ -503,65 +648,420 @@ struct JellySpaceSettingsView: View {
             }
         }
     }
+}
 
-    // MARK: Player
+// MARK: Posters
 
-    private var player: some View {
-        SettingsGroup(label: "Player") {
-            choiceLine("Skip intros", $skipIntro, JellySkipMode.allCases.map { ($0.rawValue, $0.rawValue) })
+private struct JellyPostersGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.countsKey) private var counts = true
+    @AppStorage(JellyPrefs.ticksKey) private var ticks = true
+    @AppStorage(JellyPrefs.captionsKey) private var captions = true
+
+    var body: some View {
+        SettingsGroup(label: "Posters") {
+            JellySettingsRows.toggle("Unwatched counts", $counts, accent: theme.accent)
             SettingsDivider()
-            choiceLine("Skip recaps", $skipRecap, JellySkipMode.allCases.map { ($0.rawValue, $0.rawValue) })
+            JellySettingsRows.toggle("Watched ticks", $ticks, accent: theme.accent)
             SettingsDivider()
-            choiceLine("Skip credits", $skipCredits, JellySkipMode.allCases.map { ($0.rawValue, $0.rawValue) })
-            SettingsDivider()
-            if [skipIntro, skipRecap, skipCredits].contains(JellySkipMode.auto.rawValue) {
-                SettingsDivider()
-                choiceLine("Skip after", $skipDelay, [("At once", 0), ("2 seconds", 2), ("5 seconds", 5)])
-            }
-            SettingsDivider()
-            toggleLine("Intro times from IntroDB", $introDB)
-            SettingsDivider()
-            choiceLine("Skip by", $skipSeconds, [("10 seconds", 10), ("15 seconds", 15), ("30 seconds", 30)])
-            SettingsDivider()
-            toggleLine("Play next episode", $autoplay)
-            if autoplay {
-                SettingsDivider()
-                choiceLine("Countdown", $countdown, [("5 seconds", 5), ("10 seconds", 10), ("15 seconds", 15)])
-                SettingsDivider()
-                choiceLine("Ask if still watching", $stillWatching, JellySound.stillWatching)
-            }
-            SettingsDivider()
-            toggleLine("Resume where you stopped", $resume)
-            SettingsDivider()
-            choiceLine("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
-            SettingsDivider()
-            toggleLine("Battery", $battery)
-            SettingsDivider()
-            choiceLine("Picture", $fill, JellyFill.allCases.map { ($0.rawValue, $0.rawValue) })
-            SettingsDivider()
-            choiceLine("Upscaling", $upscale, JellyUpscale.allCases.map { ($0.title, $0) })
-            SettingsDivider()
-            toggleLine("Remember audio and subtitles", $rememberTracks)
-            SettingsDivider()
-            choiceLine("Dialogue boost", $dialogue, JellySound.dialogue)
-            SettingsDivider()
-            toggleLine("Night mode", $night)
-            SettingsDivider()
-            choiceLine("Volume boost", $boost, JellySound.boost)
-            SettingsDivider()
-            choiceLine("Subtitle size", $subtitleSize, JellySound.subtitleSizes)
-            SettingsDivider()
-            choiceLine("Subtitle colour", $subtitleColor, JellySound.subtitleColors)
-            SettingsDivider()
-            choiceLine("Subtitle background", $subtitleBox, JellySound.subtitleBackgrounds)
-            SettingsDivider()
-            choiceLine("Subtitle position", $subtitleRaise, JellySound.subtitlePositions)
+            JellySettingsRows.toggle("Titles", $captions, accent: theme.accent)
         }
     }
+}
 
-    // MARK: Requests (Jellyseerr)
+// MARK: Playback
 
-    private var requests: some View {
+/// Playback: the next episode, watching, and the picture.
+private struct JellyPlaybackGroups: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.autoplayKey) private var autoplay = true
+    @AppStorage(JellyPrefs.countdownKey) private var countdown = 5
+    @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatching = 3
+    @AppStorage(JellyPrefs.resumeKey) private var resume = true
+    @AppStorage(JellyPrefs.rememberTracksKey) private var rememberTracks = true
+    @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
+    @AppStorage(JellyPrefs.batteryKey) private var battery = true
+    @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
+    @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
+
+    private static let fills = JellyFill.allCases.map { ($0.rawValue, $0.rawValue) }
+    private static let upscales = JellyUpscale.allCases.map { ($0.title, $0) }
+
+    var body: some View {
+        let accent = theme.accent
+        Group {
+            SettingsGroup(label: "Next episode") {
+                JellySettingsRows.toggle("Play next episode", $autoplay, accent: accent)
+                if autoplay {
+                    SettingsDivider()
+                    JellySettingsRows.choice("Countdown", $countdown, [("5 seconds", 5), ("10 seconds", 10), ("15 seconds", 15)])
+                    SettingsDivider()
+                    JellySettingsRows.choice("Ask if still watching", $stillWatching, JellySound.stillWatching)
+                }
+            }
+            SettingsGroup(label: "Watching") {
+                JellySettingsRows.toggle("Resume where you stopped", $resume, accent: accent)
+                SettingsDivider()
+                JellySettingsRows.toggle("Remember audio and subtitles", $rememberTracks, accent: accent)
+                SettingsDivider()
+                JellySettingsRows.choice("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
+                SettingsDivider()
+                JellySettingsRows.toggle("Battery", $battery, accent: accent)
+            }
+            SettingsGroup(label: "Picture") {
+                JellySettingsRows.choice("Picture", $fill, Self.fills)
+                SettingsDivider()
+                JellySettingsRows.choice("Upscaling", $upscale, Self.upscales)
+            }
+        }
+    }
+}
+
+// MARK: Skipping
+
+/// Skipping: the intro, recap and credits buttons, where the times come from, and the skip length.
+private struct JellySkippingGroups: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.skipIntroKey) private var skipIntro = JellySkipMode.button.rawValue
+    @AppStorage(JellyPrefs.skipRecapKey) private var skipRecap = JellySkipMode.button.rawValue
+    @AppStorage(JellyPrefs.skipCreditsKey) private var skipCredits = JellySkipMode.button.rawValue
+    @AppStorage(JellyPrefs.skipDelayKey) private var skipDelay = 0
+    @AppStorage(JellyPrefs.introDBKey) private var introDB = true
+    @AppStorage(JellyPrefs.skipSecondsKey) private var skipSeconds = 15
+
+    private static let skipModes = JellySkipMode.allCases.map { ($0.rawValue, $0.rawValue) }
+
+    var body: some View {
+        Group {
+            SettingsGroup(label: "Intros, recaps and credits") {
+                JellySettingsRows.choice("Skip intros", $skipIntro, Self.skipModes)
+                SettingsDivider()
+                JellySettingsRows.choice("Skip recaps", $skipRecap, Self.skipModes)
+                SettingsDivider()
+                JellySettingsRows.choice("Skip credits", $skipCredits, Self.skipModes)
+                if [skipIntro, skipRecap, skipCredits].contains(JellySkipMode.auto.rawValue) {
+                    SettingsDivider()
+                    JellySettingsRows.choice("Skip after", $skipDelay, [("At once", 0), ("2 seconds", 2), ("5 seconds", 5)])
+                }
+                SettingsDivider()
+                JellySettingsRows.toggle("Intro times from IntroDB", $introDB, accent: theme.accent)
+            }
+            SettingsGroup(label: "Back and forward") {
+                JellySettingsRows.choice("Skip by", $skipSeconds, [("10 seconds", 10), ("15 seconds", 15), ("30 seconds", 30)])
+            }
+        }
+    }
+}
+
+// MARK: Subtitles
+
+/// Subtitles: a preview, then the text, its edge, the box, where they sit, which ones a video starts
+/// with, styled (anime) subtitles, and the delay. Each section holds only its own settings, so moving
+/// a slider redraws that section and the preview, not the page.
+private struct JellySubtitlesGroups: View {
+    var body: some View {
+        Group {
+            JellySubtitlePreviewCard()
+            JellySubtitleTextGroup()
+            JellySubtitleEdgeGroup()
+            JellySubtitleBoxGroup()
+            JellySubtitlePositionGroup()
+            JellySubtitleLanguageGroup()
+            JellySubtitleStyledGroup()
+            JellySubtitleTimingGroup()
+        }
+    }
+}
+
+/// The look as it's set, over a picture, as the player draws it.
+private struct JellySubtitlePreviewCard: View {
+    @AppStorage(JellyPrefs.subtitleSizeKey) private var size = 1.0
+    @AppStorage(JellyPrefs.subtitleColorKey) private var color = "white"
+    @AppStorage(JellyPrefs.subtitleBoxKey) private var box = false
+    @AppStorage(JellyPrefs.subtitleRaiseKey) private var raise = 0.0
+    @AppStorage(JellySubtitlePrefs.fontKey) private var font = "system"
+    @AppStorage(JellySubtitlePrefs.boldKey) private var bold = false
+    @AppStorage(JellySubtitlePrefs.opacityKey) private var opacity = 1.0
+    @AppStorage(JellySubtitlePrefs.outlineKey) private var outline = 2
+    @AppStorage(JellySubtitlePrefs.outlineColorKey) private var outlineColor = "black"
+    @AppStorage(JellySubtitlePrefs.shadowKey) private var shadow = 1
+    @AppStorage(JellySubtitlePrefs.boxOpacityKey) private var boxOpacity = 0.6
+
+    var body: some View {
+        let look = JellySubtitleLook(size: size, font: font, bold: bold, color: color, opacity: opacity, outline: outline,
+                                     outlineColor: outlineColor, shadow: shadow, box: box, boxOpacity: boxOpacity, raise: raise)
+        GeometryReader { proxy in
+            let height = proxy.size.height
+            ZStack(alignment: .bottom) {
+                LinearGradient(colors: [Color(red: 0.42, green: 0.62, blue: 0.78), Color(red: 0.26, green: 0.42, blue: 0.3)], startPoint: .top, endPoint: .bottom)
+                Color(red: 0.17, green: 0.25, blue: 0.17).frame(height: height * 0.36)
+                JellyPlainSubtitle(text: "That's the third one this week.", look: look, points: max(11, height * 0.075 * size))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, height * 0.08 + height * raise)
+            }
+            .frame(width: proxy.size.width, height: height)
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(alignment: .topLeading) {
+            Text("Preview").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 8).frame(height: 22).background(.black.opacity(0.45), in: Capsule()).padding(10)
+        }
+        .animation(.easeOut(duration: 0.15), value: look)
+        .accessibilityElement().accessibilityLabel("Subtitle preview")
+    }
+}
+
+/// A row with a slider under its name, and what it's set to on the right.
+private struct JellySliderRow: View {
+    let title: String
+    let shown: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Spacer(minLength: 8)
+                Text(shown).font(.system(size: 14)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+            }
+            Slider(value: $value, in: range, step: step).tint(accent)
+                .accessibilityLabel(title).accessibilityValue(shown)
+        }
+        .padding(.horizontal, 15).padding(.vertical, 12)
+    }
+}
+
+/// A row of colour dots; the chosen one ringed.
+private struct JellySwatchRow: View {
+    let title: String
+    let swatches: [JellySubtitleChoices.Swatch]
+    @Binding var selected: String
+    let accent: Color
+
+    var body: some View {
+        SettingsLine(title: title) {
+            HStack(spacing: 10) {
+                ForEach(swatches, id: \.key) { swatch in
+                    Button { selected = swatch.key } label: {
+                        Circle().fill(swatch.color).frame(width: 24, height: 24)
+                            .overlay { Circle().strokeBorder(HomeStyle.primary.opacity(0.25), lineWidth: 0.5) }
+                            .padding(3)
+                            .overlay { if selected == swatch.key { Circle().strokeBorder(accent, lineWidth: 2) } }
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(swatch.name).accessibilityAddTraits(selected == swatch.key ? .isSelected : [])
+                }
+            }
+        }
+    }
+}
+
+private struct JellySubtitleTextGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.subtitleSizeKey) private var size = 1.0
+    @AppStorage(JellyPrefs.subtitleColorKey) private var color = "white"
+    @AppStorage(JellySubtitlePrefs.fontKey) private var font = "system"
+    @AppStorage(JellySubtitlePrefs.boldKey) private var bold = false
+    @AppStorage(JellySubtitlePrefs.opacityKey) private var opacity = 1.0
+
+    var body: some View {
+        let accent = theme.accent
+        SettingsGroup(label: "Text") {
+            JellySliderRow(title: "Size", shown: "\(Int((size * 100).rounded()))%", value: $size, range: 0.5...2, step: 0.05, accent: accent)
+            SettingsDivider()
+            JellySettingsRows.choice("Font", $font, JellySubtitleChoices.fonts)
+            SettingsDivider()
+            JellySettingsRows.toggle("Bold", $bold, accent: accent)
+            SettingsDivider()
+            JellySwatchRow(title: "Colour", swatches: JellySubtitleChoices.colors, selected: $color, accent: accent)
+            SettingsDivider()
+            JellySliderRow(title: "Text opacity", shown: "\(Int((opacity * 100).rounded()))%", value: $opacity, range: 0.3...1, step: 0.05, accent: accent)
+        }
+    }
+}
+
+private struct JellySubtitleEdgeGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellySubtitlePrefs.outlineKey) private var outline = 2
+    @AppStorage(JellySubtitlePrefs.outlineColorKey) private var outlineColor = "black"
+    @AppStorage(JellySubtitlePrefs.shadowKey) private var shadow = 1
+
+    var body: some View {
+        let accent = theme.accent
+        let names = JellySubtitleChoices.outlines
+        let thickness = Binding<Double>(get: { Double(outline) }, set: { outline = Int($0.rounded()) })
+        SettingsGroup(label: "Edge") {
+            JellySliderRow(title: "Outline", shown: names[min(max(outline, 0), names.count - 1)], value: thickness,
+                           range: 0...Double(names.count - 1), step: 1, accent: accent)
+            SettingsDivider()
+            JellySwatchRow(title: "Outline colour", swatches: JellySubtitleChoices.outlineColors, selected: $outlineColor, accent: accent)
+            SettingsDivider()
+            JellySettingsRows.choice("Shadow", $shadow, JellySubtitleChoices.shadows)
+        }
+    }
+}
+
+private struct JellySubtitleBoxGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.subtitleBoxKey) private var box = false
+    @AppStorage(JellySubtitlePrefs.boxOpacityKey) private var boxOpacity = 0.6
+
+    var body: some View {
+        SettingsGroup(label: "Background") {
+            JellySettingsRows.toggle("Box behind the text", $box, accent: theme.accent)
+            if box {
+                SettingsDivider()
+                JellySliderRow(title: "Box opacity", shown: "\(Int((boxOpacity * 100).rounded()))%", value: $boxOpacity,
+                               range: 0.1...1, step: 0.05, accent: theme.accent)
+            }
+        }
+    }
+}
+
+private struct JellySubtitlePositionGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.subtitleRaiseKey) private var raise = 0.0
+    @AppStorage(JellySubtitlePrefs.liftKey) private var lift = true
+
+    var body: some View {
+        SettingsGroup(label: "Position") {
+            JellySliderRow(title: "Height from the bottom", shown: "\(Int((raise * 100).rounded()))%", value: $raise,
+                           range: 0...0.25, step: 0.01, accent: theme.accent)
+            SettingsDivider()
+            JellySettingsRows.toggle("Move up when the controls show", $lift, accent: theme.accent)
+        }
+    }
+}
+
+private struct JellySubtitleLanguageGroup: View {
+    @AppStorage(JellySubtitlePrefs.languageKey) private var language = ""
+    @AppStorage(JellySubtitlePrefs.secondLanguageKey) private var second = ""
+    @AppStorage(JellySubtitlePrefs.showKey) private var show = "always"
+    @AppStorage(JellySubtitlePrefs.sdhKey) private var sdh = "avoid"
+
+    var body: some View {
+        let languages = JellySubtitleChoices.languages
+        SettingsGroup(label: "Languages") {
+            JellySettingsRows.choice("Show subtitles", $show, JellySubtitleChoices.show)
+            if show != "off" {
+                SettingsDivider()
+                JellySettingsRows.choice("Preferred language", $language, languages)
+                if !language.isEmpty {
+                    SettingsDivider()
+                    JellySettingsRows.choice("Second choice", $second, languages.map { $0.1.isEmpty ? ("None", "") : $0 })
+                }
+                if show == "always" {
+                    SettingsDivider()
+                    JellySettingsRows.choice("Hearing-impaired (SDH)", $sdh, JellySubtitleChoices.sdh)
+                }
+            }
+        }
+    }
+}
+
+private struct JellySubtitleStyledGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellySubtitlePrefs.styledKey) private var styled = "full"
+    @AppStorage(JellySubtitlePrefs.styledSizeKey) private var styledSize = true
+
+    var body: some View {
+        SettingsGroup(label: "Styled subtitles (anime)") {
+            JellySettingsRows.choice("Draw them", $styled, JellySubtitleChoices.styled)
+            if styled == "full" {
+                SettingsDivider()
+                JellySettingsRows.toggle("Apply my size to them", $styledSize, accent: theme.accent)
+            }
+        }
+        Text(styled == "full" ? "As made: their own fonts, colours and places, as Infuse shows them." : "Mine: as plain text, in the look set above.")
+            .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4).padding(.top, -14)
+    }
+}
+
+private struct JellySubtitleTimingGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellySubtitlePrefs.rememberDelayKey) private var rememberDelay = true
+    @AppStorage(JellySubtitlePrefs.delayStepKey) private var delayStep = 0.1
+
+    var body: some View {
+        SettingsGroup(label: "Timing") {
+            JellySettingsRows.toggle("Remember the delay for each show", $rememberDelay, accent: theme.accent)
+            SettingsDivider()
+            JellySettingsRows.choice("Delay step", $delayStep, JellySubtitleChoices.delaySteps)
+        }
+    }
+}
+
+// MARK: Sound
+
+private struct JellySoundGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.dialogueKey) private var dialogue = 0
+    @AppStorage(JellyPrefs.nightKey) private var night = false
+    @AppStorage(JellyPrefs.boostKey) private var boost = 0
+
+    var body: some View {
+        SettingsGroup(label: "Sound") {
+            JellySettingsRows.choice("Dialogue boost", $dialogue, JellySound.dialogue)
+            SettingsDivider()
+            JellySettingsRows.toggle("Night mode", $night, accent: theme.accent)
+            SettingsDivider()
+            JellySettingsRows.choice("Volume boost", $boost, JellySound.boost)
+        }
+    }
+}
+
+// MARK: Gestures, music and the diary
+
+private struct JellyGesturesGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.swipeSeekKey) private var swipeSeek = true
+    @AppStorage(JellyPrefs.swipeLevelsKey) private var swipeLevels = true
+    @AppStorage(JellyPrefs.holdKey) private var hold = true
+
+    var body: some View {
+        SettingsGroup(label: "Gestures") {
+            JellySettingsRows.toggle("Swipe to move through", $swipeSeek, accent: theme.accent)
+            SettingsDivider()
+            JellySettingsRows.toggle("Brightness and volume swipes", $swipeLevels, accent: theme.accent)
+            SettingsDivider()
+            JellySettingsRows.toggle("Hold for 2x", $hold, accent: theme.accent)
+        }
+    }
+}
+
+private struct JellyMusicDiaryGroups: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.lrclibKey) private var lrclib = true
+    @AppStorage(JellyPrefs.diaryKey) private var diary = true
+
+    var body: some View {
+        Group {
+            SettingsGroup(label: "Music") {
+                JellySettingsRows.toggle("Lyrics from LRCLIB", $lrclib, accent: theme.accent)
+            }
+            SettingsGroup(label: "Diary") {
+                JellySettingsRows.toggle("Mark watched in diary", $diary, accent: theme.accent)
+            }
+        }
+    }
+}
+
+// MARK: Requests (Jellyseerr)
+
+/// Its own view: a letter typed in the address redraws these few rows, not the page.
+private struct JellyRequestsGroup: View {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
+    /// Read from the Keychain once the group is up.
+    @State private var seerrKey = ""
+    @State private var seerrNotice: String?
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             SettingsGroup(label: "Requests") {
                 TextField("Jellyseerr address", text: $seerrAddress)
@@ -572,10 +1072,11 @@ struct JellySpaceSettingsView: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .font(.system(size: 15)).padding(.horizontal, 16).frame(minHeight: 48).accessibilityIdentifier("jellyspace-seerr-key")
                 SettingsDivider()
-                buttonLine("Save") { Task { await saveSeerr() } }
+                JellySettingsRows.button("Save", accent: theme.accent) { Task { await saveSeerr() } }
             }
             if let seerrNotice { Text(seerrNotice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
         }
+        .task { if seerrKey.isEmpty { seerrKey = JellySecrets.read("seerr-key") ?? "" } }
     }
     private func saveSeerr() async {
         JellySecrets.write("seerr-key", seerrKey.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -588,39 +1089,24 @@ struct JellySpaceSettingsView: View {
             seerrNotice = error.localizedDescription
         }
     }
+}
 
-    // MARK: Rows
+// MARK: Storage
 
-    private func toggleLine(_ title: String, _ value: Binding<Bool>) -> some View {
-        SettingsLine(title: title) { Toggle("", isOn: value).labelsHidden().tint(theme.accent).accessibilityLabel(title) }
-    }
-    private func choiceLine<Value: Hashable>(_ title: String, _ value: Binding<Value>, _ options: [(String, Value)]) -> some View {
-        SettingsLine(title: title) {
-            Menu {
-                Picker(title, selection: value) { ForEach(options, id: \.1) { Text($0.0).tag($0.1) } }
-            } label: { menuLabel(options.first { $0.1 == value.wrappedValue }?.0 ?? "") }
-                .accessibilityLabel(title)
+private struct JellyStorageGroup: View {
+    @Binding var notice: String?
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+
+    var body: some View {
+        SettingsGroup(label: "Storage") {
+            Button {
+                Task { await JellyfinPosterCache.shared.removeAll() }
+                notice = "Picture cache cleared"
+            } label: {
+                Text("Clear picture cache").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-clear-cache")
         }
-    }
-    private func menuLabel(_ text: String) -> some View {
-        HStack(spacing: 4) {
-            Text(text).font(.system(size: 15))
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
-        }.foregroundStyle(HomeStyle.secondary)
-    }
-    private func buttonLine(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-    }
-
-    private func load() async {
-        if seerrKey.isEmpty { seerrKey = JellySecrets.read("seerr-key") ?? "" }
-        guard let client = JellySpace.client else { return }
-        libraries = (try? await client.libraries()) ?? []
-        watchingAs = await JellyfinUser.id(client)
-        profiles = JellyAccount.token == nil ? ((try? await client.profiles()) ?? []) : []
     }
 }
 

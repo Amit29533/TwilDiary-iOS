@@ -33,7 +33,6 @@ struct JellyPlayerView: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(JellyPrefs.subtitleSizeKey) private var subtitleSize = 1.0
     @AppStorage("jellyspace.fill") private var fillRaw = JellyFill.fit.rawValue
     // Settings → JellySpace.
     @AppStorage(JellyPrefs.skipIntroKey) private var skipIntro = JellySkipMode.button.rawValue
@@ -60,10 +59,9 @@ struct JellyPlayerView: View {
     @AppStorage(JellyPrefs.dialogueKey) private var dialogueBoost = 0
     @AppStorage(JellyPrefs.nightKey) private var nightMode = false
     @AppStorage(JellyPrefs.boostKey) private var volumeBoost = 0
-    // Subtitles' look.
-    @AppStorage(JellyPrefs.subtitleColorKey) private var subtitleColor = "white"
-    @AppStorage(JellyPrefs.subtitleBoxKey) private var subtitleBox = false
-    @AppStorage(JellyPrefs.subtitleRaiseKey) private var subtitleRaise = 0.0
+    /// Subtitles' look (Settings → JellySpace → Subtitles), read as the player opens; the size can be
+    /// changed in the player too (Advanced options).
+    @State private var subtitleLook = JellySubtitleLook.current
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatchingAfter = 3
     /// Episodes started on their own in a row, with no touch between (for "Are you still watching?").
     @State private var autoplayStreak = 0
@@ -152,6 +150,9 @@ struct JellyPlayerView: View {
     /// A control's menu is open: the controls stay up until it's used or the screen is tapped.
     /// How many menu items are on screen: above zero while a menu is open.
     @State private var menuItems = 0
+    /// What an open menu shows, kept as it was when it opened: the track lists are published again as
+    /// the video plays, and a menu redrawn while open jumped back to its top under your finger.
+    @State private var openMenus: JellyMenuState?
     private var menuOpen: Bool { menuItems > 0 }
     /// The sleep timer's choice in its menu: -1 off, 0 the end of this video, else minutes.
     @State private var sleepChoice = -1
@@ -212,11 +213,10 @@ struct JellyPlayerView: View {
                 picture(engine)
             }
             GeometryReader { safe in
-                JellySubtitles(cues: cues, time: subtitleTime - subtitleDelay, scale: subtitleSize, insets: safe.safeAreaInsets,
+                JellySubtitles(cues: cues, time: subtitleTime - subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
                                fill: fill, videoPixels: videoSize,
-                               originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale), sheet: assSheet,
-                               color: subtitleColor == "yellow" ? Color(red: 1, green: 0.88, blue: 0.3) : .white, box: subtitleBox,
-                               raise: subtitleRaise,
+                               originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
+                               sheet: subtitleLook.styled == "mine" ? nil : assSheet,
                                // Above the bar and the title while the controls show.
                                lift: showsControls && failure == nil ? (verticalSizeClass == .compact ? 72 : 96) : 0)
                     .animation(.smooth(duration: 0.25), value: showsControls)
@@ -228,7 +228,7 @@ struct JellyPlayerView: View {
             JellyGestureLayer(
                 tap: {
                     touched()
-                    menuItems = 0
+                    closeMenus()
                     withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
                     if showsControls { scheduleHide() }
                 },
@@ -408,8 +408,8 @@ struct JellyPlayerView: View {
     }
 
     // The engine playing now: AetherEngine, or mpv.
-    private func enginePlay() { if usesMPV { mpv.play() } else { enginePlay() } }
-    private func enginePause() { if usesMPV { mpv.pause() } else { enginePause() } }
+    private func enginePlay() { if usesMPV { mpv.play() } else { engine?.play() } }
+    private func enginePause() { if usesMPV { mpv.pause() } else { engine?.pause() } }
     private func engineRate(_ rate: Float) { if usesMPV { mpv.setRate(rate) } else { engine?.setRate(rate) } }
     private func engineVolume(_ value: Float) { if usesMPV { mpv.setVolume(value) } else { engine?.volume = value } }
     private func engineAudio(_ id: Int) { if usesMPV { mpv.selectAudio(id) } else { engine?.selectAudioTrack(index: id) } }
@@ -552,7 +552,7 @@ struct JellyPlayerView: View {
         scheduleHide()
     }
     private func lockScreen() {
-        menuItems = 0
+        closeMenus()
         withAnimation(.easeInOut(duration: 0.2)) { screenLocked = true; showsControls = false; panel = nil }
         flashUnlock()
     }
@@ -669,11 +669,20 @@ struct JellyPlayerView: View {
         // video); the intro and credits stretches while it loads.
         let extras = try? await client.playerInfo(id, user: user)
         async let stretches = try? client.segments(id)
+        // The subtitle delay you last set in this show (Settings → Subtitles → Timing).
+        if Self.remembersDelay, let show = current.item.SeriesId {
+            subtitleDelay = UserDefaults.standard.double(forKey: Self.delayKey(show))
+        }
         var options = LoadOptions()
         // ASS/SSA lines arrive with their styling, drawn by JellyASSLayer.
         options.preserveASSMarkup = true
         options.externalSubtitles = Self.subtitleFiles(extras, source: current.source, item: id, client: client)
         knownSubtitles = Set(Self.subtitleStreams(extras, source: current.source, item: id, client: client).map { $0.index })
+        // The fonts the styled subtitles are drawn in, from inside the video (mpv reads them itself).
+        if !usesMPV {
+            let fonts = Self.fontFiles(extras, source: current.source, item: id, client: client)
+            if !fonts.isEmpty { Task { await JellyASSFonts.shared.load(fonts) } }
+        }
         pendingSkip = nil; foundSubtitles = []
         quality = Self.qualityName(extras, source: current.source)
         // Upscaling as Infuse does it: Apple's super resolution and MetalFX for every kind of video (no
@@ -687,7 +696,7 @@ struct JellyPlayerView: View {
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try? AVAudioSession.sharedInstance().setActive(true)
             var settings = JellyMPV.fillSettings(fill)
-                + JellyMPV.subtitleSettings(scale: subtitleSize, yellow: subtitleColor == "yellow", box: subtitleBox)
+                + subtitleLook.mpvSettings
             settings += [("speed", String(speed)), ("audio-delay", String(audioDelay)), ("sub-delay", String(subtitleDelay)), ("sid", "no")]
             // The next episodes played on mpv open on it too.
             JellyMPVChoice.set(current.id, true)
@@ -728,6 +737,7 @@ struct JellyPlayerView: View {
                 report("start")
                 if speed != 1 { engine.setRate(speed) }
                 if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
+                if subtitleDelay != 0 { engine.setSoftwareSubtitleDelay(subtitleDelay) }
             } catch {
                 guard !Task.isCancelled else { return }
                 failure = await Self.unavailable(current.url) ? "This file isn’t available on the server right now. Its drive may be unplugged."
@@ -787,6 +797,18 @@ struct JellyPlayerView: View {
     /// player loads with the video. Picture subtitles in a separate file (.sup) are left out.
     static func subtitleFiles(_ info: JellyfinClient.PlayerInfo?, source chosen: String?, item: String, client: JellyfinClient) -> [ExternalSubtitleTrack] {
         subtitleStreams(info, source: chosen, item: item, client: client).map { $0.track }
+    }
+    /// The fonts inside the video (an anime's MKV carries the ones its subtitles are styled in).
+    static func fontFiles(_ info: JellyfinClient.PlayerInfo?, source chosen: String?, item: String, client: JellyfinClient) -> [JellyASSFonts.File] {
+        let sources = info?.MediaSources ?? []
+        guard let source = sources.first(where: { $0.Id == chosen }) ?? sources.first, let sourceID = source.Id else { return [] }
+        return (source.MediaAttachments ?? []).compactMap { attachment -> JellyASSFonts.File? in
+            let name = attachment.FileName ?? "font-\(sourceID)-\(attachment.Index)"
+            let kind = "\(attachment.MimeType ?? "") \(attachment.Codec ?? "")".lowercased()
+            let fileType = URL(fileURLWithPath: name).pathExtension.lowercased()
+            guard ["ttf", "otf", "ttc", "otc"].contains(fileType) || kind.contains("font") || kind.contains("truetype") || kind.contains("opentype") else { return nil }
+            return client.attachmentURL(item, source: sourceID, index: attachment.Index).map { JellyASSFonts.File(name: name, url: $0) }
+        }
     }
     static func subtitleStreams(_ info: JellyfinClient.PlayerInfo?, source chosen: String?, item: String,
                                 client: JellyfinClient) -> [(index: Int, track: ExternalSubtitleTrack)] {
@@ -1118,8 +1140,8 @@ struct JellyPlayerView: View {
         Task { try? await Task.sleep(for: .seconds(seconds)); withAnimation { if noticeID == id { notice = nil } } }
     }
 
-    /// Your remembered subtitle language (or off); else the file's default (or forced) subtitle, once
-    /// when the tracks first arrive.
+    /// Your remembered subtitle language (or off); else what Settings → Subtitles asks for (your
+    /// languages, forced only, or none; else the file's default), once when the tracks first arrive.
     private func pickDefaultSubtitle(_ tracks: [TrackInfo]) {
         guard !pickedSubtitle, !tracks.isEmpty else { return }
         pickedSubtitle = true
@@ -1130,7 +1152,8 @@ struct JellyPlayerView: View {
                 return
             }
         }
-        if let track = tracks.first(where: { $0.isDefault }) ?? tracks.first(where: { $0.isForced }) {
+        // Settings → Subtitles → Languages: your languages, forced only, or none.
+        if let track = JellySubtitlePick.choose(tracks) {
             engineSubtitle(track.id)
         }
     }
@@ -1205,16 +1228,19 @@ struct JellyPlayerView: View {
     static let red = Color(red: 0.9, green: 0.04, blue: 0.08)
     /// More, Speed, Episodes, Audio & Subtitles and Next Episode, named where they fit.
     private var bottomRow: some View {
-        let menus = menuState
+        let menus = openMenus ?? menuState
+        // Named and spaced out; named and closer together (a longer name, "Speed (1.25x)", no longer
+        // squeezes them down to symbols); then just the symbols.
         return ViewThatFits(in: .horizontal) {
-            bottomButtons(menus, labelled: true)
-            bottomButtons(menus, labelled: false)
+            bottomButtons(menus, labelled: true, spacing: 28)
+            bottomButtons(menus, labelled: true, spacing: 14)
+            bottomButtons(menus, labelled: false, spacing: 4)
         }
         .frame(maxWidth: .infinity)
     }
-    private func bottomButtons(_ menus: JellyMenuState, labelled: Bool) -> some View {
+    private func bottomButtons(_ menus: JellyMenuState, labelled: Bool, spacing: CGFloat) -> some View {
         let actions = menuActions
-        return HStack(spacing: labelled ? 28 : 4) {
+        return HStack(spacing: spacing) {
             JellyMoreMenu(state: menus, actions: actions, labelled: labelled).equatable()
             JellySpeedMenu(state: menus, actions: actions, labelled: labelled).equatable()
             if current.item.kind == "Episode" {
@@ -1337,21 +1363,27 @@ struct JellyPlayerView: View {
     /// A menu opened: the controls stay up meanwhile.
     private func menuShown() {
         touched()
+        if openMenus == nil { openMenus = menuState }
         menuItems += 1
         hideTask?.cancel()
     }
     /// A menu's items left the screen: once none are left, the controls hide as usual.
     private func menuGone() {
         menuItems = max(0, menuItems - 1)
-        if menuItems == 0 { scheduleHide() }
+        if menuItems == 0 { openMenus = nil; scheduleHide() }
     }
     /// A choice made in a menu (which closes it).
     private func menuUsed() {
-        menuItems = 0
+        closeMenus()
         scheduleHide()
     }
-    private func openPanel(_ next: Panel) {
+    /// Every menu closed: the next one shows what's true then.
+    private func closeMenus() {
         menuItems = 0
+        openMenus = nil
+    }
+    private func openPanel(_ next: Panel) {
+        closeMenus()
         withAnimation { panel = next }
     }
 
@@ -1370,7 +1402,8 @@ struct JellyPlayerView: View {
                     }.buttonStyle(.plain).accessibilityLabel("Close")
                 }
                 if !subtitleTracks.isEmpty {
-                    delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engineSubtitleDelay($0) }
+                    subtitleSizeControl
+                    delayControl("Subtitle delay", value: subtitleDelay, step: Self.delayStep) { setSubtitleDelay($0) }
                 }
                 delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engineAudioDelay($0) }
                 Button { withAnimation { panel = .subtitleSearch } } label: {
@@ -1577,17 +1610,7 @@ struct JellyPlayerView: View {
             HStack {
                 Text("Download subtitles").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                 Spacer(minLength: 12)
-                Menu {
-                    Picker("Language", selection: $subtitleLanguage) {
-                        ForEach(Self.subtitleLanguages, id: \.1) { Text($0.0).tag($0.1) }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(Self.subtitleLanguages.first { $0.1 == subtitleLanguage }?.0 ?? subtitleLanguage)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
-                    }.font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 12).frame(height: 32).background(.white.opacity(0.15), in: Capsule())
-                }.accessibilityIdentifier("jellyspace-subtitle-language")
+                JellySubtitleLanguageMenu(selected: subtitleLanguage) { subtitleLanguage = $0 }.equatable()
             }
             if searchingSubtitles {
                 ProgressView().tint(.white).frame(maxWidth: .infinity, minHeight: 80)
@@ -1667,15 +1690,48 @@ struct JellyPlayerView: View {
     }
 
     /// −0.1 s, the delay (a tap puts it back to 0), +0.1 s.
-    private func delayControl(_ title: String, value: Double, set: @escaping (Double) -> Void) -> some View {
-        HStack(spacing: 8) {
+    private func delayControl(_ title: String, value: Double, step: Double = 0.1, set: @escaping (Double) -> Void) -> some View {
+        // Kept to the step's own precision (0.05 s steps to hundredths).
+        let places = step < 0.1 ? 100.0 : 10.0
+        let format = step < 0.1 ? "%+.2fs" : "%+.1fs"
+        return HStack(spacing: 8) {
             Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
-            delayStep("minus", label: title + " earlier") { set(max(-15, ((value - 0.1) * 10).rounded() / 10)) }
+            delayStep("minus", label: title + " earlier") { set(max(-15, ((value - step) * places).rounded() / places)) }
             Button { set(0) } label: {
-                Text(value == 0 ? "0.0s" : String(format: "%+.1fs", value)).font(.system(size: 13, weight: .bold)).monospacedDigit()
-                    .foregroundStyle(.white).frame(minWidth: 54, minHeight: 30)
+                Text(value == 0 ? "0.0s" : String(format: format, value)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                    .foregroundStyle(.white).frame(minWidth: 58, minHeight: 30)
             }.buttonStyle(.plain)
-            delayStep("plus", label: title + " later") { set(min(15, ((value + 0.1) * 10).rounded() / 10)) }
+            delayStep("plus", label: title + " later") { set(min(15, ((value + step) * places).rounded() / places)) }
+        }
+    }
+    /// The subtitle delay's step and memory (Settings → Subtitles → Timing).
+    private static var delayStep: Double {
+        let step = UserDefaults.standard.double(forKey: JellySubtitlePrefs.delayStepKey)
+        return step > 0 ? step : 0.1
+    }
+    private static var remembersDelay: Bool {
+        UserDefaults.standard.object(forKey: JellySubtitlePrefs.rememberDelayKey) as? Bool ?? true
+    }
+    private static func delayKey(_ show: String) -> String { "jellyspace.subtitleDelay." + show }
+    /// Sets the subtitle delay, kept for this show when Settings says to.
+    private func setSubtitleDelay(_ seconds: Double) {
+        subtitleDelay = seconds
+        engineSubtitleDelay(seconds)
+        if Self.remembersDelay, let show = current.item.SeriesId { UserDefaults.standard.set(seconds, forKey: Self.delayKey(show)) }
+    }
+    /// The subtitles' size, here as in Settings (and kept there): a slider from half to double.
+    private var subtitleSizeControl: some View {
+        let size = Binding<Double>(get: { subtitleLook.size }, set: { value in
+            subtitleLook.size = value
+            UserDefaults.standard.set(value, forKey: JellyPrefs.subtitleSizeKey)
+            if usesMPV { mpv.setSubtitleLook(subtitleLook) }
+        })
+        return HStack(spacing: 10) {
+            Text("Subtitle size").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            Slider(value: size, in: 0.5...2, step: 0.05).tint(.white)
+                .accessibilityLabel("Subtitle size").accessibilityValue("\(Int((subtitleLook.size * 100).rounded())) percent")
+            Text("\(Int((subtitleLook.size * 100).rounded()))%").font(.system(size: 13, weight: .bold)).monospacedDigit()
+                .foregroundStyle(.white).frame(minWidth: 44, alignment: .trailing)
         }
     }
     private func delayStep(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -1803,6 +1859,9 @@ struct JellyPlayerView: View {
                         }
                         .scrollIndicators(.hidden)
                         .contentMargins(.horizontal, side, for: .scrollContent)
+                        // Room for the playing card's outline, which sits just outside the card (the
+                        // scroll area clips at its edges, which cut the outline's top off).
+                        .contentMargins(.vertical, 4, for: .scrollContent)
                         .onAppear { proxy.scrollTo(current.id, anchor: .center) }
                     }
                 }
@@ -1939,21 +1998,30 @@ private struct JellyScrubber: View {
             let width = max(1, proxy.size.width), total = max(duration, 1)
             let shown = scrub ?? time, dragging = scrub != nil
             let at = width * min(1, max(0, shown / total))
+            // Until the video's length is known (while it loads) only the empty track: the stretches,
+            // marks and buffer are in seconds and, measured against nothing, ran far past the screen.
+            let known = duration > 0
+            let part = { (seconds: Double) in min(1, max(0, seconds / total)) }
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.22))
-                Rectangle().fill(.white.opacity(0.38)).frame(width: width * min(1, max(0, buffered / total)))
-                ForEach(stretches.indices, id: \.self) { index in
-                    let stretch = stretches[index]
-                    Rectangle().fill(stretch.color.opacity(0.85))
-                        .frame(width: max(2, width * (stretch.range.upperBound - stretch.range.lowerBound) / total))
-                        .offset(x: width * stretch.range.lowerBound / total)
+                if known {
+                    Rectangle().fill(.white.opacity(0.38)).frame(width: width * part(buffered))
+                    ForEach(stretches.indices, id: \.self) { index in
+                        let stretch = stretches[index]
+                        let from = part(stretch.range.lowerBound), to = max(from, part(stretch.range.upperBound))
+                        Rectangle().fill(stretch.color.opacity(0.85))
+                            .frame(width: max(2, width * (to - from)))
+                            .offset(x: width * from)
+                    }
                 }
                 Rectangle().fill(tint).frame(width: at)
-                ForEach(marks.indices, id: \.self) { index in
-                    Rectangle().fill(.black.opacity(0.6)).frame(width: 2).offset(x: width * marks[index] / total - 1)
+                if known {
+                    ForEach(marks.indices, id: \.self) { index in
+                        Rectangle().fill(.black.opacity(0.6)).frame(width: 2).offset(x: width * part(marks[index]) - 1)
+                    }
                 }
             }
-            .frame(height: dragging ? 8 : 4).clipShape(Capsule())
+            .frame(width: width, height: dragging ? 8 : 4, alignment: .leading).clipShape(Capsule())
             .overlay(alignment: .leading) {
                 Circle().fill(knob).frame(width: dragging ? 18 : 12, height: dragging ? 18 : 12).offset(x: at - (dragging ? 9 : 6))
             }
@@ -2143,23 +2211,21 @@ private struct JellyAirPlayButton: UIViewRepresentable {
 private struct JellySubtitles: View {
     let cues: [SubtitleCue]
     let time: Double
-    var scale: Double = 1
+    /// The look from Settings → JellySpace → Subtitles (size, font, colours, edge, box, height).
+    var look = JellySubtitleLook()
     var insets = EdgeInsets()
     var fill = JellyFill.fit
     /// The video's coded size in pixels (what a picture cue's canvas maps onto).
     var videoPixels = CGSize.zero
     var originalSize = CGSize.zero
+    /// Styled (ASS) subtitles' sheet; nil draws them as plain text.
     var sheet: JellyASSSheet? = nil
-    /// Plain subtitles' colour, and a dark box behind them instead of an outline.
-    var color = Color.white
-    var box = false
-    /// How far up every subtitle sits (a share of the height), and the room the controls take.
-    var raise = 0.0
+    /// The room the controls take while they show.
     var lift: CGFloat = 0
     var body: some View {
         let now = cues.filter { $0.startTime <= time && time < $0.endTime }
         GeometryReader { proxy in
-            let up = proxy.size.height * raise + lift
+            let up = proxy.size.height * look.raise + (look.lift ? lift : 0)
             let safe = CGRect(x: insets.leading + 8, y: insets.top + 8, width: proxy.size.width - insets.leading - insets.trailing - 16,
                               height: max(0, proxy.size.height - insets.top - insets.bottom - 16 - up))
             ZStack {
@@ -2176,7 +2242,8 @@ private struct JellySubtitles: View {
                         return cue.text
                     }
                     if !events.isEmpty {
-                        JellyASSLayer(events: events, sheet: sheet, size: proxy.size, safe: safe, fill: fill, originalSize: originalSize, userScale: scale)
+                        JellyASSLayer(events: events, sheet: sheet, size: proxy.size, safe: safe, fill: fill, originalSize: originalSize,
+                                      userScale: look.styledSize ? look.size : 1)
                     }
                 }
                 let lines = sheet != nil ? [] : now.compactMap { cue -> String? in
@@ -2184,11 +2251,7 @@ private struct JellySubtitles: View {
                     return cue.text.map(Self.plain)
                 }.filter { !$0.isEmpty }
                 if !lines.isEmpty {
-                    Text(lines.joined(separator: "\n")).font(.system(size: max(14, proxy.size.height * 0.05 * scale), weight: .semibold))
-                        .foregroundStyle(color).multilineTextAlignment(.center)
-                        .shadow(color: .black.opacity(box ? 0 : 1), radius: 2).shadow(color: .black.opacity(box ? 0 : 0.8), radius: 4)
-                        .padding(.horizontal, box ? 12 : 0).padding(.vertical, box ? 5 : 0)
-                        .background { if box { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.black.opacity(0.62)) } }
+                    JellyPlainSubtitle(text: lines.joined(separator: "\n"), look: look, points: max(14, proxy.size.height * 0.05 * look.size))
                         .padding(.leading, max(40, insets.leading + 16)).padding(.trailing, max(40, insets.trailing + 16))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, max(proxy.size.height * 0.07, insets.bottom + 12) + up)
@@ -2510,6 +2573,9 @@ private struct JellyTracksMenu: View, Equatable {
                         JellyMenuParts.audioOptions(state.audio)
                     } label: { Text("Audio") }.pickerStyle(.inline)
                 }
+                if !state.subtitles.isEmpty {
+                    Button { actions.advanced() } label: { Label("Subtitle size and timing", systemImage: "textformat.size") }
+                }
                 Button { actions.download() } label: { Label("Download subtitles", systemImage: "arrow.down.circle") }
             }
             .onAppear { actions.opened() }.onDisappear { actions.closed() }
@@ -2518,6 +2584,31 @@ private struct JellyTracksMenu: View, Equatable {
         }
         .menuOrder(.fixed).menuIndicator(.hidden)
         .accessibilityLabel("Audio and subtitles").accessibilityIdentifier("jellyspace-tracks")
+    }
+}
+
+/// The Download subtitles panel's language: its own view, so the menu isn't rebuilt (and sent back
+/// to its top) by every tick of the video while it's open.
+private struct JellySubtitleLanguageMenu: View, Equatable {
+    let selected: String
+    let pick: (String) -> Void
+    nonisolated static func == (lhs: JellySubtitleLanguageMenu, rhs: JellySubtitleLanguageMenu) -> Bool {
+        lhs.selected == rhs.selected
+    }
+
+    var body: some View {
+        let languages = JellyPlayerView.subtitleLanguages
+        Menu {
+            Picker("Language", selection: Binding(get: { selected }, set: { pick($0) })) {
+                ForEach(languages, id: \.1) { Text($0.0).tag($0.1) }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(languages.first { $0.1 == selected }?.0 ?? selected)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+            }.font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 12).frame(height: 32).background(.white.opacity(0.15), in: Capsule())
+        }.accessibilityIdentifier("jellyspace-subtitle-language")
     }
 }
 

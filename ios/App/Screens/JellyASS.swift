@@ -1,4 +1,6 @@
+import CoreText
 import SwiftUI
+import UIKit
 
 /// An ASS/SSA subtitle track's styles (from its header): sizes, colours, bold and italic, where on
 /// the picture each style sits, and the script's canvas size.
@@ -14,6 +16,10 @@ struct JellyASSSheet {
         var marginL: CGFloat = 10
         var marginR: CGFloat = 10
         var marginV: CGFloat = 10
+        /// The style's font (a family name), and its outline and shadow in canvas units.
+        var font: String?
+        var border: CGFloat = 2
+        var shadow: CGFloat = 2
     }
     var canvas = CGSize(width: 384, height: 288)
     var styles: [String: Style] = [:]
@@ -43,6 +49,9 @@ struct JellyASSSheet {
                 if let margin = value("marginl").flatMap(Double.init) { style.marginL = CGFloat(margin) }
                 if let margin = value("marginr").flatMap(Double.init) { style.marginR = CGFloat(margin) }
                 if let margin = value("marginv").flatMap(Double.init) { style.marginV = CGFloat(margin) }
+                if let font = value("fontname"), !font.isEmpty { style.font = font }
+                if let border = value("outline").flatMap(Double.init) { style.border = CGFloat(border) }
+                if let shadow = value("shadow").flatMap(Double.init) { style.shadow = CGFloat(shadow) }
                 if let name = value("name") { styles[name] = style }
             }
         }
@@ -73,11 +82,14 @@ struct JellyASSSheet {
         var marginL: CGFloat
         var marginR: CGFloat
         var marginV: CGFloat
+        /// The outline and the shadow's offset on screen, in points.
+        var outlineWidth: CGFloat = 0
+        var shadowDepth: CGFloat = 0
     }
 
     /// Reads one raw event ("ReadOrder,Layer,Style,Name,MarginL,MarginR,MarginV,Effect,Text", or a
     /// whole "Dialogue:" line). Drawings (\p1) are left out; animations and karaoke show as plain text.
-    func line(_ raw: String, scale: CGFloat) -> Line? {
+    @MainActor func line(_ raw: String, scale: CGFloat) -> Line? {
         var event = raw.trimmingCharacters(in: .whitespaces)
         var dialogue = false
         if event.hasPrefix("Dialogue:") { event = String(event.dropFirst(9)).trimmingCharacters(in: .whitespaces); dialogue = true }
@@ -91,6 +103,7 @@ struct JellyASSSheet {
         }
         var result = AttributedString()
         var bold = base.bold, italic = base.italic, colour = base.colour, size = base.size
+        var font = base.font, border = base.border, shadow = base.shadow
         var alignment = base.alignment, position: CGPoint?, drawing = false
         var rest = Substring(parts[8 + offset])
         while !rest.isEmpty {
@@ -108,7 +121,13 @@ struct JellyASSSheet {
                     else if tag.hasPrefix("1c&H") || tag.hasPrefix("c&H") { colour = Self.colour(String(tag.drop { $0 != "&" })) ?? colour }
                     else if tag.hasPrefix("fs"), let value = Double(tag.dropFirst(2)) { size = CGFloat(value) }
                     else if tag.hasPrefix("p"), let value = Int(tag.dropFirst()) { drawing = value > 0 }
-                    else if tag == "r" { bold = base.bold; italic = base.italic; colour = base.colour; size = base.size }
+                    else if tag.hasPrefix("fn") { let name = tag.dropFirst(2).trimmingCharacters(in: .whitespaces); font = name.isEmpty ? base.font : name }
+                    else if tag.hasPrefix("bord"), let value = Double(tag.dropFirst(4)) { border = CGFloat(value) }
+                    else if tag.hasPrefix("shad"), let value = Double(tag.dropFirst(4)) { shadow = CGFloat(value) }
+                    else if tag == "r" {
+                        bold = base.bold; italic = base.italic; colour = base.colour; size = base.size
+                        font = base.font; border = base.border; shadow = base.shadow
+                    }
                 }
                 rest = rest[rest.index(after: close)...]
             } else {
@@ -117,9 +136,7 @@ struct JellyASSSheet {
                     .replacingOccurrences(of: "\\h", with: "\u{00A0}")
                 if !drawing, !chunk.isEmpty {
                     var run = AttributedString(chunk)
-                    var font = Font.system(size: max(10, size * scale), weight: bold ? .bold : .semibold)
-                    if italic { font = font.italic() }
-                    run.font = font
+                    run.font = JellyASSFonts.shared.font(font, size: size * scale, bold: bold, italic: italic)
                     run.foregroundColor = colour
                     result += run
                 }
@@ -128,8 +145,82 @@ struct JellyASSSheet {
         }
         guard !result.characters.isEmpty, !String(result.characters).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return Line(text: result, alignment: alignment, position: position, style: base,
-                    marginL: margin(4, base.marginL), marginR: margin(5, base.marginR), marginV: margin(6, base.marginV))
+                    marginL: margin(4, base.marginL), marginR: margin(5, base.marginR), marginV: margin(6, base.marginV),
+                    outlineWidth: max(0, border * scale), shadowDepth: max(0, shadow * scale))
     }
+}
+
+/// The fonts a video carries for its styled subtitles (an anime's MKV has them attached), fetched
+/// from Jellyfin and registered with the app; and each line's font, as libass picks and sizes it:
+/// the script's font if the video or the phone has it (else the system font), regular unless the
+/// line is bold, and an ASS size meaning the line's full height (ascender to descender), not the
+/// letters' em, so the em is that size over the font's height.
+@MainActor @Observable final class JellyASSFonts {
+    static let shared = JellyASSFonts()
+    /// Raised as each font arrives, so subtitles on screen redraw in it.
+    private(set) var version = 0
+    @ObservationIgnored private var registered: Set<String> = []
+    @ObservationIgnored private var resolved: [String: Resolved] = [:]
+
+    struct File: Sendable {
+        let name: String
+        let url: URL
+    }
+    private struct Resolved {
+        /// The face's PostScript name (nil: the system font).
+        let face: String?
+        /// Ascender plus descender, per point of em.
+        let height: CGFloat
+    }
+
+    /// Fetches and registers the fonts not had yet; they're kept on disk, so the next episode (which
+    /// usually carries the same ones) has them at once.
+    func load(_ files: [File]) async {
+        let folder = URL.cachesDirectory.appending(path: "JellyFonts", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for file in files where !registered.contains(file.name) {
+            let local = folder.appending(path: file.name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_"))
+            if !FileManager.default.fileExists(atPath: local.path()) {
+                guard let fetched = try? await URLSession.shared.data(from: file.url),
+                      (fetched.1 as? HTTPURLResponse)?.statusCode == 200,
+                      !fetched.0.isEmpty, fetched.0.count < 40_000_000,
+                      (try? fetched.0.write(to: local, options: .atomic)) != nil else { continue }
+            }
+            guard !registered.contains(file.name) else { continue }
+            registered.insert(file.name)
+            _ = CTFontManagerRegisterFontsForURL(local as CFURL, .process, nil)
+            resolved = [:]
+            version += 1
+        }
+    }
+
+    /// A run's font at an ASS size (already scaled to the screen).
+    func font(_ name: String?, size: CGFloat, bold: Bool, italic: Bool) -> Font {
+        let key = "\(name ?? "")|\(bold)|\(italic)"
+        let found = resolved[key] ?? Self.resolve(name, bold: bold, italic: italic)
+        resolved[key] = found
+        let em = max(10, size / max(0.5, found.height))
+        var font = found.face.map { Font.custom($0, fixedSize: em) } ?? Font.system(size: em, weight: bold ? .bold : .regular)
+        if italic { font = font.italic() }
+        return font
+    }
+
+    /// The script's font: a family name (most scripts give one), or one face's full or PostScript
+    /// name ("@" in front marks a vertical font, drawn here as the font itself).
+    private static func resolve(_ name: String?, bold: Bool, italic: Bool) -> Resolved {
+        var traits: UIFontDescriptor.SymbolicTraits = []
+        if bold { traits.insert(.traitBold) }
+        if italic { traits.insert(.traitItalic) }
+        let wanted = String((name ?? "").trimmingCharacters(in: .whitespaces).trimmingPrefix("@"))
+        if !wanted.isEmpty {
+            let family = UIFontDescriptor(fontAttributes: [.family: wanted])
+            let font = UIFont(descriptor: family.withSymbolicTraits(traits) ?? family, size: 100)
+            if font.familyName.caseInsensitiveCompare(wanted) == .orderedSame { return Resolved(face: font.fontName, height: height(font)) }
+            if let face = UIFont(name: wanted, size: 100) { return Resolved(face: face.fontName, height: height(face)) }
+        }
+        return Resolved(face: nil, height: height(UIFont.systemFont(ofSize: 100, weight: bold ? .bold : .regular)))
+    }
+    private static func height(_ font: UIFont) -> CGFloat { (font.ascender - font.descender) / font.pointSize }
 }
 
 /// Styled subtitles over the picture: each line where the script puts it (by its alignment and
@@ -145,6 +236,8 @@ struct JellyASSLayer: View {
     let userScale: Double
 
     var body: some View {
+        // Drawn again as the video's own fonts arrive.
+        let _ = JellyASSFonts.shared.version
         let frame = pictureFrame
         let scale = frame.height / max(1, sheet.canvas.height)
         let lines = events.flatMap { $0.components(separatedBy: "\n") }.compactMap { sheet.line($0, scale: scale * CGFloat(userScale)) }
@@ -175,10 +268,23 @@ struct JellyASSLayer: View {
         .frame(width: size.width, height: size.height)
     }
 
+    /// A line as libass draws it: a crisp outline of the style's width round the letters (the text
+    /// in the outline colour, drawn eight ways round under it), and its shadow offset down and right.
     private func styled(_ line: JellyASSSheet.Line) -> some View {
-        Text(line.text)
-            .shadow(color: line.style.outline, radius: 1.2).shadow(color: line.style.outline, radius: 1.2)
-            .shadow(color: .black.opacity(0.6), radius: 3)
+        let width = min(4, line.outlineWidth), depth = min(4, line.shadowDepth)
+        var edge = line.text
+        edge.foregroundColor = line.style.outline
+        return Text(line.text)
+            .background { if width > 0.2 { Self.outline(edge, width: width) } }
+            .shadow(color: .black.opacity(depth > 0.2 ? 0.55 : 0), radius: 0.6, x: depth, y: depth)
+    }
+    private static func outline(_ edge: AttributedString, width: CGFloat) -> some View {
+        ZStack {
+            ForEach(0..<8, id: \.self) { step in
+                let angle = Double(step) * .pi / 4
+                Text(edge).offset(x: cos(angle) * width, y: sin(angle) * width)
+            }
+        }
     }
 
     /// The script's canvas laid over the picture as it is shown.

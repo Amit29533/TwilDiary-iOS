@@ -161,12 +161,15 @@ private struct JellyMPVHandle: @unchecked Sendable {
         for (name, value) in Self.fillSettings(fill) { set(name, value) }
     }
     nonisolated static func fillSettings(_ fill: JellyFill) -> [(String, String)] {
-        [("video-unscaled", fill == .original ? "yes" : "no"), ("panscan", fill == .fill ? "1.0" : "0.0")]
+        // Filled, the picture is cropped top and bottom, and libass would place the subtitles on the
+        // whole (uncropped) video, the bottom lines under the screen's edge. Given the screen's
+        // margins it places them on what's shown instead, as Infuse does.
+        [("video-unscaled", fill == .original ? "yes" : "no"), ("panscan", fill == .fill ? "1.0" : "0.0"),
+         ("sub-ass-force-margins", fill == .fill ? "yes" : "no"), ("sub-use-margins", "yes")]
     }
-    /// The subtitles' size, colour and box, from JellySpace's settings.
-    nonisolated static func subtitleSettings(scale: Double, yellow: Bool, box: Bool) -> [(String, String)] {
-        [("sub-scale", String(scale)), ("sub-color", yellow ? "#FFE04D" : "#FFFFFF"),
-         ("sub-border-style", box ? "background-box" : "outline-and-shadow"), ("sub-back-color", "#99000000")]
+    /// The subtitles' look from JellySpace's settings, mid-video (as the size changes in the player).
+    func setSubtitleLook(_ look: JellySubtitleLook) {
+        for (name, value) in look.mpvSettings { set(name, value) }
     }
     /// The picture off in the background (mpv's Metal layer can't draw there) and back.
     func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
