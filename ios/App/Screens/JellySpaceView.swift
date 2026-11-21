@@ -80,8 +80,9 @@ struct JellySpaceView: View {
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
     /// at Explore's sizes.
     var body: some View {
-        // Searching with something typed: the results start under the top bar and the search field.
-        let showsResults = searching && !query.isEmpty
+        // Searching: the search page under the top bar and the search field (Recommended for you until
+        // something's typed, then the results).
+        let showsResults = searching
         EdgeToEdgeScroll(artworkUnderBar: !showsResults) {
             VStack(alignment: .leading, spacing: 22) {
                 if let client = JellySpace.client {
@@ -101,7 +102,9 @@ struct JellySpaceView: View {
                     }
                     VStack(alignment: .leading, spacing: 22) {
                         if let failure { RetryNotice(message: failure) { Task { await loadHome() } } }
-                        if showsResults {
+                        if showsResults && query.isEmpty {
+                            suggestionsSection(client)
+                        } else if showsResults {
                             if results.isEmpty && !searchRunning { Text("Nothing matches “\(query)”.").font(.subheadline).foregroundStyle(.secondary) }
                             JellyGrid(items: shown(results), client: client, playing: $playing)
                             if !seerrResults.isEmpty { requestSection }
@@ -257,6 +260,37 @@ struct JellySpaceView: View {
         }
     }
 
+    /// Search before anything's typed: Recommended for you, as Netflix's search page has it.
+    @ViewBuilder private func suggestionsSection(_ client: JellyfinClient) -> some View {
+        let items = suggestions
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                heading("Recommended for you")
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(items, id: \.Id) { item in JellySuggestionRow(item: item, client: client, playing: $playing) }
+                }
+            }
+        }
+    }
+    /// About twenty titles from your recommendations (Because you watched, the Dynamic rows, Hidden
+    /// gems, Recently added), taking turns so each has a say: films and shows, unwatched, no repeats,
+    /// none from a library switched off for recommendations or hidden.
+    private var suggestions: [JellyfinClient.Item] {
+        let recent = recommendLibraries.flatMap { latest[$0.id] ?? [] }
+        let pools: [[JellyfinClient.Item]] = [forYou?.items ?? [], themes.flatMap(\.items), gemItems, recent].map(shown)
+        var seen = Set<String>(), out: [JellyfinClient.Item] = []
+        var index = 0
+        while out.count < 20, pools.contains(where: { $0.count > index }) {
+            for pool in pools where pool.count > index && out.count < 20 {
+                let item = pool[index]
+                guard item.kind == "Movie" || item.kind == "Series", item.UserData?.Played != true,
+                      !JellyServerEdits.shared.isDeleted(item), seen.insert(item.Id).inserted else { continue }
+                out.append(item)
+            }
+            index += 1
+        }
+        return out
+    }
     /// Search results that aren't on the server: request them through Jellyseerr.
     private var requestSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1469,6 +1503,71 @@ struct JellyTile: View {
                 Text(JellySpace.detail(item)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, home ? 4 : 2)
             }
         }.contentShape(Rectangle())
+    }
+}
+
+/// One of search's Recommended for you: the wide picture (your progress along its foot), the name,
+/// "Film · 2022", and a play circle (a film from where you stopped, a show's next episode). The rest
+/// of the row opens the title's page.
+private struct JellySuggestionRow: View {
+    let item: JellyfinClient.Item
+    let client: JellyfinClient
+    @Binding var playing: JellyPlayback?
+    @State private var played: Bool?
+    @State private var favourite: Bool?
+    @State private var starting = false
+
+    private var line: String {
+        let kind = item.kind == "Movie" ? "Film" : "Series"
+        let started = item.kind == "Movie" && (item.UserData?.PlayedPercentage ?? 0) > 0
+        return ([kind, item.ProductionYear.map(String.init)].compactMap { $0 } + (started ? ["Resume"] : [])).joined(separator: " · ")
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            NavigationLink(value: JellyDetailRoute(id: item.Id, name: item.Name ?? "")) {
+                HStack(spacing: 12) {
+                    Color.clear.frame(width: 128, height: 72)
+                        .overlay {
+                            ZStack {
+                                Rectangle().fill(HomeStyle.card)
+                                JellyImage(url: JellySpace.wideImage(item, base: client.base))
+                            }
+                        }
+                        .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.Name ?? "").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                        Text(line).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }.contentShape(Rectangle())
+            }
+            .buttonStyle(.springPress).accessibilityIdentifier("jellyspace-suggestion-" + item.Id)
+            Button { Task { await play() } } label: {
+                ZStack {
+                    Circle().strokeBorder(HomeStyle.primary, lineWidth: 2)
+                    if starting { ProgressView().controlSize(.small) } else {
+                        Image(systemName: "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary).offset(x: 1)
+                    }
+                }.frame(width: 38, height: 38).contentShape(Circle())
+            }
+            .buttonStyle(.springPress).disabled(starting)
+            .accessibilityLabel("Play " + (item.Name ?? "")).accessibilityIdentifier("jellyspace-suggestion-play-" + item.Id)
+        }
+        .modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite, play: nil))
+    }
+
+    /// A film plays from where you stopped; a show plays its next episode (its first if not started).
+    private func play() async {
+        if item.kind != "Series" {
+            playing = JellySpace.playback(item, client: client)
+            return
+        }
+        starting = true
+        defer { starting = false }
+        guard let user = await JellyfinUser.id(client), let next = try? await client.nextUp(series: item.Id, user: user) else { return }
+        playing = JellySpace.playback(next, client: client)
     }
 }
 
