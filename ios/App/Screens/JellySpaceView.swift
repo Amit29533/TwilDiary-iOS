@@ -39,6 +39,8 @@ struct JellySpaceView: View {
     @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
     @AppStorage(JellyPrefs.hiddenRowsKey) private var hiddenRowsRaw = ""
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
+    /// Libraries switched off for recommendations (Settings → JellySpace → Home → My Media).
+    @AppStorage(JellyRecommendOff.key) private var recommendOffRaw = ""
     @State private var seerrResults: [JellySeerr.Result] = []
     @State private var requested: Set<Int> = []
     @State private var requestNotice: String?
@@ -148,7 +150,9 @@ struct JellySpaceView: View {
         }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task { await appear() }
-        .task(id: hiddenRaw + "|" + hiddenRowsRaw) { await loadDiscover() }
+        .task(id: hiddenRaw + "|" + hiddenRowsRaw + "|" + recommendOffRaw) { await loadDiscover() }
+        // A library switched on or off for recommending: For you and the dynamic rows again.
+        .onChange(of: recommendOffRaw) { _, _ in Task { await loadRows() } }
         // A new number of Dynamic recommendations rows: made again from the kept index (no network).
         .onChange(of: themeCount) { _, _ in Task { await loadThemes() } }
         .refreshable {
@@ -173,6 +177,11 @@ struct JellySpaceView: View {
 
     private var hidden: [String: String] { JellyHidden.decode(hiddenRaw) }
     private var visibleLibraries: [JellyfinLibrary] { libraries.filter { hidden[$0.id] == nil } }
+    /// The libraries recommendations come from: shown, and not switched off for recommending.
+    private var recommendLibraries: [JellyfinLibrary] {
+        let off = JellyRecommendOff.ids(recommendOffRaw)
+        return visibleLibraries.filter { !off.contains($0.id) }
+    }
     /// Without what you hid (a film, a show, or an episode of a hidden show).
     private func shown(_ items: [JellyfinClient.Item]) -> [JellyfinClient.Item] {
         let hidden = hidden
@@ -304,7 +313,7 @@ struct JellySpaceView: View {
     }
     /// The newest films and shows with a backdrop, taking turns between libraries.
     private var newestPicks: [JellyfinClient.Item] {
-        let rows = visibleLibraries.compactMap { latest[$0.id].map(shown) }
+        let rows = recommendLibraries.compactMap { latest[$0.id].map(shown) }
         var picks: [JellyfinClient.Item] = []
         var index = 0
         while picks.count < 8, rows.contains(where: { $0.count > index }) {
@@ -547,7 +556,7 @@ struct JellySpaceView: View {
         let off = JellyHomeRow.hidden(hiddenRowsRaw)
         guard !off.contains(.hero) || !JellyHomeRow.discoverRows.isSubset(of: off) else { return }
         guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
-        let key = client.base.absoluteString + "|" + user + "|" + hiddenRaw
+        let key = client.base.absoluteString + "|" + user + "|" + hiddenRaw + "|" + recommendOffRaw
         if !force, JellyHomeCache.discoverKey == key, let cached = JellyHomeCache.discover {
             discover = cached
             return
@@ -556,7 +565,8 @@ struct JellySpaceView: View {
         let hiddenIDs = self.hidden
         let defaults = UserDefaults.standard, turn = defaults.integer(forKey: "jellyspace.discover.turn")
         defaults.set(turn + 1, forKey: "jellyspace.discover.turn")
-        let found = await JellyDiscover.load(client: client, user: user, libraries: all.filter { hiddenIDs[$0.id] == nil }, turn: turn)
+        let off = JellyRecommendOff.ids(recommendOffRaw)
+        let found = await JellyDiscover.load(client: client, user: user, libraries: all.filter { hiddenIDs[$0.id] == nil && !off.contains($0.id) }, turn: turn)
         guard !Task.isCancelled else { return }
         withAnimation(.smooth(duration: 0.3)) { discover = found }
         JellyHomeCache.discover = found
@@ -609,7 +619,7 @@ struct JellySpaceView: View {
         async let sets = client.items([URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")], user: user, limit: 20)
         async let following = client.nextUp(user: user)
         // Only the film libraries shown on the home (a hidden library's titles mustn't turn up here).
-        let filmLibraries = visibleLibraries.filter { $0.type == "movies" }.map(\.id)
+        let filmLibraries = recommendLibraries.filter { $0.type == "movies" }.map(\.id)
         async let picks = JellyForYou.load(client: client, user: user, libraries: filmLibraries)
         resume = (try? await started) ?? []
         nextUp = (try? await following) ?? []
@@ -638,8 +648,8 @@ struct JellySpaceView: View {
     private func loadThemes() async {
         guard let client = JellySpace.client, let user = await JellyfinUser.id(client),
               let index = await JellyIndexStore.index(client: client, user: user) else { return }
-        let count = min(5, max(1, themeCount))
-        let found = await Task.detached(priority: .utility) { JellyRecommender.themes(in: index, count: count) }.value
+        let count = min(5, max(1, themeCount)), excluded = JellyRecommendOff.ids(recommendOffRaw)
+        let found = await Task.detached(priority: .utility) { JellyRecommender.themes(in: index, count: count, excluded: excluded) }.value
         withAnimation(.smooth) { themes = found }
     }
 }

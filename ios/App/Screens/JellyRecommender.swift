@@ -8,6 +8,8 @@ import NaturalLanguage
 /// studios and TMDB id, and a key that two copies of the same thing share.
 struct JellyIndexEntry: Sendable {
     let item: JellyfinClient.Item
+    /// The library it's in ("" when not known).
+    let library: String
     /// Root word → the word as it was written (for a row's name: "Rain").
     let words: [String: String]
     let folder: String
@@ -40,15 +42,15 @@ struct JellyLibraryIndex: Sendable {
         log(Double(entries.count + 1) / Double((tagFrequency[tag] ?? 0) + 1))
     }
 
-    static func build(_ items: [JellyfinClient.Item]) -> JellyLibraryIndex {
+    static func build(_ groups: [(library: String, items: [JellyfinClient.Item])]) -> JellyLibraryIndex {
         let tagger = NLTagger(tagSchemes: [.lemma])
         // The same names come round again and again (a show's name in each of its files, a folder in
         // each of its videos): each is read once.
         var known: [String: [(String, String)]] = [:]
         var entries: [JellyIndexEntry] = []
         var frequency: [String: Int] = [:]
-        entries.reserveCapacity(items.count)
-        for item in items {
+        var placed = Set<String>()
+        for (library, items) in groups { for item in items where placed.insert(item.Id).inserted {
             let tmdb = item.ProviderIds?.first { $0.key.lowercased() == "tmdb" }.flatMap { Int($0.value) }
             let titled = tmdb != nil && item.kind != "Video"
             let path = item.Path ?? ""
@@ -69,12 +71,12 @@ struct JellyLibraryIndex: Sendable {
             let minutes = Double(item.RunTimeTicks ?? 0) / 600_000_000
             let key = tmdb.map { "tmdb:\(item.kind):\($0)" }
                 ?? words.keys.filter { !JellyWords.copyMarks.contains($0) }.sorted().joined(separator: " ") + "|\(Int(minutes.rounded()))"
-            entries.append(JellyIndexEntry(item: item, words: words, folder: folder, date: date, minutes: minutes,
+            entries.append(JellyIndexEntry(item: item, library: library, words: words, folder: folder, date: date, minutes: minutes,
                                            genres: Set((item.Genres ?? []).map { $0.lowercased() }),
                                            tags: Set((item.Tags ?? []).map { $0.lowercased() }),
                                            studios: Set((item.Studios ?? []).compactMap { $0.Name?.lowercased() }),
                                            tmdb: tmdb, titled: titled, duplicateKey: key))
-        }
+        } }
         let position = Dictionary(entries.enumerated().map { ($0.element.item.Id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         var tagFrequency: [String: Int] = [:]
         for entry in entries { for tag in entry.tags { tagFrequency[tag, default: 0] += 1 } }
@@ -175,7 +177,7 @@ enum JellyRecommender {
     /// tags, words in the names, the same moment or day); where there are too few, similar length and
     /// random picks from the same folder. Copies show once; unwatched ones are lifted a little; the
     /// random part changes day to day, not each time the page opens.
-    static func similar(to id: String, in index: JellyLibraryIndex, signals: Signals, limit: Int = 12) -> [JellyRecommendation] {
+    static func similar(to id: String, in index: JellyLibraryIndex, signals: Signals, excluded: Set<String> = [], limit: Int = 12) -> [JellyRecommendation] {
         guard let spot = index.position[id] else { return [] }
         let target = index.entries[spot]
         var random = SeededRandom(seed: SeededRandom.hash(id + Self.today))
@@ -184,7 +186,8 @@ enum JellyRecommender {
         let tmdbRank = Dictionary(signals.tmdb.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
         var scored: [(score: Double, reason: String, entry: JellyIndexEntry)] = []
         for (offset, candidate) in index.entries.enumerated() where offset != spot {
-            guard candidate.titled == target.titled, candidate.duplicateKey != target.duplicateKey,
+            // Libraries switched off in Settings → JellySpace → Home → My Media are never recommended.
+            guard !excluded.contains(candidate.library), candidate.titled == target.titled, candidate.duplicateKey != target.duplicateKey,
                   ["Movie", "Series", "Video"].contains(candidate.item.kind) else { continue }
             // Short reasons: one line under a poster.
             var strong: [(Double, String)] = []
@@ -285,14 +288,14 @@ extension JellyRecommender {
     /// three or more, not half the library). The kinds take turns: from what you watched lately, a
     /// random one, the best rated, random, from what you watched; a kind with nothing left gives its
     /// place to a random theme. They change day to day.
-    static func themes(in index: JellyLibraryIndex, count wanted: Int = 3) -> [JellyTheme] {
+    static func themes(in index: JellyLibraryIndex, count wanted: Int = 3, excluded: Set<String> = []) -> [JellyTheme] {
         let total = index.entries.count
         guard total >= 6, wanted > 0 else { return [] }
         let ceiling = max(8, total / 6)
         var random = SeededRandom(seed: SeededRandom.hash("themes" + today))
         // Themes: words and tags in between rare and everywhere.
         var members: [String: [Int]] = [:], names: [String: String] = [:]
-        for (offset, entry) in index.entries.enumerated() where ["Movie", "Series", "Video"].contains(entry.item.kind) {
+        for (offset, entry) in index.entries.enumerated() where ["Movie", "Series", "Video"].contains(entry.item.kind) && !excluded.contains(entry.library) {
             for (root, written) in entry.words { members[root, default: []].append(offset); names[root] = names[root] ?? written }
             for tag in entry.tags { members["#" + tag, default: []].append(offset); names["#" + tag] = names["#" + tag] ?? tag.capitalized }
         }
@@ -388,8 +391,26 @@ extension JellyRecommender {
     private static func rebuild(client: JellyfinClient, user: String?, key: String) async -> JellyLibraryIndex? {
         if let building { return await building.value }
         let task = Task<JellyLibraryIndex?, Never> {
-            guard let items = try? await client.libraryIndex(user: user), !items.isEmpty else { return nil }
-            return await Task.detached(priority: .utility) { JellyLibraryIndex.build(items) }.value
+            // Library by library (all at once), so each title knows its library; the whole server in one
+            // go if the libraries can't be listed.
+            let libraries = ((try? await client.libraries()) ?? []).filter(JellyDiscover.holdsVideo).map(\.id)
+            var groups: [(library: String, items: [JellyfinClient.Item])] = []
+            if libraries.isEmpty {
+                guard let items = try? await client.libraryIndex(user: user), !items.isEmpty else { return nil }
+                groups = [("", items)]
+            } else {
+                groups = await withTaskGroup(of: (library: String, items: [JellyfinClient.Item]).self) { group in
+                    for library in libraries {
+                        group.addTask { (library, (try? await client.libraryIndex(user: user, library: library)) ?? []) }
+                    }
+                    var found: [(library: String, items: [JellyfinClient.Item])] = []
+                    for await part in group { found.append(part) }
+                    return found
+                }
+                guard groups.contains(where: { !$0.items.isEmpty }) else { return nil }
+            }
+            let parts = groups
+            return await Task.detached(priority: .utility) { JellyLibraryIndex.build(parts) }.value
         }
         building = task
         let built = await task.value
@@ -397,6 +418,15 @@ extension JellyRecommender {
         if let built { kept = (key, .now, built) }
         return built
     }
+}
+
+/// Libraries kept out of every recommendation (Settings → JellySpace → Home → My Media, the switch
+/// beside each): still in My Media and browsable, but nothing from them in More like this, Dynamic
+/// recommendations, the top poster, For you or Discover's rows.
+enum JellyRecommendOff {
+    static let key = "jellyspace.recommend.off"
+    static func ids(_ raw: String) -> Set<String> { Set(raw.split(separator: ",").map(String.init)) }
+    static var current: Set<String> { ids(UserDefaults.standard.string(forKey: key) ?? "") }
 }
 
 /// A random number generator from a seed, so "random" picks stay the same through a day.

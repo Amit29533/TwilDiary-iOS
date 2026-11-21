@@ -618,6 +618,8 @@ private struct JellyHomeRowsGroup: View {
 private struct JellyMyMediaGroup: View {
     let shown: [JellyfinLibrary]
     @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
+    @AppStorage(JellyRecommendOff.key) private var offRaw = ""
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
 
     var body: some View {
         let order = JellyMediaOrder.sorted(shown, mediaOrderRaw)
@@ -629,12 +631,25 @@ private struct JellyMyMediaGroup: View {
                         Label(library.name, systemImage: JellySpace.symbol(library.type))
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 8)
+                        // In recommendations: off keeps it out of More like this, the dynamic rows and the rest.
+                        Toggle("", isOn: recommends(library)).labelsHidden().tint(theme.accent)
+                            .accessibilityLabel("Recommend from \(library.name)")
+                            .accessibilityIdentifier("jellyspace-recommend-" + library.id)
                         JellySettingsRows.move("chevron.up", label: "Move \(library.name) up", disabled: position == 0) { moveLibrary(library, by: -1, in: order) }
                         JellySettingsRows.move("chevron.down", label: "Move \(library.name) down", disabled: position == order.count - 1) { moveLibrary(library, by: 1, in: order) }
                     }.padding(.horizontal, 16).frame(minHeight: 50).accessibilityIdentifier("jellyspace-media-order-" + library.id)
                 }
             }
+            JellyDecoderNote(text: "The switch beside each: off keeps a library out of recommendations (More like this, Dynamic recommendations, the top poster, For you, Top 10, Hidden gems, the random rows). It stays in My Media and you can still browse it.")
         }
+    }
+    /// On: the library's titles can be recommended; off: they never are.
+    private func recommends(_ library: JellyfinLibrary) -> Binding<Bool> {
+        Binding(get: { !JellyRecommendOff.ids(offRaw).contains(library.id) }, set: { on in
+            var off = JellyRecommendOff.ids(offRaw)
+            if on { off.remove(library.id) } else { off.insert(library.id) }
+            offRaw = off.sorted().joined(separator: ",")
+        })
     }
     private func moveLibrary(_ library: JellyfinLibrary, by step: Int, in order: [JellyfinLibrary]) {
         guard let at = order.firstIndex(where: { $0.id == library.id }), order.indices.contains(at + step) else { return }

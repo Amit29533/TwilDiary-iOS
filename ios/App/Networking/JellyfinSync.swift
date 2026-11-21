@@ -691,10 +691,11 @@ struct JellyfinClient: Sendable {
     }
     /// Every film, show and video on the server, with what recommending reads (names, files and
     /// folders, genres, tags, studios, dates, lengths, TMDB ids, watched).
-    func libraryIndex(user: String?) async throws -> [Item] {
+    func libraryIndex(user: String?, library: String? = nil) async throws -> [Item] {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
                      URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate"),
                      URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop,Thumb"), URLQueryItem(name: "Limit", value: "8000")]
+        if let library { query.append(URLQueryItem(name: "ParentId", value: library)) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items", query)
         return page.Items

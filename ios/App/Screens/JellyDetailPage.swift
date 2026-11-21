@@ -720,8 +720,8 @@ struct JellyDetailPage: View {
         signals.tmdb = await related.value
         signals.people = await others
         signals.jellyfin = Set(((await jellyfinSimilar) ?? []).map(\.Id))
-        let collected = signals
-        return await Task.detached(priority: .userInitiated) { JellyRecommender.similar(to: id, in: index, signals: collected) }.value
+        let collected = signals, excluded = JellyRecommendOff.current
+        return await Task.detached(priority: .userInitiated) { JellyRecommender.similar(to: id, in: index, signals: collected, excluded: excluded) }.value
     }
     /// The leads' and director's other titles on your server, looked up together.
     private static func othersOf(_ people: [JellyfinClient.Detail.Person], client: JellyfinClient, user: String?) async -> [JellyRecommender.Signals.Person] {
