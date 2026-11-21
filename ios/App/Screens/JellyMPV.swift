@@ -98,9 +98,10 @@ private struct JellyMPVHandle: @unchecked Sendable {
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
         let sample = layer as? AVSampleBufferDisplayLayer
         sampleLayer = sample
-        // Reported from whichever thread the layer is on: back to the main actor to act.
-        layerWatch = sample?.observe(\.status, options: [.new]) { @Sendable [weak self] layer, _ in
-            guard layer.status == .failed else { return }
+        // The layer's renderer reports a failure (since iOS 18 the status is the renderer's), from
+        // whichever thread it's on: back to the main actor to act.
+        layerWatch = sample?.sampleBufferRenderer.observe(\.status, options: [.new]) { @Sendable [weak self] renderer, _ in
+            guard renderer.status == .failed else { return }
             Task { @MainActor in self?.resetDecoder() }
         }
         // AVFoundation: the decoded frames go to the display layer untouched, with no GPU pass per

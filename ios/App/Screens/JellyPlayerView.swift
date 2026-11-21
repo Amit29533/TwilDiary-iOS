@@ -1386,7 +1386,7 @@ struct JellyPlayerView: View {
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
-                       fill: fill, rotationLocked: rotationLocked, info: showsInfo,
+                       fill: fill, pictures: pictureChoices, rotationLocked: rotationLocked, info: showsInfo,
                        decoder: usesMPV ? .mpv : (decodePath == .software ? .app : .auto), mpv: usesMPV, smooth: smoothRate,
                        superResolution: superResolution)
     }
@@ -1577,6 +1577,11 @@ struct JellyPlayerView: View {
     private var activeSmooth: Int { JellyPower.shared.constrained ? 0 : smoothRate }
     /// mpv's Super Resolution as it runs now: off while the phone is hot or in Low Power Mode.
     private var activeSuperResolution: String { JellyPower.shared.constrained ? "off" : superResolution }
+    /// The Picture choices for the player playing: mpv through AVFoundation shows the picture fitted or
+    /// filled by its layer, which has no pixel-for-pixel size (Original), so that's left out there.
+    private var pictureChoices: [JellyFill] {
+        usesMPV && !mpvOnGPU ? [.fit, .fill] : JellyFill.allCases
+    }
     /// Whether mpv needs its GPU output (smooth motion or Super Resolution on).
     private var mpvOnGPU: Bool { activeSmooth > 0 || activeSuperResolution != "off" }
     /// Whether this video is upscaled: by the setting, but on Auto not while the phone is hot or in
@@ -1682,7 +1687,7 @@ struct JellyPlayerView: View {
         }
     }
     private func cycleFill() {
-        let all = JellyFill.allCases
+        let all = pictureChoices
         setFill(all[(all.firstIndex(of: fill).map { $0 + 1 } ?? 0) % all.count])
     }
     private func setFill(_ next: JellyFill) {
@@ -2583,6 +2588,8 @@ private struct JellyMenuState: Equatable, Sendable {
     var night: Bool
     var boost: Int
     var fill: JellyFill
+    /// The Picture choices this player can show (mpv through AVFoundation: Fit and Fill).
+    var pictures: [JellyFill]
     var rotationLocked: Bool
     var info: Bool
     var decoder: JellyDecoder
@@ -2644,7 +2651,7 @@ private struct JellyMoreMenu: View, Equatable {
         Menu {
             Group {
                 Picker(selection: Binding(get: { state.fill }, set: { actions.fill($0) })) {
-                    ForEach(JellyFill.allCases, id: \.self) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
+                    ForEach(state.pictures, id: \.self) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
                 } label: { Label("Picture", systemImage: state.fill.symbol) }.pickerStyle(.menu)
                 Button { actions.rotation() } label: {
                     Label(state.rotationLocked ? "Unlock rotation" : "Lock rotation",
@@ -2686,7 +2693,9 @@ private struct JellyMoreMenu: View, Equatable {
                         ForEach(JellySound.boost, id: \.1) { Text($0.0).tag($0.1) }
                     } label: { Label("Volume boost", systemImage: "speaker.plus") }.pickerStyle(.menu)
                 }
-                Toggle(isOn: Binding(get: { state.info }, set: { actions.info($0) })) { Label("Playback info", systemImage: "info.circle") }
+                if !state.mpv {
+                    Toggle(isOn: Binding(get: { state.info }, set: { actions.info($0) })) { Label("Playback info", systemImage: "info.circle") }
+                }
                 }
                 Button { actions.advanced() } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
             }

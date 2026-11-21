@@ -710,9 +710,12 @@ private struct JellyPlaybackGroups: View {
             }
             SettingsGroup(label: "Picture") {
                 JellySettingsRows.choice("Picture", $fill, Self.fills)
-                SettingsDivider()
+            }
+            // Upscaling is AetherEngine's; mpv has its own (More → Super resolution while it plays).
+            SettingsGroup(label: "Default decoder") {
                 JellySettingsRows.choice("Upscaling", $upscale, Self.upscales)
             }
+            JellyDecoderNote(text: "Auto and App only. On mpv: More → Super resolution and Smooth motion while it plays.")
         }
     }
 }
@@ -1012,6 +1015,15 @@ private struct JellySoundGroup: View {
             SettingsDivider()
             JellySettingsRows.choice("Volume boost", $boost, JellySound.boost)
         }
+        JellyDecoderNote(text: "Auto and App only: mpv plays the sound as the file has it.")
+    }
+}
+
+/// Under a group that only one decoder uses: which, and where the other's own is.
+private struct JellyDecoderNote: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4).padding(.top, -14)
     }
 }
 

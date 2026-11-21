@@ -73,6 +73,9 @@ jobs:
           curl -sf -r 0-15 -o /dev/null -w 'range request: %{http_code}\n' http://127.0.0.1:8765/perf.mkv
       - name: Measure the listed commits
         run: |
+          # Not -e (GitHub's bash default): a build that fails is reported in the table and the next
+          # commit is still measured.
+          set +e
           set -uo pipefail
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b || true
