@@ -285,15 +285,32 @@ actor JellyfinPosterCache {
                                    directory: URL.applicationSupportDirectory.appending(path: "Jellyfin/Posters"))
         config.requestCachePolicy = .returnCacheDataElseLoad
         session = URLSession(configuration: config)
-        memory.values.countLimit = 300
+        // By memory, not count: 300 pictures ran from 150 MB of posters to far more with backdrops.
+        memory.values.countLimit = 400
+        memory.values.totalCostLimit = 150 * 1024 * 1024
     }
     nonisolated func resident(_ url: URL) -> UIImage? { memory.values.object(forKey: url as NSURL) }
+    /// A picture asked for while it's on its way (the top card and its glow ask together): the one
+    /// download, shared.
+    private var loading: [URL: Task<UIImage?, Never>] = [:]
     func image(_ url: URL) async -> UIImage? {
         if let image = resident(url) { return image }
-        guard let loaded = try? await session.data(from: url),
-              (loaded.1 as? HTTPURLResponse)?.statusCode == 200, loaded.0.count <= 12 * 1024 * 1024,
-              let image = UIImage(data: loaded.0) else { return nil }
-        memory.values.setObject(image, forKey: url as NSURL)
+        if let pending = loading[url] { return await pending.value }
+        let session = self.session, memory = self.memory
+        let task = Task<UIImage?, Never> {
+            guard let loaded = try? await session.data(from: url),
+                  (loaded.1 as? HTTPURLResponse)?.statusCode == 200, loaded.0.count <= 12 * 1024 * 1024,
+                  let image = UIImage(data: loaded.0) else { return nil }
+            // Decoded here, off the main thread: a UIImage from data otherwise decodes the first time
+            // it's drawn, on the main thread, as you scroll (the hitch of a big poster coming in).
+            let ready = await image.byPreparingForDisplay() ?? image
+            let cost = Int(ready.size.width * ready.scale * ready.size.height * ready.scale * 4)
+            memory.values.setObject(ready, forKey: url as NSURL, cost: cost)
+            return ready
+        }
+        loading[url] = task
+        let image = await task.value
+        loading[url] = nil
         return image
     }
     func removeAll() {
@@ -351,12 +368,21 @@ struct JellyfinClient: Sendable {
         let AlbumPrimaryImageTag: String?
         /// When it first aired or came out ("2024-07-12T00:00:00.0000000Z").
         let PremiereDate: String?
-        struct ItemUserData: Decodable, Sendable { let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool? }
+        /// For recommending (asked for only by the library index): Jellyfin's tags and studios, and
+        /// when the file was added.
+        let Tags: [String]?
+        let Studios: [Studio]?
+        let DateCreated: String?
+        struct Studio: Decodable, Sendable { let Name: String? }
+        struct ItemUserData: Decodable, Sendable {
+            let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool?
+            let LastPlayedDate: String?
+        }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
             case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
-            case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag, PremiereDate
+            case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag, PremiereDate, Tags, Studios, DateCreated
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
@@ -663,11 +689,21 @@ struct JellyfinClient: Sendable {
         let page: Page = try await get("Persons", query)
         return page.Items.first { item in item.ProviderIds?.first { $0.key.lowercased() == "tmdb" }?.value == String(tmdb) }
     }
-    /// A person's films and shows on this server, newest first (the first ten), and how many in all.
-    func titles(person id: String, user: String?) async throws -> Page {
+    /// Every film, show and video on the server, with what recommending reads (names, files and
+    /// folders, genres, tags, studios, dates, lengths, TMDB ids, watched).
+    func libraryIndex(user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate"),
+                     URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop,Thumb"), URLQueryItem(name: "Limit", value: "8000")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+    /// A person's films and shows on this server, newest first (the first `limit`), and how many in all.
+    func titles(person id: String, user: String?, limit: Int = 10) async throws -> Page {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series"),
                      URLQueryItem(name: "PersonIds", value: id), URLQueryItem(name: "SortBy", value: "PremiereDate,ProductionYear"),
-                     URLQueryItem(name: "SortOrder", value: "Descending"), URLQueryItem(name: "Limit", value: "10")]
+                     URLQueryItem(name: "SortOrder", value: "Descending"), URLQueryItem(name: "Limit", value: String(limit))]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         return try await get("Items", query)
     }

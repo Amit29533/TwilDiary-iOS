@@ -52,6 +52,8 @@ struct JellySpaceView: View {
     @State private var nextUp: [JellyfinClient.Item] = []
     /// Jellyfin's picks from what you've watched.
     @State private var forYou: JellyForYou?
+    /// "Recommendations for Rain", "Random picks for Dance", "Must watch Parks" (JellyRecommender.themes).
+    @State private var themes: [JellyTheme] = []
     /// Discover: genres, the Top 10, hidden gems, tonight's genre, and every library's random shelf.
     @State private var discover: JellyDiscover?
     @State private var query = ""
@@ -210,6 +212,16 @@ struct JellySpaceView: View {
             }
         case .forYou:
             if let forYou, !shown(forYou.items).isEmpty { forYouRow(forYou, client: client) }
+        case .themes:
+            ForEach(themes) { theme in
+                let items = shown(theme.items)
+                if items.count >= 3 {
+                    VStack(alignment: .leading, spacing: 10) {
+                        heading(theme.title)
+                        posterShelf(items, client: client)
+                    }
+                }
+            }
         case .genres:
             if let genres = discover?.genres, !genres.isEmpty { genreChips(genres) }
         case .top10:
@@ -613,6 +625,11 @@ struct JellySpaceView: View {
         JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
         JellyHomeCache.collections = collections; JellyHomeCache.latest = latest
         JellyHomeCache.nextUp = nextUp; JellyHomeCache.forYou = forYou
+        // Themed rows across the whole server, from the library index (built once in the background).
+        if let index = await JellyIndexStore.index(client: client, user: user) {
+            let found = await Task.detached(priority: .utility) { JellyRecommender.themes(in: index) }.value
+            withAnimation(.smooth) { themes = found }
+        }
     }
 }
 
@@ -1163,6 +1180,8 @@ struct JellyGrid: View {
     var layout = JellyGridLayout.posters
     /// Called as the last poster comes on screen (to load more).
     var reachedEnd: (() -> Void)? = nil
+    /// A short line under a poster, by item id (why More like this picked it).
+    var notes: [String: String] = [:]
     @State private var width: CGFloat = 0
     var body: some View {
         if layout == .canvas {
@@ -1171,8 +1190,14 @@ struct JellyGrid: View {
             let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: layout == .landscape ? 2 : 3)
             LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
                 ForEach(items, id: \.Id) { item in
-                    JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
-                        .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
+                    VStack(alignment: .leading, spacing: 3) {
+                        JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
+                        if let note = notes[item.Id], !note.isEmpty {
+                            Text(note).font(.system(size: 11, weight: .medium)).foregroundStyle(ThemeStore.accent).lineLimit(1)
+                                .accessibilityLabel("Why: " + note)
+                        }
+                    }
+                    .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
                 }
             }
         }
@@ -1319,7 +1344,7 @@ struct JellyTile: View {
                                 .frame(maxWidth: shape == .full ? 240 : 160, maxHeight: shape == .full ? 84 : 60, alignment: .bottomLeading)
                                 .padding(16)
                         } else {
-                            Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
+                            Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : JellyNames.title(item))
                                 .font(.system(size: shape == .full ? 28 : 22, weight: .bold)).tracking(-0.3).foregroundStyle(.white)
                                 .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.4), radius: 6).padding(16)
                         }
@@ -1761,7 +1786,7 @@ enum JellyGridLayout: String, CaseIterable {
         }
     }
     static func name(_ item: JellyfinClient.Item) -> String {
-        guard item.kind == "Episode", let show = item.SeriesName else { return item.Name ?? "Video" }
+        guard item.kind == "Episode", let show = item.SeriesName else { return JellyNames.title(item) }
         return show + " · " + detail(item)
     }
     /// Jellyfin's overviews carry HTML (<br>, <i>): shown as plain text.

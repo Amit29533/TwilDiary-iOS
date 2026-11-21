@@ -63,6 +63,8 @@ struct JellyDetailPage: View {
     /// A show you haven't started: its first episode (season 1's, not a special's).
     @State private var firstEpisode: JellyfinClient.Item?
     @State private var similar: [JellyfinClient.Item] = []
+    /// Why each of More like this is there ("Same director · …", "Kevin · Rain", "Same day").
+    @State private var similarReasons: [String: String] = [:]
     @State private var failure: String?
     @State private var playing: JellyPlayback?
     @State private var played = false
@@ -83,7 +85,7 @@ struct JellyDetailPage: View {
     @State private var pageWidth: CGFloat = 0
 
     private var series: Bool { detail?.kind == "Series" }
-    private var name: String { detail?.Name ?? route.name }
+    private var name: String { JellyNames.title(detail?.Name ?? route.name, kind: detail?.kind ?? "", path: nil, titled: detail?.ProviderIds?.keys.contains(where: { $0.lowercased() == "tmdb" }) == true) }
 
     /// The tabs under the buttons, as Netflix has them.
     private enum Tab: String, CaseIterable { case episodes = "Episodes", similar = "More like this", extras = "Extras" }
@@ -531,7 +533,7 @@ struct JellyDetailPage: View {
                 .background(alignment: .top) { Rectangle().fill(HomeStyle.primary.opacity(0.12)).frame(height: 1) }
                 switch current {
                 case .episodes: episodesTab(client)
-                case .similar: JellyGrid(items: similar, client: client, playing: $playing)
+                case .similar: JellyGrid(items: similar, client: client, playing: $playing, notes: similarReasons)
                 case .extras:
                     LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(extras, id: \.Id) { JellyWideCard(item: $0, client: client, playing: $playing, large: true) }
@@ -662,9 +664,16 @@ struct JellyDetailPage: View {
             if !Task.isCancelled { failure = error.localizedDescription }
             return
         }
+        // More like this and the extras don't wait for the seasons and episodes: all at once.
+        let id = route.id
+        // (A task on the main actor, as recommending reads this page's details.)
+        let picks = Task { await recommendations(client: client, user: user) }
+        async let extraItems = client.extras(id, user: user)
         if series {
-            seasons = (try? await client.seasons(of: route.id, user: user)) ?? []
-            if let user { nextEpisode = try? await client.nextUp(series: route.id, user: user) }
+            async let seasonList = try? client.seasons(of: id, user: user)
+            async let next = Self.nextUp(client, series: id, user: user)
+            seasons = (await seasonList) ?? []
+            nextEpisode = await next
             // Specials (season 0) come first in Jellyfin's list: the show starts at its first real season.
             let opening = seasons.first { ($0.IndexNumber ?? 0) >= 1 } ?? seasons.first
             if nextEpisode == nil, let opening {
@@ -674,8 +683,45 @@ struct JellyDetailPage: View {
         } else {
             item = try? await client.item(route.id)
         }
-        similar = await moreLikeThis(client: client, user: user)
-        extras = await client.extras(route.id, user: user)
+        let found = await picks.value
+        similar = found.map(\.item)
+        similarReasons = Dictionary(found.map { ($0.item.Id, $0.reason) }, uniquingKeysWith: { first, _ in first })
+        extras = await extraItems
+    }
+    /// The show's next episode for you (nil without a user).
+    private static func nextUp(_ client: JellyfinClient, series: String, user: String?) async -> JellyfinClient.Item? {
+        guard let user else { return nil }
+        return try? await client.nextUp(series: series, user: user)
+    }
+    /// More like this from the recommender (JellyRecommender): the whole library scored against this
+    /// title, with TMDB's recommendations, its leads' and director's other titles and Jellyfin's own
+    /// similar ones as signals. Without the library index (the server out of reach mid-way), the
+    /// earlier way below.
+    private func recommendations(client: JellyfinClient, user: String?) async -> [JellyRecommendation] {
+        guard let index = await JellyIndexStore.index(client: client, user: user), index.position[route.id] != nil else {
+            return await moreLikeThis(client: client, user: user).map { JellyRecommendation(item: $0, reason: "") }
+        }
+        var signals = JellyRecommender.Signals()
+        if let detail, let tmdb = detail.ProviderIds?.first(where: { $0.key.lowercased() == "tmdb" }).flatMap({ Int($0.value) }),
+           let related = try? await store.related(CatalogRoute(kind: series ? .tv : .movie, id: tmdb)) {
+            signals.tmdb = related.items.map(\.id)
+        }
+        // The three leads and the director: their other titles on your server.
+        let people = Array((detail?.People ?? []).filter { $0.kind == "Actor" }.prefix(3))
+            + Array((detail?.People ?? []).filter { $0.kind == "Director" }.prefix(1))
+        await withTaskGroup(of: JellyRecommender.Signals.Person?.self) { group in
+            for person in people {
+                group.addTask {
+                    guard let page = try? await client.titles(person: person.Id, user: user, limit: 60) else { return nil }
+                    return JellyRecommender.Signals.Person(name: person.Name ?? "", director: person.kind == "Director",
+                                                           titles: Set(page.Items.map(\.Id)))
+                }
+            }
+            for await person in group { if let person { signals.people.append(person) } }
+        }
+        signals.jellyfin = Set(((try? await client.similar(route.id, user: user)) ?? []).map(\.Id))
+        let id = route.id, collected = signals
+        return await Task.detached(priority: .userInitiated) { JellyRecommender.similar(to: id, in: index, signals: collected) }.value
     }
     /// More like this, from three places in turn, up to twelve:
     /// - Jellyfin's similar titles. It counts genres, tags, studios and people in common and needs

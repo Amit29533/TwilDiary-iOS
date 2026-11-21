@@ -1,5 +1,6 @@
 import SwiftUI
 import Security
+import Synchronization
 import TwilDiaryCore
 
 // MARK: Preferences
@@ -63,7 +64,7 @@ enum JellySound {
 
 /// The home's rows, in the order you set; any you turned off are left out.
 enum JellyHomeRow: String, CaseIterable, Identifiable {
-    case hero, resume, media, genres, top10, libraries, gems, tonight, forYou, random, favourites, collections
+    case hero, resume, media, genres, top10, libraries, gems, tonight, forYou, themes, random, favourites, collections
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -78,6 +79,7 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         case .tonight: "Tonight's genre"
         case .random: "Random picks"
         case .forYou: "For you"
+        case .themes: "Themed picks"
         case .collections: "Collections"
         }
     }
@@ -199,8 +201,14 @@ enum JellySkipMode: String, CaseIterable {
 
 /// Libraries, folders, shows and films you hid from JellySpace (id → name, so they can be listed).
 enum JellyHidden {
+    /// The list as last decoded: the home filters every row through it, twenty and more times a
+    /// redraw, and it only changes when you hide or show something.
+    private static let decoded = Mutex<(raw: String, items: [String: String])>(("{}", [:]))
     static func decode(_ raw: String) -> [String: String] {
-        (try? JSONDecoder().decode([String: String].self, from: Data(raw.utf8))) ?? [:]
+        if let kept = decoded.withLock({ $0.raw == raw ? $0.items : nil }) { return kept }
+        let items = (try? JSONDecoder().decode([String: String].self, from: Data(raw.utf8))) ?? [:]
+        decoded.withLock { $0 = (raw, items) }
+        return items
     }
     static func encode(_ items: [String: String]) -> String {
         (try? JSONEncoder().encode(items)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
