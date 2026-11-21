@@ -93,8 +93,11 @@ jobs:
             [ -n "${rev:-}" ] || continue
             short="$name"
             git checkout --force -q "$rev"
-            # This commit's test hook, so every listed build opens the player the same way.
-            git checkout -q "$here" -- ios/App/TwilDiaryApp.swift ios/App/Screens/JellyPerfHarness.swift
+            # This commit's test hook, so every listed build opens the player the same way (only for a
+            # build from before the hook: laying today's app file over a newer one can break its build).
+            if ! git cat-file -e "$rev:ios/App/Screens/JellyPerfHarness.swift" 2>/dev/null; then
+              git checkout -q "$here" -- ios/App/TwilDiaryApp.swift ios/App/Screens/JellyPerfHarness.swift
+            fi
             mkdir -p ios/.artifacts/perf ios/.artifacts/logs
             bash ios/scripts/xcodegen.sh
             xcodebuild build -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release \
