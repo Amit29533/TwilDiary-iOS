@@ -73,7 +73,13 @@ struct JellyPlayerView: View {
     @State private var state: PlaybackState = .idle
     @State private var time: Double = 0
     /// The source time of the frame on screen: what subtitle cues are timed against.
-    @State private var subtitleTime: Double = 0
+    /// The file's details as fetched for the video playing, kept for a switch to the other engine.
+    @State private var loadedInfo: (id: String, info: JellyfinClient.PlayerInfo?)?
+    /// The audio and subtitle language ("off": none) to pick on the other engine after a switch.
+    @State private var carriedTracks: (audio: String?, subtitle: String?)?
+    /// The clock the subtitles follow, ten times a second: only the subtitles read it, so its ticks
+    /// don't redraw the player.
+    @State private var subtitleClock = JellySubtitleClock()
     @State private var duration: Double = 0
     @State private var videoSize = CGSize.zero
     @State private var scrub: Double?
@@ -213,7 +219,7 @@ struct JellyPlayerView: View {
                 picture(engine)
             }
             GeometryReader { safe in
-                JellySubtitles(cues: cues, time: subtitleTime - subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
+                JellySubtitles(cues: cues, clock: subtitleClock, delay: subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
                                fill: fill, videoPixels: videoSize,
                                originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
                                sheet: subtitleLook.styled == "mine" ? nil : assSheet,
@@ -328,7 +334,13 @@ struct JellyPlayerView: View {
         }
         .task(id: current.id + (usesMPV ? "|mpv" : "")) { await start() }
         // mpv's smooth motion holds the screen at its rate while it plays.
-        .task(id: usesMPV ? smoothRate : 0) { refresh.hold(usesMPV ? smoothRate : 0) }
+        // Set again when it's changed, and when the phone gets hot or goes into Low Power Mode (off
+        // then, back after).
+        .task(id: usesMPV ? activeSmooth : 0) {
+            refresh.hold(usesMPV ? activeSmooth : 0)
+            if usesMPV { mpv.setSmooth(activeSmooth, fps: frameRate) }
+        }
+        .onChange(of: JellyPower.shared.constrained) { _, constrained in easeOff(constrained) }
         .onChange(of: scenePhase) { _, phase in
             // mpv's Metal layer can't draw in the background: the picture goes off there (the sound plays on).
             guard usesMPV else { return }
@@ -355,8 +367,8 @@ struct JellyPlayerView: View {
     @ViewBuilder private func picture(_ engine: AetherEngine) -> some View {
         let surface = AetherPlayerSurface(engine: engine)
             .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
-            .onReceive(engine.clock.$currentTime) { seconds in time = seconds; reachedEnd(seconds); autoSkip(); checkSleep() }
-            .onReceive(engine.clock.$sourceTime) { subtitleTime = $0 }
+            .onReceive(engine.clock.$currentTime) { seconds in tick(seconds) }
+            .onReceive(engine.clock.$sourceTime) { subtitleClock.time = $0 }
             .onReceive(engine.$duration) { duration = $0 }
             .onReceive(engine.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(engine.$subtitleTracks) { tracks in
@@ -392,9 +404,9 @@ struct JellyPlayerView: View {
     /// mpv's picture, with its clock, tracks and size fed into the same state as AetherEngine's (mpv
     /// draws the subtitles itself, so none come through for the player's own).
     private var mpvPicture: some View {
-        JellyMPVSurface(player: mpv, smooth: smoothRate)
+        JellyMPVSurface(player: mpv, smooth: activeSmooth)
             .onReceive(mpv.$state) { state = $0 }
-            .onReceive(mpv.$time) { seconds in time = seconds; subtitleTime = seconds; reachedEnd(seconds); autoSkip(); checkSleep() }
+            .onReceive(mpv.$time) { seconds in subtitleClock.time = seconds; tick(seconds) }
             .onReceive(mpv.$duration) { duration = $0 }
             .onReceive(mpv.$buffering) { buffering = $0 }
             .onReceive(mpv.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
@@ -405,6 +417,16 @@ struct JellyPlayerView: View {
             .onReceive(mpv.$failure) { reason in if let reason { failure = reason } }
             .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
             .ignoresSafeArea()
+    }
+
+    /// The engine's clock, ten times a second. The player redraws with it while the controls show (the
+    /// bar moves); with them hidden once a second does for what reads it (the skip buttons, the end,
+    /// the sleep timer), so the player isn't redrawn for nothing and the screen can rest at the
+    /// video's own rate (the redraws kept it at full rate, which warmed the phone).
+    private func tick(_ seconds: Double) {
+        let step = showsControls || scrub != nil || panel != nil ? 0.1 : 1
+        if abs(seconds - time) >= step - 0.01 || seconds < time { time = seconds }
+        reachedEnd(seconds); autoSkip(); checkSleep()
     }
 
     // The engine playing now: AetherEngine, or mpv.
@@ -646,10 +668,16 @@ struct JellyPlayerView: View {
         if !usesMPV, engine == nil { engine = try? AetherEngine() }
         if !usesMPV, engine == nil { failure = "The player couldn’t start."; return }
         JellyMusic.shared.pause()
-        skipped = []
         pip.engine = engine
-        finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false; time = 0
-        segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil; quality = nil; buffered = 0
+        // The same video moving to the other engine keeps what was found for it (the skip stretches,
+        // chapters, thumbnails, the next episode and the file's details): only the engine changes.
+        let handingOver = switchAt != nil && loadedInfo?.id == current.id
+        finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
+        quality = nil; buffered = 0
+        if !handingOver {
+            skipped = []; time = 0
+            segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil
+        }
         let client = current.client, id = current.id
         // The user Jellyfin keeps your places for (the administrator, else the first), found once.
         let user = await JellyfinUser.id(client)
@@ -667,8 +695,12 @@ struct JellyPlayerView: View {
         }
         // Chapters, scrubbing thumbnails and separate subtitle files first (the files load with the
         // video); the intro and credits stretches while it loads.
-        let extras = try? await client.playerInfo(id, user: user)
-        async let stretches = try? client.segments(id)
+        let extras: JellyfinClient.PlayerInfo?
+        if handingOver, let kept = loadedInfo { extras = kept.info } else {
+            extras = try? await client.playerInfo(id, user: user)
+            loadedInfo = (id, extras)
+        }
+        let stretches: Task<[JellyfinClient.Segment]?, Never>? = handingOver ? nil : Task { try? await client.segments(id) }
         // The subtitle delay you last set in this show (Settings → Subtitles → Timing).
         if Self.remembersDelay, let show = current.item.SeriesId {
             subtitleDelay = UserDefaults.standard.double(forKey: Self.delayKey(show))
@@ -702,6 +734,8 @@ struct JellyPlayerView: View {
             JellyMPVChoice.set(current.id, true)
             let resume = startAt.flatMap { $0 > (handedOver ? 1 : 30) ? $0 : nil }
             mpv.open(current.url, start: resume, subtitles: options.externalSubtitles, settings: settings)
+            // Now the frame rate is known: blend only where the refresh isn't a multiple of it.
+            mpv.setSmooth(activeSmooth, fps: frameRate)
             if let resume, !handedOver {
                 resumedAt = resume
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
@@ -709,7 +743,11 @@ struct JellyPlayerView: View {
             report("start")
         } else {
             guard let engine else { return }
-            options.upscalesLowResolutionVideo = upscaleMode.applies(frameRate: frameRate)
+            // An anime's MKV carries its subtitle fonts as attachments, tens of megabytes read before the
+            // first frame. The fonts come from Jellyfin instead (JellyASSFonts, fetched alongside and
+            // kept), so the file opens without them: a quicker start and less memory (as Swiftly does).
+            options.skipsContainerAttachments = true
+            options.upscalesLowResolutionVideo = upscaleWanted
             options.upscaleScaler = .automatic
             options.preferredDecodePath = decodePath
             options.audioShaping = Self.shaping(dialogue: dialogueBoost, night: nightMode, boost: volumeBoost)
@@ -745,15 +783,17 @@ struct JellyPlayerView: View {
                 return
             }
         }
-        segments = Self.merged((await stretches) ?? [])
-        if segments.isEmpty, introDB { segments = Self.merged(await introDBSegments(client: client, user: user)) }
-        chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
-        if let entry = extras?.Trickplay?.first {
-            let sorted = entry.value.values.sorted { $0.Width < $1.Width }
-            if let pick = sorted.first(where: { $0.Width >= 240 }) ?? sorted.last { trickplay = (pick, entry.key) }
-        }
-        if current.item.kind == "Episode", let series = current.item.SeriesId {
-            following = try? await client.episode(after: id, series: series, user: user)
+        if let stretches {
+            segments = Self.merged((await stretches.value) ?? [])
+            if segments.isEmpty, introDB { segments = Self.merged(await introDBSegments(client: client, user: user)) }
+            chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
+            if let entry = extras?.Trickplay?.first {
+                let sorted = entry.value.values.sorted { $0.Width < $1.Width }
+                if let pick = sorted.first(where: { $0.Width >= 240 }) ?? sorted.last { trickplay = (pick, entry.key) }
+            }
+            if current.item.kind == "Episode", let series = current.item.SeriesId {
+                following = try? await client.episode(after: id, series: series, user: user)
+            }
         }
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
             if !usesMPV { engine?.setNowPlayingInfo(nowPlayingInfo(art)) }
@@ -980,6 +1020,14 @@ struct JellyPlayerView: View {
     private func pickRememberedAudio(_ tracks: [TrackInfo]) {
         guard !pickedAudio, !tracks.isEmpty else { return }
         pickedAudio = true
+        // Just switched engine: the language that was playing.
+        if let carried = carriedTracks?.audio {
+            carriedTracks?.audio = nil
+            if let track = tracks.first(where: { JellySubtitlePick.same($0.language, carried) && !$0.isCommentary }), track.id != activeAudio {
+                engineAudio(track.id)
+            }
+            return
+        }
         guard rememberTracks else { return }
         guard let language = remembered("audioLanguage"),
               let track = tracks.first(where: { $0.language == language && !$0.isCommentary }),
@@ -1101,9 +1149,16 @@ struct JellyPlayerView: View {
     }
 
     /// Where you are, to Jellyfin (not in the last 10% once it's marked watched: it starts over then).
+    /// The engine's own clock this moment (the player's `time` follows it only once a second while the
+    /// controls are hidden).
+    private var exactTime: Double {
+        let now = usesMPV ? mpv.time : (engine?.clock.currentTime ?? time)
+        return now.isFinite && now > 0 ? now : time
+    }
     private func savePlace() {
-        guard let user = userID, time > 5, !(finished && time >= duration * 0.9) else { return }
-        let client = current.client, id = current.id, at = time
+        let at = exactTime
+        guard let user = userID, at > 5, !(finished && at >= duration * 0.9) else { return }
+        let client = current.client, id = current.id
         Task { try? await client.savePosition(id, user: user, seconds: at) }
     }
 
@@ -1128,7 +1183,7 @@ struct JellyPlayerView: View {
     /// Tells Jellyfin what's playing (signed in only: the server's API key has no user to report as).
     private func report(_ event: String) {
         guard JellyAccount.token != nil else { return }
-        let client = current.client, id = current.id, source = current.source, at = time, paused = state == .paused
+        let client = current.client, id = current.id, source = current.source, at = exactTime, paused = state == .paused
         Task { await client.report(event, item: id, source: source, seconds: at, paused: paused) }
     }
 
@@ -1145,6 +1200,13 @@ struct JellyPlayerView: View {
     private func pickDefaultSubtitle(_ tracks: [TrackInfo]) {
         guard !pickedSubtitle, !tracks.isEmpty else { return }
         pickedSubtitle = true
+        // Just switched engine: the subtitles that were on (or none).
+        if let carried = carriedTracks?.subtitle {
+            carriedTracks?.subtitle = nil
+            if carried == "off" { return }
+            let matching = tracks.filter { carried.isEmpty ? $0.language == nil : JellySubtitlePick.same($0.language, carried) }
+            if let track = matching.first(where: { !$0.isForced }) ?? matching.first { engineSubtitle(track.id); return }
+        }
         if rememberTracks, let saved = remembered("subtitleLanguage") {
             if saved == "off" { return }
             if let track = tracks.first(where: { $0.language == saved && !$0.isForced }) ?? tracks.first(where: { $0.language == saved }) {
@@ -1340,7 +1402,11 @@ struct JellyPlayerView: View {
             rotation: { menuUsed(); toggleRotation() },
             info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } },
             decoder: { path in menuUsed(); setDecoder(path) },
-            smooth: { rate in menuUsed(); smoothRate = rate; mpv.setSmooth(rate); show(rate > 0 ? "Smooth motion: \(rate) Hz" : "Smooth motion off") })
+            smooth: { rate in
+                menuUsed(); smoothRate = rate
+                let power = JellyPower.shared
+                show(rate == 0 ? "Smooth motion off" : power.constrained ? "Smooth motion: \(rate) Hz, paused " + power.reason : "Smooth motion: \(rate) Hz")
+            })
     }
     /// A subtitle picked (-1 for off): turned on, and its language remembered.
     private func pickSubtitle(_ id: Int) {
@@ -1452,7 +1518,11 @@ struct JellyPlayerView: View {
     private func setDecoder(_ choice: JellyDecoder) {
         if (choice == .mpv) != usesMPV {
             // The other engine takes over where this one is, and this video opens on it from now on.
-            switchAt = time > 1 ? time : nil
+            let now = exactTime
+            switchAt = now > 1 ? now : nil
+            // The same audio and subtitle language on the other engine (its tracks number differently).
+            carriedTracks = (audio: audioTracks.first { $0.id == activeAudio }?.language,
+                             subtitle: activeSubtitle.flatMap { id in subtitleTracks.first { $0.id == id } }.map { $0.language ?? "" } ?? "off")
             JellyMPVChoice.set(current.id, choice == .mpv)
             if choice == .mpv { engine?.stop() } else { mpv.stop() }
             decodePath = choice.path
@@ -1469,11 +1539,30 @@ struct JellyPlayerView: View {
         Task { _ = try? await engine.reloadAtCurrentPosition { $0.preferredDecodePath = path } }
     }
     /// Turned on or off mid-video: the video reloads where it is with the new setting.
+    /// mpv's smooth motion as it runs now: off while the phone is hot or in Low Power Mode.
+    private var activeSmooth: Int { JellyPower.shared.constrained ? 0 : smoothRate }
+    /// Whether this video is upscaled: by the setting, but on Auto not while the phone is hot or in
+    /// Low Power Mode (Always means always).
+    private var upscaleWanted: Bool { upscaleAllowed(upscaleMode) }
+    private func upscaleAllowed(_ mode: JellyUpscale) -> Bool {
+        mode.applies(frameRate: frameRate) && !(mode == .auto && JellyPower.shared.constrained)
+    }
+    /// The phone got hot or went into Low Power Mode (or back): smooth motion follows by itself
+    /// (activeSmooth); upscaling on Auto is turned off for the rest of this video (not back on as it
+    /// cools, which would reload the video again and again).
+    private func easeOff(_ constrained: Bool) {
+        let reason = JellyPower.shared.reason
+        if constrained, usesMPV, smoothRate > 0 { show("Smooth motion paused " + reason, for: 3) }
+        guard constrained, !usesMPV, upscaleMode == .auto, let upscale, upscale.disabledReason == nil,
+              let engine, state != .idle, state != .loading else { return }
+        show("Upscaling paused " + reason, for: 3)
+        Task { _ = try? await engine.reloadAtCurrentPosition { $0.upscalesLowResolutionVideo = false } }
+    }
     private func setUpscale(_ mode: JellyUpscale) {
         guard mode != upscaleMode else { return }
-        let before = upscaleMode.applies(frameRate: frameRate), after = mode.applies(frameRate: frameRate)
+        let before = upscaleAllowed(upscaleMode), after = upscaleAllowed(mode)
         upscaleMode = mode
-        show(mode == .auto && !after ? "Upscaling: Auto (not for 50/60 fps video)" : "Upscaling: " + mode.title)
+        show(mode == .auto && !after ? "Upscaling: Auto (not for this video now)" : "Upscaling: " + mode.title)
         // Only a change that turns it on or off for this video reloads it.
         guard before != after, let engine, state != .idle, state != .loading else { return }
         Task {
@@ -2206,11 +2295,39 @@ private struct JellyAirPlayButton: UIViewRepresentable {
     func updateUIView(_ picker: AVRoutePickerView, context: Context) {}
 }
 
-/// The subtitles on screen now: text cues at the bottom, picture cues (PGS, DVD) where the file
-/// places them on its canvas. ASS styling is shown as plain text.
+/// The clock the subtitles follow (the engine's picture time), apart from the player's so its ticks
+/// redraw only the subtitles.
+@MainActor @Observable final class JellySubtitleClock {
+    var time: Double = 0
+}
+
+/// The subtitles on screen now: follows the subtitle clock and hands the lines showing to the
+/// canvas, which is drawn again only when they change (not ten times a second).
 private struct JellySubtitles: View {
     let cues: [SubtitleCue]
-    let time: Double
+    let clock: JellySubtitleClock
+    let delay: Double
+    var look = JellySubtitleLook()
+    var insets = EdgeInsets()
+    var fill = JellyFill.fit
+    var videoPixels = CGSize.zero
+    var originalSize = CGSize.zero
+    var sheet: JellyASSSheet? = nil
+    var lift: CGFloat = 0
+
+    var body: some View {
+        let time = clock.time - delay
+        let now = cues.filter { $0.startTime <= time && time < $0.endTime }
+        JellySubtitleCanvas(now: now, look: look, insets: insets, fill: fill, videoPixels: videoPixels,
+                            originalSize: originalSize, sheet: sheet, lift: lift)
+            .equatable()
+    }
+}
+
+/// The subtitles showing: text cues at the bottom (styled ones where their script puts them),
+/// picture cues (PGS, DVD) where the file places them on its canvas.
+private struct JellySubtitleCanvas: View, Equatable {
+    let now: [SubtitleCue]
     /// The look from Settings → JellySpace → Subtitles (size, font, colours, edge, box, height).
     var look = JellySubtitleLook()
     var insets = EdgeInsets()
@@ -2222,8 +2339,13 @@ private struct JellySubtitles: View {
     var sheet: JellyASSSheet? = nil
     /// The room the controls take while they show.
     var lift: CGFloat = 0
+
+    nonisolated static func == (lhs: JellySubtitleCanvas, rhs: JellySubtitleCanvas) -> Bool {
+        lhs.now.map(\.id) == rhs.now.map(\.id) && lhs.look == rhs.look && lhs.insets == rhs.insets && lhs.fill == rhs.fill
+            && lhs.videoPixels == rhs.videoPixels && lhs.originalSize == rhs.originalSize && lhs.lift == rhs.lift && lhs.sheet == rhs.sheet
+    }
+
     var body: some View {
-        let now = cues.filter { $0.startTime <= time && time < $0.endTime }
         GeometryReader { proxy in
             let up = proxy.size.height * look.raise + (look.lift ? lift : 0)
             let safe = CGRect(x: insets.leading + 8, y: insets.top + 8, width: proxy.size.width - insets.leading - insets.trailing - 16,

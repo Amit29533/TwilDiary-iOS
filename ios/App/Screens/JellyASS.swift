@@ -4,8 +4,8 @@ import UIKit
 
 /// An ASS/SSA subtitle track's styles (from its header): sizes, colours, bold and italic, where on
 /// the picture each style sits, and the script's canvas size.
-struct JellyASSSheet {
-    struct Style {
+struct JellyASSSheet: Equatable, Sendable {
+    struct Style: Equatable, Sendable {
         var size: CGFloat = 20
         var colour = Color.white
         var outline = Color.black

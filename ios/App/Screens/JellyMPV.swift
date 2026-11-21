@@ -84,9 +84,17 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
             ("sub-auto", "no"), ("subs-fallback", "yes"), ("audio-display", "no"),
             ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-readahead-secs", "20"),
+            // Lighter drawing than mpv's defaults, which are made for a desktop GPU: spline36 for the
+            // picture (sharp, one pass), bilinear for colour, and none of the extra passes (linear
+            // light, sigmoid, HDR peak measuring each frame, debanding). On a phone's dense screen
+            // they look the same, and the GPU does a fraction of the work. A decoder that can't use
+            // VideoToolbox falls back to software rather than failing.
+            ("scale", "spline36"), ("dscale", "mitchell"), ("cscale", "bilinear"),
+            ("correct-downscaling", "no"), ("linear-downscaling", "no"), ("sigmoid-upscaling", "no"),
+            ("hdr-compute-peak", "no"), ("deband", "no"), ("hwdec-software-fallback", "yes"),
         ]
         for (name, value) in options { mpv_set_option_string(raw, name, value) }
-        for (name, value) in Self.smoothOptions(smooth) { mpv_set_option_string(raw, name, value) }
+        for (name, value) in Self.smoothOptions(smooth, fps: videoFPS) { mpv_set_option_string(raw, name, value) }
         let started = mpv_initialize(raw)
         guard started >= 0 else {
             failure = "mpv didn't start: " + String(cString: mpv_error_string(started))
@@ -174,15 +182,24 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// The picture off in the background (mpv's Metal layer can't draw there) and back.
     func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
 
-    /// Smooth motion at 60 or 120 Hz (0 off): frames timed to the screen's refresh and blended where
-    /// they fall between two refreshes (mpv's display-resample with interpolation), so pans and
-    /// handheld shots don't judder.
-    func setSmooth(_ rate: Int) {
-        for (name, value) in Self.smoothOptions(rate) { set(name, value) }
+    /// Smooth motion at 60 or 120 Hz (0 off): frames timed to the screen's refresh, so pans and
+    /// handheld shots don't judder. Where the refresh is a whole multiple of the video's rate (120 Hz
+    /// for 24 fps, 60 or 120 for 30 and 60) each frame simply holds for the same number of refreshes,
+    /// judder-free with nothing to compute; only where it isn't (60 Hz for 24 fps) are frames blended,
+    /// with the cheapest blend there is (oversample).
+    func setSmooth(_ rate: Int, fps: Double = 0) {
+        videoFPS = fps
+        for (name, value) in Self.smoothOptions(rate, fps: fps) { set(name, value) }
     }
-    nonisolated private static func smoothOptions(_ rate: Int) -> [(String, String)] {
-        rate > 0 ? [("display-fps-override", String(rate)), ("video-sync", "display-resample"), ("interpolation", "yes"), ("tscale", "oversample")]
-                 : [("interpolation", "no"), ("video-sync", "audio")]
+    /// The video's frame rate as the server reports it (0: not known yet).
+    private var videoFPS = 0.0
+    nonisolated static func smoothOptions(_ rate: Int, fps: Double) -> [(String, String)] {
+        guard rate > 0 else { return [("interpolation", "no"), ("video-sync", "audio")] }
+        let ratio = fps > 1 ? Double(rate) / fps : 0
+        // 23.976 fps at 120 Hz is 5.005 refreshes a frame: display-resample plays it 0.1% faster to fit.
+        let whole = ratio >= 1 && abs(ratio - ratio.rounded()) < 0.02
+        return [("display-fps-override", String(rate)), ("video-sync", "display-resample"),
+                ("interpolation", whole ? "no" : "yes"), ("tscale", "oversample")]
     }
 
     private func set(_ name: String, _ value: String) {
