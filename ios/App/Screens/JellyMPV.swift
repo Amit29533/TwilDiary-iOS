@@ -80,6 +80,11 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     /// The picture's layer when mpv shows frames through AVFoundation (nil: drawn on the GPU).
     private weak var sampleLayer: AVSampleBufferDisplayLayer?
+    /// Watches that layer for a failure (a black picture) to recover from.
+    private var layerWatch: NSKeyValueObservation?
+    /// Recoveries tried for this video (at most three; see resetDecoder).
+    private var decoderResets = 0
+    private static let maxDecoderResets = 3
 
     /// mpv on this layer (an AVSampleBufferDisplayLayer, or a Metal layer for smooth motion); a
     /// file asked for already is loaded now.
@@ -91,11 +96,19 @@ private struct JellyMPVHandle: @unchecked Sendable {
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
         let sample = layer as? AVSampleBufferDisplayLayer
         sampleLayer = sample
+        // Reported from whichever thread the layer is on: back to the main actor to act.
+        layerWatch = sample?.observe(\.status, options: [.new]) { @Sendable [weak self] layer, _ in
+            guard layer.status == .failed else { return }
+            Task { @MainActor in self?.resetDecoder() }
+        }
         // AVFoundation: the decoded frames go to the display layer untouched, with no GPU pass per
-        // frame (the subtitles as an overlay of their own: composited into the frames they'd be
-        // cropped in Fill). Its options straight after vo, where Streamyfin found they must be.
+        // frame. Its options straight after vo, where Streamyfin found they must be. The subtitles
+        // as an overlay of their own (composited into the frames they'd be cropped in Fill), or
+        // composited (`jellyspace.mpv.compositeOSD`, which the performance run compares: the overlay
+        // didn't show in the Simulator).
+        let composite = UserDefaults.standard.bool(forKey: "jellyspace.mpv.compositeOSD")
         let output: [(String, String)] = sample != nil
-            ? [("vo", "avfoundation"), ("avfoundation-composite-osd", "no"), ("hwdec", "videotoolbox")]
+            ? [("vo", "avfoundation"), ("avfoundation-composite-osd", composite ? "yes" : "no"), ("hwdec", "videotoolbox")]
             : [("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox")]
         let options: [(String, String)] = output + [
             ("hwdec-codecs", "all"), ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
@@ -114,6 +127,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         if sample == nil {
             for (name, value) in Self.smoothOptions(smooth, fps: videoFPS) { mpv_set_option_string(raw, name, value) }
         }
+        Self.prepareFonts(raw)
         let started = mpv_initialize(raw)
         guard started >= 0 else {
             failure = "mpv didn't start: " + String(cString: mpv_error_string(started))
@@ -149,6 +163,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     private func load(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
         loaded = false; ended = false; paused = false; failure = nil; log = []
+        decoderResets = 0
         time = start ?? 0; duration = 0; audioTracks = []; subtitleTracks = []; audioID = nil; subtitleID = nil
         pendingSubtitles = subtitles
         updateState()
@@ -166,12 +181,55 @@ private struct JellyMPVHandle: @unchecked Sendable {
         loaded = false
         let raw = handle?.raw
         handle = nil
+        layerWatch?.invalidate()
+        layerWatch = nil
         sampleLayer = nil
         updateState()
         if let raw { mpv_command_string(raw, "quit") }
     }
 
     func play() { set("pause", "no") }
+
+    /// The video layer failed (the picture goes black): iOS ends VideoToolbox sessions when the app
+    /// goes to the background or memory runs short, and a codec the phone can't decode in hardware
+    /// fails it at once. The decoder goes to software and back to VideoToolbox, which builds a new
+    /// one. At most three times a video, as Streamyfin found: where hardware can't take the codec
+    /// at all, the last try stays on software, which plays (more slowly) instead of failing again
+    /// and again.
+    private func resetDecoder() {
+        guard handle != nil else { return }
+        decoderResets += 1
+        guard decoderResets <= Self.maxDecoderResets else { return }
+        set("hwdec", "no")
+        if decoderResets < Self.maxDecoderResets { set("hwdec", "videotoolbox") }
+    }
+
+    /// Fallback fonts for the subtitles, from the app (Noto: Latin, Greek and Cyrillic, Arabic,
+    /// Hebrew, Devanagari, and Chinese, Japanese and Korean). libass asks iOS for a font that has a
+    /// missing letter and then opens it as a file, but since iOS 18 the system's Chinese, Japanese and
+    /// Korean font is where apps can't read it, so those letters showed as boxes (Streamyfin #1789).
+    /// The fonts go in mpv's config folder: fonts/ (checked letter by letter) and subfont.ttf (the
+    /// last resort, the CJK font). Links, not copies, made again when an update moves the app.
+    nonisolated private static func prepareFonts(_ raw: OpaquePointer) {
+        let manager = FileManager.default
+        guard let support = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let config = support.appending(path: "mpv", directoryHint: .isDirectory)
+        let fonts = config.appending(path: "fonts", directoryHint: .isDirectory)
+        guard (try? manager.createDirectory(at: fonts, withIntermediateDirectories: true)) != nil else { return }
+        func link(_ name: String, _ kind: String, at target: URL) {
+            guard let source = Bundle.main.url(forResource: name, withExtension: kind) else { return }
+            let wanted = source.path(percentEncoded: false)
+            if (try? manager.destinationOfSymbolicLink(atPath: target.path(percentEncoded: false))) == wanted { return }
+            try? manager.removeItem(at: target)
+            try? manager.createSymbolicLink(atPath: target.path(percentEncoded: false), withDestinationPath: wanted)
+        }
+        for name in ["NotoSans-Regular", "NotoSansArabic-Regular", "NotoSansHebrew-Regular", "NotoSansDevanagari-Regular"] {
+            link(name, "ttf", at: fonts.appending(path: name + ".ttf"))
+        }
+        link("NotoSansCJKsc-Regular", "otf", at: config.appending(path: "subfont.ttf"))
+        mpv_set_option_string(raw, "config", "yes")
+        mpv_set_option_string(raw, "config-dir", config.path(percentEncoded: false))
+    }
     func pause() { set("pause", "yes") }
     func seek(to seconds: Double) { command(["seek", String(max(0, seconds)), "absolute"]) }
     func setRate(_ value: Float) { set("speed", String(value)) }

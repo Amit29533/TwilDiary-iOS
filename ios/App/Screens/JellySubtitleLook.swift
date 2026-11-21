@@ -123,13 +123,13 @@ struct JellySubtitleLook: Equatable, Sendable {
 
     /// The same look in mpv's terms (its sizes are on a 720-line screen; colours are #AARRGGBB).
     var mpvSettings: [(String, String)] {
-        let fonts = ["system": "Helvetica Neue", "rounded": "Avenir Next", "serif": "Georgia", "mono": "Menlo"]
+        let fonts = ["system": "Noto Sans", "rounded": "Avenir Next", "serif": "Georgia", "mono": "Menlo"]
         let borders = ["0", "1.5", "2.5", "3.5", "5"]
         let shadows = ["0", "1.5", "2.5"]
         let alpha = String(format: "%02X", Int((opacity * 255).rounded()))
         let boxAlpha = String(format: "%02X", Int((boxOpacity * 255).rounded()))
         return [
-            ("sub-scale", String(size)), ("sub-font", fonts[font] ?? "Helvetica Neue"), ("sub-bold", bold ? "yes" : "no"),
+            ("sub-scale", String(size)), ("sub-font", fonts[font] ?? "Noto Sans"), ("sub-bold", bold ? "yes" : "no"),
             ("sub-color", "#" + alpha + textSwatch.hex), ("sub-border-color", "#" + alpha + edgeSwatch.hex),
             ("sub-border-size", borders[min(max(outline, 0), borders.count - 1)]),
             ("sub-shadow-offset", shadows[min(max(shadow, 0), shadows.count - 1)]),
