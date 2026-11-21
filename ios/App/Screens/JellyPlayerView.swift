@@ -153,7 +153,6 @@ struct JellyPlayerView: View {
     @State private var screenLocked = false
     @State private var unlockShown = false
     @State private var buffering = false
-    @State private var buffered: Double = 0
     /// The time on the right: left (with when it ends) or the whole length.
     /// An automatic skip waiting out its delay: which stretch, and when it goes.
     @State private var pendingSkip: (start: Int64, at: Date)?
@@ -487,7 +486,11 @@ struct JellyPlayerView: View {
                 if status?.disabledReason != nil, upscale?.disabledReason == nil { show("Upscaling paused for this video") }
                 upscale = status
             }
-            .onReceive(engine.clock.$bufferedPosition) { buffered = $0 }
+            // How far it's loaded: on the bar's clock (it came about ten times a second and redrew the
+            // whole player with it), and only as it moves by half a second.
+            .onReceive(engine.clock.$bufferedPosition) { value in
+                if abs(value - barClock.buffered) >= 0.5 || value < barClock.buffered { barClock.buffered = value }
+            }
             .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
         if fill == .original, videoSize.width > 0, videoSize.height > 0 {
             // Its own pixel size: one video pixel per screen pixel, cropped if it's bigger than the screen.
@@ -815,7 +818,7 @@ struct JellyPlayerView: View {
         // chapters, thumbnails, the next episode and the file's details): only the engine changes.
         let handingOver = switchAt != nil && loadedInfo?.id == current.id
         finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
-        quality = nil; buffered = 0
+        quality = nil; barClock.buffered = 0
         if !handingOver {
             openedID = nil; duration = 0
             showFill = Self.savedFill(current.item)
@@ -1464,7 +1467,7 @@ struct JellyPlayerView: View {
             // The bar, red as far as you've watched, and the time left beside it (a tap shows the whole
             // length instead).
             HStack(spacing: 14) {
-                JellyScrubber(clock: barClock, duration: duration, buffered: buffered, marks: chapterMarks, stretches: coloredStretches,
+                JellyScrubber(clock: barClock, duration: duration, marks: chapterMarks, stretches: coloredStretches,
                               tint: Self.red, knob: Self.red, scrub: $scrub) { target in
                     Task { await seek(target); scrub = nil; scheduleHide() }
                 }
@@ -2124,17 +2127,11 @@ struct JellyPlayerView: View {
         HStack(spacing: 10) {
             Text("Translate").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
             Spacer(minLength: 8)
-            Menu {
-                Picker("Translate subtitles", selection: Binding(get: { translator.target }, set: { translator.setTarget($0) })) {
-                    Text("Off").tag("")
-                    ForEach(translator.choices) { choice in Text(choice.name).tag(choice.id) }
-                }
-            } label: {
-                Label(translator.targetName, systemImage: "translate").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                    .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+            // Its own view, drawn again only when the language or the list changes (see JellyTranslateMenu).
+            JellyTranslateMenu(target: translator.target, targetName: translator.targetName, choices: translator.choices) { [translator] code in
+                translator.setTarget(code)
             }
-            .accessibilityLabel("Translate subtitles").accessibilityValue(translator.targetName)
-            .accessibilityIdentifier("jellyspace-translate-subtitles")
+            .equatable()
         }
         .task { await translator.loadChoices() }
     }
@@ -2390,8 +2387,8 @@ private struct JellyScrubber: View {
     /// Its own clock (the player's redraws only once a second).
     let clock: JellyPlayClock
     private var time: Double { clock.time }
+    private var buffered: Double { clock.buffered }
     let duration: Double
-    let buffered: Double
     let marks: [Double]
     let stretches: [JellyStretch]
     let tint: Color
@@ -2621,6 +2618,37 @@ private struct JellyAirPlayButton: UIViewRepresentable {
 /// The progress bar's clock (see the player's tick).
 @MainActor @Observable final class JellyPlayClock {
     var time: Double = 0
+    /// How far the video has loaded, in seconds.
+    var buffered: Double = 0
+}
+
+/// Translate's language menu, apart from the player: it's drawn again only when the language or the
+/// list changes. iOS greys out an open menu's items and drops their taps when the button behind it
+/// is rebuilt, and the player redraws as the video plays (Streamyfin keeps its menus apart the same
+/// way).
+private struct JellyTranslateMenu: View, Equatable {
+    let target: String
+    let targetName: String
+    let choices: [JellyTranslator.Choice]
+    let choose: @MainActor (String) -> Void
+
+    nonisolated static func == (lhs: JellyTranslateMenu, rhs: JellyTranslateMenu) -> Bool {
+        lhs.target == rhs.target && lhs.targetName == rhs.targetName && lhs.choices == rhs.choices
+    }
+
+    var body: some View {
+        Menu {
+            Picker("Translate subtitles", selection: Binding(get: { target }, set: { choose($0) })) {
+                Text("Off").tag("")
+                ForEach(choices) { choice in Text(choice.name).tag(choice.id) }
+            }
+        } label: {
+            Label(targetName, systemImage: "translate").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+        }
+        .accessibilityLabel("Translate subtitles").accessibilityValue(targetName)
+        .accessibilityIdentifier("jellyspace-translate-subtitles")
+    }
 }
 
 /// The time left (or the length) beside the bar, on the bar's clock.
