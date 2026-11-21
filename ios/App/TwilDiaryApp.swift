@@ -63,6 +63,8 @@ import TwilDiaryCore
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
         WindowGroup {
             RootView().environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
+                // The performance run's player (only with --jellyspace-perf; see JellyPerfHarness).
+                .modifier(JellyPerfHarness())
                 // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
                 .onChange(of: theme, initial: true) { _, chosen in
                     ThemeStore.shared.apply(chosen)
