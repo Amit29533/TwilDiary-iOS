@@ -3,9 +3,10 @@ import Translation
 import NaturalLanguage
 
 /// Live subtitle translation (player → Advanced options → Translate): each line translated on the
-/// phone by Apple's Translation (a language downloads once, the first time it's used). Text
-/// subtitles only; picture ones (PGS, DVD) stay as they are. The language chosen is kept for the
-/// next video.
+/// phone by Apple's Translation, with languages already downloaded (Settings → Apps → Translate →
+/// Downloaded Languages); no download sheet opens over the player (it drew half the screen black).
+/// Text subtitles only; picture ones (PGS, DVD) stay as they are. The language chosen is kept for
+/// the next video.
 @MainActor final class JellyTranslator: ObservableObject {
     static let targetKey = "jellyspace.subtitle.translateTo"
 
@@ -16,9 +17,9 @@ import NaturalLanguage
 
     /// The language lines are translated into ("" off), e.g. "en".
     @Published private(set) var target: String
-    /// What the translation task runs with: nil while off, while the subtitles' language isn't known
-    /// yet, or when they're already in the language wanted.
-    @Published private(set) var configuration: TranslationSession.Configuration?
+    /// Translating now: the languages are on the phone and the session is open (false while off,
+    /// while the subtitles' language isn't known, or when they're already in the language wanted).
+    @Published private(set) var translating = false
     /// Translated lines by their original text.
     @Published private(set) var lines: [String: String] = [:]
     /// The subtitles' language once known ("ko").
@@ -37,17 +38,21 @@ import NaturalLanguage
     private var generation = 0
     /// Failed for this video: not tried again until the language or the video changes.
     private var stopped = false
+    /// The translating, and the language pair it's for ("ko>en").
+    private var runner: Task<Void, Never>?
+    private var pairKey: String?
+    enum Why: Sendable { case notDownloaded, unsupported }
 
     init() { target = UserDefaults.standard.string(forKey: Self.targetKey) ?? "" }
 
     var wanted: Bool { !target.isEmpty }
-    var translating: Bool { configuration != nil }
     /// "Korean"
     var sourceName: String { source.flatMap { Locale.current.localizedString(forIdentifier: $0) } ?? "" }
     var targetName: String { target.isEmpty ? "Off" : (Locale.current.localizedString(forIdentifier: target) ?? target) }
 
     func setTarget(_ code: String) {
-        guard code != target else { return }
+        // The same again after a failure (once the languages are downloaded, say) tries again.
+        guard code != target || stopped else { return }
         target = code
         UserDefaults.standard.set(code, forKey: Self.targetKey)
         clear()
@@ -99,12 +104,28 @@ import NaturalLanguage
         guard generation == self.generation, !found.isEmpty else { return }
         lines.merge(found) { _, new in new }
     }
-    func failed(_ batch: [String], generation: Int) {
+    func failed(_ batch: [String], generation: Int, reason: String) {
         inFlight.subtract(batch)
         guard generation == self.generation else { return }
         stopped = true
         reconfigure()
-        problem = "Couldn't translate the subtitles into " + targetName
+        problem = "Couldn't translate the subtitles into " + targetName + (reason.isEmpty ? "" : ": " + reason)
+    }
+    /// The session is open: lines can go.
+    func began(generation: Int) {
+        if generation == self.generation, pairKey != nil { translating = true }
+    }
+    /// It can't start: the languages aren't downloaded, or Apple doesn't translate this pair.
+    func cannot(_ why: Why, generation: Int) {
+        guard generation == self.generation else { return }
+        stopped = true
+        reconfigure()
+        switch why {
+        case .notDownloaded:
+            problem = "Download " + sourceName + " and " + targetName + " in Settings → Apps → Translate → Downloaded Languages, then choose " + targetName + " again"
+        case .unsupported:
+            problem = "Translating " + sourceName + " into " + targetName + " isn't available"
+        }
     }
 
     /// The languages to choose from, read once.
@@ -139,13 +160,18 @@ import NaturalLanguage
         source = found.rawValue
         reconfigure()
     }
+    /// Starts (or stops) the translating for the language pair wanted now.
     private func reconfigure() {
-        var next: TranslationSession.Configuration?
-        if wanted, !stopped, let source, Self.base(source) != Self.base(target) {
-            next = TranslationSession.Configuration(source: Locale.Language(identifier: source), target: Locale.Language(identifier: target))
-        }
-        let same = next?.source == configuration?.source && next?.target == configuration?.target && (next == nil) == (configuration == nil)
-        if !same { configuration = next }
+        var key: String?
+        if wanted, !stopped, let source, Self.base(source) != Self.base(target) { key = source + ">" + target }
+        guard key != pairKey else { return }
+        pairKey = key
+        runner?.cancel()
+        runner = nil
+        translating = false
+        guard key != nil, let source else { return }
+        let target = self.target, generation = self.generation
+        runner = Task { await Self.run(source: source, target: target, generation: generation, for: self) }
     }
     /// A track's language as a short code ("kor" → "ko"); nil when it has none.
     static func code(_ language: String?) -> String? {
@@ -156,9 +182,22 @@ import NaturalLanguage
         Locale.Language(identifier: code).languageCode?.identifier ?? code
     }
 
-    /// The translating, for as long as the player's translation task runs (a new language pair starts
-    /// it again). The session stays in the task that was given it; lines come from the main actor.
-    nonisolated static func run(_ session: TranslationSession, for translator: JellyTranslator) async {
+    /// The translating, until it's cancelled (a new language pair starts it again): the languages
+    /// checked, then a session with the ones on the phone, off the main actor; lines come from it.
+    nonisolated static func run(source: String, target: String, generation: Int, for translator: JellyTranslator) async {
+        let from = Locale.Language(identifier: source), to = Locale.Language(identifier: target)
+        let status = await LanguageAvailability().status(from: from, to: to)
+        guard !Task.isCancelled else { return }
+        if status == .supported {
+            await translator.cannot(.notDownloaded, generation: generation)
+            return
+        }
+        guard status == .installed else {
+            await translator.cannot(.unsupported, generation: generation)
+            return
+        }
+        let session = TranslationSession(installedSource: from, target: to)
+        await translator.began(generation: generation)
         while !Task.isCancelled {
             let (batch, generation) = await translator.next()
             guard !batch.isEmpty else {
@@ -178,7 +217,7 @@ import NaturalLanguage
                     await translator.store([:], batch: batch, generation: generation)
                     return
                 }
-                await translator.failed(batch, generation: generation)
+                await translator.failed(batch, generation: generation, reason: error.localizedDescription)
                 return
             }
         }

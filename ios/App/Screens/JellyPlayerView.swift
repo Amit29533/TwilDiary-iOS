@@ -250,9 +250,7 @@ struct JellyPlayerView: View {
         player
             // The rating card, once per video (not again on a decoder switch or a seek).
             .task(id: current.id) { await showRatingCard() }
-            // Live subtitle translation: runs while a language is chosen and the subtitles' own is known
-            // (a new pair starts it again). Apple's Translation asks to download a language first used.
-            .translationTask(translator.configuration) { @Sendable [translator] session in await JellyTranslator.run(session, for: translator) }
+            // Live subtitle translation (the translator runs itself, with languages already on the phone).
             .onChange(of: activeSubtitle) { _, id in translator.reset(language: subtitleTracks.first { $0.id == id }?.language) }
             .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
             .onChange(of: translator.translating) { _, on in translationChanged(on) }
@@ -1674,23 +1672,35 @@ struct JellyPlayerView: View {
                             .frame(width: 30, height: 30).background(.white.opacity(0.15), in: Circle()).contentShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Close")
                 }
-                if !subtitleTracks.isEmpty {
-                    subtitleSizeControl
-                    subtitlePositionControl
-                    translateControl
-                    delayControl("Subtitle delay", value: subtitleDelay, step: Self.delayStep) { setSubtitleDelay($0) }
+                // Whole when there's room; else the rows scroll under the title (sideways it's short).
+                ViewThatFits(in: .vertical) {
+                    advancedRows
+                    ScrollView { advancedRows }.scrollIndicators(.hidden).scrollBounceBehavior(.basedOnSize)
                 }
-                delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engineAudioDelay($0) }
-                Button { withAnimation { panel = .subtitleSearch } } label: {
-                    Label("Download subtitles", systemImage: "arrow.down.circle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
-                }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-download-subtitles")
             }
             .padding(18).frame(width: 330)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26))
-            .padding(.trailing, 24).padding(.bottom, 96)
+            .padding(.trailing, 24).padding(.top, 8).padding(.bottom, verticalSizeClass == .compact ? 64 : 96)
         }
         .accessibilityIdentifier("jellyspace-advanced")
+    }
+
+    /// Advanced options' rows: the subtitles' size, height, translation and delay; the sound's delay;
+    /// subtitle downloads.
+    private var advancedRows: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !subtitleTracks.isEmpty {
+                subtitleSizeControl
+                subtitlePositionControl
+                translateControl
+                delayControl("Subtitle delay", value: subtitleDelay, step: Self.delayStep) { setSubtitleDelay($0) }
+            }
+            delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engineAudioDelay($0) }
+            Button { withAnimation { panel = .subtitleSearch } } label: {
+                Label("Download subtitles", systemImage: "arrow.down.circle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+            }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-download-subtitles")
+        }
     }
 
     /// "Resumed at 10:55 · Start over": a tap plays from the beginning.
@@ -2725,7 +2735,11 @@ private struct JellySubtitleCanvas: View, Equatable {
     }
     /// ASS override tags ({\i1}) out, its line breaks (\N) in.
     static func plain(_ text: String) -> String {
-        text.replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
+        // A styled (ASS) event comes with its fields first: ReadOrder,Layer,Style,Name,MarginL,
+        // MarginR,MarginV,Effect (or a "Dialogue:" line's Layer,Start,End,…); only the text is shown.
+        text.replacingOccurrences(of: #"^\d+,-?\d+,[^,]*,[^,]*,-?\d+,-?\d+,-?\d+,[^,]*,"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^Dialogue:\s*-?\d+,[^,]*,[^,]*,[^,]*,[^,]*,-?\d+,-?\d+,-?\d+,[^,]*,"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
