@@ -68,6 +68,9 @@ struct JellyPlayerView: View {
     @State private var mpvLine = ""
     /// "Translated from Korean", for a moment as translating starts.
     @State private var translatedTag = false
+    /// The rating card (Netflix's): the rating and IMDb's warnings, a moment after a video starts.
+    @State private var ratingInfo: JellyRatingInfo?
+    @State private var showsRating = false
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatchingAfter = 3
     /// Episodes started on their own in a row, with no touch between (for "Are you still watching?").
     @State private var autoplayStreak = 0
@@ -322,6 +325,12 @@ struct JellyPlayerView: View {
                     .padding(.horizontal, 16).frame(height: 38).glassEffect(.regular, in: Capsule())
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
+            if showsRating, let ratingInfo, !showsControls, !screenLocked, failure == nil {
+                JellyRatingCardView(info: ratingInfo)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 16).padding(.leading, verticalSizeClass == .compact ? 8 : 20).padding(.trailing, 60)
+                    .transition(.opacity).allowsHitTesting(false)
+            }
             if let skipFlash {
                 JellySeekArrows(forward: skipFlash > 0, tap: skipTaps)
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing)
@@ -379,6 +388,8 @@ struct JellyPlayerView: View {
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
         .task(id: current.id + (usesMPV ? "|mpv\(mpvRun)" : "")) { await start() }
+        // The rating card, once per video (not again on a decoder switch or a seek).
+        .task(id: current.id) { await showRatingCard() }
         // Live subtitle translation: runs while a language is chosen and the subtitles' own is known
         // (a new pair starts it again). Apple's Translation asks to download a language first used.
         .translationTask(translator.configuration) { @Sendable [translator] session in await JellyTranslator.run(session, for: translator) }
@@ -496,6 +507,28 @@ struct JellyPlayerView: View {
         if abs(seconds - time) >= step - 0.01 || seconds < time { time = seconds }
         reachedEnd(seconds); autoSkip(); checkSleep()
         if !usesMPV, translator.due(at: subtitleClock.time, count: cues.count) { feedTranslator() }
+    }
+    /// The rating card: read as the video opens; shown a second after it starts playing (waiting up to
+    /// a minute for that), for six seconds. Off in Settings → JellySpace → Playback.
+    private func showRatingCard() async {
+        showsRating = false
+        ratingInfo = nil
+        guard UserDefaults.standard.object(forKey: JellyPrefs.ratingCardKey) as? Bool ?? true else { return }
+        let item = current.item
+        guard ["Movie", "Episode", "Video", "MusicVideo"].contains(item.kind),
+              let info = await JellyRatingCard.load(item, client: current.client) else { return }
+        var waited = 0
+        while state != .playing, waited < 240, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(250))
+            waited += 1
+        }
+        guard !Task.isCancelled, state == .playing else { return }
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
+        ratingInfo = info
+        withAnimation(.easeInOut(duration: 0.4)) { showsRating = true }
+        try? await Task.sleep(for: .seconds(6))
+        withAnimation(.easeInOut(duration: 0.6)) { showsRating = false }
     }
     /// The next text lines (from a second ago on) handed to the translator, the soonest first.
     private func feedTranslator() {

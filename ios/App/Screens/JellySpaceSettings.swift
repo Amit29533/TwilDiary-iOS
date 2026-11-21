@@ -25,6 +25,8 @@ enum JellyPrefs {
     static let autoplayKey = "jellyspace.autoplay"
     static let countdownKey = "jellyspace.countdown"
     static let resumeKey = "jellyspace.resume"
+    /// The rating card a moment after a video starts (the rating and IMDb's warnings), as Netflix's.
+    static let ratingCardKey = "jellyspace.playback.ratingCard"
     static let diaryKey = "jellyspace.diary"
     static let rememberTracksKey = "jellyspace.rememberTracks"
     static let swipeSeekKey = "jellyspace.gesture.seek"
@@ -724,6 +726,7 @@ private struct JellyPlaybackGroups: View {
     @AppStorage(JellyPrefs.countdownKey) private var countdown = 5
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatching = 3
     @AppStorage(JellyPrefs.resumeKey) private var resume = true
+    @AppStorage(JellyPrefs.ratingCardKey) private var ratingCard = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.batteryKey) private var battery = true
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
@@ -744,6 +747,8 @@ private struct JellyPlaybackGroups: View {
             }
             SettingsGroup(label: "Watching") {
                 JellySettingsRows.toggle("Resume where you stopped", $resume, accent: accent)
+                SettingsDivider()
+                JellySettingsRows.toggle("Rating at the start", $ratingCard, accent: accent)
                 SettingsDivider()
                 JellySettingsRows.choice("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
                 SettingsDivider()
