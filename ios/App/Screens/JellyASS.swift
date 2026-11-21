@@ -291,9 +291,10 @@ struct JellyASSLayer: View {
     private var pictureFrame: CGRect {
         let canvas = sheet.canvas
         guard canvas.width > 0, canvas.height > 0 else { return CGRect(origin: .zero, size: size) }
+        // Filled, still the fitted picture, as libass places and sizes them on mpv (given the screen's
+        // margins): the same size as fitted and as on mpv, and never under the screen's edge.
         let scale: CGFloat = switch fill {
-        case .fit: min(size.width / canvas.width, size.height / canvas.height)
-        case .fill: max(size.width / canvas.width, size.height / canvas.height)
+        case .fit, .fill: min(size.width / canvas.width, size.height / canvas.height)
         case .original: originalSize.width > 0 ? originalSize.width / canvas.width : min(size.width / canvas.width, size.height / canvas.height)
         }
         let shown = CGSize(width: canvas.width * scale, height: canvas.height * scale)

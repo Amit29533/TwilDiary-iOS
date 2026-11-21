@@ -358,6 +358,11 @@ struct JellyfinSetupSheet: View {
         guard let url = JellyfinSettings.normalized(address) else { return }
         checking = true; defer { checking = false }
         if store.isPreview { message = "Connected to Jelly"; return }
+        // The saved key belongs to the saved server: a new address (or a mistyped one) is never sent it.
+        if key.isEmpty, JellyfinSettings.address?.absoluteString != url.absoluteString {
+            message = "Enter this server's API key. The saved one stays with your other server."
+            return
+        }
         let candidate = key.isEmpty ? (JellyfinSettings.apiKey ?? "") : key.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             let info = try await JellyfinClient(base: url, key: candidate).server()

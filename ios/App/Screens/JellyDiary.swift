@@ -32,6 +32,8 @@ import TwilDiaryCore
             .sorted { (($0.ParentIndexNumber ?? 0), ($0.IndexNumber ?? 0)) < (($1.ParentIndexNumber ?? 0), ($1.IndexNumber ?? 0)) }
         guard let place = order.firstIndex(where: { $0.Id == item.Id }) else { return nil }
         let diary = store.titleEpisodes(title.id).filter { $0.season > 0 }.sorted { ($0.season, $0.number) < ($1.season, $1.number) }
-        return diary.indices.contains(place) ? diary[place] : nil
+        // Only when both count the show alike: with an episode missing on one side, the place would
+        // mark a neighbouring episode.
+        return diary.count == order.count && diary.indices.contains(place) ? diary[place] : nil
     }
 }

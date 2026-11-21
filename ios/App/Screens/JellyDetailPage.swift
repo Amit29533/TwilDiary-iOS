@@ -342,16 +342,23 @@ struct JellyDetailPage: View {
                 guard let user else { return }
                 favourite.toggle()
                 let now = favourite
-                Task { try? await client.setFavourite(route.id, user: user, now) }
+                // Refused by Jellyfin: back as it was.
+                Task { do { try await client.setFavourite(route.id, user: user, now) } catch { favourite = !now } }
             }
             actionButton(played ? "checkmark.circle.fill" : "checkmark.circle", title: "Watched", label: played ? "Mark unwatched" : "Mark watched") {
                 guard let user else { return }
                 played.toggle()
                 let now = played
-                Task { try? await client.setPlayed(route.id, user: user, now) }
-                // A film marked watched goes in the diary too (as the long-press menu does).
-                if now, diaryOn, let film = item, film.kind == "Movie" {
-                    Task { _ = await JellyDiary.mark(film, client: client, store: store) }
+                let film = now && diaryOn && item?.kind == "Movie" ? item : nil
+                Task {
+                    do {
+                        try await client.setPlayed(route.id, user: user, now)
+                        // A film marked watched goes in the diary too (as the long-press menu does), once
+                        // Jellyfin has it.
+                        if let film { _ = await JellyDiary.mark(film, client: client, store: store) }
+                    } catch {
+                        played = !now
+                    }
                 }
             }
             ShareLink(item: shareText(detail)) { actionLabel("paperplane", title: "Share") }

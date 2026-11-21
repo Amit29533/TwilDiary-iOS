@@ -872,7 +872,7 @@ private struct JellySubtitlePreviewCard: View {
             ZStack(alignment: .bottom) {
                 LinearGradient(colors: [Color(red: 0.42, green: 0.62, blue: 0.78), Color(red: 0.26, green: 0.42, blue: 0.3)], startPoint: .top, endPoint: .bottom)
                 Color(red: 0.17, green: 0.25, blue: 0.17).frame(height: height * 0.36)
-                JellyPlainSubtitle(text: "That's the third one this week.", look: look, points: max(11, height * 0.075 * size))
+                JellyPlainSubtitle(text: "That's the third one this week.", look: look, points: max(9, JellySubtitleLook.points(screenHeight: height, size: size)))
                     .padding(.horizontal, 12)
                     .padding(.bottom, height * 0.08 + height * raise)
             }

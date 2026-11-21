@@ -45,7 +45,10 @@ enum JellyPreferences {
     /// Your default audio languages, first then second (none set: empty).
     static var audioLanguages: [String] {
         let defaults = UserDefaults.standard
-        return [defaults.string(forKey: audioLanguageKey) ?? "", defaults.string(forKey: audioSecondKey) ?? ""].filter { !$0.isEmpty }
+        // A second choice only behind a first: with File's choice the file decides (the second, kept
+        // but hidden in Settings, no longer applies).
+        guard let first = defaults.string(forKey: audioLanguageKey), !first.isEmpty else { return [] }
+        return [first, defaults.string(forKey: audioSecondKey) ?? ""].filter { !$0.isEmpty }
     }
 }
 
@@ -126,6 +129,12 @@ struct JellySubtitleLook: Equatable, Sendable {
     var textColor: Color { textSwatch.color.opacity(opacity) }
     var edgeColor: Color { edgeSwatch.color.opacity(opacity) }
 
+    /// Plain subtitles' size on a screen this tall, as mpv sizes them: its default line height (38 on a
+    /// 720-line screen) with the letters fitted in it (the system font's line is 1.19 of its size),
+    /// times the size setting. The same setting is then the same size on both players.
+    static func points(screenHeight: CGFloat, size: Double) -> CGFloat {
+        screenHeight * 38 / 720 / 1.19 * CGFloat(size)
+    }
     /// The text's font at a size in points.
     func swiftFont(_ points: CGFloat) -> Font {
         let design: Font.Design = switch font {
@@ -150,7 +159,7 @@ struct JellySubtitleLook: Equatable, Sendable {
         let alpha = String(format: "%02X", Int((opacity * 255).rounded()))
         let boxAlpha = String(format: "%02X", Int((boxOpacity * 255).rounded()))
         return [
-            ("sub-scale", String(size)), ("sub-font", fonts[font] ?? "Noto Sans"), ("sub-bold", bold ? "yes" : "no"),
+            ("sub-font-size", "38"), ("sub-scale-by-window", "yes"), ("sub-scale", String(size)), ("sub-font", fonts[font] ?? "Noto Sans"), ("sub-bold", bold ? "yes" : "no"),
             ("sub-color", "#" + alpha + textSwatch.hex), ("sub-border-color", "#" + alpha + edgeSwatch.hex),
             ("sub-border-size", borders[min(max(outline, 0), borders.count - 1)]),
             ("sub-shadow-offset", shadows[min(max(shadow, 0), shadows.count - 1)]),
@@ -206,7 +215,7 @@ enum JellySubtitlePick {
         let first = defaults.string(forKey: JellySubtitlePrefs.languageKey) ?? ""
         let second = defaults.string(forKey: JellySubtitlePrefs.secondLanguageKey) ?? ""
         let preferSDH = defaults.string(forKey: JellySubtitlePrefs.sdhKey) == "prefer"
-        let languages = [first, second].filter { !$0.isEmpty }
+        let languages = first.isEmpty ? [] : [first, second].filter { !$0.isEmpty }
         switch show {
         case "off":
             return nil

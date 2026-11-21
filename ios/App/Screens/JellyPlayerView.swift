@@ -76,7 +76,7 @@ struct JellyPlayerView: View {
     /// The file's details as fetched for the video playing, kept for a switch to the other engine.
     @State private var loadedInfo: (id: String, info: JellyfinClient.PlayerInfo?)?
     /// The audio and subtitle language ("off": none) to pick on the other engine after a switch.
-    @State private var carriedTracks: (audio: String?, subtitle: String?)?
+    @State private var carriedTracks: (audio: String?, subtitle: String?, subtitleName: String)?
     /// The clock the subtitles follow, ten times a second: only the subtitles read it, so its ticks
     /// don't redraw the player.
     @State private var subtitleClock = JellySubtitleClock()
@@ -96,6 +96,11 @@ struct JellyPlayerView: View {
     @State private var noticeID = 0
     @State private var userID: String?
     @State private var pickedSubtitle = false
+    /// The file's own subtitles (or your languages) already put on while waiting for the one you
+    /// picked last time, which may be a separate file mpv adds after the video opens.
+    @State private var subtitleFallbackShown = false
+    /// How many separate subtitle files this video has (they arrive late on mpv).
+    @State private var expectedSubtitleFiles = 0
     @State private var speed: Float = 1
     @State private var panel: Panel?
     @State private var season: [JellyfinClient.Item] = []
@@ -188,6 +193,9 @@ struct JellyPlayerView: View {
     /// mpv, the second engine (More → Decoder → mpv), and whether this video plays on it.
     @StateObject private var mpv = JellyMPV()
     @State private var usesMPV: Bool
+    /// The video the engine has opened. Between a switch and the next video opening, the last one
+    /// is still playing: its time mustn't mark the new one watched or be saved as its place.
+    @State private var openedID: String?
     /// The show's own aspect ratio (Preferences → Remember aspect ratio per show), nil for your default.
     @State private var showFill: JellyFill?
     /// Counts mpv's starts on a new output (its view and the video's opening follow it).
@@ -696,6 +704,7 @@ struct JellyPlayerView: View {
         finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
         quality = nil; buffered = 0
         if !handingOver {
+            openedID = nil; duration = 0
             showFill = Self.savedFill(current.item)
             skipped = []; time = 0
             segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil
@@ -732,6 +741,8 @@ struct JellyPlayerView: View {
         options.preserveASSMarkup = true
         options.externalSubtitles = Self.subtitleFiles(extras, source: current.source, item: id, client: client)
         knownSubtitles = Set(Self.subtitleStreams(extras, source: current.source, item: id, client: client).map { $0.index })
+        expectedSubtitleFiles = options.externalSubtitles.count
+        subtitleFallbackShown = false
         // The fonts the styled subtitles are drawn in, from inside the video (mpv reads them itself).
         if !usesMPV {
             let fonts = Self.fontFiles(extras, source: current.source, item: id, client: client)
@@ -756,6 +767,7 @@ struct JellyPlayerView: View {
             JellyMPVChoice.set(current.id, true)
             let resume = startAt.flatMap { $0 > (handedOver ? 1 : 30) ? $0 : nil }
             mpv.open(current.url, start: resume, subtitles: options.externalSubtitles, settings: settings)
+            openedID = current.id
             // Now the frame rate is known: blend only where the refresh isn't a multiple of it.
             mpv.setSmooth(activeSmooth, fps: frameRate)
             mpv.setSuperResolution(activeSuperResolution)
@@ -794,6 +806,7 @@ struct JellyPlayerView: View {
                 } else {
                     try await engine.load(url: current.url, options: options)
                 }
+                openedID = current.id
                 engine.play()
                 report("start")
                 if speed != 1 { engine.setRate(speed) }
@@ -1118,6 +1131,8 @@ struct JellyPlayerView: View {
         savePlace()
         countdown = nil; panel = nil
         guard let next = JellySpace.playback(item, client: current.client) else { return }
+        // The last video stops while the next one's details load.
+        enginePause()
         current = next
     }
 
@@ -1191,14 +1206,14 @@ struct JellyPlayerView: View {
     }
     private func savePlace() {
         let at = exactTime
-        guard let user = userID, at > 5, !(finished && at >= duration * 0.9) else { return }
+        guard openedID == current.id, let user = userID, at > 5, !(finished && at >= duration * 0.9) else { return }
         let client = current.client, id = current.id
         Task { try? await client.savePosition(id, user: user, seconds: at) }
     }
 
     /// At 90%: played in Jellyfin, watched in the diary, once.
     private func reachedEnd(_ seconds: Double) {
-        guard !finished, duration > 60, seconds >= duration * 0.9 else { return }
+        guard openedID == current.id, !finished, duration > 60, seconds >= duration * 0.9 else { return }
         finished = true
         let client = current.client, id = current.id, user = userID, item = current.item
         Task {
@@ -1216,7 +1231,7 @@ struct JellyPlayerView: View {
     }
     /// Tells Jellyfin what's playing (signed in only: the server's API key has no user to report as).
     private func report(_ event: String) {
-        guard JellyAccount.token != nil else { return }
+        guard JellyAccount.token != nil, openedID == current.id else { return }
         let client = current.client, id = current.id, source = current.source, at = exactTime, paused = state == .paused
         Task { await client.report(event, item: id, source: source, seconds: at, paused: paused) }
     }
@@ -1233,25 +1248,43 @@ struct JellyPlayerView: View {
     /// languages, forced only, or none; else the file's default), once when the tracks first arrive.
     private func pickDefaultSubtitle(_ tracks: [TrackInfo]) {
         guard !pickedSubtitle, !tracks.isEmpty else { return }
-        pickedSubtitle = true
-        // Just switched engine: the subtitles that were on (or none).
+        // Just switched player: what was on. Else what you picked last time (in this show, or anywhere).
+        let wanted: (key: String, name: String)?
         if let carried = carriedTracks?.subtitle {
-            carriedTracks?.subtitle = nil
-            if carried == "off" { return }
-            let matching = tracks.filter { carried.isEmpty ? $0.language == nil : JellySubtitlePick.same($0.language, carried) }
-            if let track = matching.first(where: { !$0.isForced }) ?? matching.first { engineSubtitle(track.id); return }
+            wanted = (carried, carriedTracks?.subtitleName ?? "")
+        } else if rememberTracks, let saved = remembered("subtitleLanguage") {
+            wanted = (saved, remembered("subtitleName") ?? "")
+        } else {
+            wanted = nil
         }
-        if rememberTracks, let saved = remembered("subtitleLanguage") {
-            if saved == "off" { return }
-            if let track = tracks.first(where: { $0.language == saved && !$0.isForced }) ?? tracks.first(where: { $0.language == saved }) {
-                engineSubtitle(track.id)
-                return
-            }
+        if wanted?.key == "off" {
+            settleSubtitle()
+            engineSubtitle(nil)
+            return
         }
-        // Settings → Subtitles → Languages: your languages, forced only, or none.
+        if let wanted, let track = Self.subtitle(matching: wanted.key, name: wanted.name, in: tracks) {
+            settleSubtitle()
+            if track.id != activeSubtitle { engineSubtitle(track.id) }
+            return
+        }
+        // Not here yet: on mpv the separate subtitle files come after the video opens. Until they
+        // have, the file's own (or your languages) show, and the list is looked at again.
+        if wanted != nil, usesMPV, tracks.filter(\.isExternal).count < expectedSubtitleFiles {
+            if !subtitleFallbackShown, let track = JellySubtitlePick.choose(tracks) { engineSubtitle(track.id) }
+            subtitleFallbackShown = true
+            return
+        }
+        settleSubtitle()
+        guard !subtitleFallbackShown else { return }
+        // Preferences: your languages, forced only, or none.
         if let track = JellySubtitlePick.choose(tracks) {
             engineSubtitle(track.id)
         }
+    }
+    /// The subtitles chosen for this video: no more looking (and a switch's carried choice used up).
+    private func settleSubtitle() {
+        pickedSubtitle = true
+        carriedTracks?.subtitle = nil
     }
 
     // MARK: Controls
@@ -1452,10 +1485,18 @@ struct JellyPlayerView: View {
     /// A subtitle picked (-1 for off): turned on, and its language remembered.
     private func pickSubtitle(_ id: Int) {
         menuUsed()
+        // Your own pick ends the wait for the remembered one.
+        pickedSubtitle = true
         guard id != (activeSubtitle ?? -1) else { return }
         if id >= 0 {
             engineSubtitle(id)
-            if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
+            if let track = subtitleTracks.first(where: { $0.id == id }) {
+                // Its language (or, a track with none, its name) and its name: of two English tracks,
+                // Full and Signs & Songs, the next episode takes the same one.
+                let key = Self.subtitleKey(track)
+                if !key.isEmpty { remember("subtitleLanguage", key) }
+                remember("subtitleName", track.name)
+            }
         } else {
             engineSubtitle(nil)
             remember("subtitleLanguage", "off")
@@ -1560,8 +1601,25 @@ struct JellyPlayerView: View {
     private func handOver() {
         let now = exactTime
         switchAt = now > 1 ? now : nil
+        // Subtitles as they're remembered: the language (a track with none, its name) and the name.
+        let subtitle = activeSubtitle.flatMap { id in subtitleTracks.first { $0.id == id } }
         carriedTracks = (audio: audioTracks.first { $0.id == activeAudio }?.language,
-                         subtitle: activeSubtitle.flatMap { id in subtitleTracks.first { $0.id == id } }.map { $0.language ?? "" } ?? "off")
+                         subtitle: subtitle.map(Self.subtitleKey) ?? "off", subtitleName: subtitle?.name ?? "")
+        // The old player's tracks and choices go: the new one's arrive with the video (left, a track
+        // number of the old could pass for the new one's and a switch be skipped).
+        audioTracks = []; subtitleTracks = []; activeAudio = nil; activeSubtitle = nil
+    }
+    /// How a subtitle track is remembered: its language, or (none, or "und") its name.
+    static func subtitleKey(_ track: TrackInfo) -> String {
+        if let language = track.language, !language.isEmpty, language != "und" { return language }
+        return track.name.isEmpty ? "" : "name:" + track.name
+    }
+    /// The track that matches a remembered or carried one: by language (or name), and of several the
+    /// one with the same name, else a full one before a forced one.
+    static func subtitle(matching key: String, name: String, in tracks: [TrackInfo]) -> TrackInfo? {
+        guard !key.isEmpty else { return nil }
+        let matching = key.hasPrefix("name:") ? tracks.filter { "name:" + $0.name == key } : tracks.filter { JellySubtitlePick.same($0.language, key) }
+        return matching.first { !name.isEmpty && $0.name == name } ?? matching.first { !$0.isForced } ?? matching.first
     }
     /// Smooth motion turned on or off (by you, or by the phone getting hot): mpv moves between its
     /// AVFoundation output and the GPU one, which only the GPU can blend frames on. That's a new
@@ -2449,7 +2507,7 @@ private struct JellySubtitleCanvas: View, Equatable {
                     return cue.text.map(Self.plain)
                 }.filter { !$0.isEmpty }
                 if !lines.isEmpty {
-                    JellyPlainSubtitle(text: lines.joined(separator: "\n"), look: look, points: max(14, proxy.size.height * 0.05 * look.size))
+                    JellyPlainSubtitle(text: lines.joined(separator: "\n"), look: look, points: max(12, JellySubtitleLook.points(screenHeight: proxy.size.height, size: look.size)))
                         .padding(.leading, max(40, insets.leading + 16)).padding(.trailing, max(40, insets.trailing + 16))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, max(proxy.size.height * 0.07, insets.bottom + 12) + up)

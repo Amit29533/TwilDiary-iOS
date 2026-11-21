@@ -39,7 +39,7 @@ enum JellyAuth {
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
         request.httpMethod = method
-        request.setValue("MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"twildiary-ios\", Version=\"2.0\"", forHTTPHeaderField: "Authorization")
+        request.setValue(JellyDevice.header, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

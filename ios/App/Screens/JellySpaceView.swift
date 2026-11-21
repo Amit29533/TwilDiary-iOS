@@ -1587,20 +1587,19 @@ struct JellyItemMenu: ViewModifier {
                 let isPlayed = played ?? (item.UserData?.Played == true)
                 Button(isPlayed ? "Mark as unwatched" : "Mark as watched", systemImage: isPlayed ? "eye.slash" : "checkmark.circle") {
                     played = !isPlayed
-                    let id = item.Id, now = !isPlayed
-                    send { client, user in try await client.setPlayed(id, user: user, now) }
-                    // Watched: in the diary too (as finishing it in the player does).
-                    if now, diaryOn, ["Movie", "Episode"].contains(item.kind), let client = JellySpace.client {
-                        let watched = item
-                        Task { _ = await JellyDiary.mark(watched, client: client, store: store) }
-                    }
+                    let id = item.Id, now = !isPlayed, watched = item
+                    let toDiary = now && diaryOn && ["Movie", "Episode"].contains(item.kind)
+                    send({ client, user in try await client.setPlayed(id, user: user, now) }, done: {
+                        // Watched: in the diary too (as finishing it in the player does), once Jellyfin has it.
+                        if toDiary, let client = JellySpace.client { Task { _ = await JellyDiary.mark(watched, client: client, store: store) } }
+                    }, undo: { played = isPlayed })
                 }
                 if let remove { Button("Remove from Continue Watching", systemImage: "minus.circle", action: remove) }
                 let isFavourite = favourite ?? (item.UserData?.IsFavorite == true)
                 Button(isFavourite ? "Remove from favourites" : "Add to favourites", systemImage: isFavourite ? "heart.slash" : "heart") {
                     favourite = !isFavourite
                     let id = item.Id, now = !isFavourite
-                    send { client, user in try await client.setFavourite(id, user: user, now) }
+                    send({ client, user in try await client.setFavourite(id, user: user, now) }, undo: { favourite = isFavourite })
                 }
                 if item.kind == "Episode", let series = item.SeriesId {
                     Button("Go to show", systemImage: "tv") {
@@ -1616,10 +1615,18 @@ struct JellyItemMenu: ViewModifier {
             }
         }
     }
-    private func send(_ change: @escaping @Sendable (JellyfinClient, String) async throws -> Void) {
+    /// Sends a change to Jellyfin; if it's refused (or there's no server or user), the tick or heart
+    /// shown goes back, so it never looks saved when it isn't.
+    private func send(_ change: @escaping @Sendable (JellyfinClient, String) async throws -> Void,
+                      done: @escaping @MainActor () -> Void = {}, undo: @escaping @MainActor () -> Void) {
         Task {
-            guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
-            try? await change(client, user)
+            guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { undo(); return }
+            do {
+                try await change(client, user)
+                done()
+            } catch {
+                withAnimation(.snappy(duration: 0.2)) { undo() }
+            }
         }
     }
 }

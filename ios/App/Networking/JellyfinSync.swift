@@ -46,6 +46,8 @@ import TwilDiaryCore
     }
     /// Forgetting the server also drops the Jellyfin list and posters saved on this iPhone.
     static func forget() {
+        // The account signed in to it goes too (else connecting the same address again signs it back in).
+        JellyAccount.signOut()
         JellySpace.resetKey()
         SecItemDelete(query as CFDictionary)
         for key in [addressKey, excludedKey, summaryKey] { UserDefaults.standard.removeObject(forKey: key) }
@@ -53,6 +55,21 @@ import TwilDiaryCore
     }
     static var configured: Bool { address != nil && apiKey != nil }
     static var keyHint: String? { apiKey.map { String($0.suffix(4)) } }
+}
+
+/// This install's device for Jellyfin, made once and kept. Jellyfin keeps one session per device ID:
+/// with one ID for every install (it was "twildiary-ios"), a sign-in on another iPhone, or a second
+/// sign-in here (Quick Connect after a password), ended the first one's session.
+enum JellyDevice {
+    static let id: String = {
+        let defaults = UserDefaults.standard
+        if let saved = defaults.string(forKey: "jellyspace.deviceID") { return saved }
+        let made = "twildiary-" + UUID().uuidString.lowercased()
+        defaults.set(made, forKey: "jellyspace.deviceID")
+        return made
+    }()
+    /// The Authorization header's start, before any token.
+    static var header: String { "MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"\(id)\", Version=\"2.0\"" }
 }
 
 /// A Jellyfin library. Only Movies and Shows are read; the rest (photos, home videos, music)
@@ -349,7 +366,7 @@ struct JellyfinClient: Sendable {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
-        request.setValue("MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"twildiary-ios\", Version=\"2.0\", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
+        request.setValue(JellyDevice.header + ", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data: Data, response: URLResponse
         do { (data, response) = try await URLSession.shared.data(for: request) }
@@ -369,7 +386,17 @@ struct JellyfinClient: Sendable {
         components?.queryItems = [URLQueryItem(name: "fillHeight", value: "450"), URLQueryItem(name: "quality", value: "90"), URLQueryItem(name: "tag", value: tag)]
         return components?.url
     }
+    /// A view of the signed-in user's (a library they can see).
+    struct LibraryView: Decodable, Sendable { let Id: String; let Name: String?; let CollectionType: String? }
+    struct LibraryViews: Decodable, Sendable { let Items: [LibraryView] }
+    /// The libraries: a signed-in account's own (UserViews: a regular account may not read the
+    /// server's list, which answers it 403), else, with the server's API key (no user of its own),
+    /// the server's list (VirtualFolders). Playlists and Live TV aren't libraries here.
     func libraries() async throws -> [JellyfinLibrary] {
+        if let views: LibraryViews = try? await get("UserViews"), !views.Items.isEmpty {
+            return views.Items.filter { !["playlists", "livetv"].contains($0.CollectionType?.lowercased() ?? "") }
+                .map { JellyfinLibrary(id: $0.Id, name: $0.Name ?? "Library", type: $0.CollectionType?.lowercased()) }
+        }
         let folders: [Folder] = try await get("Library/VirtualFolders")
         return folders.compactMap { folder in folder.ItemId.map { JellyfinLibrary(id: $0, name: folder.Name, type: folder.CollectionType?.lowercased()) } }
     }
@@ -694,7 +721,7 @@ struct JellyfinClient: Sendable {
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
         request.httpMethod = method
-        request.setValue("MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"twildiary-ios\", Version=\"2.0\", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
+        request.setValue(JellyDevice.header + ", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
