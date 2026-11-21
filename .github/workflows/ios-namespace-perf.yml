@@ -112,10 +112,14 @@ jobs:
               continue
             fi
             xcrun simctl install "$SIMULATOR_ID" "$PWD/ios/.derived/perf-$short/Build/Products/Release-iphonesimulator/TwilDiary.app"
-            bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short AetherEngine"
-            bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv" --jellyspace-perf-mpv
-            # mpv with its subtitles composited into the frames (a launch argument sets the default).
-            bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv composited" --jellyspace-perf-mpv -jellyspace.mpv.compositeOSD YES
+            # Each measured twice ("(2)"), to tell a real difference from the Simulator's run-to-run noise.
+            for pass in 1 2; do
+              again=""; [ "$pass" = 2 ] && again=" (2)"
+              bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short AetherEngine$again"
+              bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv$again" --jellyspace-perf-mpv
+              # mpv with its subtitles composited into the frames (a launch argument sets the default).
+              bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv composited$again" --jellyspace-perf-mpv -jellyspace.mpv.compositeOSD YES
+            done
             xcrun simctl uninstall "$SIMULATOR_ID" com.amit29533.TwilDiary || true
             mkdir -p ios/.artifacts/perf/crashes
             cp ~/Library/Logs/DiagnosticReports/TwilDiary* ios/.artifacts/perf/crashes/ 2>/dev/null || true
