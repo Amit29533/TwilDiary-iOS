@@ -188,6 +188,8 @@ struct JellyPlayerView: View {
     /// mpv, the second engine (More → Decoder → mpv), and whether this video plays on it.
     @StateObject private var mpv = JellyMPV()
     @State private var usesMPV: Bool
+    /// Counts mpv's starts on a new output (its view and the video's opening follow it).
+    @State private var mpvRun = 0
     /// Where the other engine was when you switched (the next start begins there).
     @State private var switchAt: Double?
     /// mpv's smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
@@ -332,7 +334,9 @@ struct JellyPlayerView: View {
             refresh.hold(0)
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
-        .task(id: current.id + (usesMPV ? "|mpv" : "")) { await start() }
+        .task(id: current.id + (usesMPV ? "|mpv\(mpvRun)" : "")) { await start() }
+        // mpv's output follows smooth motion (AVFoundation without it, the GPU with it).
+        .onChange(of: activeSmooth > 0) { _, _ in moveMPVOutput() }
         // mpv's smooth motion holds the screen at its rate while it plays.
         // Set again when it's changed, and when the phone gets hot or goes into Low Power Mode (off
         // then, back after).
@@ -404,7 +408,8 @@ struct JellyPlayerView: View {
     /// mpv's picture, with its clock, tracks and size fed into the same state as AetherEngine's (mpv
     /// draws the subtitles itself, so none come through for the player's own).
     private var mpvPicture: some View {
-        JellyMPVSurface(player: mpv, smooth: activeSmooth)
+        JellyMPVSurface(player: mpv, smooth: activeSmooth, fill: fill)
+            .id(mpvRun)
             .onReceive(mpv.$state) { state = $0 }
             .onReceive(mpv.$time) { seconds in subtitleClock.time = seconds; tick(seconds) }
             .onReceive(mpv.$duration) { duration = $0 }
@@ -1513,16 +1518,31 @@ struct JellyPlayerView: View {
         guard let upscale, upscale.disabledReason == nil, upscale.sourceSize.height > 0 else { return nil }
         return "Upscaled from \(Int(upscale.sourceSize.height))p"
     }
+    /// Where the video is and which audio and subtitles are on, for the player that takes it over
+    /// (the other engine, or mpv on its other output): it opens there, in the same languages (the
+    /// tracks number differently on each).
+    private func handOver() {
+        let now = exactTime
+        switchAt = now > 1 ? now : nil
+        carriedTracks = (audio: audioTracks.first { $0.id == activeAudio }?.language,
+                         subtitle: activeSubtitle.flatMap { id in subtitleTracks.first { $0.id == id } }.map { $0.language ?? "" } ?? "off")
+    }
+    /// Smooth motion turned on or off (by you, or by the phone getting hot): mpv moves between its
+    /// AVFoundation output and the GPU one, which only the GPU can blend frames on. That's a new
+    /// view and a new mpv, opened where the video was.
+    private func moveMPVOutput() {
+        guard usesMPV, mpv.running || state != .idle else { return }
+        handOver()
+        mpv.stop()
+        mpvRun += 1
+    }
+
     /// Auto or the app's own decoder: the video reloads where it is on the new one. mpv: the video
     /// moves to the mpv player where it is (and opens there from then on).
     private func setDecoder(_ choice: JellyDecoder) {
         if (choice == .mpv) != usesMPV {
             // The other engine takes over where this one is, and this video opens on it from now on.
-            let now = exactTime
-            switchAt = now > 1 ? now : nil
-            // The same audio and subtitle language on the other engine (its tracks number differently).
-            carriedTracks = (audio: audioTracks.first { $0.id == activeAudio }?.language,
-                             subtitle: activeSubtitle.flatMap { id in subtitleTracks.first { $0.id == id } }.map { $0.language ?? "" } ?? "off")
+            handOver()
             JellyMPVChoice.set(current.id, choice == .mpv)
             if choice == .mpv { engine?.stop() } else { mpv.stop() }
             decodePath = choice.path

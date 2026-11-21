@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
+import AVFoundation
 import AetherEngine
-import Libmpv
+import MPVKitAV
 
 // MARK: Which engine a video plays on
 
@@ -43,12 +44,17 @@ private enum JellyMPVChange: Sendable {
 /// mpv's handle, for the event thread (its client API may be called from any thread).
 private struct JellyMPVHandle: @unchecked Sendable {
     let raw: OpaquePointer
+    /// The layer mpv draws into, held until mpv has shut down: vo_avfoundation doesn't retain it, and
+    /// the view can go before mpv's last frame does.
+    let layer: CALayer?
 }
 
 /// libmpv as the player's second engine: the file, its clock, its tracks (as AetherEngine's
-/// TrackInfo, so the player's menus and remembered languages work as they are), drawn into a Metal
-/// layer. Events are read on a thread of their own and published on the main actor. mpv draws the
-/// subtitles itself.
+/// TrackInfo, so the player's menus and remembered languages work as they are). The picture goes
+/// to an AVSampleBufferDisplayLayer (vo_avfoundation: VideoToolbox's frames shown as they are, as
+/// AVPlayer and AetherEngine show video), or, with smooth motion on, is drawn through Vulkan into a
+/// Metal layer (gpu-next, which can blend frames). Events are read on a thread of their own and
+/// published on the main actor. mpv draws the subtitles itself.
 @MainActor final class JellyMPV: ObservableObject {
     @Published private(set) var state: PlaybackState = .idle
     @Published private(set) var time: Double = 0
@@ -72,29 +78,42 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     var running: Bool { handle != nil }
 
-    /// mpv on this layer; a file asked for already is loaded now.
-    func start(layer: CAMetalLayer, smooth: Int) {
+    /// The picture's layer when mpv shows frames through AVFoundation (nil: drawn on the GPU).
+    private weak var sampleLayer: AVSampleBufferDisplayLayer?
+
+    /// mpv on this layer (an AVSampleBufferDisplayLayer, or a Metal layer for smooth motion); a
+    /// file asked for already is loaded now.
+    func start(layer: CALayer, smooth: Int) {
         guard handle == nil else { return }
         guard let raw = mpv_create() else { failure = "mpv couldn't be created."; return }
         mpv_request_log_messages(raw, "warn")
         var wid = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
-        let options: [(String, String)] = [
-            ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox"),
-            ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
+        let sample = layer as? AVSampleBufferDisplayLayer
+        sampleLayer = sample
+        // AVFoundation: the decoded frames go to the display layer untouched, with no GPU pass per
+        // frame (the subtitles as an overlay of their own: composited into the frames they'd be
+        // cropped in Fill). Its options straight after vo, where Streamyfin found they must be.
+        let output: [(String, String)] = sample != nil
+            ? [("vo", "avfoundation"), ("avfoundation-composite-osd", "no"), ("hwdec", "videotoolbox")]
+            : [("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox")]
+        let options: [(String, String)] = output + [
+            ("hwdec-codecs", "all"), ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
             ("sub-auto", "no"), ("subs-fallback", "yes"), ("audio-display", "no"),
             ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-readahead-secs", "20"),
-            // Lighter drawing than mpv's defaults, which are made for a desktop GPU: spline36 for the
-            // picture (sharp, one pass), bilinear for colour, and none of the extra passes (linear
-            // light, sigmoid, HDR peak measuring each frame, debanding). On a phone's dense screen
-            // they look the same, and the GPU does a fraction of the work. A decoder that can't use
-            // VideoToolbox falls back to software rather than failing.
+            // On the GPU (smooth motion), lighter drawing than mpv's defaults, which are made for a
+            // desktop GPU: spline36 for the picture (sharp, one pass), bilinear for colour, and none of
+            // the extra passes (linear light, sigmoid, HDR peak measuring each frame, debanding). On a
+            // phone's dense screen they look the same. A decoder that can't use VideoToolbox falls
+            // back to software rather than failing.
             ("scale", "spline36"), ("dscale", "mitchell"), ("cscale", "bilinear"),
             ("correct-downscaling", "no"), ("linear-downscaling", "no"), ("sigmoid-upscaling", "no"),
             ("hdr-compute-peak", "no"), ("deband", "no"), ("hwdec-software-fallback", "yes"),
         ]
         for (name, value) in options { mpv_set_option_string(raw, name, value) }
-        for (name, value) in Self.smoothOptions(smooth, fps: videoFPS) { mpv_set_option_string(raw, name, value) }
+        if sample == nil {
+            for (name, value) in Self.smoothOptions(smooth, fps: videoFPS) { mpv_set_option_string(raw, name, value) }
+        }
         let started = mpv_initialize(raw)
         guard started >= 0 else {
             failure = "mpv didn't start: " + String(cString: mpv_error_string(started))
@@ -109,7 +128,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         ]
         for (name, format) in observed { mpv_observe_property(raw, 0, name, format) }
         Self.addJellyfinProtocol(raw)
-        let handle = JellyMPVHandle(raw: raw)
+        let handle = JellyMPVHandle(raw: raw, layer: layer)
         self.handle = handle
         Self.readEvents(handle) { [weak self] change in self?.apply(change) }
         if let pending {
@@ -134,6 +153,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         pendingSubtitles = subtitles
         updateState()
         for (name, value) in settings { set(name, value) }
+        layerZooms()
         set("pause", "no")
         var command = ["loadfile", JellyMPVStream.scheme + url.absoluteString, "replace"]
         if let start, start > 1 { command += ["-1", "start=\(start)"] }
@@ -146,6 +166,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         loaded = false
         let raw = handle?.raw
         handle = nil
+        sampleLayer = nil
         updateState()
         if let raw { mpv_command_string(raw, "quit") }
     }
@@ -167,6 +188,15 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// Fit, Fill (cropped to the screen) or Original (one video pixel per screen pixel).
     func setFill(_ fill: JellyFill) {
         for (name, value) in Self.fillSettings(fill) { set(name, value) }
+        // Through AVFoundation the layer itself fits or fills the picture.
+        sampleLayer?.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+        layerZooms()
+    }
+    /// On AVFoundation the layer zooms, so mpv mustn't as well (the picture would fill twice over).
+    private func layerZooms() {
+        guard sampleLayer != nil else { return }
+        set("panscan", "0.0")
+        set("video-unscaled", "no")
     }
     nonisolated static func fillSettings(_ fill: JellyFill) -> [(String, String)] {
         // Filled, the picture is cropped top and bottom, and libass would place the subtitles on the
@@ -189,6 +219,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// with the cheapest blend there is (oversample).
     func setSmooth(_ rate: Int, fps: Double = 0) {
         videoFPS = fps
+        // Only the GPU output times frames to the screen; AVFoundation's layer does that itself.
+        guard sampleLayer == nil else { return }
         for (name, value) in Self.smoothOptions(rate, fps: fps) { set(name, value) }
     }
     /// The video's frame rate as the server reports it (0: not known yet).
@@ -335,6 +367,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
                 }
             }
             mpv_terminate_destroy(handle.raw)
+            // mpv is gone: the layer it drew into can go too (let go of on the main thread, as views are).
+            DispatchQueue.main.async { withExtendedLifetime(handle) {} }
         }
         thread.name = "mpv events"
         thread.qualityOfService = .userInitiated
@@ -505,22 +539,42 @@ final class JellyMPVSurfaceView: UIView {
     override class var layerClass: AnyClass { JellyMPVLayer.self }
 }
 
-/// The picture: a view backed by mpv's Metal layer, mpv started on it.
+/// The view AVFoundation shows mpv's frames in.
+final class JellyMPVSampleView: UIView {
+    override class var layerClass: AnyClass { AVSampleBufferDisplayLayer.self }
+}
+
+/// The picture: a view backed by an AVSampleBufferDisplayLayer (or, with smooth motion on, a Metal
+/// layer), mpv started on it. A change between the two needs a new view and a new mpv: the player
+/// gives the surface a new identity and opens the video again where it was.
 struct JellyMPVSurface: UIViewRepresentable {
     let player: JellyMPV
     let smooth: Int
+    let fill: JellyFill
     @Environment(\.displayScale) private var displayScale
 
-    func makeUIView(context: Context) -> JellyMPVSurfaceView {
-        let view = JellyMPVSurfaceView()
+    func makeUIView(context: Context) -> UIView {
+        if smooth > 0 {
+            let view = JellyMPVSurfaceView()
+            view.backgroundColor = .black
+            if let layer = view.layer as? CAMetalLayer {
+                layer.contentsScale = displayScale
+                layer.framebufferOnly = true
+                layer.backgroundColor = UIColor.black.cgColor
+                player.start(layer: layer, smooth: smooth)
+            }
+            return view
+        }
+        let view = JellyMPVSampleView()
         view.backgroundColor = .black
-        if let layer = view.layer as? CAMetalLayer {
-            layer.contentsScale = displayScale
-            layer.framebufferOnly = true
+        if let layer = view.layer as? AVSampleBufferDisplayLayer {
             layer.backgroundColor = UIColor.black.cgColor
-            player.start(layer: layer, smooth: smooth)
+            layer.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+            player.start(layer: layer, smooth: 0)
         }
         return view
     }
-    func updateUIView(_ view: JellyMPVSurfaceView, context: Context) {}
+    func updateUIView(_ view: UIView, context: Context) {
+        (view.layer as? AVSampleBufferDisplayLayer)?.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+    }
 }
