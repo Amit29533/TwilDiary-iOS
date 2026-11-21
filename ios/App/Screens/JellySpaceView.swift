@@ -77,9 +77,20 @@ struct JellySpaceView: View {
     @State private var hero = JellyHeroSelection()
     @Environment(AppRouter.self) private var router
 
+    /// The home, with the hooks added later kept apart from its long body (which the compiler checks
+    /// in one go).
+    var body: some View {
+        home
+            .task(id: discoverID) { await loadDiscover() }
+            // A library switched on or off for recommending: For you and the dynamic rows again.
+            .onChange(of: recommendOffRaw) { _, _ in Task { await loadRows() } }
+    }
+    /// What Discover's rows depend on: what's hidden and what's switched off for recommending.
+    private var discoverID: String { [hiddenRaw, hiddenRowsRaw, recommendOffRaw].joined(separator: "|") }
+
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
     /// at Explore's sizes.
-    var body: some View {
+    private var home: some View {
         // Searching: the search page under the top bar and the search field (Recommended for you until
         // something's typed, then the results).
         let showsResults = searching
@@ -159,9 +170,6 @@ struct JellySpaceView: View {
         }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task { await appear() }
-        .task(id: hiddenRaw + "|" + hiddenRowsRaw + "|" + recommendOffRaw) { await loadDiscover() }
-        // A library switched on or off for recommending: For you and the dynamic rows again.
-        .onChange(of: recommendOffRaw) { _, _ in Task { await loadRows() } }
         // A new number of Dynamic recommendations rows: made again from the kept index (no network).
         .onChange(of: themeCount) { _, _ in Task { await loadThemes() } }
         .refreshable {
@@ -638,8 +646,8 @@ struct JellySpaceView: View {
         let hiddenIDs = self.hidden
         let defaults = UserDefaults.standard, turn = defaults.integer(forKey: "jellyspace.discover.turn")
         defaults.set(turn + 1, forKey: "jellyspace.discover.turn")
-        let off = JellyRecommendOff.ids(recommendOffRaw)
-        let found = await JellyDiscover.load(client: client, user: user, libraries: all.filter { hiddenIDs[$0.id] == nil && !off.contains($0.id) }, turn: turn)
+        let switchedOff = JellyRecommendOff.ids(recommendOffRaw)
+        let found = await JellyDiscover.load(client: client, user: user, libraries: all.filter { hiddenIDs[$0.id] == nil && !switchedOff.contains($0.id) }, turn: turn)
         guard !Task.isCancelled else { return }
         withAnimation(.smooth(duration: 0.3)) { discover = found }
         JellyHomeCache.discover = found

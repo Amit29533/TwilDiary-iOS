@@ -110,7 +110,7 @@ import NaturalLanguage
     /// The languages to choose from, read once.
     func loadChoices() async {
         guard choices.isEmpty else { return }
-        let supported = await LanguageAvailability().supportedLanguages
+        let supported = await Self.supportedLanguages()
         let mine = Locale.preferredLanguages.map(Self.base)
         var seen = Set<String>()
         let all = supported.compactMap { language -> Choice? in
@@ -124,6 +124,11 @@ import NaturalLanguage
         }
     }
 
+    /// Apple's list of languages it can translate (LanguageAvailability isn't Sendable, so it's made
+    /// and asked away from the main actor).
+    nonisolated private static func supportedLanguages() async -> [Locale.Language] {
+        await LanguageAvailability().supportedLanguages
+    }
     /// The subtitles' language from their lines, once there are enough of them to tell.
     private func detect() {
         let text = sample.joined(separator: "\n")

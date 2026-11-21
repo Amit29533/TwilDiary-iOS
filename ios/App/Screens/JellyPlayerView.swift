@@ -244,7 +244,65 @@ struct JellyPlayerView: View {
         return following
     }
 
+    /// The player, with live translation and the rating card added on (kept apart from the player's
+    /// own long body, which the compiler checks in one go).
     var body: some View {
+        player
+            // The rating card, once per video (not again on a decoder switch or a seek).
+            .task(id: current.id) { await showRatingCard() }
+            // Live subtitle translation: runs while a language is chosen and the subtitles' own is known
+            // (a new pair starts it again). Apple's Translation asks to download a language first used.
+            .translationTask(translator.configuration) { @Sendable [translator] session in await JellyTranslator.run(session, for: translator) }
+            .onChange(of: activeSubtitle) { _, id in translator.reset(language: subtitleTracks.first { $0.id == id }?.language) }
+            .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
+            .onChange(of: translator.translating) { _, on in translationChanged(on) }
+            .onChange(of: translator.problem) { _, text in if let text { show(text) } }
+    }
+    /// Translating started or stopped: mpv's own text hidden or back, and the tag for a moment.
+    private func translationChanged(_ on: Bool) {
+        mpv.setTextHidden(on, look: subtitleLook)
+        withAnimation { translatedTag = on }
+        if on { Task { try? await Task.sleep(for: .seconds(3)); withAnimation { translatedTag = false } } }
+    }
+    /// The subtitles (the player's own, translated ones, mpv's translated line) and the Translated tag.
+    private var subtitleLayer: some View {
+        GeometryReader { safe in
+            // Above the bar and the title while the controls show.
+            let lift: CGFloat = showsControls && failure == nil ? (verticalSizeClass == .compact ? 72 : 96) : 0
+            ZStack {
+                JellySubtitles(cues: cues, clock: subtitleClock, delay: subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
+                               fill: fill, videoPixels: videoSize,
+                               originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
+                               sheet: subtitleLook.styled == "mine" ? nil : assSheet, lift: lift,
+                               translated: translator.translating ? translator.lines : nil)
+                // mpv's line, translated (mpv draws its own see-through meanwhile).
+                if usesMPV, translator.translating, !mpvLine.isEmpty {
+                    JellyTranslatedLine(text: translator.lines[mpvLine] ?? mpvLine, look: subtitleLook, insets: safe.safeAreaInsets, lift: lift)
+                }
+                if translatedTag { translatedLabel(bottom: safe.safeAreaInsets.bottom) }
+            }
+            .animation(.smooth(duration: 0.25), value: showsControls)
+            .ignoresSafeArea()
+        }.allowsHitTesting(false)
+    }
+    private func translatedLabel(bottom: CGFloat) -> some View {
+        Label("Translated from " + translator.sourceName, systemImage: "translate")
+            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 10).frame(height: 24).background(.black.opacity(0.5), in: Capsule())
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, max(bottom, 10)).transition(.opacity)
+    }
+    /// The rating card at the top corner, while it shows.
+    @ViewBuilder private var ratingLayer: some View {
+        if showsRating, let ratingInfo, !showsControls, !screenLocked, failure == nil {
+            JellyRatingCardView(info: ratingInfo)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, 16).padding(.leading, verticalSizeClass == .compact ? 8 : 20).padding(.trailing, 60)
+                .transition(.opacity).allowsHitTesting(false)
+        }
+    }
+
+    private var player: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             if usesMPV {
@@ -252,30 +310,7 @@ struct JellyPlayerView: View {
             } else if let engine {
                 picture(engine)
             }
-            GeometryReader { safe in
-                // Above the bar and the title while the controls show.
-                let lift: CGFloat = showsControls && failure == nil ? (verticalSizeClass == .compact ? 72 : 96) : 0
-                ZStack {
-                    JellySubtitles(cues: cues, clock: subtitleClock, delay: subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
-                                   fill: fill, videoPixels: videoSize,
-                                   originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
-                                   sheet: subtitleLook.styled == "mine" ? nil : assSheet, lift: lift,
-                                   translated: translator.translating ? translator.lines : nil)
-                    // mpv's line, translated (mpv draws its own see-through meanwhile).
-                    if usesMPV, translator.translating, !mpvLine.isEmpty {
-                        JellyTranslatedLine(text: translator.lines[mpvLine] ?? mpvLine, look: subtitleLook, insets: safe.safeAreaInsets, lift: lift)
-                    }
-                    if translatedTag {
-                        Label("Translated from " + translator.sourceName, systemImage: "translate")
-                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
-                            .padding(.horizontal, 10).frame(height: 24).background(.black.opacity(0.5), in: Capsule())
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                            .padding(.bottom, max(safe.safeAreaInsets.bottom, 10)).transition(.opacity)
-                    }
-                }
-                .animation(.smooth(duration: 0.25), value: showsControls)
-                .ignoresSafeArea()
-            }.allowsHitTesting(false)
+            subtitleLayer
             // One finger: tap for the controls, double tap 15 seconds back (left) or on (right), hold
             // for 2x, swipe sideways to move through the video, up or down for brightness (left) or
             // volume (right). Two fingers: tap to pause or play, pinch for Fill or Fit.
@@ -325,12 +360,7 @@ struct JellyPlayerView: View {
                     .padding(.horizontal, 16).frame(height: 38).glassEffect(.regular, in: Capsule())
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
-            if showsRating, let ratingInfo, !showsControls, !screenLocked, failure == nil {
-                JellyRatingCardView(info: ratingInfo)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.top, 16).padding(.leading, verticalSizeClass == .compact ? 8 : 20).padding(.trailing, 60)
-                    .transition(.opacity).allowsHitTesting(false)
-            }
+            ratingLayer
             if let skipFlash {
                 JellySeekArrows(forward: skipFlash > 0, tap: skipTaps)
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing)
@@ -388,19 +418,6 @@ struct JellyPlayerView: View {
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
         .task(id: current.id + (usesMPV ? "|mpv\(mpvRun)" : "")) { await start() }
-        // The rating card, once per video (not again on a decoder switch or a seek).
-        .task(id: current.id) { await showRatingCard() }
-        // Live subtitle translation: runs while a language is chosen and the subtitles' own is known
-        // (a new pair starts it again). Apple's Translation asks to download a language first used.
-        .translationTask(translator.configuration) { @Sendable [translator] session in await JellyTranslator.run(session, for: translator) }
-        .onChange(of: activeSubtitle) { _, id in translator.reset(language: subtitleTracks.first { $0.id == id }?.language) }
-        .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
-        .onChange(of: translator.translating) { _, on in
-            mpv.setTextHidden(on, look: subtitleLook)
-            withAnimation { translatedTag = on }
-            if on { Task { try? await Task.sleep(for: .seconds(3)); withAnimation { translatedTag = false } } }
-        }
-        .onChange(of: translator.problem) { _, text in if let text { show(text) } }
         // mpv's output follows smooth motion and Super Resolution (AVFoundation without them, the
         // GPU with either).
         .onChange(of: mpvOnGPU) { _, _ in moveMPVOutput() }
