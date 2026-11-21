@@ -775,26 +775,45 @@ private struct JellyHero: View {
     @State private var starting = false
     /// Set once you've tapped Favourite here (until then, what the server said).
     @State private var favourite: Bool?
+    /// Whether the poster has the title written on it (read once on the phone; nil until then).
+    @State private var posterTitled: Bool?
     private var isFavourite: Bool { favourite ?? item.UserData?.IsFavorite ?? false }
 
     private var route: JellyDetailRoute { JellyDetailRoute(id: item.Id, name: item.Name ?? "") }
+    /// "Film" or "Series", first on the facts line (as Netflix's "Series · …").
+    private var kindName: String? {
+        switch item.kind {
+        case "Movie": "Film"
+        case "Series": "Series"
+        default: nil
+        }
+    }
     /// "2023 · Anime · Drama".
     private var facts: String {
         ([item.ProductionYear.map(String.init)].compactMap { $0 } + (item.Genres ?? []).prefix(2)).joined(separator: " · ")
     }
-    /// Resume for a film you've started; else Play.
+    /// Resume for a film you've started; Play Film, Play Show; else Play.
     private var playLabel: String {
-        guard item.kind == "Movie", let percent = item.UserData?.PlayedPercentage, percent > 0 else { return "Play" }
-        return "Resume"
+        switch item.kind {
+        case "Movie": (item.UserData?.PlayedPercentage ?? 0) > 0 ? "Resume" : "Play Film"
+        case "Series": "Play Show"
+        default: "Play"
+        }
     }
-    /// Upright the card shows the poster whole (it carries the title, so the logo isn't added on top);
-    /// sideways, the backdrop with the logo.
+    /// Upright the card shows the poster whole; sideways, the backdrop.
     private var showsPoster: Bool { verticalSizeClass != .compact && item.ImageTags?["Primary"] != nil }
+    /// The logo (or name) over the picture: always on the backdrop; on a poster only when its title
+    /// isn't written on it already (so it never shows twice).
+    private var showsTitle: Bool { !showsPoster || (posterTitled ?? JellyPosterText.known(item)) == false }
 
     var body: some View {
         VStack(spacing: 9) {
-            if !showsPoster { NavigationLink(value: route) { titleMark }.buttonStyle(.plain) }
+            if showsTitle { NavigationLink(value: route) { titleMark }.buttonStyle(.plain).transition(.opacity) }
             HStack(spacing: 5) {
+                if let kindName {
+                    Text(kindName).fontWeight(.bold)
+                    if !facts.isEmpty { Text("·") }
+                }
                 if !facts.isEmpty { Text(facts) }
                 if let score = item.CommunityRating, score > 0 {
                     if !facts.isEmpty { Text("·") }
@@ -821,6 +840,12 @@ private struct JellyHero: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 0.5) }
         .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
+        // Read the poster once for its written title (kept, so only a new poster is read again).
+        .task(id: item.Id) {
+            guard posterTitled == nil, JellyPosterText.known(item) == nil, let poster = Self.posterImage(item, base: client.base) else { return }
+            let titled = await JellyPosterText.hasTitle(item, poster: poster)
+            withAnimation(.smooth(duration: 0.3)) { posterTitled = titled }
+        }
     }
 
     /// Play: white with black writing, as Netflix's.
@@ -832,7 +857,7 @@ private struct JellyHero: View {
             }
             .font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
             .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 42)
-            .background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous)).contentShape(Rectangle())
+            .background(.white, in: Capsule()).contentShape(Capsule())
         }
         .buttonStyle(.springPress).disabled(starting)
         .accessibilityLabel(playLabel + " " + (item.Name ?? "")).accessibilityIdentifier("jellyspace-hero-play-" + item.Id)
@@ -847,8 +872,8 @@ private struct JellyHero: View {
             }
             .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
             .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 42)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous)).contentShape(Rectangle())
+            .background(.ultraThinMaterial, in: Capsule())
+            .background(.white.opacity(0.12), in: Capsule()).contentShape(Capsule())
         }
         .buttonStyle(.springPress)
         .sensoryFeedback(.selection, trigger: isFavourite)
