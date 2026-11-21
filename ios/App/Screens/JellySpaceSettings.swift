@@ -314,7 +314,8 @@ struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.subtitleBoxKey) private var subtitleBox = false
     @AppStorage(JellyPrefs.subtitleRaiseKey) private var subtitleRaise = 0.0
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatching = 3
-    @State private var seerrKey = JellySecrets.read("seerr-key") ?? ""
+    /// Read from the Keychain once the page is up (building the page happens far more often).
+    @State private var seerrKey = ""
     @State private var seerrNotice: String?
     @State private var libraries: [JellyfinLibrary] = []
     @State private var profiles: [JellyfinClient.Profile] = []
@@ -406,7 +407,8 @@ struct JellySpaceSettingsView: View {
     // MARK: Home rows and what's hidden
 
     private var home: some View {
-        let shown = libraries.filter { JellyHidden.decode(hiddenRaw)[$0.id] == nil }
+        let hiddenItems = JellyHidden.decode(hiddenRaw)
+        let shown = libraries.filter { hiddenItems[$0.id] == nil }
         let order = JellyHomeRow.sections(rowsRaw, libraries: shown)
         let off = JellyHomeRow.hiddenSections(hiddenRowsRaw, libraries: shown)
         return SettingsGroup(label: "Home") {
@@ -432,7 +434,8 @@ struct JellySpaceSettingsView: View {
     }
     /// My Media: the libraries shown on the home, in the order of their pills, each moved with ▲ ▼.
     @ViewBuilder private var myMedia: some View {
-        let order = JellyMediaOrder.sorted(libraries.filter { JellyHidden.decode(hiddenRaw)[$0.id] == nil }, mediaOrderRaw)
+        let hiddenItems = JellyHidden.decode(hiddenRaw)
+        let order = JellyMediaOrder.sorted(libraries.filter { hiddenItems[$0.id] == nil }, mediaOrderRaw)
         if !order.isEmpty {
             SettingsGroup(label: "My Media") {
                 ForEach(Array(order.enumerated()), id: \.element.id) { position, library in
@@ -613,6 +616,7 @@ struct JellySpaceSettingsView: View {
     }
 
     private func load() async {
+        if seerrKey.isEmpty { seerrKey = JellySecrets.read("seerr-key") ?? "" }
         guard let client = JellySpace.client else { return }
         libraries = (try? await client.libraries()) ?? []
         watchingAs = await JellyfinUser.id(client)
