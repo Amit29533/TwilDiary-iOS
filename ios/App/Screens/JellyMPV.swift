@@ -130,11 +130,12 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ("track-list", MPV_FORMAT_NONE), ("aid", MPV_FORMAT_NONE), ("sid", MPV_FORMAT_NONE),
         ]
         for (name, format) in observed { mpv_observe_property(raw, 0, name, format) }
+        Self.addJellyfinProtocol(raw)
         let handle = JellyMPVHandle(raw: raw)
         self.handle = handle
         pendingSubtitles = subtitles
         Self.readEvents(handle) { [weak self] change in self?.apply(change) }
-        var load = ["loadfile", url.absoluteString, "replace"]
+        var load = ["loadfile", JellyMPVStream.scheme + url.absoluteString, "replace"]
         if let seconds, seconds > 1 { load += ["-1", "start=\(seconds)"] }
         command(load)
     }
@@ -195,9 +196,42 @@ private struct JellyMPVHandle: @unchecked Sendable {
         case .loaded:
             loaded = true; buffering = false
             for subtitle in pendingSubtitles {
-                command(["sub-add", subtitle.url.absoluteString, "auto", subtitle.name ?? "Subtitles", subtitle.language ?? ""])
+                command(["sub-add", JellyMPVStream.scheme + subtitle.url.absoluteString, "auto", subtitle.name ?? "Subtitles", subtitle.language ?? ""])
             }
             pendingSubtitles = []
+        }
+    }
+
+    /// jellyfin://<address>: mpv reads the file through JellyMPVStream (the FFmpeg mpv runs on in this
+    /// app is AetherEngine's, which has no network of its own).
+    nonisolated private static func addJellyfinProtocol(_ raw: OpaquePointer) {
+        mpv_stream_cb_add_ro(raw, "jellyfin", nil) { _, uri, info in
+            guard let uri, let info else { return MPV_ERROR_LOADING_FAILED.rawValue }
+            let text = String(cString: uri)
+            guard text.hasPrefix(JellyMPVStream.scheme), let url = URL(string: String(text.dropFirst(JellyMPVStream.scheme.count))),
+                  let stream = JellyMPVStream(url: url) else { return MPV_ERROR_LOADING_FAILED.rawValue }
+            info.pointee.cookie = Unmanaged.passRetained(stream).toOpaque()
+            info.pointee.read_fn = { cookie, buffer, count in
+                guard let cookie, let buffer else { return -1 }
+                return Unmanaged<JellyMPVStream>.fromOpaque(cookie).takeUnretainedValue().read(into: buffer, count: count)
+            }
+            info.pointee.seek_fn = { cookie, offset in
+                guard let cookie else { return Int64(MPV_ERROR_GENERIC.rawValue) }
+                return Unmanaged<JellyMPVStream>.fromOpaque(cookie).takeUnretainedValue().seek(to: offset)
+            }
+            info.pointee.size_fn = { cookie in
+                guard let cookie else { return Int64(MPV_ERROR_UNSUPPORTED.rawValue) }
+                return Unmanaged<JellyMPVStream>.fromOpaque(cookie).takeUnretainedValue().length
+            }
+            info.pointee.cancel_fn = { cookie in
+                guard let cookie else { return }
+                Unmanaged<JellyMPVStream>.fromOpaque(cookie).takeUnretainedValue().cancel()
+            }
+            info.pointee.close_fn = { cookie in
+                guard let cookie else { return }
+                Unmanaged<JellyMPVStream>.fromOpaque(cookie).release()
+            }
+            return 0
         }
     }
 
@@ -217,7 +251,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
                     if let message = event.data?.assumingMemoryBound(to: mpv_event_log_message.self).pointee,
                        let prefix = message.prefix, let level = message.level, let text = message.text {
                         let line = "[\(String(cString: prefix))] \(String(cString: level)): \(String(cString: text))"
-                        change = .log(line.trimmingCharacters(in: .whitespacesAndNewlines))
+                        change = .log(line.replacing(/api_key=[^&\s]+/, with: "api_key=…").trimmingCharacters(in: .whitespacesAndNewlines))
                     }
                 case MPV_EVENT_END_FILE:
                     if let end = event.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee, end.reason == MPV_END_FILE_REASON_ERROR {
@@ -286,6 +320,104 @@ private struct JellyMPVHandle: @unchecked Sendable {
         var value: Int64 = 0
         return mpv_get_property(raw, name, MPV_FORMAT_INT64, &value) >= 0 ? Int(value) : nil
     }
+}
+
+/// A file on the server as mpv reads it: ranges of it fetched over HTTP as mpv asks (4 MB at a
+/// time; mpv's own cache reads ahead of the picture). mpv calls read, seek and size from one thread,
+/// and cancel from any.
+final class JellyMPVStream: @unchecked Sendable {
+    static let scheme = "jellyfin://"
+    private static let chunk: Int64 = 4 << 20
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
+
+    private let url: URL
+    private var position: Int64 = 0
+    /// The file's length (-1 until the server has said).
+    private(set) var length: Int64 = -1
+    private var buffer = Data()
+    private var bufferStart: Int64 = 0
+    private let lock = NSLock()
+    private var task: URLSessionDataTask?
+    private var cancelled = false
+
+    /// Opens it with its first piece (which also gives its length); nil when the server won't serve it.
+    init?(url: URL) {
+        self.url = url
+        guard fill(at: 0) else { return nil }
+    }
+
+    func read(into out: UnsafeMutablePointer<CChar>, count: UInt64) -> Int64 {
+        if length >= 0, position >= length { return 0 }
+        if position < bufferStart || position >= bufferStart + Int64(buffer.count) {
+            guard fill(at: position) else { return -1 }
+            if buffer.isEmpty { return 0 }
+        }
+        let offset = Int(position - bufferStart)
+        let taken = min(Int(min(count, UInt64(Int.max))), buffer.count - offset)
+        buffer.withUnsafeBytes { bytes in
+            if let base = bytes.baseAddress { memcpy(out, base + offset, taken) }
+        }
+        position += Int64(taken)
+        return Int64(taken)
+    }
+
+    func seek(to offset: Int64) -> Int64 {
+        guard offset >= 0, length < 0 || offset <= length else { return Int64(MPV_ERROR_GENERIC.rawValue) }
+        position = offset
+        return offset
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let running = task
+        lock.unlock()
+        running?.cancel()
+    }
+
+    /// The piece starting here.
+    private func fill(at start: Int64) -> Bool {
+        lock.lock()
+        let stop = cancelled
+        lock.unlock()
+        if stop { return false }
+        var request = URLRequest(url: url)
+        request.setValue("bytes=\(start)-\(start + Self.chunk - 1)", forHTTPHeaderField: "Range")
+        let done = DispatchSemaphore(value: 0)
+        let result = JellyMPVFetch()
+        let task = Self.session.dataTask(with: request) { data, response, _ in
+            result.data = data
+            result.response = response as? HTTPURLResponse
+            done.signal()
+        }
+        lock.lock(); self.task = task; lock.unlock()
+        task.resume()
+        done.wait()
+        lock.lock(); self.task = nil; lock.unlock()
+        // Only a range answer: a server sending the whole file at once would fill the memory.
+        guard let response = result.response, response.statusCode == 206, let data = result.data else {
+            if let response = result.response, response.statusCode == 416 { buffer = Data(); bufferStart = start; return true }
+            return false
+        }
+        if let range = response.value(forHTTPHeaderField: "Content-Range"), let total = range.split(separator: "/").last.flatMap({ Int64($0) }) {
+            length = total
+        }
+        buffer = data
+        bufferStart = start
+        return true
+    }
+}
+
+/// One answer from the server, handed from URLSession's thread to the reading one.
+private final class JellyMPVFetch: @unchecked Sendable {
+    var data: Data?
+    var response: HTTPURLResponse?
 }
 
 /// Holds the screen at a refresh rate while smooth motion is on (a display link asking for it; the
