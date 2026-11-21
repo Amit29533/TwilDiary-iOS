@@ -62,9 +62,9 @@ import TwilDiaryCore
         // card link into a glass capsule (glass on the system bars' own glass).
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
         WindowGroup {
-            RootView().environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
-                // The performance run's player (only with --jellyspace-perf; see JellyPerfHarness).
-                .modifier(JellyPerfHarness())
+            // The performance run's player (only with --jellyspace-perf; see JellyPerfHarness), inside
+            // the store and router so the player it opens has them.
+            RootView().modifier(JellyPerfHarness()).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
                 // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
                 .onChange(of: theme, initial: true) { _, chosen in
                     ThemeStore.shared.apply(chosen)

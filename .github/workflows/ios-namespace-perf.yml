@@ -1,7 +1,7 @@
 # JellySpace playback performance on the Namespace Apple Silicon runner: the app plays a generated
 # 1080p24 video with styled (ASS) subtitles in the Simulator, with the controls hidden, on AetherEngine
-# and on mpv, for the tagged commit and the one before it, and the CPU and memory each used are
-# compared in the run's summary. Start it by pushing a tag (`namespace-perf-<short sha>`).
+# and on mpv, for each commit listed in ios/tools/perf/revs.txt (with this commit's test hook laid
+# over it), and the CPU and memory each used are compared in the run's summary. Start it by pushing a tag (`namespace-perf-<short sha>`).
 # The Simulator decodes video in software, so the numbers are higher than a phone's; what counts is
 # the difference between the two commits. Read-only: no signing, no release, no deploy.
 name: iOS performance (Namespace)
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Choose Xcode 26.6 and an iPhone simulator
         run: |
           set -euo pipefail
@@ -71,21 +71,27 @@ jobs:
           nohup python3 "$RUNNER_TEMP/serve.py" "$RUNNER_TEMP/perf" 8765 > "$RUNNER_TEMP/serve.log" 2>&1 &
           sleep 1
           curl -sf -r 0-15 -o /dev/null -w 'range request: %{http_code}\n' http://127.0.0.1:8765/perf.mkv
-      - name: Measure the commit before and this one
+      - name: Measure the listed commits
         run: |
           set -uo pipefail
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b || true
           cp ios/tools/perf/measure.sh "$RUNNER_TEMP/measure.sh"
+          cp ios/tools/perf/revs.txt "$RUNNER_TEMP/revs.txt"
+          here=$(git rev-parse HEAD)
           {
             echo "### JellySpace playback, controls hidden (Simulator, 45 s)"
             echo
             echo "| Build | CPU used (avg) | CPU sampled (median) | CPU peak | Memory peak |"
             echo "|---|---|---|---|---|"
           } > ios/.artifacts/perf/results.md
-          for rev in "$(git rev-parse HEAD~1)" "$(git rev-parse HEAD)"; do
-            short=$(git rev-parse --short "$rev")
+          # The list on its own file handle (3), so nothing in the loop reads it from standard input.
+          while read -r rev name <&3; do
+            [ -n "${rev:-}" ] || continue
+            short="$name"
             git checkout --force -q "$rev"
+            # This commit's test hook, so every listed build opens the player the same way.
+            git checkout -q "$here" -- ios/App/TwilDiaryApp.swift ios/App/Screens/JellyPerfHarness.swift
             mkdir -p ios/.artifacts/perf ios/.artifacts/logs
             bash ios/scripts/xcodegen.sh
             xcodebuild build -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release \
@@ -103,7 +109,10 @@ jobs:
             bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short AetherEngine"
             bash "$RUNNER_TEMP/measure.sh" "$SIMULATOR_ID" "$short mpv" --jellyspace-perf-mpv
             xcrun simctl uninstall "$SIMULATOR_ID" com.amit29533.TwilDiary || true
-          done
+            mkdir -p ios/.artifacts/perf/crashes
+            cp ~/Library/Logs/DiagnosticReports/TwilDiary* ios/.artifacts/perf/crashes/ 2>/dev/null || true
+          done 3< "$RUNNER_TEMP/revs.txt"
+          git checkout --force -q "$here"
           cat ios/.artifacts/perf/results.md
           cat ios/.artifacts/perf/results.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload results
