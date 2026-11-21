@@ -1,12 +1,11 @@
 import SwiftUI
 import UIKit
-import AVFoundation
 import AetherEngine
 import Libmpv
 
-// MARK: Which player a video opens in
+// MARK: Which engine a video plays on
 
-/// Videos you've moved to mpv (More → Decoder → mpv) open there from then on.
+/// Videos you've moved to mpv (More → Decoder → mpv) open on it from then on.
 enum JellyMPVChoice {
     private static let key = "jellyspace.mpvItems"
     static func isOn(_ id: String) -> Bool { (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(id) }
@@ -30,49 +29,13 @@ enum JellyDecoder: String, CaseIterable, Sendable {
     var path: DecodePath { self == .app ? .software : .automatic }
 }
 
-/// Opens a video in JellySpace's player (AetherEngine), or in mpv when it was moved there, and
-/// switches between the two where you are.
-struct JellyPlayerHost: View {
-    @State private var playback: JellyPlayback
-    @State private var usesMPV: Bool
-    /// Where the other player was when you switched (nil: where Jellyfin says you stopped).
-    @State private var handoff: Double?
-
-    init(playback: JellyPlayback) {
-        _playback = State(initialValue: playback)
-        _usesMPV = State(initialValue: JellyMPVChoice.isOn(playback.id))
-    }
-
-    var body: some View {
-        if usesMPV {
-            JellyMPVPlayerView(playback: playback, startAt: handoff) { at in
-                JellyMPVChoice.set(playback.id, false)
-                handoff = at
-                usesMPV = false
-            }
-        } else {
-            JellyPlayerView(playback: playback, startAt: handoff) { now, at in
-                JellyMPVChoice.set(now.id, true)
-                playback = now
-                handoff = at
-                usesMPV = true
-            }
-        }
-    }
-}
-
 // MARK: mpv
-
-/// One of the file's tracks as mpv lists it.
-struct JellyMPVTrack: Identifiable, Equatable, Sendable {
-    let id: Int
-    let label: String
-}
 
 /// What the event thread hands to the main actor.
 private enum JellyMPVChange: Sendable {
-    case time(Double), duration(Double), paused(Bool), buffering(Bool), ended(Bool), speed(Double)
-    case tracks(audio: [JellyMPVTrack], subtitles: [JellyMPVTrack], aid: Int?, sid: Int?)
+    case time(Double), duration(Double), paused(Bool), buffering(Bool), ended(Bool)
+    case width(Int), height(Int)
+    case tracks(audio: [TrackInfo], subtitles: [TrackInfo], aid: Int?, sid: Int?)
     case loaded
     case log(String), failed(String)
 }
@@ -82,29 +45,35 @@ private struct JellyMPVHandle: @unchecked Sendable {
     let raw: OpaquePointer
 }
 
-/// libmpv driving a Metal layer: the file, its clock, its tracks. Events are read on a thread of their
-/// own and published on the main actor.
+/// libmpv as the player's second engine: the file, its clock, its tracks (as AetherEngine's
+/// TrackInfo, so the player's menus and remembered languages work as they are), drawn into a Metal
+/// layer. Events are read on a thread of their own and published on the main actor. mpv draws the
+/// subtitles itself.
 @MainActor final class JellyMPV: ObservableObject {
+    @Published private(set) var state: PlaybackState = .idle
     @Published private(set) var time: Double = 0
     @Published private(set) var duration: Double = 0
-    @Published private(set) var paused = false
-    @Published private(set) var buffering = true
-    @Published private(set) var ended = false
-    @Published private(set) var speed: Double = 1
-    @Published private(set) var audioTracks: [JellyMPVTrack] = []
-    @Published private(set) var subtitleTracks: [JellyMPVTrack] = []
+    @Published private(set) var buffering = false
+    @Published private(set) var audioTracks: [TrackInfo] = []
+    @Published private(set) var subtitleTracks: [TrackInfo] = []
     @Published private(set) var audioID: Int?
     @Published private(set) var subtitleID: Int?
-    @Published private(set) var loaded = false
-    /// Why the video didn't open (mpv's own words), and its latest warnings and errors.
+    @Published private(set) var videoSize = CGSize.zero
+    /// Why the video didn't open, in mpv's words (with its latest warning or error).
     @Published private(set) var failure: String?
-    @Published private(set) var log: [String] = []
 
     private var handle: JellyMPVHandle?
+    private var loaded = false, paused = false, ended = false
+    private var log: [String] = []
+    /// A file asked for before the picture was up; loaded once it is.
+    private var pending: (url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)])?
     /// Jellyfin's separate subtitle files, added once the video has opened.
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
-    func start(layer: CAMetalLayer, url: URL, at seconds: Double?, subtitles: [ExternalSubtitleTrack], smooth: Int) {
+    var running: Bool { handle != nil }
+
+    /// mpv on this layer; a file asked for already is loaded now.
+    func start(layer: CAMetalLayer, smooth: Int) {
         guard handle == nil else { return }
         guard let raw = mpv_create() else { failure = "mpv couldn't be created."; return }
         mpv_request_log_messages(raw, "warn")
@@ -113,7 +82,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         let options: [(String, String)] = [
             ("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox"),
             ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
-            ("sub-auto", "no"), ("subs-fallback", "yes"), ("subs-match-os-language", "yes"), ("audio-display", "no"),
+            ("sub-auto", "no"), ("subs-fallback", "yes"), ("audio-display", "no"),
             ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-readahead-secs", "20"),
         ]
         for (name, value) in options { mpv_set_option_string(raw, name, value) }
@@ -126,34 +95,82 @@ private struct JellyMPVHandle: @unchecked Sendable {
         }
         let observed: [(String, mpv_format)] = [
             ("time-pos", MPV_FORMAT_DOUBLE), ("duration", MPV_FORMAT_DOUBLE), ("pause", MPV_FORMAT_FLAG),
-            ("paused-for-cache", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG), ("speed", MPV_FORMAT_DOUBLE),
+            ("paused-for-cache", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG),
+            ("width", MPV_FORMAT_INT64), ("height", MPV_FORMAT_INT64),
             ("track-list", MPV_FORMAT_NONE), ("aid", MPV_FORMAT_NONE), ("sid", MPV_FORMAT_NONE),
         ]
         for (name, format) in observed { mpv_observe_property(raw, 0, name, format) }
         Self.addJellyfinProtocol(raw)
         let handle = JellyMPVHandle(raw: raw)
         self.handle = handle
-        pendingSubtitles = subtitles
         Self.readEvents(handle) { [weak self] change in self?.apply(change) }
-        var load = ["loadfile", JellyMPVStream.scheme + url.absoluteString, "replace"]
-        if let seconds, seconds > 1 { load += ["-1", "start=\(seconds)"] }
-        command(load)
+        if let pending {
+            self.pending = nil
+            load(pending.url, start: pending.start, subtitles: pending.subtitles, settings: pending.settings)
+        }
     }
 
-    /// Closes the file; the event thread frees mpv once it has shut down.
+    /// Plays this file (from `start` seconds) with these mpv settings, now or once the picture is up.
+    func open(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
+        if handle == nil {
+            pending = (url, start, subtitles, settings)
+            updateState()
+        } else {
+            load(url, start: start, subtitles: subtitles, settings: settings)
+        }
+    }
+
+    private func load(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
+        loaded = false; ended = false; paused = false; failure = nil; log = []
+        time = start ?? 0; duration = 0; audioTracks = []; subtitleTracks = []; audioID = nil; subtitleID = nil
+        pendingSubtitles = subtitles
+        updateState()
+        for (name, value) in settings { set(name, value) }
+        set("pause", "no")
+        var command = ["loadfile", JellyMPVStream.scheme + url.absoluteString, "replace"]
+        if let start, start > 1 { command += ["-1", "start=\(start)"] }
+        self.command(command)
+    }
+
+    /// Closes the file and mpv; the event thread frees it once it has shut down.
     func stop() {
-        guard let raw = handle?.raw else { return }
+        pending = nil
+        loaded = false
+        let raw = handle?.raw
         handle = nil
-        mpv_command_string(raw, "quit")
+        updateState()
+        if let raw { mpv_command_string(raw, "quit") }
     }
 
-    func togglePause() { set("pause", paused ? "no" : "yes") }
+    func play() { set("pause", "no") }
     func pause() { set("pause", "yes") }
     func seek(to seconds: Double) { command(["seek", String(max(0, seconds)), "absolute"]) }
-    func skip(_ seconds: Double) { command(["seek", String(seconds), "relative"]) }
-    func setSpeed(_ value: Double) { set("speed", String(value)) }
+    func setRate(_ value: Float) { set("speed", String(value)) }
+    /// 0 to 1, as AetherEngine's volume (the sleep timer's fade).
+    func setVolume(_ value: Float) { set("volume", String(Int((max(0, min(1, value)) * 100).rounded()))) }
     func selectAudio(_ id: Int) { set("aid", String(id)) }
     func selectSubtitle(_ id: Int?) { set("sid", id.map(String.init) ?? "no") }
+    func setAudioDelay(_ seconds: Double) { set("audio-delay", String(seconds)) }
+    func setSubtitleDelay(_ seconds: Double) { set("sub-delay", String(seconds)) }
+    /// A subtitle file found later (downloaded), added and shown.
+    func addSubtitle(_ url: URL, name: String?, language: String?) {
+        command(["sub-add", JellyMPVStream.scheme + url.absoluteString, "select", name ?? "Subtitles", language ?? ""])
+    }
+    /// Fit, Fill (cropped to the screen) or Original (one video pixel per screen pixel).
+    func setFill(_ fill: JellyFill) {
+        for (name, value) in Self.fillSettings(fill) { set(name, value) }
+    }
+    nonisolated static func fillSettings(_ fill: JellyFill) -> [(String, String)] {
+        [("video-unscaled", fill == .original ? "yes" : "no"), ("panscan", fill == .fill ? "1.0" : "0.0")]
+    }
+    /// The subtitles' size, colour and box, from JellySpace's settings.
+    nonisolated static func subtitleSettings(scale: Double, yellow: Bool, box: Bool) -> [(String, String)] {
+        [("sub-scale", String(scale)), ("sub-color", yellow ? "#FFE04D" : "#FFFFFF"),
+         ("sub-border-style", box ? "background-box" : "outline-and-shadow"), ("sub-back-color", "#99000000")]
+    }
+    /// The picture off in the background (mpv's Metal layer can't draw there) and back.
+    func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
+
     /// Smooth motion at 60 or 120 Hz (0 off): frames timed to the screen's refresh and blended where
     /// they fall between two refreshes (mpv's display-resample with interpolation), so pans and
     /// handheld shots don't judder.
@@ -164,8 +181,6 @@ private struct JellyMPVHandle: @unchecked Sendable {
         rate > 0 ? [("display-fps-override", String(rate)), ("video-sync", "display-resample"), ("interpolation", "yes"), ("tscale", "oversample")]
                  : [("interpolation", "no"), ("video-sync", "audio")]
     }
-    /// The picture off in the background (mpv's Metal layer can't draw there) and back.
-    func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
 
     private func set(_ name: String, _ value: String) {
         guard let raw = handle?.raw else { return }
@@ -179,22 +194,36 @@ private struct JellyMPVHandle: @unchecked Sendable {
         mpv_command(raw, &cargs)
     }
 
+    private func updateState() {
+        let now: PlaybackState
+        if !loaded { now = handle == nil && pending == nil ? .idle : .loading }
+        else if ended { now = .ended }
+        else if paused { now = .paused }
+        else { now = .playing }
+        if now != state { state = now }
+    }
+
     private func apply(_ change: JellyMPVChange) {
         switch change {
         case .time(let value): time = value
         case .duration(let value): duration = value
-        case .paused(let value): paused = value
+        case .paused(let value): paused = value; updateState()
         case .buffering(let value): buffering = value
-        case .ended(let value): ended = value
-        case .speed(let value): speed = value
+        case .ended(let value): ended = value; updateState()
+        case .width(let value): if videoSize.width != CGFloat(value) { videoSize.width = CGFloat(value) }
+        case .height(let value): if videoSize.height != CGFloat(value) { videoSize.height = CGFloat(value) }
         case .tracks(let audio, let subtitles, let aid, let sid):
-            audioTracks = audio; subtitleTracks = subtitles; audioID = aid; subtitleID = sid
+            if audio.map(\.id) != audioTracks.map(\.id) { audioTracks = audio }
+            if subtitles.map(\.id) != subtitleTracks.map(\.id) { subtitleTracks = subtitles }
+            if aid != audioID { audioID = aid }
+            if sid != subtitleID { subtitleID = sid }
         case .log(let line):
-            log = Array((log + [line]).suffix(8))
+            log = Array((log + [line]).suffix(4))
         case .failed(let reason):
-            failure = reason; buffering = false
+            failure = ([reason] + log.suffix(1)).joined(separator: "\n")
         case .loaded:
             loaded = true; buffering = false
+            updateState()
             for subtitle in pendingSubtitles {
                 command(["sub-add", JellyMPVStream.scheme + subtitle.url.absoluteString, "auto", subtitle.name ?? "Subtitles", subtitle.language ?? ""])
             }
@@ -246,6 +275,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
                 var change: JellyMPVChange?
                 switch event.event_id {
                 case MPV_EVENT_FILE_LOADED:
+                    lastTime = -1
                     change = .loaded
                 case MPV_EVENT_LOG_MESSAGE:
                     if let message = event.data?.assumingMemoryBound(to: mpv_event_log_message.self).pointee,
@@ -263,15 +293,17 @@ private struct JellyMPVHandle: @unchecked Sendable {
                     let name = String(cString: cName)
                     let number = property.format == MPV_FORMAT_DOUBLE ? property.data?.assumingMemoryBound(to: Double.self).pointee : nil
                     let flag = property.format == MPV_FORMAT_FLAG ? property.data.map { $0.assumingMemoryBound(to: Int32.self).pointee != 0 } : nil
+                    let integer = property.format == MPV_FORMAT_INT64 ? property.data.map { Int($0.assumingMemoryBound(to: Int64.self).pointee) } : nil
                     switch name {
                     case "time-pos":
-                        // A few times a second is enough for the clock and the bar.
-                        if let number, abs(number - lastTime) >= 0.25 { lastTime = number; change = .time(number) }
+                        // Ten times a second, as AetherEngine's clock.
+                        if let number, abs(number - lastTime) >= 0.1 { lastTime = number; change = .time(number) }
                     case "duration": if let number { change = .duration(number) }
                     case "pause": if let flag { change = .paused(flag) }
                     case "paused-for-cache": if let flag { change = .buffering(flag) }
                     case "eof-reached": change = .ended(flag ?? false)
-                    case "speed": if let number { change = .speed(number) }
+                    case "width": if let integer { change = .width(integer) }
+                    case "height": if let integer { change = .height(integer) }
                     case "track-list", "aid", "sid": change = Self.tracks(handle.raw)
                     default: break
                     }
@@ -291,21 +323,20 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     /// The audio and subtitle tracks, read from mpv's track list.
     nonisolated private static func tracks(_ raw: OpaquePointer) -> JellyMPVChange {
-        var audio: [JellyMPVTrack] = [], subtitles: [JellyMPVTrack] = []
+        var audio: [TrackInfo] = [], subtitles: [TrackInfo] = []
         var aid: Int?, sid: Int?
         let count = int(raw, "track-list/count") ?? 0
         for index in 0..<count {
             let base = "track-list/\(index)/"
             guard let type = string(raw, base + "type"), let id = int(raw, base + "id") else { continue }
-            let language = string(raw, base + "lang").flatMap { Locale.current.localizedString(forLanguageCode: $0) }
-            let title = string(raw, base + "title")
-            let codec = string(raw, base + "codec")?.uppercased()
-            let label = [title ?? language ?? "Track \(id)", title != nil ? language : nil, codec]
-                .compactMap { $0 }.joined(separator: " · ")
+            let track = TrackInfo(id: id, name: string(raw, base + "title") ?? "", codec: string(raw, base + "codec") ?? "",
+                                  language: string(raw, base + "lang"), channels: int(raw, base + "demux-channel-count") ?? 0,
+                                  isDefault: string(raw, base + "default") == "yes", isForced: string(raw, base + "forced") == "yes",
+                                  isExternal: string(raw, base + "external") == "yes")
             let selected = string(raw, base + "selected") == "yes"
             switch type {
-            case "audio": audio.append(JellyMPVTrack(id: id, label: label)); if selected { aid = id }
-            case "sub": subtitles.append(JellyMPVTrack(id: id, label: label)); if selected { sid = id }
+            case "audio": audio.append(track); if selected { aid = id }
+            case "sub": subtitles.append(track); if selected { sid = id }
             default: break
             }
         }
@@ -454,12 +485,9 @@ final class JellyMPVSurfaceView: UIView {
     override class var layerClass: AnyClass { JellyMPVLayer.self }
 }
 
-/// The picture: a view backed by mpv's Metal layer, with mpv started on it.
-private struct JellyMPVSurface: UIViewRepresentable {
+/// The picture: a view backed by mpv's Metal layer, mpv started on it.
+struct JellyMPVSurface: UIViewRepresentable {
     let player: JellyMPV
-    let url: URL
-    let start: Double?
-    let subtitles: [ExternalSubtitleTrack]
     let smooth: Int
     @Environment(\.displayScale) private var displayScale
 
@@ -470,284 +498,9 @@ private struct JellyMPVSurface: UIViewRepresentable {
             layer.contentsScale = displayScale
             layer.framebufferOnly = true
             layer.backgroundColor = UIColor.black.cgColor
-            player.start(layer: layer, url: url, at: start, subtitles: subtitles, smooth: smooth)
+            player.start(layer: layer, smooth: smooth)
         }
         return view
     }
     func updateUIView(_ view: JellyMPVSurfaceView, context: Context) {}
-}
-
-// MARK: The mpv player
-
-/// The fallback player: mpv's picture with simple controls (back and on 15 seconds, play/pause, the
-/// bar, audio and subtitles, speed, and the decoder to go back to JellySpace's player). It resumes and
-/// saves your place in Jellyfin, and at 90% marks it played there and watched in your diary.
-struct JellyMPVPlayerView: View {
-    let playback: JellyPlayback
-    /// Where to start (from the other player); nil starts where Jellyfin says you stopped.
-    let startAt: Double?
-    /// Back to JellySpace's player, at this time.
-    let toEngine: (Double) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @Environment(DiaryStore.self) private var store
-    @AppStorage(JellyPrefs.resumeKey) private var resumeOn = true
-    @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
-    /// Smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
-    @AppStorage("jellyspace.mpvSmoothRate") private var smoothMotion = 0
-    @State private var refresh = JellyRefreshRate()
-    @StateObject private var mpv = JellyMPV()
-    @State private var start: Double?
-    @State private var subtitles: [ExternalSubtitleTrack] = []
-    @State private var ready = false
-    @State private var userID: String?
-    @State private var showsControls = true
-    @State private var hideTask: Task<Void, Never>?
-    @State private var scrub: Double?
-    @State private var finished = false
-    @State private var switching = false
-    /// Still nothing opened ten seconds in: mpv's latest warnings show.
-    @State private var stalled = false
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if ready {
-                JellyMPVSurface(player: mpv, url: playback.url, start: start, subtitles: subtitles, smooth: smoothMotion).ignoresSafeArea()
-            }
-            Color.clear.contentShape(Rectangle()).ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.2)) { showsControls.toggle() }
-                    if showsControls { scheduleHide() }
-                }
-            if mpv.buffering, !showsControls, mpv.failure == nil {
-                ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)
-            }
-            if mpv.failure != nil || (stalled && !mpv.loaded) {
-                problem.allowsHitTesting(false)
-            }
-            controls.opacity(showsControls ? 1 : 0).allowsHitTesting(showsControls)
-        }
-        .statusBarHidden(true)
-        .persistentSystemOverlays(.hidden)
-        .preferredColorScheme(.dark)
-        .task { await prepare() }
-        .task(id: mpv.paused) {
-            // Your place, saved every 15 seconds while it plays.
-            guard ready else { return }
-            while !Task.isCancelled, !mpv.paused {
-                try? await Task.sleep(for: .seconds(15))
-                guard !Task.isCancelled else { return }
-                savePlace(); report("progress")
-            }
-        }
-        .onChange(of: mpv.loaded) { _, loaded in if loaded { report("start"); scheduleHide() } }
-        .onChange(of: mpv.paused) { _, _ in report("progress") }
-        .onChange(of: mpv.time) { _, now in reachedEnd(now) }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background { mpv.pause(); mpv.showVideo(false) }
-            if phase == .active { mpv.showVideo(true) }
-        }
-        .onAppear {
-            refresh.hold(smoothMotion)
-            UIApplication.shared.isIdleTimerDisabled = true
-            JellyMusic.shared.pause()
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try? AVAudioSession.sharedInstance().setActive(true)
-            let upright = (playback.item.Height ?? 0) > (playback.item.Width ?? 1)
-            OrientationLock.set(upright ? .portrait : .landscape, turnTo: upright ? .portrait : .landscape)
-        }
-        .onDisappear {
-            refresh.hold(0)
-            UIApplication.shared.isIdleTimerDisabled = false
-            hideTask?.cancel()
-            report("stop")
-            savePlace()
-            mpv.stop()
-            if !switching { OrientationLock.set(.portrait, turnTo: .portrait) }
-        }
-    }
-
-    // MARK: Controls
-
-    private var controls: some View {
-        let compact = verticalSizeClass == .compact
-        let side: CGFloat = compact ? 28 : 16
-        let shown = scrub ?? mpv.time
-        return ZStack {
-            LinearGradient(colors: [.black.opacity(0.65), .clear, .clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea().allowsHitTesting(false)
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(playback.title).font(.system(size: 17, weight: .bold)).lineLimit(1)
-                        Text("mpv").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
-                    }
-                    Spacer(minLength: 0)
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark").font(.system(size: 20, weight: .semibold)).frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Close player")
-                }
-                .padding(.horizontal, side).padding(.top, 10)
-                Spacer(minLength: 0)
-                HStack(spacing: 14) {
-                    Slider(value: Binding(get: { scrub ?? mpv.time }, set: { scrub = $0 }), in: 0...max(1, mpv.duration),
-                           onEditingChanged: { editing in
-                               if editing { hideTask?.cancel() } else if let scrub { mpv.seek(to: scrub); self.scrub = nil; scheduleHide() }
-                           })
-                    .tint(.red)
-                    Text("-" + JellyPlayerView.clock(max(0, mpv.duration - shown)))
-                        .font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                }
-                .padding(.horizontal, side)
-                HStack(spacing: compact ? 34 : 22) {
-                    tracksMenu
-                    speedMenu
-                    decoderMenu
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .padding(.top, 10).padding(.bottom, compact ? 10 : 18)
-            }
-            HStack(spacing: compact ? 90 : 56) {
-                Button { mpv.skip(-15); scheduleHide() } label: { Image(systemName: "gobackward.15").font(.system(size: 34, weight: .medium)) }
-                    .accessibilityLabel("Back 15 seconds")
-                Button { mpv.togglePause(); scheduleHide() } label: {
-                    Image(systemName: mpv.paused ? "play.fill" : "pause.fill").font(.system(size: 48)).frame(width: 64, height: 64)
-                }
-                .accessibilityLabel(mpv.paused ? "Play" : "Pause")
-                Button { mpv.skip(15); scheduleHide() } label: { Image(systemName: "goforward.15").font(.system(size: 34, weight: .medium)) }
-                    .accessibilityLabel("On 15 seconds")
-            }
-        }
-        .foregroundStyle(.white)
-        .buttonStyle(.plain)
-        .shadow(color: .black.opacity(0.45), radius: 6)
-    }
-
-    private var tracksMenu: some View {
-        Menu {
-            Picker(selection: Binding(get: { mpv.subtitleID ?? -1 }, set: { mpv.selectSubtitle($0 < 0 ? nil : $0); scheduleHide() })) {
-                Text("Off").tag(-1)
-                ForEach(mpv.subtitleTracks) { Text($0.label).tag($0.id) }
-            } label: { Text("Subtitles") }.pickerStyle(.inline)
-            if mpv.audioTracks.count > 1 {
-                Picker(selection: Binding(get: { mpv.audioID ?? -1 }, set: { mpv.selectAudio($0); scheduleHide() })) {
-                    ForEach(mpv.audioTracks) { Text($0.label).tag($0.id) }
-                } label: { Text("Audio") }.pickerStyle(.inline)
-            }
-        } label: {
-            Label("Audio & Subtitles", systemImage: "captions.bubble")
-        }
-        .menuIndicator(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { hideTask?.cancel() })
-    }
-
-    private var speedMenu: some View {
-        Menu {
-            Picker(selection: Binding(get: { mpv.speed }, set: { mpv.setSpeed($0); scheduleHide() })) {
-                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { Text(JellyPlayerView.speedName(Float($0))).tag($0) }
-            } label: { Text("Speed") }.pickerStyle(.inline)
-        } label: {
-            Label("Speed (" + JellyPlayerView.speedName(Float(mpv.speed)) + ")", systemImage: "gauge.with.dots.needle.67percent")
-        }
-        .menuIndicator(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { hideTask?.cancel() })
-    }
-
-    private var decoderMenu: some View {
-        Menu {
-            Picker(selection: Binding(get: { smoothMotion }, set: { rate in
-                smoothMotion = rate
-                mpv.setSmooth(rate)
-                refresh.hold(rate)
-                scheduleHide()
-            })) {
-                Text("Off").tag(0)
-                Text("60 Hz").tag(60)
-                Text("120 Hz").tag(120)
-            } label: { Label("Smooth motion", systemImage: "wand.and.sparkles") }.pickerStyle(.menu)
-            Picker(selection: Binding(get: { JellyDecoder.mpv }, set: { choice in
-                guard choice != .mpv else { return }
-                switching = true
-                toEngine(mpv.time)
-            })) {
-                ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }
-            } label: { Label("Decoder", systemImage: "cpu") }.pickerStyle(.menu)
-        } label: {
-            Label("More", systemImage: "ellipsis.circle")
-        }
-        .menuIndicator(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { hideTask?.cancel() })
-    }
-
-    /// What went wrong, in mpv's words, with its latest warnings and errors.
-    private var problem: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(mpv.failure ?? "Still opening…").font(.system(size: 14, weight: .semibold))
-            ForEach(Array(mpv.log.enumerated()), id: \.offset) { _, line in
-                Text(line).font(.system(size: 11, design: .monospaced)).foregroundStyle(.white.opacity(0.75)).lineLimit(3)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(14)
-        .frame(maxWidth: 560, alignment: .leading)
-        .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.horizontal, 24)
-    }
-
-    private func scheduleHide() {
-        hideTask?.cancel()
-        hideTask = Task {
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled, !mpv.paused, scrub == nil else { return }
-            withAnimation(.easeInOut(duration: 0.3)) { showsControls = false }
-        }
-    }
-
-    // MARK: Jellyfin
-
-    /// Where to start and the separate subtitle files, then the picture.
-    private func prepare() async {
-        let client = playback.client, id = playback.id
-        let user = await JellyfinUser.id(client)
-        userID = user
-        if let startAt {
-            start = startAt
-        } else if resumeOn, let user, let data = try? await client.userData(id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
-            start = Double(ticks) / 10_000_000
-        }
-        let info = try? await client.playerInfo(id, user: user)
-        subtitles = JellyPlayerView.subtitleFiles(info, source: playback.source, item: id, client: client)
-        ready = true
-        try? await Task.sleep(for: .seconds(10))
-        stalled = true
-    }
-
-    private func savePlace() {
-        guard let user = userID, mpv.time > 5, !(finished && mpv.time >= mpv.duration * 0.9) else { return }
-        let client = playback.client, id = playback.id, at = mpv.time
-        Task { try? await client.savePosition(id, user: user, seconds: at) }
-    }
-
-    private func report(_ event: String) {
-        guard JellyAccount.token != nil else { return }
-        let client = playback.client, id = playback.id, source = playback.source, at = mpv.time, paused = mpv.paused
-        Task { await client.report(event, item: id, source: source, seconds: at, paused: paused) }
-    }
-
-    private func reachedEnd(_ seconds: Double) {
-        guard !finished, mpv.duration > 60, seconds >= mpv.duration * 0.9 else { return }
-        finished = true
-        let client = playback.client, id = playback.id, user = userID, item = playback.item, diaryStore = store, diary = diaryOn
-        Task {
-            if let user {
-                try? await client.markPlayed(id, user: user)
-                try? await client.savePosition(id, user: user, seconds: 0)
-            }
-            if diary { _ = await JellyDiary.mark(item, client: client, store: diaryStore) }
-        }
-    }
 }

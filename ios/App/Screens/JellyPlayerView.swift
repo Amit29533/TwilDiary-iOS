@@ -178,18 +178,19 @@ struct JellyPlayerView: View {
     private enum Panel { case episodes, chapters, advanced, subtitleSearch }
     private enum SwipeKind { case brightness, volume, seek }
 
-    /// Where mpv was when you switched back (used once, for the first video).
-    private let handoff: Double?
-    /// Over to mpv (More → Decoder → mpv), with the video playing now and where it is.
-    private let toMPV: ((JellyPlayback, Double) -> Void)?
-    @State private var usedHandoff = false
-    /// Handing over to mpv: the screen keeps its way round as this player goes.
-    @State private var handingOver = false
+    /// mpv, the second engine (More → Decoder → mpv), and whether this video plays on it.
+    @StateObject private var mpv = JellyMPV()
+    @State private var usesMPV: Bool
+    /// Where the other engine was when you switched (the next start begins there).
+    @State private var switchAt: Double?
+    /// mpv's smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
+    @AppStorage("jellyspace.mpvSmoothRate") private var smoothRate = 0
+    @State private var refresh = JellyRefreshRate()
+    @Environment(\.scenePhase) private var scenePhase
 
-    init(playback: JellyPlayback, startAt: Double? = nil, toMPV: ((JellyPlayback, Double) -> Void)? = nil) {
+    init(playback: JellyPlayback) {
         _current = State(initialValue: playback)
-        handoff = startAt
-        self.toMPV = toMPV
+        _usesMPV = State(initialValue: JellyMPVChoice.isOn(playback.id))
     }
 
     private var fill: JellyFill { JellyFill(rawValue: fillRaw) ?? .fit }
@@ -205,7 +206,9 @@ struct JellyPlayerView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let engine {
+            if usesMPV {
+                mpvPicture
+            } else if let engine {
                 picture(engine)
             }
             GeometryReader { safe in
@@ -256,7 +259,7 @@ struct JellyPlayerView: View {
             if let level, !(showsControls && level.symbol == "sun.max.fill") {
                 levelHUD(level).transition(.opacity).allowsHitTesting(false)
             }
-            if showsInfo, let engine, failure == nil, !screenLocked {
+            if showsInfo, !usesMPV, let engine, failure == nil, !screenLocked {
                 JellyPlaybackInfo(engine: engine, serverFrameRate: frameRate)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     .padding(.top, verticalSizeClass == .compact ? 64 : 110).padding(.trailing, 16)
@@ -319,9 +322,18 @@ struct JellyPlayerView: View {
             report("stop")
             savePlace()
             engine?.stop()
-            if !handingOver { OrientationLock.set(.portrait, turnTo: .portrait) }
+            mpv.stop()
+            refresh.hold(0)
+            OrientationLock.set(.portrait, turnTo: .portrait)
         }
-        .task(id: current.id) { await start() }
+        .task(id: current.id + (usesMPV ? "|mpv" : "")) { await start() }
+        // mpv's smooth motion holds the screen at its rate while it plays.
+        .task(id: usesMPV ? smoothRate : 0) { refresh.hold(usesMPV ? smoothRate : 0) }
+        .onChange(of: scenePhase) { _, phase in
+            // mpv's Metal layer can't draw in the background: the picture goes off there (the sound plays on).
+            guard usesMPV else { return }
+            if phase == .background { mpv.showVideo(false) } else if phase == .active { mpv.showVideo(true) }
+        }
         .task(id: thumbnailIndex) { await loadThumbnail(thumbnailIndex) }
         .task(id: state == .playing) {
             // Your place, saved every 15 seconds while it plays.
@@ -377,6 +389,36 @@ struct JellyPlayerView: View {
         }
     }
 
+    /// mpv's picture, with its clock, tracks and size fed into the same state as AetherEngine's (mpv
+    /// draws the subtitles itself, so none come through for the player's own).
+    private var mpvPicture: some View {
+        JellyMPVSurface(player: mpv, smooth: smoothRate)
+            .onReceive(mpv.$state) { state = $0 }
+            .onReceive(mpv.$time) { seconds in time = seconds; subtitleTime = seconds; reachedEnd(seconds); autoSkip(); checkSleep() }
+            .onReceive(mpv.$duration) { duration = $0 }
+            .onReceive(mpv.$buffering) { buffering = $0 }
+            .onReceive(mpv.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
+            .onReceive(mpv.$subtitleTracks) { tracks in subtitleTracks = tracks; pickDefaultSubtitle(tracks) }
+            .onReceive(mpv.$audioID) { activeAudio = $0 }
+            .onReceive(mpv.$subtitleID) { activeSubtitle = $0 }
+            .onReceive(mpv.$videoSize) { size in if size.width > 0, size.height > 0 { videoSize = size } }
+            .onReceive(mpv.$failure) { reason in if let reason { failure = reason } }
+            .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
+            .ignoresSafeArea()
+    }
+
+    // The engine playing now: AetherEngine, or mpv.
+    private func enginePlay() { if usesMPV { mpv.play() } else { enginePlay() } }
+    private func enginePause() { if usesMPV { mpv.pause() } else { enginePause() } }
+    private func engineRate(_ rate: Float) { if usesMPV { mpv.setRate(rate) } else { engine?.setRate(rate) } }
+    private func engineVolume(_ value: Float) { if usesMPV { mpv.setVolume(value) } else { engine?.volume = value } }
+    private func engineAudio(_ id: Int) { if usesMPV { mpv.selectAudio(id) } else { engine?.selectAudioTrack(index: id) } }
+    private func engineSubtitle(_ id: Int?) {
+        if usesMPV { mpv.selectSubtitle(id) } else if let id { engine?.selectSubtitleTrack(index: id) } else { engine?.clearSubtitle() }
+    }
+    private func engineSubtitleDelay(_ seconds: Double) { if usesMPV { mpv.setSubtitleDelay(seconds) } else { engine?.setSoftwareSubtitleDelay(seconds) } }
+    private func engineAudioDelay(_ seconds: Double) { if usesMPV { mpv.setAudioDelay(seconds) } else { engine?.setAudioDelay(seconds) } }
+
     /// Double tap: 15 seconds back or on, with three arrows running that way on that side (each tap
     /// runs them again; they go a moment after the last).
     private func skip(_ seconds: Double) {
@@ -390,20 +432,20 @@ struct JellyPlayerView: View {
     private func togglePlay() {
         touched()
         guard state == .playing || state == .paused else { return }
-        if state == .playing { engine?.pause() } else { engine?.play() }
+        if state == .playing { enginePause() } else { enginePlay() }
     }
     /// Hold: 2x while the finger stays down.
     private func startHold() {
         touched()
         guard holdOn, !holding, state == .playing, swipeKind == nil else { return }
         withAnimation(.easeOut(duration: 0.15)) { holding = true }
-        engine?.setRate(2)
+        engineRate(2)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     private func endHold() {
         guard holding else { return }
         withAnimation(.easeOut(duration: 0.15)) { holding = false }
-        engine?.setRate(speed)
+        engineRate(speed)
     }
 
     /// A one-finger swipe. Sideways: through the video (the whole width is three minutes, so a short
@@ -601,8 +643,8 @@ struct JellyPlayerView: View {
     // MARK: Starting, switching and finishing
 
     private func start() async {
-        if engine == nil { engine = try? AetherEngine() }
-        guard let engine else { failure = "The player couldn’t start."; return }
+        if !usesMPV, engine == nil { engine = try? AetherEngine() }
+        if !usesMPV, engine == nil { failure = "The player couldn’t start."; return }
         JellyMusic.shared.pause()
         skipped = []
         pip.engine = engine
@@ -617,9 +659,9 @@ struct JellyPlayerView: View {
         }
         var startAt: Double?
         var handedOver = false
-        if let handoff, !usedHandoff {
-            usedHandoff = true
-            startAt = handoff; handedOver = true
+        if let switchAt {
+            self.switchAt = nil
+            startAt = switchAt; handedOver = true
         } else if resumeOn, let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
             startAt = Double(ticks) / 10_000_000
         }
@@ -638,39 +680,60 @@ struct JellyPlayerView: View {
         // separate network for anime: on a 1080p episode it cost about a third of each frame and a few
         // hundred megabytes), and on Auto not for 50/60 fps.
         frameRate = Self.frameRate(extras, source: current.source)
-        options.upscalesLowResolutionVideo = upscaleMode.applies(frameRate: frameRate)
-        options.upscaleScaler = .automatic
-        options.preferredDecodePath = decodePath
-        options.audioShaping = Self.shaping(dialogue: dialogueBoost, night: nightMode, boost: volumeBoost)
-        upscale = nil
-        engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
-        // Picture subtitles (PGS) are kept decoded either side of the playhead as far as a subtitle
-        // delay can reach; the delay control stops at 15 s, so that's all that's kept (the default 60 s
-        // of full-colour pictures each way, on a busy track, is enough to run the phone out of memory).
-        engine.maximumSubtitleOffsetSeconds = 15
-        // The lock screen and Control Center: the title, its poster, play/pause and skipping.
-        engine.ownsSoftwareNowPlaying = true
-        engine.ownsVideoNowPlayingSession = true
-        engine.ownsVideoNowPlayingCommands = true
-        engine.remoteSkipInterval = Double(skipSeconds)
-        engine.setNowPlayingInfo(nowPlayingInfo(nil))
-        do {
-            if let startAt, startAt > (handedOver ? 1 : 30) {
-                try await engine.load(url: current.url, startPosition: startAt, options: options)
-                if !handedOver { resumedAt = startAt }
+        if usesMPV {
+            // mpv: the file through its own reader, with the picture, subtitle look, speed and audio
+            // delay set as it opens. The sound plays as a film's should (on with the ringer off, on in
+            // the background), which AetherEngine otherwise sets up.
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            var settings = JellyMPV.fillSettings(fill)
+                + JellyMPV.subtitleSettings(scale: subtitleSize, yellow: subtitleColor == "yellow", box: subtitleBox)
+            settings += [("speed", String(speed)), ("audio-delay", String(audioDelay)), ("sub-delay", String(subtitleDelay)), ("sid", "no")]
+            // The next episodes played on mpv open on it too.
+            JellyMPVChoice.set(current.id, true)
+            let resume = startAt.flatMap { $0 > (handedOver ? 1 : 30) ? $0 : nil }
+            mpv.open(current.url, start: resume, subtitles: options.externalSubtitles, settings: settings)
+            if let resume, !handedOver {
+                resumedAt = resume
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
-            } else {
-                try await engine.load(url: current.url, options: options)
             }
-            engine.play()
             report("start")
-            if speed != 1 { engine.setRate(speed) }
-            if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
-        } catch {
-            guard !Task.isCancelled else { return }
-            failure = await Self.unavailable(current.url) ? "This file isn’t available on the server right now. Its drive may be unplugged."
-                : error.localizedDescription
-            return
+        } else {
+            guard let engine else { return }
+            options.upscalesLowResolutionVideo = upscaleMode.applies(frameRate: frameRate)
+            options.upscaleScaler = .automatic
+            options.preferredDecodePath = decodePath
+            options.audioShaping = Self.shaping(dialogue: dialogueBoost, night: nightMode, boost: volumeBoost)
+            upscale = nil
+            engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+            // Picture subtitles (PGS) are kept decoded either side of the playhead as far as a subtitle
+            // delay can reach; the delay control stops at 15 s, so that's all that's kept (the default 60 s
+            // of full-colour pictures each way, on a busy track, is enough to run the phone out of memory).
+            engine.maximumSubtitleOffsetSeconds = 15
+            // The lock screen and Control Center: the title, its poster, play/pause and skipping.
+            engine.ownsSoftwareNowPlaying = true
+            engine.ownsVideoNowPlayingSession = true
+            engine.ownsVideoNowPlayingCommands = true
+            engine.remoteSkipInterval = Double(skipSeconds)
+            engine.setNowPlayingInfo(nowPlayingInfo(nil))
+            do {
+                if let startAt, startAt > (handedOver ? 1 : 30) {
+                    try await engine.load(url: current.url, startPosition: startAt, options: options)
+                    if !handedOver { resumedAt = startAt }
+                    Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
+                } else {
+                    try await engine.load(url: current.url, options: options)
+                }
+                engine.play()
+                report("start")
+                if speed != 1 { engine.setRate(speed) }
+                if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
+            } catch {
+                guard !Task.isCancelled else { return }
+                failure = await Self.unavailable(current.url) ? "This file isn’t available on the server right now. Its drive may be unplugged."
+                    : error.localizedDescription
+                return
+            }
         }
         segments = Self.merged((await stretches) ?? [])
         if segments.isEmpty, introDB { segments = Self.merged(await introDBSegments(client: client, user: user)) }
@@ -683,7 +746,7 @@ struct JellyPlayerView: View {
             following = try? await client.episode(after: id, series: series, user: user)
         }
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
-            engine.setNowPlayingInfo(nowPlayingInfo(art))
+            if !usesMPV { engine?.setNowPlayingInfo(nowPlayingInfo(art)) }
         }
     }
 
@@ -898,8 +961,8 @@ struct JellyPlayerView: View {
         guard rememberTracks else { return }
         guard let language = remembered("audioLanguage"),
               let track = tracks.first(where: { $0.language == language && !$0.isCommentary }),
-              track.id != engine?.activeAudioTrackIndex else { return }
-        engine?.selectAudioTrack(index: track.id)
+              track.id != activeAudio else { return }
+        engineAudio(track.id)
     }
 
     /// The next episode on its own (after the countdown, or past the credits): first "Are you still
@@ -908,7 +971,7 @@ struct JellyPlayerView: View {
     private func autoAdvance(_ next: JellyfinClient.Item) {
         if stillWatchingAfter > 0, autoplayStreak >= stillWatchingAfter {
             countdown = nil
-            engine?.pause()
+            enginePause()
             withAnimation(.easeInOut(duration: 0.25)) { stillWatching = next; showsControls = false }
             return
         }
@@ -985,11 +1048,11 @@ struct JellyPlayerView: View {
         Task {
             for step in 1...16 {
                 try? await Task.sleep(for: .milliseconds(500))
-                guard fadingOut else { engine?.volume = 1; return }
-                engine?.volume = max(0, 1 - Float(step) / 16)
+                guard fadingOut else { engineVolume(1); return }
+                engineVolume(max(0, 1 - Float(step) / 16))
             }
-            engine?.pause()
-            engine?.volume = 1
+            enginePause()
+            engineVolume(1)
             countdown = nil
             fadingOut = false; sleepAt = nil; sleepAtEnd = false; sleepChoice = -1
             show("Sleep timer: paused")
@@ -997,7 +1060,7 @@ struct JellyPlayerView: View {
     }
     private func setSleep(_ minutes: Int?) {
         fadingOut = false
-        engine?.volume = 1
+        engineVolume(1)
         sleepAtEnd = minutes == 0
         sleepChoice = minutes ?? -1
         sleepAt = minutes.flatMap { $0 > 0 ? Date.now.addingTimeInterval(Double($0) * 60) : nil }
@@ -1063,12 +1126,12 @@ struct JellyPlayerView: View {
         if rememberTracks, let saved = remembered("subtitleLanguage") {
             if saved == "off" { return }
             if let track = tracks.first(where: { $0.language == saved && !$0.isForced }) ?? tracks.first(where: { $0.language == saved }) {
-                engine?.selectSubtitleTrack(index: track.id)
+                engineSubtitle(track.id)
                 return
             }
         }
         if let track = tracks.first(where: { $0.isDefault }) ?? tracks.first(where: { $0.isForced }) {
-            engine?.selectSubtitleTrack(index: track.id)
+            engineSubtitle(track.id)
         }
     }
 
@@ -1097,7 +1160,7 @@ struct JellyPlayerView: View {
                 Spacer(minLength: 10)
                 sleepBadge
                 if batteryOn { JellyBattery() }
-                if pip.available {
+                if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
                 }
                 topIcon("lock.open", label: "Lock screen") { lockScreen() }.accessibilityIdentifier("jellyspace-lock-screen")
@@ -1193,7 +1256,7 @@ struct JellyPlayerView: View {
                     Button {
                         touched()
                         if state == .ended { Task { await start() } }
-                        else if playingNow { engine?.pause() } else { engine?.play() }
+                        else if playingNow { enginePause() } else { enginePlay() }
                         scheduleHide()
                     } label: {
                         Group {
@@ -1223,7 +1286,8 @@ struct JellyPlayerView: View {
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
-                       fill: fill, rotationLocked: rotationLocked, info: showsInfo, decoder: decodePath == .software ? .app : .auto)
+                       fill: fill, rotationLocked: rotationLocked, info: showsInfo,
+                       decoder: usesMPV ? .mpv : (decodePath == .software ? .app : .auto), mpv: usesMPV, smooth: smoothRate)
     }
     /// What the menus' choices do.
     private var menuActions: JellyMenuActions {
@@ -1231,7 +1295,7 @@ struct JellyPlayerView: View {
             opened: { menuShown() },
             closed: { menuGone() },
             sleep: { choice in menuUsed(); setSleep(choice < 0 ? nil : choice) },
-            speed: { value in menuUsed(); speed = Float(value); engine?.setRate(Float(value)) },
+            speed: { value in menuUsed(); speed = Float(value); engineRate(Float(value)) },
             upscale: { mode in menuUsed(); setUpscale(mode) },
             subtitle: { id in pickSubtitle(id) },
             audio: { id in pickAudio(id) },
@@ -1249,24 +1313,25 @@ struct JellyPlayerView: View {
             fill: { next in menuUsed(); setFill(next) },
             rotation: { menuUsed(); toggleRotation() },
             info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } },
-            decoder: { path in menuUsed(); setDecoder(path) })
+            decoder: { path in menuUsed(); setDecoder(path) },
+            smooth: { rate in menuUsed(); smoothRate = rate; mpv.setSmooth(rate); show(rate > 0 ? "Smooth motion: \(rate) Hz" : "Smooth motion off") })
     }
     /// A subtitle picked (-1 for off): turned on, and its language remembered.
     private func pickSubtitle(_ id: Int) {
         menuUsed()
         guard id != (activeSubtitle ?? -1) else { return }
         if id >= 0 {
-            engine?.selectSubtitleTrack(index: id)
+            engineSubtitle(id)
             if let language = subtitleTracks.first(where: { $0.id == id })?.language { remember("subtitleLanguage", language) }
         } else {
-            engine?.clearSubtitle()
+            engineSubtitle(nil)
             remember("subtitleLanguage", "off")
         }
     }
     private func pickAudio(_ id: Int) {
         menuUsed()
         guard id != activeAudio, let track = audioTracks.first(where: { $0.id == id }) else { return }
-        engine?.selectAudioTrack(index: id)
+        engineAudio(id)
         if let language = track.language { remember("audioLanguage", language) }
     }
     /// A menu opened: the controls stay up meanwhile.
@@ -1305,9 +1370,9 @@ struct JellyPlayerView: View {
                     }.buttonStyle(.plain).accessibilityLabel("Close")
                 }
                 if !subtitleTracks.isEmpty {
-                    delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engine?.setSoftwareSubtitleDelay($0) }
+                    delayControl("Subtitle delay", value: subtitleDelay) { subtitleDelay = $0; engineSubtitleDelay($0) }
                 }
-                delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engine?.setAudioDelay($0) }
+                delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engineAudioDelay($0) }
                 Button { withAnimation { panel = .subtitleSearch } } label: {
                     Label("Download subtitles", systemImage: "arrow.down.circle").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
@@ -1352,11 +1417,17 @@ struct JellyPlayerView: View {
     /// Auto or the app's own decoder: the video reloads where it is on the new one. mpv: the video
     /// moves to the mpv player where it is (and opens there from then on).
     private func setDecoder(_ choice: JellyDecoder) {
-        if choice == .mpv {
-            handingOver = true
-            toMPV?(current, time)
+        if (choice == .mpv) != usesMPV {
+            // The other engine takes over where this one is, and this video opens on it from now on.
+            switchAt = time > 1 ? time : nil
+            JellyMPVChoice.set(current.id, choice == .mpv)
+            if choice == .mpv { engine?.stop() } else { mpv.stop() }
+            decodePath = choice.path
+            show("Decoder: " + choice.title)
+            usesMPV = choice == .mpv
             return
         }
+        guard choice != .mpv else { return }
         let path = choice.path
         guard path != decodePath else { return }
         decodePath = path
@@ -1454,6 +1525,7 @@ struct JellyPlayerView: View {
     private func setFill(_ next: JellyFill) {
         fillRaw = next.rawValue
         engine?.videoGravity = next == .fill ? .resizeAspectFill : .resizeAspect
+        mpv.setFill(next)
         show(next.rawValue, for: 1.2)
         scheduleHide()
     }
@@ -1579,7 +1651,10 @@ struct JellyPlayerView: View {
             let files = Self.subtitleStreams(info, source: current.source, item: id, client: client)
             if let fresh = files.first(where: { !knownSubtitles.contains($0.index) }) {
                 knownSubtitles = Set(files.map { $0.index })
-                if let added = engine?.addExternalSubtitleTrack(fresh.track) {
+                if usesMPV {
+                    mpv.addSubtitle(fresh.track.url, name: fresh.track.name, language: fresh.track.language)
+                    if let language = fresh.track.language { remember("subtitleLanguage", language) }
+                } else if let added = engine?.addExternalSubtitleTrack(fresh.track) {
                     engine?.selectSubtitleTrack(index: added.id)
                     if let language = added.language { remember("subtitleLanguage", language) }
                 }
@@ -1835,6 +1910,7 @@ struct JellyPlayerView: View {
         scheduleHide()
     }
     private func seek(_ seconds: Double) async {
+        if usesMPV { mpv.seek(to: seconds); return }
         guard let engine else { return }
         _ = await engine.seek(to: seconds)
     }
@@ -2282,6 +2358,8 @@ private struct JellyMenuState: Equatable, Sendable {
     var rotationLocked: Bool
     var info: Bool
     var decoder: JellyDecoder
+    var mpv: Bool
+    var smooth: Int
 }
 
 /// What the menus' choices do (closures: they play no part in deciding a redraw).
@@ -2302,6 +2380,7 @@ private struct JellyMenuActions {
     let rotation: () -> Void
     let info: (Bool) -> Void
     let decoder: (JellyDecoder) -> Void
+    let smooth: (Int) -> Void
 }
 
 @MainActor private enum JellyMenuParts {
@@ -2349,13 +2428,22 @@ private struct JellyMoreMenu: View, Equatable {
                         Text("60 minutes").tag(60)
                         Text(state.episode ? "End of episode" : "End of film").tag(0)
                     } label: { Label("Sleep timer", systemImage: "moon.zzz") }.pickerStyle(.menu)
-                    Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
-                        ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
-                    } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
+                    if state.mpv {
+                        Picker(selection: Binding(get: { state.smooth }, set: { actions.smooth($0) })) {
+                            Text("Off").tag(0)
+                            Text("60 Hz").tag(60)
+                            Text("120 Hz").tag(120)
+                        } label: { Label("Smooth motion", systemImage: "wand.and.sparkles") }.pickerStyle(.menu)
+                    } else {
+                        Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
+                            ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
+                        } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
+                    }
                     Picker(selection: Binding(get: { state.decoder }, set: { actions.decoder($0) })) {
                         ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }
                     } label: { Label("Decoder", systemImage: "cpu") }.pickerStyle(.menu)
                 }
+                if !state.mpv {
                 Section {
                     Picker(selection: Binding(get: { state.dialogue }, set: { actions.dialogue($0) })) {
                         ForEach(JellySound.dialogue, id: \.1) { Text($0.0).tag($0.1) }
@@ -2366,6 +2454,7 @@ private struct JellyMoreMenu: View, Equatable {
                     } label: { Label("Volume boost", systemImage: "speaker.plus") }.pickerStyle(.menu)
                 }
                 Toggle(isOn: Binding(get: { state.info }, set: { actions.info($0) })) { Label("Playback info", systemImage: "info.circle") }
+                }
                 Button { actions.advanced() } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
             }
             .onAppear { actions.opened() }.onDisappear { actions.closed() }

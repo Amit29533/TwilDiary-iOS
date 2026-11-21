@@ -138,7 +138,7 @@ struct JellyDetailPage: View {
         }
         .task { await load() }
         .task(id: season) { await loadEpisodes() }
-        .fullScreenCover(item: $playing, onDismiss: { Task { await load(); await loadEpisodes() } }) { JellyPlayerHost(playback: $0) }
+        .fullScreenCover(item: $playing, onDismiss: { Task { await load(); await loadEpisodes() } }) { JellyPlayerView(playback: $0) }
     }
 
     // MARK: The picture and the title

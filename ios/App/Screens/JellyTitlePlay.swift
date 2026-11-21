@@ -39,7 +39,7 @@ struct JellyPlayButton: View {
             .padding(.top, -8)
             // Again when the diary's progress changes, and after watching.
             .task(id: store.watchedEpisodeIDs(title.id).count) { await find(entry) }
-            .fullScreenCover(item: $playing, onDismiss: { Task { await find(entry) } }) { JellyPlayerHost(playback: $0) }
+            .fullScreenCover(item: $playing, onDismiss: { Task { await find(entry) } }) { JellyPlayerView(playback: $0) }
         }
     }
 
