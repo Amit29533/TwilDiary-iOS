@@ -194,6 +194,8 @@ struct JellyPlayerView: View {
     @State private var switchAt: Double?
     /// mpv's smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
     @AppStorage("jellyspace.mpvSmoothRate") private var smoothRate = 0
+    /// mpv's Super Resolution: "off", "fsr" or "anime" (More → Super resolution), kept for every video.
+    @AppStorage("jellyspace.mpvSuperResolution") private var superResolution = "off"
     @State private var refresh = JellyRefreshRate()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -335,14 +337,18 @@ struct JellyPlayerView: View {
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
         .task(id: current.id + (usesMPV ? "|mpv\(mpvRun)" : "")) { await start() }
-        // mpv's output follows smooth motion (AVFoundation without it, the GPU with it).
-        .onChange(of: activeSmooth > 0) { _, _ in moveMPVOutput() }
+        // mpv's output follows smooth motion and Super Resolution (AVFoundation without them, the
+        // GPU with either).
+        .onChange(of: mpvOnGPU) { _, _ in moveMPVOutput() }
         // mpv's smooth motion holds the screen at its rate while it plays.
         // Set again when it's changed, and when the phone gets hot or goes into Low Power Mode (off
         // then, back after).
-        .task(id: usesMPV ? activeSmooth : 0) {
+        .task(id: usesMPV ? "\(activeSmooth)|\(activeSuperResolution)" : "") {
             refresh.hold(usesMPV ? activeSmooth : 0)
-            if usesMPV { mpv.setSmooth(activeSmooth, fps: frameRate) }
+            if usesMPV {
+                mpv.setSmooth(activeSmooth, fps: frameRate)
+                mpv.setSuperResolution(activeSuperResolution)
+            }
         }
         .onChange(of: JellyPower.shared.constrained) { _, constrained in easeOff(constrained) }
         .onChange(of: scenePhase) { _, phase in
@@ -408,7 +414,7 @@ struct JellyPlayerView: View {
     /// mpv's picture, with its clock, tracks and size fed into the same state as AetherEngine's (mpv
     /// draws the subtitles itself, so none come through for the player's own).
     private var mpvPicture: some View {
-        JellyMPVSurface(player: mpv, smooth: activeSmooth, fill: fill)
+        JellyMPVSurface(player: mpv, smooth: activeSmooth, gpu: mpvOnGPU, fill: fill)
             .id(mpvRun)
             .onReceive(mpv.$state) { state = $0 }
             .onReceive(mpv.$time) { seconds in subtitleClock.time = seconds; tick(seconds) }
@@ -741,6 +747,7 @@ struct JellyPlayerView: View {
             mpv.open(current.url, start: resume, subtitles: options.externalSubtitles, settings: settings)
             // Now the frame rate is known: blend only where the refresh isn't a multiple of it.
             mpv.setSmooth(activeSmooth, fps: frameRate)
+            mpv.setSuperResolution(activeSuperResolution)
             if let resume, !handedOver {
                 resumedAt = resume
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
@@ -1380,7 +1387,8 @@ struct JellyPlayerView: View {
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
                        fill: fill, rotationLocked: rotationLocked, info: showsInfo,
-                       decoder: usesMPV ? .mpv : (decodePath == .software ? .app : .auto), mpv: usesMPV, smooth: smoothRate)
+                       decoder: usesMPV ? .mpv : (decodePath == .software ? .app : .auto), mpv: usesMPV, smooth: smoothRate,
+                       superResolution: superResolution)
     }
     /// What the menus' choices do.
     private var menuActions: JellyMenuActions {
@@ -1407,6 +1415,12 @@ struct JellyPlayerView: View {
             rotation: { menuUsed(); toggleRotation() },
             info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } },
             decoder: { path in menuUsed(); setDecoder(path) },
+            superResolution: { mode in
+                menuUsed(); superResolution = mode
+                let power = JellyPower.shared
+                let name = JellyPlayerView.superResolutions.first { $0.1 == mode }?.0 ?? mode
+                show(mode == "off" ? "Super Resolution off" : power.constrained ? "Super Resolution: \(name), paused " + power.reason : "Super Resolution: " + name)
+            },
             smooth: { rate in
                 menuUsed(); smoothRate = rate
                 let power = JellyPower.shared
@@ -1561,6 +1575,10 @@ struct JellyPlayerView: View {
     /// Turned on or off mid-video: the video reloads where it is with the new setting.
     /// mpv's smooth motion as it runs now: off while the phone is hot or in Low Power Mode.
     private var activeSmooth: Int { JellyPower.shared.constrained ? 0 : smoothRate }
+    /// mpv's Super Resolution as it runs now: off while the phone is hot or in Low Power Mode.
+    private var activeSuperResolution: String { JellyPower.shared.constrained ? "off" : superResolution }
+    /// Whether mpv needs its GPU output (smooth motion or Super Resolution on).
+    private var mpvOnGPU: Bool { activeSmooth > 0 || activeSuperResolution != "off" }
     /// Whether this video is upscaled: by the setting, but on Auto not while the phone is hot or in
     /// Low Power Mode (Always means always).
     private var upscaleWanted: Bool { upscaleAllowed(upscaleMode) }
@@ -1572,7 +1590,10 @@ struct JellyPlayerView: View {
     /// cools, which would reload the video again and again).
     private func easeOff(_ constrained: Bool) {
         let reason = JellyPower.shared.reason
-        if constrained, usesMPV, smoothRate > 0 { show("Smooth motion paused " + reason, for: 3) }
+        if constrained, usesMPV, smoothRate > 0 || superResolution != "off" {
+            show((smoothRate > 0 && superResolution != "off" ? "Smooth motion and Super Resolution" : smoothRate > 0 ? "Smooth motion" : "Super Resolution")
+                 + " paused " + reason, for: 3)
+        }
         guard constrained, !usesMPV, upscaleMode == .auto, let upscale, upscale.disabledReason == nil,
               let engine, state != .idle, state != .loading else { return }
         show("Upscaling paused " + reason, for: 3)
@@ -1750,6 +1771,8 @@ struct JellyPlayerView: View {
         .frame(maxWidth: 560)
         .task(id: subtitleLanguage) { await searchSubtitles() }
     }
+    /// mpv's Super Resolution choices (More menu).
+    static let superResolutions: [(String, String)] = [("Off", "off"), ("FSR", "fsr"), ("Anime4K", "anime")]
     static let subtitleLanguages: [(String, String)] = [
         ("English", "eng"), ("Hindi", "hin"), ("Spanish", "spa"), ("French", "fre"), ("German", "ger"), ("Italian", "ita"),
         ("Portuguese", "por"), ("Russian", "rus"), ("Japanese", "jpn"), ("Korean", "kor"), ("Chinese", "chi"), ("Arabic", "ara"),
@@ -2565,6 +2588,7 @@ private struct JellyMenuState: Equatable, Sendable {
     var decoder: JellyDecoder
     var mpv: Bool
     var smooth: Int
+    var superResolution: String
 }
 
 /// What the menus' choices do (closures: they play no part in deciding a redraw).
@@ -2585,6 +2609,7 @@ private struct JellyMenuActions {
     let rotation: () -> Void
     let info: (Bool) -> Void
     let decoder: (JellyDecoder) -> Void
+    let superResolution: (String) -> Void
     let smooth: (Int) -> Void
 }
 
@@ -2639,6 +2664,9 @@ private struct JellyMoreMenu: View, Equatable {
                             Text("60 Hz").tag(60)
                             Text("120 Hz").tag(120)
                         } label: { Label("Smooth motion", systemImage: "wand.and.sparkles") }.pickerStyle(.menu)
+                        Picker(selection: Binding(get: { state.superResolution }, set: { actions.superResolution($0) })) {
+                            ForEach(JellyPlayerView.superResolutions, id: \.1) { Text($0.0).tag($0.1) }
+                        } label: { Label("Super resolution", systemImage: "sparkles") }.pickerStyle(.menu)
                     } else {
                         Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
                             ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }

@@ -82,6 +82,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
     private weak var sampleLayer: AVSampleBufferDisplayLayer?
     /// Watches that layer for a failure (a black picture) to recover from.
     private var layerWatch: NSKeyValueObservation?
+    /// Super Resolution's shaders ("off", "fsr", "anime"), used whenever mpv is on the GPU output.
+    private var superResolution = "off"
     /// Recoveries tried for this video (at most three; see resetDecoder).
     private var decoderResets = 0
     private static let maxDecoderResets = 3
@@ -126,6 +128,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         for (name, value) in options { mpv_set_option_string(raw, name, value) }
         if sample == nil {
             for (name, value) in Self.smoothOptions(smooth, fps: videoFPS) { mpv_set_option_string(raw, name, value) }
+            mpv_set_option_string(raw, "glsl-shaders", Self.shaders(superResolution))
         }
         Self.prepareFonts(raw)
         let started = mpv_initialize(raw)
@@ -280,6 +283,23 @@ private struct JellyMPVHandle: @unchecked Sendable {
         // Only the GPU output times frames to the screen; AVFoundation's layer does that itself.
         guard sampleLayer == nil else { return }
         for (name, value) in Self.smoothOptions(rate, fps: fps) { set(name, value) }
+    }
+    /// Super Resolution: AMD's FSR (light, any video) or Anime4K (line art: the same small network
+    /// AetherEngine's line-art upscaling runs), as mpv user shaders. They need the GPU output, which
+    /// the player moves mpv to while it's on; they run only where the picture is scaled up 1.2x or
+    /// more (720p and below on a phone), so a 1080p video costs nothing extra.
+    func setSuperResolution(_ mode: String) {
+        superResolution = mode
+        guard sampleLayer == nil else { return }
+        set("glsl-shaders", Self.shaders(mode))
+    }
+    nonisolated static func shaders(_ mode: String) -> String {
+        let names: [String] = switch mode {
+        case "fsr": ["FSR"]
+        case "anime": ["Anime4K_Clamp_Highlights", "Anime4K_Restore_CNN_S", "Anime4K_Upscale_CNN_x2_S"]
+        default: []
+        }
+        return names.compactMap { Bundle.main.path(forResource: $0, ofType: "glsl") }.joined(separator: ":")
     }
     /// The video's frame rate as the server reports it (0: not known yet).
     private var videoFPS = 0.0
@@ -608,11 +628,13 @@ final class JellyMPVSampleView: UIView {
 struct JellyMPVSurface: UIViewRepresentable {
     let player: JellyMPV
     let smooth: Int
+    /// The GPU output (smooth motion or Super Resolution on), else AVFoundation's.
+    let gpu: Bool
     let fill: JellyFill
     @Environment(\.displayScale) private var displayScale
 
     func makeUIView(context: Context) -> UIView {
-        if smooth > 0 {
+        if gpu {
             let view = JellyMPVSurfaceView()
             view.backgroundColor = .black
             if let layer = view.layer as? CAMetalLayer {
