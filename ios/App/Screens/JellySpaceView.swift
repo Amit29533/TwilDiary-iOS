@@ -193,8 +193,8 @@ struct JellySpaceView: View {
     }
     /// Without what you hid (a film, a show, or an episode of a hidden show).
     private func shown(_ items: [JellyfinClient.Item]) -> [JellyfinClient.Item] {
-        let hidden = hidden
-        return items.filter { hidden[$0.Id] == nil && ($0.SeriesId.map { hidden[$0] == nil } ?? true) }
+        let hidden = hidden, edits = JellyServerEdits.shared
+        return items.filter { hidden[$0.Id] == nil && ($0.SeriesId.map { hidden[$0] == nil } ?? true) && !edits.isDeleted($0) }
     }
 
     /// One section: a fixed row, a library's Recently added row, or its Random row.
@@ -1306,13 +1306,18 @@ struct JellyGrid: View {
     @State private var width: CGFloat = 0
     /// Without names under the posters, the grid closes up (the Netflix look).
     @AppStorage(JellyPrefs.captionsKey) private var captions = true
+    /// Without what was deleted from the server here (its place closes up, not left blank).
+    private var live: [JellyfinClient.Item] {
+        let edits = JellyServerEdits.shared
+        return edits.deleted.isEmpty ? items : items.filter { !edits.isDeleted($0) }
+    }
     var body: some View {
         if layout == .canvas {
             canvas
         } else {
             let columns = Array(repeating: GridItem(.flexible(), spacing: captions ? 12 : 6, alignment: .top), count: layout == .landscape ? 2 : 3)
             LazyVGrid(columns: columns, alignment: .leading, spacing: captions ? 18 : 6) {
-                ForEach(items, id: \.Id) { item in
+                ForEach(live, id: \.Id) { item in
                     VStack(alignment: .leading, spacing: 3) {
                         JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
                         if let note = notes[item.Id], !note.isEmpty {
@@ -1320,7 +1325,7 @@ struct JellyGrid: View {
                                 .accessibilityLabel("Why: " + note)
                         }
                     }
-                    .onAppear { if item.Id == items.last?.Id { reachedEnd?() } }
+                    .onAppear { if item.Id == live.last?.Id { reachedEnd?() } }
                 }
             }
         }
@@ -1329,7 +1334,7 @@ struct JellyGrid: View {
     /// width, in the titles' own order.
     private var canvas: some View {
         let column = max(0, (width - 24) / 3), tall = column * 1.5
-        let rows = JellyCanvas.rows(items)
+        let rows = JellyCanvas.rows(live)
         return LazyVStack(spacing: 12) {
             ForEach(rows) { row in
                 HStack(spacing: 12) {

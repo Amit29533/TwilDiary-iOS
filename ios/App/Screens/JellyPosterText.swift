@@ -42,7 +42,9 @@ import Vision
         let seen = Set(words(text))
         let wanted = words(title).filter { $0.count >= 3 }
         if wanted.isEmpty { return text.filter(\.isLetter).count >= 6 }
-        let matched = wanted.filter { word in seen.contains(word) || seen.contains { $0.count >= 4 && (word.hasPrefix($0) || $0.hasPrefix(word)) } }
+        let matched = wanted.filter { word in
+            seen.contains(word) || seen.contains(where: { $0.count >= 4 && (word.hasPrefix($0) || $0.hasPrefix(word)) })
+        }
         return matched.count * 2 >= wanted.count
     }
     nonisolated private static func words(_ text: String) -> [String] {
