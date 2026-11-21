@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import AVFoundation
+import VideoToolbox
 import AetherEngine
 import MPVKitAV
 
@@ -99,6 +100,25 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// Recoveries tried for this video (at most three; see resetDecoder).
     private var decoderResets = 0
     private static let maxDecoderResets = 3
+    /// Standard definition through the deinterlacing filter (see updateDeinterlace).
+    private var deinterlacing = false
+    /// VideoToolbox's decoder now: zero-copy, or (for the deinterlacing filter) copying.
+    private var hardwareDecoder: String { deinterlacing ? "videotoolbox-copy" : "videotoolbox" }
+
+    /// The codecs this phone decodes in hardware, asked of VideoToolbox once (as IINA does): an AV1
+    /// file on a phone without AV1 hardware goes straight to software instead of failing in
+    /// hardware first (a black flash and a decoder reset). Codecs it can't ask about stay in. In the
+    /// Simulator (no hardware decoding at all) it stays "all", as before.
+    private static let hardwareCodecs: String = {
+        let asked: [(String, [CMVideoCodecType])] = [
+            ("h264", [kCMVideoCodecType_H264]), ("hevc", [kCMVideoCodecType_HEVC]), ("av1", [kCMVideoCodecType_AV1]),
+            ("vp9", [kCMVideoCodecType_VP9]), ("mpeg2video", [kCMVideoCodecType_MPEG2Video]), ("mpeg4", [kCMVideoCodecType_MPEG4Video]),
+            ("prores", [kCMVideoCodecType_AppleProRes422, kCMVideoCodecType_AppleProRes4444]),
+        ]
+        let supported = asked.filter { $0.1.contains(where: VTIsHardwareDecodeSupported) }.map(\.0)
+        guard !supported.isEmpty else { return "all" }
+        return (supported + ["mpeg1video", "vc1", "wmv3"]).joined(separator: ",")
+    }()
 
     /// mpv on this layer (an AVSampleBufferDisplayLayer, or a Metal layer for smooth motion); a
     /// file asked for already is loaded now.
@@ -133,9 +153,13 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ? [("vo", "avfoundation"), ("avfoundation-composite-osd", composite ? "yes" : "no"), ("hwdec", "videotoolbox")]
             : [("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox")]
         let options: [(String, String)] = output + [
-            ("hwdec-codecs", "all"), ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
+            ("hwdec-codecs", Self.hardwareCodecs), ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
             ("sub-auto", "no"), ("subs-fallback", "yes"), ("audio-display", "no"),
-            ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-readahead-secs", "20"),
+            // 150 MB ahead (20 seconds of most files, a 4K remux's few); 25 MB behind, not mpv's 50: a
+            // few seconds back stays instant, and less memory is held (as Yattee keeps it).
+            ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-max-back-bytes", "25MiB"), ("demuxer-readahead-secs", "20"),
+            // Behind, frames are dropped at the decoder first (lighter), then at the output.
+            ("framedrop", "decoder+vo"),
             // On the GPU (smooth motion), lighter drawing than mpv's defaults, which are made for a
             // desktop GPU: spline36 for the picture (sharp, one pass), bilinear for colour, and none of
             // the extra passes (linear light, sigmoid, HDR peak measuring each frame, debanding). On a
@@ -188,6 +212,13 @@ private struct JellyMPVHandle: @unchecked Sendable {
     private func load(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
         loaded = false; ended = false; paused = false; failure = nil; log = []
         decoderResets = 0
+        // The last file's deinterlacing off first: the filter and decoder mode outlive a loadfile, and
+        // the filter can't take the next file's zero-copy frames (mpv would drop it with errors).
+        if deinterlacing {
+            deinterlacing = false
+            set("vf", "")
+            set("hwdec", hardwareDecoder)
+        }
         time = start ?? 0; duration = 0; audioTracks = []; subtitleTracks = []; audioID = nil; subtitleID = nil
         pendingSubtitles = subtitles
         updateState()
@@ -225,7 +256,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         decoderResets += 1
         guard decoderResets <= Self.maxDecoderResets else { return }
         set("hwdec", "no")
-        if decoderResets < Self.maxDecoderResets { set("hwdec", "videotoolbox") }
+        if decoderResets < Self.maxDecoderResets { set("hwdec", hardwareDecoder) }
     }
 
     /// Fallback fonts for the subtitles, from the app (Noto: Latin, Greek and Cyrillic, Arabic,
@@ -298,6 +329,28 @@ private struct JellyMPVHandle: @unchecked Sendable {
         guard hidden != hidesText else { return }
         hidesText = hidden
         setSubtitleLook(look)
+    }
+    /// Standard definition (576 lines or fewer: DVDs, TV recordings) is deinterlaced, as Streamyfin
+    /// does it: mpv's AVFoundation output shows what the decoder gives it, so interlaced video
+    /// showed comb lines. The filter only touches frames marked interlaced (progressive video
+    /// passes unchanged) and needs frames in memory, so VideoToolbox decodes in its copying mode for
+    /// it, cheap at this size; anything bigger keeps zero-copy and no filter.
+    private func updateDeinterlace(height: Int) {
+        guard handle != nil, height > 0 else { return }
+        let wanted = height <= 576
+        guard wanted != deinterlacing else { return }
+        deinterlacing = wanted
+        // After the decoder resets gave up on hardware, software stays (its frames take the filter as
+        // they are): only the filter changes then.
+        let onHardware = decoderResets < Self.maxDecoderResets
+        if wanted {
+            // The copying decoder first: the filter can't take zero-copy frames.
+            if onHardware { set("hwdec", hardwareDecoder) }
+            set("vf", "lavfi=[bwdif=mode=send_frame:deint=interlaced]")
+        } else {
+            set("vf", "")
+            if onHardware { set("hwdec", hardwareDecoder) }
+        }
     }
     private func applyTextWatch() {
         guard let raw = handle?.raw else { return }
@@ -383,7 +436,9 @@ private struct JellyMPVHandle: @unchecked Sendable {
         case .buffering(let value): buffering = value
         case .ended(let value): ended = value; updateState()
         case .width(let value): if videoSize.width != CGFloat(value) { videoSize.width = CGFloat(value) }
-        case .height(let value): if videoSize.height != CGFloat(value) { videoSize.height = CGFloat(value) }
+        case .height(let value):
+            if videoSize.height != CGFloat(value) { videoSize.height = CGFloat(value) }
+            updateDeinterlace(height: value)
         case .tracks(let audio, let subtitles, let aid, let sid):
             if audio.map(\.id) != audioTracks.map(\.id) { audioTracks = audio }
             if subtitles.map(\.id) != subtitleTracks.map(\.id) { subtitleTracks = subtitles }
@@ -663,6 +718,15 @@ final class JellyMPVLayer: CAMetalLayer {
 
 final class JellyMPVSurfaceView: UIView {
     override class var layerClass: AnyClass { JellyMPVLayer.self }
+    /// The drawable follows the view's size. It's set once as mpv starts, and once MoltenVK has set it
+    /// iOS stops following the view: turned sideways after opening, mpv drew at the upright width in
+    /// a corner. A new size here makes mpv build its output again at that size.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let layer = layer as? CAMetalLayer else { return }
+        let size = CGSize(width: (bounds.width * layer.contentsScale).rounded(), height: (bounds.height * layer.contentsScale).rounded())
+        if size.width > 1, size.height > 1, size != layer.drawableSize { layer.drawableSize = size }
+    }
 }
 
 /// The view AVFoundation shows mpv's frames in.

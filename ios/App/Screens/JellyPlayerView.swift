@@ -89,6 +89,9 @@ struct JellyPlayerView: View {
     /// The clock the subtitles follow, ten times a second: only the subtitles read it, so its ticks
     /// don't redraw the player.
     @State private var subtitleClock = JellySubtitleClock()
+    /// The progress bar's clock (and the time beside it): ten times a second while the controls show,
+    /// read only by them, so only they redraw that often.
+    @State private var barClock = JellyPlayClock()
     @State private var duration: Double = 0
     @State private var videoSize = CGSize.zero
     @State private var scrub: Double?
@@ -414,6 +417,9 @@ struct JellyPlayerView: View {
             savePlace()
             engine?.stop()
             mpv.stop()
+            // The sound let go, so music that was playing before carries on (not while JellySpace's
+            // own music plays).
+            if !JellyMusic.shared.playing { JellyAudioSession.release() }
             refresh.hold(0)
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
@@ -515,13 +521,15 @@ struct JellyPlayerView: View {
             .ignoresSafeArea()
     }
 
-    /// The engine's clock, ten times a second. The player redraws with it while the controls show (the
-    /// bar moves); with them hidden once a second does for what reads it (the skip buttons, the end,
-    /// the sleep timer), so the player isn't redrawn for nothing and the screen can rest at the
-    /// video's own rate (the redraws kept it at full rate, which warmed the phone).
+    /// The engine's clock, ten times a second. The progress bar follows it on its own clock, ten times
+    /// a second while the controls show (once with them hidden, so the screen can rest at the video's
+    /// own rate); the player's `time` once a second, for what reads it (the skip buttons, the end, the
+    /// sleep timer). The whole player redrawing ten times a second rebuilt every button and menu with
+    /// it, so a menu tapped while a video played often didn't open, or closed again.
     private func tick(_ seconds: Double) {
-        let step = showsControls || scrub != nil || panel != nil ? 0.1 : 1
-        if abs(seconds - time) >= step - 0.01 || seconds < time { time = seconds }
+        let barStep = showsControls || scrub != nil ? 0.1 : 1
+        if abs(seconds - barClock.time) >= barStep - 0.01 || seconds < barClock.time { barClock.time = seconds }
+        if abs(seconds - time) >= 0.99 || seconds < time { time = seconds }
         reachedEnd(seconds); autoSkip(); checkSleep()
         if !usesMPV, translator.due(at: subtitleClock.time, count: cues.count) { feedTranslator() }
     }
@@ -811,7 +819,7 @@ struct JellyPlayerView: View {
         if !handingOver {
             openedID = nil; duration = 0
             showFill = Self.savedFill(current.item)
-            skipped = []; time = 0
+            skipped = []; time = 0; barClock.time = 0
             segments = []; chapters = []; trickplay = nil; thumbnail = nil; sheet = nil; following = nil
         }
         let client = current.client, id = current.id
@@ -863,8 +871,10 @@ struct JellyPlayerView: View {
             // mpv: the file through its own reader, with the picture, subtitle look, speed and audio
             // delay set as it opens. The sound plays as a film's should (on with the ringer off, on in
             // the background), which AetherEngine otherwise sets up.
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try? AVAudioSession.sharedInstance().setActive(true)
+            // Off the main thread (it can take seconds there); the file opens once it's set.
+            await JellyAudioSession.activate()
+            // Closed (or moved on) while it was being set: nothing opens.
+            guard !Task.isCancelled else { return }
             var settings = JellyMPV.fillSettings(fill)
                 + subtitleLook.mpvSettings
             settings += [("speed", String(speed)), ("audio-delay", String(audioDelay)), ("sub-delay", String(subtitleDelay)), ("sid", "no")]
@@ -1454,16 +1464,14 @@ struct JellyPlayerView: View {
             // The bar, red as far as you've watched, and the time left beside it (a tap shows the whole
             // length instead).
             HStack(spacing: 14) {
-                JellyScrubber(time: time, duration: duration, buffered: buffered, marks: chapterMarks, stretches: coloredStretches,
+                JellyScrubber(clock: barClock, duration: duration, buffered: buffered, marks: chapterMarks, stretches: coloredStretches,
                               tint: Self.red, knob: Self.red, scrub: $scrub) { target in
                     Task { await seek(target); scrub = nil; scheduleHide() }
                 }
                 .overlay(alignment: .topLeading) { scrubPreview }
                 .disabled(duration <= 0)
                 Button { timeMode = timeMode == "total" ? "left" : "total"; scheduleHide() } label: {
-                    Text(timeMode == "total" ? Self.clock(duration) : Self.clock(max(0, duration - (scrub ?? time))))
-                        .font(.system(size: 14, weight: .medium)).monospacedDigit().foregroundStyle(.white)
-                        .frame(minHeight: 30).contentShape(Rectangle())
+                    JellyTimeLeft(clock: barClock, duration: duration, scrub: scrub, total: timeMode == "total")
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(timeMode == "total" ? "Length" : "Time left").accessibilityValue(endsText)
@@ -2360,7 +2368,7 @@ struct JellyPlayerView: View {
     }
     private func jump(_ seconds: Double) {
         touched()
-        let target = min(max(0, time + seconds), max(duration, 0))
+        let target = min(max(0, exactTime + seconds), max(duration, 0))
         Task { await seek(target) }
         scheduleHide()
     }
@@ -2379,7 +2387,9 @@ struct JellyPlayerView: View {
 /// The progress bar: a thin line with a dot (both grow while you drag), the part already loaded in
 /// a lighter band, small ticks at the chapters, and the credits in orange.
 private struct JellyScrubber: View {
-    let time: Double
+    /// Its own clock (the player's redraws only once a second).
+    let clock: JellyPlayClock
+    private var time: Double { clock.time }
     let duration: Double
     let buffered: Double
     let marks: [Double]
@@ -2606,6 +2616,25 @@ private struct JellyAirPlayButton: UIViewRepresentable {
 /// redraw only the subtitles.
 @MainActor @Observable final class JellySubtitleClock {
     var time: Double = 0
+}
+
+/// The progress bar's clock (see the player's tick).
+@MainActor @Observable final class JellyPlayClock {
+    var time: Double = 0
+}
+
+/// The time left (or the length) beside the bar, on the bar's clock.
+private struct JellyTimeLeft: View {
+    let clock: JellyPlayClock
+    let duration: Double
+    let scrub: Double?
+    let total: Bool
+
+    var body: some View {
+        Text(total ? JellyPlayerView.clock(duration) : JellyPlayerView.clock(max(0, duration - (scrub ?? clock.time))))
+            .font(.system(size: 14, weight: .medium)).monospacedDigit().foregroundStyle(.white)
+            .frame(minHeight: 30).contentShape(Rectangle())
+    }
 }
 
 /// The subtitles on screen now: follows the subtitle clock and hands the lines showing to the
