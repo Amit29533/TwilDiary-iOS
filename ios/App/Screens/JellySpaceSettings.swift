@@ -711,6 +711,7 @@ private struct JellyPostersGroup: View {
             SettingsDivider()
             JellySettingsRows.toggle("Titles", $captions, accent: theme.accent)
         }
+        JellyDecoderNote(text: "Titles off: no names under posters, and the rows close up as Netflix's do: bigger posters, close together, with small corners; Continue Watching shows just the picture.")
     }
 }
 

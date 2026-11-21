@@ -34,6 +34,9 @@ struct JellyFolderRoute: Hashable {
 /// TwilDiary logo on Home. The player is JellyPlayerView.
 struct JellySpaceView: View {
     @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    /// Names under posters (Settings → JellySpace → Home → Posters → Titles); off is the Netflix look:
+    /// bigger posters, close together, with small corners.
+    @AppStorage(JellyPrefs.captionsKey) private var captions = true
     @AppStorage(JellyPrefs.rowsKey) private var rowsRaw = ""
     /// My Media's order (Settings → JellySpace → My Media).
     @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
@@ -389,11 +392,11 @@ struct JellySpaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             headingWithAll("Continue Watching", ids: continueItems.map(\.item.Id), identifier: "continue")
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
+                LazyHStack(alignment: .top, spacing: shelfGap) {
                     ForEach(continueItems, id: \.id) { entry in
                         JellyWideCard(item: entry.item, client: client, playing: $playing, nextUp: entry.nextUp, large: true,
-                                      onRemove: entry.nextUp ? nil : { removeFromResume(entry.item) })
-                            .containerRelativeFrame(.horizontal, count: 4, span: 3, spacing: 12)
+                                      pictureOnly: !captions, onRemove: entry.nextUp ? nil : { removeFromResume(entry.item) })
+                            .containerRelativeFrame(.horizontal, count: captions ? 4 : 2, span: captions ? 3 : 1, spacing: shelfGap)
                     }
                 }
             }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -437,13 +440,17 @@ struct JellySpaceView: View {
     }
     private func posterShelf(_ items: [JellyfinClient.Item], client: JellyfinClient) -> some View {
         ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: shelfGap) {
                 ForEach(items, id: \.Id) { item in
-                    JellyTile(item: item, client: client, playing: $playing, home: true).frame(width: posterSize.homeWidth)
+                    JellyTile(item: item, client: client, playing: $playing, home: true).frame(width: shelfWidth)
                 }
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
     }
+    /// The gap between a row's cards: close together without names (the Netflix look).
+    private var shelfGap: CGFloat { captions ? 12 : 6 }
+    /// A row's poster width: a fifth bigger without names.
+    private var shelfWidth: CGFloat { posterSize.homeWidth * (captions ? 1 : 1.2) }
 
     // MARK: Discover rows
 
@@ -495,7 +502,7 @@ struct JellySpaceView: View {
                                 identifier: "jellyspace-more-gems")
             }
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
+                LazyHStack(alignment: .top, spacing: shelfGap) {
                     ForEach(items, id: \.Id) { item in
                         JellyTile(item: item, client: client, playing: $playing, home: true)
                             .overlay(alignment: .topLeading) { if let score = item.CommunityRating, score > 0 { PosterScoreBadge(score: score) } }
@@ -540,7 +547,7 @@ struct JellySpaceView: View {
     }
     private func wideShelf(_ items: [JellyfinClient.Item], client: JellyfinClient, width: CGFloat) -> some View {
         ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 12) {
+            LazyHStack(alignment: .top, spacing: shelfGap) {
                 ForEach(items, id: \.Id) { item in
                     JellyTile(item: item, client: client, playing: $playing, wide: true, home: true).frame(width: width)
                 }
@@ -1220,12 +1227,14 @@ struct JellyGrid: View {
     /// A short line under a poster, by item id (why More like this picked it).
     var notes: [String: String] = [:]
     @State private var width: CGFloat = 0
+    /// Without names under the posters, the grid closes up (the Netflix look).
+    @AppStorage(JellyPrefs.captionsKey) private var captions = true
     var body: some View {
         if layout == .canvas {
             canvas
         } else {
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: layout == .landscape ? 2 : 3)
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+            let columns = Array(repeating: GridItem(.flexible(), spacing: captions ? 12 : 6, alignment: .top), count: layout == .landscape ? 2 : 3)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: captions ? 18 : 6) {
                 ForEach(items, id: \.Id) { item in
                     VStack(alignment: .leading, spacing: 3) {
                         JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
@@ -1334,6 +1343,8 @@ struct JellyTile: View {
     @AppStorage(JellyPrefs.ticksKey) private var ticks = true
     @AppStorage(JellyPrefs.captionsKey) private var captions = true
     private var square: Bool { ["MusicAlbum", "MusicArtist", "Audio", "Playlist"].contains(item.kind) }
+    /// Small corners without names (the Netflix look); the app's own otherwise.
+    private var corner: CGFloat { captions ? (home ? 16 : 8) : 5 }
     var body: some View {
         link.modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite,
                                     play: item.kind == "Movie" ? { playing = JellySpace.playback(item, client: client) } : nil))
@@ -1424,8 +1435,8 @@ struct JellyTile: View {
                 }
                 .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
                 .overlay(alignment: .topTrailing) { cornerBadge }
-                .clipShape(RoundedRectangle(cornerRadius: home ? 16 : 8))
-                .overlay { if home { RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline) } }
+                .clipShape(RoundedRectangle(cornerRadius: corner))
+                .overlay { if home { RoundedRectangle(cornerRadius: corner).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline) } }
             if captions {
                 Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
                     .font(.system(size: home ? 14 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
@@ -1589,6 +1600,8 @@ struct JellyWideCard: View {
     var nextUp = false
     /// Continue Watching's big card: a play circle on the picture, rounder corners, a larger title.
     var large = false
+    /// Just the picture and the progress bar, smaller corners (Continue Watching with Titles off).
+    var pictureOnly = false
     var onRemove: (() -> Void)? = nil
     @State private var played: Bool?
     @State private var favourite: Bool?
@@ -1612,17 +1625,20 @@ struct JellyWideCard: View {
                     }
                     .overlay {
                         if large {
-                            Image(systemName: "play.fill").font(.system(size: 22, weight: .bold)).foregroundStyle(.white).offset(x: 2)
-                                .frame(width: 58, height: 58).background(.black.opacity(0.28), in: Circle())
-                                .overlay(Circle().strokeBorder(.white, lineWidth: 3)).shadow(color: .black.opacity(0.3), radius: 8)
+                            let circle: CGFloat = pictureOnly ? 40 : 58
+                            Image(systemName: "play.fill").font(.system(size: pictureOnly ? 16 : 22, weight: .bold)).foregroundStyle(.white).offset(x: 2)
+                                .frame(width: circle, height: circle).background(.black.opacity(0.28), in: Circle())
+                                .overlay(Circle().strokeBorder(.white, lineWidth: pictureOnly ? 2 : 3)).shadow(color: .black.opacity(0.3), radius: 8)
                                 .accessibilityHidden(true)
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: large ? 16 : 8))
-                Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
-                    .font(.system(size: large ? 16 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, large ? 10 : 8)
-                Text(large ? JellySpace.cardLine(item) : nextUp || (item.UserData?.PlayedPercentage ?? 0) > 0 ? JellySpace.continueLine(item) : JellySpace.detail(item))
-                    .font(.system(size: large ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, large ? 3 : 2)
+                    .clipShape(RoundedRectangle(cornerRadius: pictureOnly ? 5 : large ? 16 : 8))
+                if !pictureOnly {
+                    Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
+                        .font(.system(size: large ? 16 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, large ? 10 : 8)
+                    Text(large ? JellySpace.cardLine(item) : nextUp || (item.UserData?.PlayedPercentage ?? 0) > 0 ? JellySpace.continueLine(item) : JellySpace.detail(item))
+                        .font(.system(size: large ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, large ? 3 : 2)
+                }
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
         .buttonStyle(.springPress).accessibilityLabel("Play " + JellySpace.name(item))
