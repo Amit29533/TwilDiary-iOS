@@ -279,7 +279,10 @@ enum JellyRecommender {
 struct JellyTheme: Identifiable, Sendable {
     let id: String
     let title: String
+    /// The row: the first 15.
     let items: [JellyfinClient.Item]
+    /// Every title with the theme, for the row's See all.
+    var all: [JellyfinClient.Item] = []
 }
 
 extension JellyRecommender {
@@ -303,7 +306,7 @@ extension JellyRecommender {
         guard !eligible.isEmpty else { return [] }
         func unique(_ offsets: [Int]) -> [JellyfinClient.Item] {
             var keys = Set<String>()
-            return offsets.map { index.entries[$0] }.filter { keys.insert($0.duplicateKey).inserted }.prefix(15).map(\.item)
+            return offsets.map { index.entries[$0] }.filter { keys.insert($0.duplicateKey).inserted }.prefix(300).map(\.item)
         }
         func unwatchedThenRated(_ offsets: [Int]) -> [Int] {
             offsets.sorted { a, b in
@@ -358,10 +361,10 @@ extension JellyRecommender {
             case "Must watch ": offsets = found.sorted { (index.entries[$0].item.CommunityRating ?? 0) > (index.entries[$1].item.CommunityRating ?? 0) }
             default: offsets = unwatchedThenRated(found)
             }
-            let items = unique(offsets)
+            let all = unique(offsets), items = Array(all.prefix(15))
             guard items.count >= 3 else { continue }
             let kindID = title == "Random picks for " ? "random-" : title == "Must watch " ? "best-" : "for-"
-            rows.append(JellyTheme(id: kindID + chosen, title: title + (names[chosen] ?? chosen), items: items))
+            rows.append(JellyTheme(id: kindID + chosen, title: title + (names[chosen] ?? chosen), items: items, all: all))
         }
         return rows
     }

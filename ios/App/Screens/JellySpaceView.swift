@@ -230,7 +230,7 @@ struct JellySpaceView: View {
                 let items = shown(theme.items)
                 if items.count >= 3 {
                     VStack(alignment: .leading, spacing: 10) {
-                        heading(theme.title)
+                        headingWithAll(theme.title, ids: (theme.all.isEmpty ? theme.items : theme.all).map(\.Id), identifier: "theme-" + theme.id)
                         posterShelf(items, client: client)
                     }
                 }
@@ -387,7 +387,7 @@ struct JellySpaceView: View {
     /// following (marked Next up); wide cards that play at once.
     private func continueRow(_ client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            heading("Continue Watching")
+            headingWithAll("Continue Watching", ids: continueItems.map(\.item.Id), identifier: "continue")
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(continueItems, id: \.id) { entry in
@@ -408,6 +408,14 @@ struct JellySpaceView: View {
         return started.map { JellyContinueEntry(item: $0, nextUp: false) } + following.map { JellyContinueEntry(item: $0, nextUp: true) }
     }
 
+    /// A row's heading with the round › to its whole list on a page of its own.
+    private func headingWithAll(_ title: String, ids: [String], identifier: String) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            heading(title)
+            Spacer(minLength: 8)
+            SectionMoreLink(label: "View more " + title, value: JellyShelfRoute(title: title, ids: ids), identifier: "jellyspace-more-" + identifier)
+        }
+    }
     /// A row of posters (a library's newest, your favourites, collections), with the app's round ›
     /// to the whole list.
     private func tileRow<Route: Hashable>(_ title: String, items: [JellyfinClient.Item], client: JellyfinClient, more: Route) -> some View {
@@ -423,7 +431,7 @@ struct JellySpaceView: View {
     /// "Because you watched Your Name": Jellyfin's own picks from what you've watched or liked.
     private func forYouRow(_ picks: JellyForYou, client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            heading(picks.title)
+            headingWithAll(picks.title, ids: shown(picks.items).map(\.Id), identifier: "for-you")
             posterShelf(shown(picks.items), client: client)
         }
     }
@@ -479,10 +487,12 @@ struct JellySpaceView: View {
     /// Hidden gems: big posters with their rating, unwatched and rated 7.5 or more.
     private func gemsRow(_ items: [JellyfinClient.Item], client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 heading("Hidden gems")
                 Spacer(minLength: 8)
                 Text("Unwatched · 7.5+").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
+                SectionMoreLink(label: "View more Hidden gems", value: JellyShelfRoute(title: "Hidden gems", ids: items.map(\.Id)),
+                                identifier: "jellyspace-more-gems")
             }
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 12) {
@@ -520,6 +530,10 @@ struct JellySpaceView: View {
                     Image(systemName: "shuffle").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         .frame(width: 36, height: 36).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Shuffle " + shelf.title).accessibilityIdentifier("jellyspace-shuffle-" + shelf.id)
+                if let library = shelf.library {
+                    SectionMoreLink(label: "Open " + library.name, value: JellyFolderRoute(id: library.id, name: library.name, kind: "CollectionFolder", type: library.type),
+                                    identifier: "jellyspace-more-" + shelf.id)
+                }
             }
             if wide { wideShelf(shown(shelf.items), client: client, width: posterSize.homeWidth * 1.6) } else { posterShelf(shown(shelf.items), client: client) }
         }
