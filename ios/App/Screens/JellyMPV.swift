@@ -106,10 +106,17 @@ private struct JellyMPVHandle: @unchecked Sendable {
         }
         // AVFoundation: the decoded frames go to the display layer untouched, with no GPU pass per
         // frame. Its options straight after vo, where Streamyfin found they must be. The subtitles
-        // as an overlay of their own (composited into the frames they'd be cropped in Fill), or
-        // composited (`jellyspace.mpv.compositeOSD`, which the performance run compares: the overlay
-        // didn't show in the Simulator).
-        let composite = UserDefaults.standard.bool(forKey: "jellyspace.mpv.compositeOSD")
+        // composited into the frames on a device, as Streamyfin ships it (they show in Picture in
+        // Picture too; the player keeps this output to fitted pictures, so they aren't cropped). The
+        // Simulator has no VideoToolbox for that, so an overlay there. `jellyspace.mpv.compositeOSD`
+        // overrides it (the performance run compares both).
+        #if targetEnvironment(simulator)
+        let compositeByDefault = false
+        #else
+        let compositeByDefault = true
+        #endif
+        let defaults = UserDefaults.standard
+        let composite = defaults.object(forKey: "jellyspace.mpv.compositeOSD") != nil ? defaults.bool(forKey: "jellyspace.mpv.compositeOSD") : compositeByDefault
         let output: [(String, String)] = sample != nil
             ? [("vo", "avfoundation"), ("avfoundation-composite-osd", composite ? "yes" : "no"), ("hwdec", "videotoolbox")]
             : [("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox")]

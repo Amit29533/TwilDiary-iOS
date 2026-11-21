@@ -1577,13 +1577,13 @@ struct JellyPlayerView: View {
     private var activeSmooth: Int { JellyPower.shared.constrained ? 0 : smoothRate }
     /// mpv's Super Resolution as it runs now: off while the phone is hot or in Low Power Mode.
     private var activeSuperResolution: String { JellyPower.shared.constrained ? "off" : superResolution }
-    /// The Picture choices for the player playing: mpv through AVFoundation shows the picture fitted or
-    /// filled by its layer, which has no pixel-for-pixel size (Original), so that's left out there.
-    private var pictureChoices: [JellyFill] {
-        usesMPV && !mpvOnGPU ? [.fit, .fill] : JellyFill.allCases
-    }
-    /// Whether mpv needs its GPU output (smooth motion or Super Resolution on).
-    private var mpvOnGPU: Bool { activeSmooth > 0 || activeSuperResolution != "off" }
+    /// The Picture choices: all of them on both players (on mpv, Fill and Original use the GPU output).
+    private var pictureChoices: [JellyFill] { JellyFill.allCases }
+    /// Whether mpv needs its GPU output: smooth motion or Super Resolution on, or the picture filled
+    /// or at its own size. Through AVFoundation the subtitles are composited into the frames, which
+    /// Fill would crop (and the layer has no pixel-for-pixel size); on the GPU they're placed on what's
+    /// shown. So AVFoundation, the coolest way, plays fitted pictures.
+    private var mpvOnGPU: Bool { activeSmooth > 0 || activeSuperResolution != "off" || fill != .fit }
     /// Whether this video is upscaled: by the setting, but on Auto not while the phone is hot or in
     /// Low Power Mode (Always means always).
     private var upscaleWanted: Bool { upscaleAllowed(upscaleMode) }
