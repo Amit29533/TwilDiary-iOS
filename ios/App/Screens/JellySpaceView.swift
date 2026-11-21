@@ -90,7 +90,7 @@ struct JellySpaceView: View {
 
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
     /// at Explore's sizes.
-    private var home: some View {
+    @ViewBuilder private var home: some View {
         // Searching: the search page under the top bar and the search field (Recommended for you until
         // something's typed, then the results).
         let showsResults = searching
