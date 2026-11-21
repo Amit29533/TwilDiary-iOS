@@ -37,6 +37,7 @@ private enum JellyMPVChange: Sendable {
     case time(Double), duration(Double), paused(Bool), buffering(Bool), ended(Bool)
     case width(Int), height(Int)
     case tracks(audio: [TrackInfo], subtitles: [TrackInfo], aid: Int?, sid: Int?)
+    case subtitleText(String)
     case loaded
     case log(String), failed(String)
 }
@@ -64,6 +65,10 @@ private struct JellyMPVHandle: @unchecked Sendable {
     @Published private(set) var subtitleTracks: [TrackInfo] = []
     @Published private(set) var audioID: Int?
     @Published private(set) var subtitleID: Int?
+    /// The subtitle line showing now, as plain text (for translating it).
+    @Published private(set) var subtitleText = ""
+    /// While subtitles are translated: mpv draws its text see-through (picture subtitles still show).
+    private var hidesText = false
     @Published private(set) var videoSize = CGSize.zero
     /// Why the video didn't open, in mpv's words (with its latest warning or error).
     @Published private(set) var failure: String?
@@ -150,6 +155,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ("paused-for-cache", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG),
             ("width", MPV_FORMAT_INT64), ("height", MPV_FORMAT_INT64),
             ("track-list", MPV_FORMAT_NONE), ("aid", MPV_FORMAT_NONE), ("sid", MPV_FORMAT_NONE),
+            ("sub-text", MPV_FORMAT_STRING),
         ]
         for (name, format) in observed { mpv_observe_property(raw, 0, name, format) }
         Self.addJellyfinProtocol(raw)
@@ -277,6 +283,18 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// The subtitles' look from JellySpace's settings, mid-video (as the size changes in the player).
     func setSubtitleLook(_ look: JellySubtitleLook) {
         for (name, value) in look.mpvSettings { set(name, value) }
+        if hidesText { hideText() }
+    }
+    /// Subtitles translated: mpv keeps reading its lines (sub-text) but draws them see-through, and the
+    /// player draws the translation in their place. Off: the look back.
+    func setTextHidden(_ hidden: Bool, look: JellySubtitleLook) {
+        guard hidden != hidesText else { return }
+        hidesText = hidden
+        setSubtitleLook(look)
+    }
+    private func hideText() {
+        for (name, value) in [("sub-color", "#00000000"), ("sub-border-color", "#00000000"), ("sub-shadow-offset", "0"),
+                              ("sub-back-color", "#00000000"), ("sub-ass-override", "force")] { set(name, value) }
     }
     /// The picture off in the background (mpv's Metal layer can't draw there) and back.
     func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
@@ -355,6 +373,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
             if subtitles.map(\.id) != subtitleTracks.map(\.id) { subtitleTracks = subtitles }
             if aid != audioID { audioID = aid }
             if sid != subtitleID { subtitleID = sid }
+        case .subtitleText(let text):
+            if text != subtitleText { subtitleText = text }
         case .log(let line):
             log = Array((log + [line]).suffix(4))
         case .failed(let reason):
@@ -362,6 +382,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         case .loaded:
             loaded = true; buffering = false
             updateState()
+            if hidesText { hideText() }
             for subtitle in pendingSubtitles {
                 command(["sub-add", JellyMPVStream.scheme + subtitle.url.absoluteString, "auto", subtitle.name ?? "Subtitles", subtitle.language ?? ""])
             }
@@ -432,6 +453,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
                     let number = property.format == MPV_FORMAT_DOUBLE ? property.data?.assumingMemoryBound(to: Double.self).pointee : nil
                     let flag = property.format == MPV_FORMAT_FLAG ? property.data.map { $0.assumingMemoryBound(to: Int32.self).pointee != 0 } : nil
                     let integer = property.format == MPV_FORMAT_INT64 ? property.data.map { Int($0.assumingMemoryBound(to: Int64.self).pointee) } : nil
+                    let string = property.format == MPV_FORMAT_STRING
+                        ? property.data?.assumingMemoryBound(to: UnsafeMutablePointer<CChar>?.self).pointee.map { String(cString: $0) } : nil
                     switch name {
                     case "time-pos":
                         // Ten times a second, as AetherEngine's clock.
@@ -443,6 +466,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
                     case "width": if let integer { change = .width(integer) }
                     case "height": if let integer { change = .height(integer) }
                     case "track-list", "aid", "sid": change = Self.tracks(handle.raw)
+                    case "sub-text": change = .subtitleText(string ?? "")
                     default: break
                     }
                 default:

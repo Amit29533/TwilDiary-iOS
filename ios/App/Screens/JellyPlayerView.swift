@@ -62,6 +62,12 @@ struct JellyPlayerView: View {
     /// Subtitles' look (Settings → JellySpace → Subtitles), read as the player opens; the size can be
     /// changed in the player too (Advanced options).
     @State private var subtitleLook = JellySubtitleLook.current
+    /// Live subtitle translation (Advanced options → Translate).
+    @StateObject private var translator = JellyTranslator()
+    /// mpv's subtitle line now (translated, it's drawn by the player instead).
+    @State private var mpvLine = ""
+    /// "Translated from Korean", for a moment as translating starts.
+    @State private var translatedTag = false
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatchingAfter = 3
     /// Episodes started on their own in a row, with no touch between (for "Are you still watching?").
     @State private var autoplayStreak = 0
@@ -244,14 +250,28 @@ struct JellyPlayerView: View {
                 picture(engine)
             }
             GeometryReader { safe in
-                JellySubtitles(cues: cues, clock: subtitleClock, delay: subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
-                               fill: fill, videoPixels: videoSize,
-                               originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
-                               sheet: subtitleLook.styled == "mine" ? nil : assSheet,
-                               // Above the bar and the title while the controls show.
-                               lift: showsControls && failure == nil ? (verticalSizeClass == .compact ? 72 : 96) : 0)
-                    .animation(.smooth(duration: 0.25), value: showsControls)
-                    .ignoresSafeArea()
+                // Above the bar and the title while the controls show.
+                let lift: CGFloat = showsControls && failure == nil ? (verticalSizeClass == .compact ? 72 : 96) : 0
+                ZStack {
+                    JellySubtitles(cues: cues, clock: subtitleClock, delay: subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
+                                   fill: fill, videoPixels: videoSize,
+                                   originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
+                                   sheet: subtitleLook.styled == "mine" ? nil : assSheet, lift: lift,
+                                   translated: translator.translating ? translator.lines : nil)
+                    // mpv's line, translated (mpv draws its own see-through meanwhile).
+                    if usesMPV, translator.translating, !mpvLine.isEmpty {
+                        JellyTranslatedLine(text: translator.lines[mpvLine] ?? mpvLine, look: subtitleLook, insets: safe.safeAreaInsets, lift: lift)
+                    }
+                    if translatedTag {
+                        Label("Translated from " + translator.sourceName, systemImage: "translate")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                            .padding(.horizontal, 10).frame(height: 24).background(.black.opacity(0.5), in: Capsule())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                            .padding(.bottom, max(safe.safeAreaInsets.bottom, 10)).transition(.opacity)
+                    }
+                }
+                .animation(.smooth(duration: 0.25), value: showsControls)
+                .ignoresSafeArea()
             }.allowsHitTesting(false)
             // One finger: tap for the controls, double tap 15 seconds back (left) or on (right), hold
             // for 2x, swipe sideways to move through the video, up or down for brightness (left) or
@@ -359,6 +379,17 @@ struct JellyPlayerView: View {
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
         .task(id: current.id + (usesMPV ? "|mpv\(mpvRun)" : "")) { await start() }
+        // Live subtitle translation: runs while a language is chosen and the subtitles' own is known
+        // (a new pair starts it again). Apple's Translation asks to download a language first used.
+        .translationTask(translator.configuration) { @Sendable [translator] session in await JellyTranslator.run(session, for: translator) }
+        .onChange(of: activeSubtitle) { _, id in translator.reset(language: subtitleTracks.first { $0.id == id }?.language) }
+        .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
+        .onChange(of: translator.translating) { _, on in
+            mpv.setTextHidden(on, look: subtitleLook)
+            withAnimation { translatedTag = on }
+            if on { Task { try? await Task.sleep(for: .seconds(3)); withAnimation { translatedTag = false } } }
+        }
+        .onChange(of: translator.problem) { _, text in if let text { show(text) } }
         // mpv's output follows smooth motion and Super Resolution (AVFoundation without them, the
         // GPU with either).
         .onChange(of: mpvOnGPU) { _, _ in moveMPVOutput() }
@@ -446,6 +477,10 @@ struct JellyPlayerView: View {
             .onReceive(mpv.$subtitleTracks) { tracks in subtitleTracks = tracks; pickDefaultSubtitle(tracks) }
             .onReceive(mpv.$audioID) { activeAudio = $0 }
             .onReceive(mpv.$subtitleID) { activeSubtitle = $0 }
+            .onReceive(mpv.$subtitleText) { text in
+                mpvLine = JellySubtitleCanvas.plain(text)
+                if translator.wanted { translator.want([mpvLine]) }
+            }
             .onReceive(mpv.$videoSize) { size in if size.width > 0, size.height > 0 { videoSize = size } }
             .onReceive(mpv.$failure) { reason in if let reason { failure = reason } }
             .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
@@ -460,6 +495,16 @@ struct JellyPlayerView: View {
         let step = showsControls || scrub != nil || panel != nil ? 0.1 : 1
         if abs(seconds - time) >= step - 0.01 || seconds < time { time = seconds }
         reachedEnd(seconds); autoSkip(); checkSleep()
+        if !usesMPV, translator.due(at: subtitleClock.time, count: cues.count) { feedTranslator() }
+    }
+    /// The next text lines (from a second ago on) handed to the translator, the soonest first.
+    private func feedTranslator() {
+        let from = subtitleClock.time - subtitleDelay - 1
+        let texts = cues.filter { $0.endTime >= from }.sorted { $0.startTime < $1.startTime }.prefix(40).compactMap { cue -> String? in
+            if case .image = cue.body { return nil }
+            return cue.text.map(JellySubtitleCanvas.plain)
+        }
+        translator.want(texts)
     }
 
     // The engine playing now: AetherEngine, or mpv.
@@ -1581,6 +1626,8 @@ struct JellyPlayerView: View {
                 }
                 if !subtitleTracks.isEmpty {
                     subtitleSizeControl
+                    subtitlePositionControl
+                    translateControl
                     delayControl("Subtitle delay", value: subtitleDelay, step: Self.delayStep) { setSubtitleDelay($0) }
                 }
                 delayControl("Audio delay", value: audioDelay) { audioDelay = $0; engineAudioDelay($0) }
@@ -1985,6 +2032,41 @@ struct JellyPlayerView: View {
             Text("\(Int((subtitleLook.size * 100).rounded()))%").font(.system(size: 13, weight: .bold)).monospacedDigit()
                 .foregroundStyle(.white).frame(minWidth: 44, alignment: .trailing)
         }
+    }
+    /// How high the subtitles sit, here as in Settings (and kept there): from the bottom up to a
+    /// quarter of the screen.
+    private var subtitlePositionControl: some View {
+        let raise = Binding<Double>(get: { subtitleLook.raise }, set: { value in
+            subtitleLook.raise = value
+            UserDefaults.standard.set(value, forKey: JellyPrefs.subtitleRaiseKey)
+            if usesMPV { mpv.setSubtitleLook(subtitleLook) }
+        })
+        return HStack(spacing: 10) {
+            Text("Subtitle position").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            Slider(value: raise, in: 0...0.25, step: 0.01).tint(.white)
+                .accessibilityLabel("Subtitle position").accessibilityValue("\(Int((subtitleLook.raise * 100).rounded())) percent up")
+            Text("\(Int((subtitleLook.raise * 100).rounded()))%").font(.system(size: 13, weight: .bold)).monospacedDigit()
+                .foregroundStyle(.white).frame(minWidth: 44, alignment: .trailing)
+        }.accessibilityIdentifier("jellyspace-subtitle-position")
+    }
+    /// Translate: Off, or the language the subtitles are translated into as they play, on the phone.
+    private var translateControl: some View {
+        HStack(spacing: 10) {
+            Text("Translate").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            Spacer(minLength: 8)
+            Menu {
+                Picker("Translate subtitles", selection: Binding(get: { translator.target }, set: { translator.setTarget($0) })) {
+                    Text("Off").tag("")
+                    ForEach(translator.choices) { choice in Text(choice.name).tag(choice.id) }
+                }
+            } label: {
+                Label(translator.targetName, systemImage: "translate").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).frame(height: 36).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+            }
+            .accessibilityLabel("Translate subtitles").accessibilityValue(translator.targetName)
+            .accessibilityIdentifier("jellyspace-translate-subtitles")
+        }
+        .task { await translator.loadChoices() }
     }
     private func delayStep(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -2477,12 +2559,20 @@ private struct JellySubtitles: View {
     var originalSize = CGSize.zero
     var sheet: JellyASSSheet? = nil
     var lift: CGFloat = 0
+    /// Translated lines by their original text, while translating (they show as plain text).
+    var translated: [String: String]? = nil
 
     var body: some View {
         let time = clock.time - delay
         let now = cues.filter { $0.startTime <= time && time < $0.endTime }
-        JellySubtitleCanvas(now: now, look: look, insets: insets, fill: fill, videoPixels: videoPixels,
-                            originalSize: originalSize, sheet: sheet, lift: lift)
+        var swap: [String: String] = [:]
+        if let translated {
+            for cue in now {
+                if let text = cue.text.map(JellySubtitleCanvas.plain), let done = translated[text] { swap[text] = done }
+            }
+        }
+        return JellySubtitleCanvas(now: now, look: look, insets: insets, fill: fill, videoPixels: videoPixels,
+                                   originalSize: originalSize, sheet: translated == nil ? sheet : nil, lift: lift, replace: swap)
             .equatable()
     }
 }
@@ -2502,10 +2592,13 @@ private struct JellySubtitleCanvas: View, Equatable {
     var sheet: JellyASSSheet? = nil
     /// The room the controls take while they show.
     var lift: CGFloat = 0
+    /// Lines shown translated: the translation by the original text.
+    var replace: [String: String] = [:]
 
     nonisolated static func == (lhs: JellySubtitleCanvas, rhs: JellySubtitleCanvas) -> Bool {
         lhs.now.map(\.id) == rhs.now.map(\.id) && lhs.look == rhs.look && lhs.insets == rhs.insets && lhs.fill == rhs.fill
             && lhs.videoPixels == rhs.videoPixels && lhs.originalSize == rhs.originalSize && lhs.lift == rhs.lift && lhs.sheet == rhs.sheet
+            && lhs.replace == rhs.replace
     }
 
     var body: some View {
@@ -2534,7 +2627,7 @@ private struct JellySubtitleCanvas: View, Equatable {
                 let lines = sheet != nil ? [] : now.compactMap { cue -> String? in
                     if case .image = cue.body { return nil }
                     return cue.text.map(Self.plain)
-                }.filter { !$0.isEmpty }
+                }.filter { !$0.isEmpty }.map { replace[$0] ?? $0 }
                 if !lines.isEmpty {
                     JellyPlainSubtitle(text: lines.joined(separator: "\n"), look: look, points: max(12, JellySubtitleLook.points(screenHeight: proxy.size.height, size: look.size)))
                         .padding(.leading, max(40, insets.leading + 16)).padding(.trailing, max(40, insets.trailing + 16))

@@ -614,6 +614,8 @@ struct JellySpaceView: View {
         guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
         // The library index for recommending, built beside the rows (More like this then finds it ready).
         JellyIndexStore.warm(client: client, user: user)
+        // Whether Delete from server is offered (asked once a session).
+        Task { await JellyServerEdits.shared.check(client: client) }
         async let started = client.resume(user: user)
         async let liked = client.items([URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode")], filters: ["IsFavorite"], user: user, sort: .added, limit: 20)
         async let sets = client.items([URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")], user: user, limit: 20)
@@ -1624,8 +1626,13 @@ struct JellyItemMenu: ViewModifier {
     @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
     @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
+    @State private var confirmDelete = false
+    @State private var deleteFailure: String?
     @ViewBuilder func body(content: Content) -> some View {
-        if ["CollectionFolder", "Photo", "PhotoAlbum"].contains(item.kind) {
+        if JellyServerEdits.shared.isDeleted(item) {
+            // Deleted from the server here: gone from every row at once.
+            EmptyView()
+        } else if ["CollectionFolder", "Photo", "PhotoAlbum"].contains(item.kind) {
             content
         } else {
             content.contextMenu {
@@ -1652,12 +1659,45 @@ struct JellyItemMenu: ViewModifier {
                         router.paths[router.selectedTab, default: NavigationPath()].append(JellyDetailRoute(id: series, name: item.SeriesName ?? ""))
                     }
                 }
+                if JellyDiaryLink.offers(item) {
+                    Button("View in Diary", systemImage: "book") { openDiary() }
+                }
                 if ["Movie", "Episode", "Video"].contains(item.kind), let url = JellySpace.client?.streamURL(item.Id) {
-                    Menu("Open in", systemImage: "arrow.up.forward.app") {
-                        ForEach(JellySpace.otherPlayers, id: \.self) { app in Button(app) { JellySpace.open(url, in: app) } }
-                    }
+                    Button("Open in Infuse", systemImage: "arrow.up.forward.app") { JellySpace.open(url, in: "Infuse") }
                 }
                 Button("Hide", systemImage: "eye.slash") { JellyHidden.hide(item.Id, name: item.Name ?? "Item") }
+                if JellyServerEdits.shared.canDelete, JellyServerEdits.deletable(item) {
+                    Divider()
+                    Button("Delete from server", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                }
+            }
+            .alert("Delete “\(JellySpace.name(item))”?", isPresented: $confirmDelete) {
+                Button("Delete from server", role: .destructive) { delete() }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text(JellyServerEdits.warning(kind: item.kind)) }
+            .alert("Couldn't delete", isPresented: Binding(get: { deleteFailure != nil }, set: { if !$0 { deleteFailure = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(deleteFailure ?? "") }
+        }
+    }
+    /// View in Diary: the film's or show's page in the diary (an episode's or season's show's).
+    private func openDiary() {
+        let item = item, tab = router.selectedTab
+        Task {
+            guard let client = JellySpace.client, let route = await JellyDiaryLink.route(for: item, client: client) else { return }
+            router.paths[tab, default: NavigationPath()].append(route)
+        }
+    }
+    /// Deletes it from the server; it leaves the rows once the server says it's done.
+    private func delete() {
+        let id = item.Id
+        Task {
+            guard let client = JellySpace.client else { return }
+            do {
+                try await client.delete(id)
+                withAnimation(.smooth) { _ = JellyServerEdits.shared.deleted.insert(id) }
+            } catch {
+                deleteFailure = error.localizedDescription
             }
         }
     }
@@ -1754,17 +1794,11 @@ enum JellyGridLayout: String, CaseIterable {
               let key = JellySecrets.read("seerr-key"), !key.isEmpty else { return nil }
         return JellySeerr(base: base, key: key)
     }
-    /// Players a video can be handed to (each opens the stream by its own link).
-    static let otherPlayers = ["Infuse", "VLC", "Outplayer"]
+    /// The player a video can be handed to: Infuse, which opens the stream by its link.
+    static let otherPlayers = ["Infuse"]
     static func open(_ url: URL, in app: String) {
         let encoded = url.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
-        let link: String
-        switch app {
-        case "VLC": link = "vlc-x-callback://x-callback-url/stream?url=" + encoded
-        case "Outplayer": link = "outplayer://x-callback-url/play?url=" + encoded
-        default: link = "infuse://x-callback-url/play?url=" + encoded
-        }
-        if let target = URL(string: link) { UIApplication.shared.open(target) }
+        if let target = URL(string: "infuse://x-callback-url/play?url=" + encoded) { UIApplication.shared.open(target) }
     }
     /// Folders, shows and seasons open; films, episodes and videos play.
     static func opens(_ item: JellyfinClient.Item) -> Bool { item.IsFolder == true || ["Folder", "CollectionFolder", "Series", "Season", "BoxSet"].contains(item.kind) }

@@ -75,6 +75,9 @@ struct JellyDetailPage: View {
     @State private var extras: [JellyfinClient.Item] = []
     /// The version of a film to play (when it's stored in more than one quality).
     @State private var version: String?
+    @State private var confirmDelete = false
+    @State private var deleteFailure: String?
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
@@ -138,6 +141,14 @@ struct JellyDetailPage: View {
                 credits(detail, client: client).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
             }
         }
+        .task { if let client = JellySpace.client { await JellyServerEdits.shared.check(client: client) } }
+        .alert("Delete “\(name)”?", isPresented: $confirmDelete) {
+            Button("Delete from server", role: .destructive) { Task { await deleteFromServer() } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text(JellyServerEdits.warning(kind: detail?.kind ?? "")) }
+        .alert("Couldn't delete", isPresented: Binding(get: { deleteFailure != nil }, set: { if !$0 { deleteFailure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(deleteFailure ?? "") }
         .task { await load() }
         .task(id: season) { await loadEpisodes() }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load(); await loadEpisodes() } }) { JellyPlayerView(playback: $0) }
@@ -438,28 +449,67 @@ struct JellyDetailPage: View {
         }
         return nil
     }
-    /// Whether ••• has anything in it (a show without an online trailer has nothing).
+    /// Whether ••• has anything in it.
     private func hasMore(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> Bool {
         detail.RemoteTrailers?.contains { $0.Url.flatMap(URL.init(string:)) != nil } == true
             || (!series && (client.streamURL(route.id, source: version) != nil || chosenSource(detail) != nil))
+            || offersDiary(detail) || canDelete(detail)
     }
-    /// The top bar's •••: File info, the trailer online, and handing the film to another player.
+    /// The top bar's •••: File info, the trailer online, its diary page, Infuse, and deleting it.
     @ViewBuilder private func moreMenu(_ detail: JellyfinClient.Detail, client: JellyfinClient) -> some View {
         let online = detail.RemoteTrailers?.compactMap { $0.Url.flatMap(URL.init(string:)) }.first
         let stream = series ? nil : client.streamURL(route.id, source: version)
         let info = !series && chosenSource(detail) != nil
-        if online != nil || stream != nil || info {
+        if hasMore(detail, client: client) {
             Menu {
                 if info { Button("File info", systemImage: "info.circle") { showFileInfo = true } }
                 if let online { Button("Watch trailer online", systemImage: "play.rectangle") { openURL(online) } }
+                if offersDiary(detail) { Button("View in Diary", systemImage: "book") { openDiary(detail) } }
                 if let stream {
                     Divider()
-                    ForEach(JellySpace.otherPlayers, id: \.self) { app in
-                        Button("Open in " + app, systemImage: "arrow.up.forward.app") { JellySpace.open(stream, in: app) }
-                    }
+                    Button("Open in Infuse", systemImage: "arrow.up.forward.app") { JellySpace.open(stream, in: "Infuse") }
+                }
+                if canDelete(detail) {
+                    Divider()
+                    Button("Delete from server", systemImage: "trash", role: .destructive) { confirmDelete = true }
                 }
             } label: { TitleMoreButtonLabel() }
             .accessibilityLabel("More options for " + name).accessibilityIdentifier("jellyspace-detail-more")
+        }
+    }
+    /// A film or show with its TMDB id, or an episode or season of a show: it has a diary page.
+    private func offersDiary(_ detail: JellyfinClient.Detail) -> Bool {
+        switch detail.kind {
+        case "Movie", "Series": JellyDiaryLink.tmdb(detail.ProviderIds) != nil
+        case "Episode", "Season": item?.SeriesId != nil
+        default: false
+        }
+    }
+    /// View in Diary: the film's or show's page in the diary (an episode's show's).
+    private func openDiary(_ detail: JellyfinClient.Detail) {
+        let tab = router.selectedTab
+        if detail.kind == "Movie" || detail.kind == "Series", let id = JellyDiaryLink.tmdb(detail.ProviderIds) {
+            router.paths[tab, default: NavigationPath()].append(CatalogRoute(kind: detail.kind == "Movie" ? .movie : .tv, id: id))
+            return
+        }
+        guard let item, let client = JellySpace.client else { return }
+        Task {
+            guard let found = await JellyDiaryLink.route(for: item, client: client) else { return }
+            router.paths[tab, default: NavigationPath()].append(found)
+        }
+    }
+    private func canDelete(_ detail: JellyfinClient.Detail) -> Bool {
+        JellyServerEdits.shared.canDelete && ["Movie", "Series", "Season", "Episode", "Video", "MusicVideo"].contains(detail.kind)
+    }
+    /// Deletes it from the server, then the page closes (and it's gone from the rows behind it).
+    private func deleteFromServer() async {
+        guard let client = JellySpace.client else { return }
+        do {
+            try await client.delete(route.id)
+            JellyServerEdits.shared.deleted.insert(route.id)
+            dismiss()
+        } catch {
+            deleteFailure = error.localizedDescription
         }
     }
     /// "Version: 4K" when a film is stored in more than one quality.

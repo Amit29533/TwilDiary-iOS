@@ -755,12 +755,26 @@ struct JellyfinClient: Sendable {
     // MARK: Playback state (JellySpace): read and written for one user, named in the request (an API
     // key has no user of its own, so the session routes would keep nothing).
     struct UserRow: Decodable, Sendable {
-        struct Policy: Decodable, Sendable { let IsAdministrator: Bool? }
+        struct Policy: Decodable, Sendable {
+            let IsAdministrator: Bool?
+            /// May delete anything, or (the list) in these libraries.
+            let EnableContentDeletion: Bool?
+            let EnableContentDeletionFromFolders: [String]?
+        }
         let Id: String
         let Policy: Policy?
     }
     struct UserData: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool? }
     func users() async throws -> [UserRow] { try await get("Users") }
+    func user(_ id: String) async throws -> UserRow { try await get("Users/\(id)") }
+    /// Deletes an item and its files from the server (a show with its seasons and episodes).
+    func delete(_ id: String) async throws {
+        do {
+            try await post("Items/\(id)", [], body: nil, method: "DELETE")
+        } catch APIError.message(let text) where text.contains("401") || text.contains("403") {
+            throw APIError.message("Your Jellyfin account isn't allowed to delete this.")
+        }
+    }
     /// One item with its provider ids (an episode's show, for the diary match).
     func item(_ id: String) async throws -> Item? {
         let page: Page = try await get("Items", [URLQueryItem(name: "Ids", value: id), URLQueryItem(name: "Fields", value: "ProviderIds")])
