@@ -110,6 +110,8 @@ struct PersonPhotoViewer: View {
     @State private var zoomed = false
     /// How far a photo is pulled down to close it (0…1): the page fades and the controls step aside.
     @State private var pulled: CGFloat = 0
+    /// Closing: everything fades out before the cover goes (see close()).
+    @State private var closing = false
     @Environment(\.dismiss) private var dismiss
     init(name: String, photos: [PersonPhoto], start: Int) { self.name = name; self.photos = photos; _index = State(initialValue: start) }
     private var current: PersonPhoto? { photos.indices.contains(index) ? photos[index] : nil }
@@ -122,7 +124,7 @@ struct PersonPhotoViewer: View {
                 ForEach(Array(photos.enumerated()), id: \.element.id) { offset, photo in
                     ZoomablePhoto(path: photo.link(size: "w780"), name: name, active: offset == index, zoomed: $zoomed,
                                   onTap: { withAnimation(.smooth(duration: 0.25)) { controls.toggle() } },
-                                  onPull: { pulled = $0 }, onClose: { dismiss() })
+                                  onPull: { pulled = $0 }, onClose: { close() })
                         // Each page fills the whole screen (not just the safe area), so a zoomed
                         // photo reaches the edges instead of being clipped to an inner box.
                         .frame(maxWidth: .infinity, maxHeight: .infinity).ignoresSafeArea()
@@ -137,12 +139,26 @@ struct PersonPhotoViewer: View {
                         .padding(.horizontal, 16).frame(height: 36).background(Color(themed: "#1c1a1e").opacity(0.9), in: Capsule()).padding(.bottom, 30)
                 }.transition(.opacity).allowsHitTesting(false)
             }
-        }.presentationBackground(.clear).preferredColorScheme(.dark).statusBarHidden().persistentSystemOverlays(controls ? .automatic : .hidden)
+        }
+        .opacity(closing ? 0 : 1)
+        .presentationBackground(.clear).preferredColorScheme(.dark).statusBarHidden().persistentSystemOverlays(controls ? .automatic : .hidden)
             .onChange(of: index) { _, _ in message = nil; zoomed = false }
+    }
+    /// Closing in one motion: the viewer fades (a photo let go carries on down meanwhile), then the
+    /// cover goes without its slide down, which ran after the photo had already gone down (it looked
+    /// like closing twice).
+    private func close() {
+        guard !closing else { return }
+        withAnimation(.easeIn(duration: 0.2)) { closing = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            var instant = Transaction(); instant.disablesAnimations = true
+            withTransaction(instant) { dismiss() }
+        }
     }
     private var topBar: some View {
         HStack {
-            Button { dismiss() } label: { circle("xmark") }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("photo-close")
+            Button { close() } label: { circle("xmark") }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("photo-close")
             Spacer(minLength: 8)
             // One picture (a poster, a cover, character art): no "1 / 1".
             if photos.count > 1 {
@@ -285,6 +301,11 @@ private struct ZoomablePhoto: UIViewRepresentable {
                 parent.onPull(progress)
             case .ended, .cancelled:
                 if gesture.state == .ended, drag.y > 110 || gesture.velocity(in: view).y > 900 {
+                    // On down out of the screen as the viewer fades, in the same motion.
+                    let off = view.bounds.height
+                    UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseIn) {
+                        view.transform = CGAffineTransform(translationX: drag.x * 0.4, y: off).scaledBy(x: 0.88, y: 0.88)
+                    }
                     parent.onClose()
                 } else {
                     UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) { view.transform = .identity }

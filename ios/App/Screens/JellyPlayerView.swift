@@ -196,6 +196,9 @@ struct JellyPlayerView: View {
     /// The video the engine has opened. Between a switch and the next video opening, the last one
     /// is still playing: its time mustn't mark the new one watched or be saved as its place.
     @State private var openedID: String?
+    /// Hold for 2x's tap, made and readied before it's needed: making it at the moment of the speed
+    /// change held up the main thread then, which on the app's own decoder costs frames.
+    @State private var holdTap = UIImpactFeedbackGenerator(style: .light)
     /// The show's own aspect ratio (Preferences → Remember aspect ratio per show), nil for your default.
     @State private var showFill: JellyFill?
     /// Counts mpv's starts on a new output (its view and the video's opening follow it).
@@ -338,6 +341,7 @@ struct JellyPlayerView: View {
         // The menus (Liquid Glass) dark over the picture, as the controls are.
         .preferredColorScheme(.dark)
         .onAppear {
+            holdTap.prepare()
             brightnessLevel = Double(JellyScreen.brightness)
             if let width = current.item.Width, let height = current.item.Height, width > 0, height > 0 {
                 turnToPicture(CGSize(width: width, height: height))
@@ -489,14 +493,20 @@ struct JellyPlayerView: View {
     private func startHold() {
         touched()
         guard holdOn, !holding, state == .playing, swipeKind == nil else { return }
-        withAnimation(.easeOut(duration: 0.15)) { holding = true }
+        // The speed first, then the tap and the "2x" badge on the next turn of the main thread, so
+        // nothing else runs at the moment the engine re-times its frames (the engine's own re-sync
+        // is a tiny hitch on AetherEngine's routes; mpv paces frames itself and has none).
         engineRate(2)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        holding = true
+        DispatchQueue.main.async {
+            holdTap.impactOccurred()
+            holdTap.prepare()
+        }
     }
     private func endHold() {
         guard holding else { return }
-        withAnimation(.easeOut(duration: 0.15)) { holding = false }
         engineRate(speed)
+        holding = false
     }
 
     /// A one-finger swipe. Sideways: through the video (the whole width is three minutes, so a short

@@ -44,6 +44,8 @@ struct JellyPhotoViewer: View {
     @State private var chrome = true
     /// How far a photo has been pulled down to close (0 to 1).
     @State private var pulled: CGFloat = 0
+    /// Closing: everything fades out before the cover goes (see close()).
+    @State private var closing = false
 
     init(photos: [JellyfinClient.Item], client: JellyfinClient, start: Int) {
         self.photos = photos
@@ -59,7 +61,7 @@ struct JellyPhotoViewer: View {
                     JellyPhotoPage(url: JellyPhotos.url(photos[position], base: client.base, width: 2400),
                                    tapped: { withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() } },
                                    pulled: { pulled = $0 },
-                                   close: { dismiss() })
+                                   close: { close() })
                     .tag(position)
                 }
             }
@@ -67,7 +69,7 @@ struct JellyPhotoViewer: View {
             .ignoresSafeArea()
             if chrome && pulled == 0 {
                 HStack(spacing: 12) {
-                    Button { dismiss() } label: {
+                    Button { close() } label: {
                         Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
                             .frame(width: 44, height: 44).background(.black.opacity(0.45), in: Circle()).contentShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("jellyspace-photo-close")
@@ -83,7 +85,22 @@ struct JellyPhotoViewer: View {
                 .transition(.opacity)
             }
         }
+        .opacity(closing ? 0 : 1)
         .statusBarHidden(!chrome)
+        // Clear behind, so nothing is left to slide once the viewer has faded.
+        .presentationBackground(.clear)
+    }
+    /// Closing in one motion: the viewer fades (a photo let go carries on down meanwhile), then the
+    /// cover goes without its slide down, which ran after the photo had already gone down (it looked
+    /// like closing twice).
+    private func close() {
+        guard !closing else { return }
+        withAnimation(.easeIn(duration: 0.2)) { closing = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            var instant = Transaction(); instant.disablesAnimations = true
+            withTransaction(instant) { dismiss() }
+        }
     }
 }
 
@@ -201,6 +218,11 @@ private struct JellyZoomImage: UIViewRepresentable {
                 pulled(share)
             case .ended, .cancelled, .failed:
                 if pan.state == .ended && (down > 120 || pan.velocity(in: scroll).y > 900) {
+                    // On down out of the screen as the viewer fades, in the same motion.
+                    let off = scroll.bounds.height
+                    UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseIn) {
+                        imageView.transform = CGAffineTransform(translationX: moved.x * 0.6, y: off).scaledBy(x: 0.7, y: 0.7)
+                    }
                     close()
                 } else {
                     UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0) {
