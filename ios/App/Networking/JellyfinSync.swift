@@ -373,6 +373,8 @@ struct JellyfinClient: Sendable {
         let Tags: [String]?
         let Studios: [Studio]?
         let DateCreated: String?
+        /// The poster's shape (width over height): a cover scan or a video frame is wide.
+        let PrimaryImageAspectRatio: Double?
         struct Studio: Decodable, Sendable { let Name: String? }
         struct ItemUserData: Decodable, Sendable {
             let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool?
@@ -383,6 +385,7 @@ struct JellyfinClient: Sendable {
             case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
             case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
             case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag, PremiereDate, Tags, Studios, DateCreated
+            case PrimaryImageAspectRatio
         }
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
@@ -429,7 +432,7 @@ struct JellyfinClient: Sendable {
     /// Films, shows and episodes for JellySpace: the newest first, or those matching a search.
     func videos(search: String, limit: Int = 60) async throws -> [Item] {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds"), URLQueryItem(name: "Limit", value: String(limit))]
+                     URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio"), URLQueryItem(name: "Limit", value: String(limit))]
         if search.isEmpty { query += [URLQueryItem(name: "SortBy", value: "DateCreated"), URLQueryItem(name: "SortOrder", value: "Descending")] }
         else { query.append(URLQueryItem(name: "SearchTerm", value: search)) }
         let page: Page = try await get("Items", query)
@@ -455,7 +458,7 @@ struct JellyfinClient: Sendable {
         default: "Movie,Video,Series,MusicVideo,Photo"
         }
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "true"),
-                     URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
                      URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))] + order
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         return try await get("Items", query)
@@ -463,7 +466,7 @@ struct JellyfinClient: Sendable {
     /// One page of a folder's own level, in an order and with filters of your choosing.
     func folderPage(of parent: String, user: String?, order: [URLQueryItem], start: Int, limit: Int) async throws -> Page {
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
                      URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))] + order
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         return try await get("Items", query)
@@ -471,7 +474,7 @@ struct JellyfinClient: Sendable {
     /// One page of a folder (a big one loads as you scroll).
     func childrenPage(of parent: String, user: String?, sort: Sort?, unwatched: Bool, start: Int, limit: Int) async throws -> Page {
         var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
                      URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))]
         query += sort?.query ?? [URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName")]
         if unwatched { query.append(URLQueryItem(name: "Filters", value: "IsUnplayed")) }
@@ -515,7 +518,7 @@ struct JellyfinClient: Sendable {
     }
     /// Anything across the libraries: a person's films and shows, a genre, your favourites, collections.
     func items(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, ascending: Bool? = nil, limit: Int = 300) async throws -> [Item] {
-        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview"),
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
                      URLQueryItem(name: "Limit", value: String(limit))] + sort.query(ascending: ascending ?? sort.ascendingByDefault) + extra
         if !filters.isEmpty { query.append(URLQueryItem(name: "Filters", value: filters.joined(separator: ","))) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
@@ -526,7 +529,7 @@ struct JellyfinClient: Sendable {
     /// These items, as your server has them (order not kept: the caller puts them back in its order).
     func items(ids: [String], user: String?) async throws -> [Item] {
         guard !ids.isEmpty else { return [] }
-        var query = [URLQueryItem(name: "Ids", value: ids.joined(separator: ",")), URLQueryItem(name: "Fields", value: "ProviderIds")]
+        var query = [URLQueryItem(name: "Ids", value: ids.joined(separator: ",")), URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items", query)
         return page.Items
@@ -603,7 +606,7 @@ struct JellyfinClient: Sendable {
     /// The episode after this one in the whole show (so the last of a season leads to the next season).
     func episode(after id: String, series: String, user: String?) async throws -> Item? {
         var query = [URLQueryItem(name: "startItemId", value: id), URLQueryItem(name: "Limit", value: "2"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Overview")]
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Shows/\(series)/Episodes", query)
         return page.Items.first { $0.Id != id }
@@ -618,7 +621,7 @@ struct JellyfinClient: Sendable {
     /// Continue watching: films and episodes you stopped partway through.
     func resume(user: String) async throws -> [Item] {
         let page: Page = try await get("UserItems/Resume", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "MediaTypes", value: "Video"),
-                                                           URLQueryItem(name: "Fields", value: "ProviderIds"), URLQueryItem(name: "Limit", value: "20")])
+                                                           URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio"), URLQueryItem(name: "Limit", value: "20")])
         return page.Items
     }
 
@@ -693,7 +696,7 @@ struct JellyfinClient: Sendable {
     /// folders, genres, tags, studios, dates, lengths, TMDB ids, watched).
     func libraryIndex(user: String?, library: String? = nil) async throws -> [Item] {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate,PrimaryImageAspectRatio"),
                      URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop,Thumb"), URLQueryItem(name: "Limit", value: "8000")]
         if let library { query.append(URLQueryItem(name: "ParentId", value: library)) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
@@ -712,7 +715,7 @@ struct JellyfinClient: Sendable {
         try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
     }
     func similar(_ id: String, user: String?) async throws -> [Item] {
-        var query = [URLQueryItem(name: "Limit", value: "12"), URLQueryItem(name: "Fields", value: "ProviderIds")]
+        var query = [URLQueryItem(name: "Limit", value: "12"), URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items/\(id)/Similar", query)
         return page.Items
@@ -722,7 +725,7 @@ struct JellyfinClient: Sendable {
         return page.Items
     }
     func episodes(of series: String, season: String, user: String?) async throws -> [Item] {
-        var query = [URLQueryItem(name: "seasonId", value: season), URLQueryItem(name: "Fields", value: "ProviderIds,Overview")]
+        var query = [URLQueryItem(name: "seasonId", value: season), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Shows/\(series)/Episodes", query)
         return page.Items
@@ -730,13 +733,13 @@ struct JellyfinClient: Sendable {
     /// The next episode of one show (Play on its page).
     func nextUp(series: String, user: String) async throws -> Item? {
         let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "seriesId", value: series), URLQueryItem(name: "userId", value: user),
-                                                       URLQueryItem(name: "Fields", value: "ProviderIds")])
+                                                       URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")])
         return page.Items.first
     }
     /// What's newest in one library (its row on JellySpace's home).
     func latest(in library: String, user: String) async throws -> [Item] {
         try await get("Items/Latest", [URLQueryItem(name: "parentId", value: library), URLQueryItem(name: "userId", value: user),
-                                       URLQueryItem(name: "Limit", value: "16"), URLQueryItem(name: "Fields", value: "ProviderIds,Genres")])
+                                       URLQueryItem(name: "Limit", value: "16"), URLQueryItem(name: "Fields", value: "ProviderIds,Genres,PrimaryImageAspectRatio")])
     }
     func setPlayed(_ id: String, user: String, _ played: Bool) async throws {
         try await post("UserPlayedItems/\(id)", [URLQueryItem(name: "userId", value: user)], body: nil, method: played ? "POST" : "DELETE")
@@ -777,7 +780,7 @@ struct JellyfinClient: Sendable {
     }
     /// One item with its provider ids (an episode's show, for the diary match).
     func item(_ id: String) async throws -> Item? {
-        let page: Page = try await get("Items", [URLQueryItem(name: "Ids", value: id), URLQueryItem(name: "Fields", value: "ProviderIds")])
+        let page: Page = try await get("Items", [URLQueryItem(name: "Ids", value: id), URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")])
         return page.Items.first
     }
     func userData(_ item: String, user: String) async throws -> UserData {
@@ -812,7 +815,7 @@ struct JellyfinClient: Sendable {
         while true {
             let page: Page = try await get("Items", [
                 URLQueryItem(name: "ParentId", value: library), URLQueryItem(name: "Recursive", value: "true"),
-                URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "Path,ProviderIds,Genres"),
+                URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "Path,ProviderIds,Genres,PrimaryImageAspectRatio"),
                 URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: "500")
             ])
             all += page.Items; start += page.Items.count

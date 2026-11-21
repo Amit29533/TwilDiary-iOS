@@ -139,7 +139,7 @@ struct JellyPosterImage: View {
 extension JellyfinClient {
     /// Discover's requests: any filters over the libraries, with what the cards show.
     func discover(_ query: [URLQueryItem], user: String?) async throws -> [Item] {
-        var all = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,Genres")] + query
+        var all = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,Genres,PrimaryImageAspectRatio")] + query
         if let user { all.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Items", all)
         return page.Items

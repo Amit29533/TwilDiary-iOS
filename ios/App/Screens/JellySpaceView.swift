@@ -237,7 +237,7 @@ struct JellySpaceView: View {
                 if items.count >= 3 {
                     VStack(alignment: .leading, spacing: 10) {
                         headingWithAll(theme.title, ids: (theme.all.isEmpty ? theme.items : theme.all).map(\.Id), identifier: "theme-" + theme.id)
-                        posterShelf(items, client: client)
+                        mixedShelf(items, client: client)
                     }
                 }
             }
@@ -477,6 +477,21 @@ struct JellySpaceView: View {
             LazyHStack(alignment: .top, spacing: shelfGap) {
                 ForEach(items, id: \.Id) { item in
                     JellyTile(item: item, client: client, playing: $playing, home: true).frame(width: shelfWidth)
+                }
+            }
+        }.scrollIndicators(.hidden).scrollClipDisabled()
+    }
+    /// Posters, with a title whose poster is landscape (a cover scan, a video frame) as a landscape
+    /// card of the same height, so it isn't cut (the Dynamic recommendations rows).
+    private func mixedShelf(_ items: [JellyfinClient.Item], client: JellyfinClient) -> some View {
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: shelfGap) {
+                ForEach(items, id: \.Id) { item in
+                    if item.landscapePoster {
+                        JellyTile(item: item, client: client, playing: $playing, wide: true, home: true, wideRatio: 1.5).frame(width: shelfWidth * 2.25)
+                    } else {
+                        JellyTile(item: item, client: client, playing: $playing, home: true).frame(width: shelfWidth)
+                    }
                 }
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -1375,7 +1390,8 @@ enum JellyCanvas {
     }
     /// Whether a title has a picture that suits a wide card.
     static func landscape(_ item: JellyfinClient.Item) -> Bool {
-        !(item.BackdropImageTags ?? []).isEmpty || item.ImageTags?["Thumb"] != nil || ["Episode", "Video", "MusicVideo"].contains(item.kind)
+        !(item.BackdropImageTags ?? []).isEmpty || item.ImageTags?["Thumb"] != nil || item.landscapePoster
+            || ["Episode", "Video", "MusicVideo"].contains(item.kind)
     }
 }
 
@@ -1395,6 +1411,8 @@ struct JellyTile: View {
     /// On the Canvas: just the picture, filling the frame it's given (a poster, or a wide or
     /// full-width card with the title's logo or name on it).
     var canvas: JellyCanvasShape? = nil
+    /// A landscape card's shape (16:9; 3:2 beside posters in a Dynamic row).
+    var wideRatio: CGFloat = 16 / 9
     @State private var played: Bool?
     @State private var favourite: Bool?
     @State private var photo: JellyPhotoSelection?
@@ -1437,9 +1455,11 @@ struct JellyTile: View {
         Color.clear
             .overlay {
                 let fallback = Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
-                if let url = shape == .poster ? JellySpace.poster(item, base: client.base) : JellySpace.canvasImage(item, base: client.base) {
-                    JellyfinPoster(url: url) { fallback }
-                } else { fallback }
+                // By shape: a poster cell shows a cover scan's front; a wide or full card the first
+                // landscape picture (a portrait "backdrop" is passed over).
+                let urls = shape == .poster ? (JellySpace.poster(item, base: client.base).map { [$0] } ?? [])
+                    : JellySpace.widePictures(item, base: client.base)
+                if urls.isEmpty { fallback } else { JellyArt(urls: urls, shape: shape == .poster ? .portrait : .landscape) { fallback } }
             }
             .overlay(alignment: .bottomLeading) {
                 if shape != .poster {
@@ -1480,7 +1500,7 @@ struct JellyTile: View {
         VStack(alignment: .leading, spacing: 2) {
             // Jellyfin's own posters come from its home-network address, which the public artwork
             // loader refuses (it takes TMDB's and AniList's only): JellyfinPoster loads and keeps them.
-            Color.clear.aspectRatio(square ? 1 : wide ? 16 / 9 : 2 / 3, contentMode: .fit)
+            Color.clear.aspectRatio(square ? 1 : wide ? wideRatio : 2 / 3, contentMode: .fit)
                 .overlay {
                     let fallback = ZStack {
                         Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
@@ -1488,9 +1508,11 @@ struct JellyTile: View {
                             Image(systemName: "folder.fill").font(.system(size: 30)).foregroundStyle(HomeStyle.chipText)
                         }
                     }
-                    if let url = wide && !square ? JellySpace.wideImage(item, base: client.base) : JellySpace.poster(item, base: client.base) {
-                        JellyfinPoster(url: url) { fallback }
-                    } else { fallback }
+                    // By shape: never cut off (a cover scan's front in a poster, the first landscape
+                    // picture on a wide card, else the whole picture over a blur).
+                    let urls = wide && !square ? JellySpace.widePictures(item, base: client.base)
+                        : (JellySpace.poster(item, base: client.base).map { [$0] } ?? [])
+                    if urls.isEmpty { fallback } else { JellyArt(urls: urls, shape: square ? nil : wide ? .landscape : .portrait) { fallback } }
                 }
                 .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
                 .overlay(alignment: .topTrailing) { cornerBadge }
@@ -1531,7 +1553,7 @@ private struct JellySuggestionRow: View {
                         .overlay {
                             ZStack {
                                 Rectangle().fill(HomeStyle.card)
-                                JellyImage(url: JellySpace.wideImage(item, base: client.base))
+                                JellyArt(urls: JellySpace.widePictures(item, base: client.base), shape: .landscape) { Color.clear }
                             }
                         }
                         .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
@@ -1736,7 +1758,7 @@ struct JellyWideCard: View {
                     .overlay {
                         ZStack {
                             Rectangle().fill(HomeStyle.card)
-                            JellyImage(url: JellySpace.wideImage(item, base: client.base))
+                            JellyArt(urls: JellySpace.widePictures(item, base: client.base), shape: .landscape) { Color.clear }
                         }
                     }
                     .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }

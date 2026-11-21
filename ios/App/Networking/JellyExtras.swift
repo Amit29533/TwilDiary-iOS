@@ -105,7 +105,7 @@ extension JellyfinClient {
     }
     /// Every episode of a show, in order.
     func allEpisodes(of series: String, user: String?) async throws -> [Item] {
-        var query = [URLQueryItem(name: "Fields", value: "ProviderIds")]
+        var query = [URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
         let page: Page = try await get("Shows/\(series)/Episodes", query)
         return page.Items
@@ -236,7 +236,7 @@ extension JellyfinClient {
     /// started is left out, and so are ones you've started: they're in Continue Watching).
     func nextUp(user: String) async throws -> [Item] {
         let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "Limit", value: "20"),
-                                                       URLQueryItem(name: "Fields", value: "ProviderIds"),
+                                                       URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio"),
                                                        URLQueryItem(name: "disableFirstEpisode", value: "true"),
                                                        URLQueryItem(name: "enableResumable", value: "false")])
         return page.Items
@@ -252,6 +252,6 @@ extension JellyfinClient {
     func recommendations(user: String, library: String) async throws -> [Recommendation] {
         try await get("Movies/Recommendations", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "parentId", value: library),
                                                  URLQueryItem(name: "categoryLimit", value: "4"), URLQueryItem(name: "itemLimit", value: "12"),
-                                                 URLQueryItem(name: "Fields", value: "ProviderIds,Genres")])
+                                                 URLQueryItem(name: "Fields", value: "ProviderIds,Genres,PrimaryImageAspectRatio")])
     }
 }
