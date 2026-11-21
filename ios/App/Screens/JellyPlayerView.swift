@@ -255,6 +255,8 @@ struct JellyPlayerView: View {
             .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
             .onChange(of: translator.translating) { _, on in translationChanged(on) }
             .onChange(of: translator.problem) { _, text in if let text { show(text) } }
+            // mpv reads its lines out as text only while a translation language is chosen.
+            .onChange(of: translator.target, initial: true) { _, target in mpv.watchesText = !target.isEmpty }
     }
     /// Translating started or stopped: mpv's own text hidden or back, and the tag for a moment.
     private func translationChanged(_ on: Bool) {

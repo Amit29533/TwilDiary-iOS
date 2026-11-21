@@ -69,6 +69,13 @@ private struct JellyMPVHandle: @unchecked Sendable {
     @Published private(set) var subtitleText = ""
     /// While subtitles are translated: mpv draws its text see-through (picture subtitles still show).
     private var hidesText = false
+    /// Whether mpv sends its subtitle lines as text (sub-text): only while a translation language is
+    /// chosen, as reading them out costs work on every line (measured with styled subtitles).
+    var watchesText = false {
+        didSet { if watchesText != oldValue { applyTextWatch() } }
+    }
+    /// sub-text's own observation id (the others share 0), so it can be stopped on its own.
+    private static let textWatch: UInt64 = 1
     @Published private(set) var videoSize = CGSize.zero
     /// Why the video didn't open, in mpv's words (with its latest warning or error).
     @Published private(set) var failure: String?
@@ -155,9 +162,9 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ("paused-for-cache", MPV_FORMAT_FLAG), ("eof-reached", MPV_FORMAT_FLAG),
             ("width", MPV_FORMAT_INT64), ("height", MPV_FORMAT_INT64),
             ("track-list", MPV_FORMAT_NONE), ("aid", MPV_FORMAT_NONE), ("sid", MPV_FORMAT_NONE),
-            ("sub-text", MPV_FORMAT_STRING),
         ]
         for (name, format) in observed { mpv_observe_property(raw, 0, name, format) }
+        if watchesText { mpv_observe_property(raw, Self.textWatch, "sub-text", MPV_FORMAT_STRING) }
         Self.addJellyfinProtocol(raw)
         let handle = JellyMPVHandle(raw: raw, layer: layer)
         self.handle = handle
@@ -291,6 +298,15 @@ private struct JellyMPVHandle: @unchecked Sendable {
         guard hidden != hidesText else { return }
         hidesText = hidden
         setSubtitleLook(look)
+    }
+    private func applyTextWatch() {
+        guard let raw = handle?.raw else { return }
+        if watchesText {
+            mpv_observe_property(raw, Self.textWatch, "sub-text", MPV_FORMAT_STRING)
+        } else {
+            mpv_unobserve_property(raw, Self.textWatch)
+            if !subtitleText.isEmpty { subtitleText = "" }
+        }
     }
     private func hideText() {
         for (name, value) in [("sub-color", "#00000000"), ("sub-border-color", "#00000000"), ("sub-shadow-offset", "0"),
