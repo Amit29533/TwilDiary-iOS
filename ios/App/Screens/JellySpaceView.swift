@@ -150,7 +150,10 @@ struct JellySpaceView: View {
                     Button(searching ? "Close search" : "Search", systemImage: searching ? "xmark" : "magnifyingglass") {
                         withAnimation(.easeInOut(duration: 0.2)) { searching.toggle() }
                         if !searching { query = "" }
-                    }.accessibilityIdentifier("jellyspace-search")
+                    }
+                    // White, as the back button beside it (not the accent blue).
+                    .tint(HomeStyle.primary)
+                    .accessibilityIdentifier("jellyspace-search")
                 }
             }
         }
