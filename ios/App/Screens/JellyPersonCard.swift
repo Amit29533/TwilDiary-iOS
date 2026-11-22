@@ -27,7 +27,9 @@ import SwiftUI
         }
         guard let match else { known[tmdb] = .some(nil); return nil }
         let user = await JellyfinUser.id(client)
-        guard let page = try? await client.titles(person: match.Id, user: user), page.TotalRecordCount > 0 else {
+        // Not read (out of reach): asked again next time, as above. None of theirs: remembered.
+        guard let page = try? await client.titles(person: match.Id, user: user) else { return nil }
+        guard page.TotalRecordCount > 0 else {
             known[tmdb] = .some(nil)
             return nil
         }
