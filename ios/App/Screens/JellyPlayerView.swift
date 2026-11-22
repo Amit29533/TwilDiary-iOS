@@ -964,6 +964,10 @@ struct JellyPlayerView: View {
             // The scrub bar's pictures come from Jellyfin's trickplay: AetherEngine's own (a second
             // reader downloading and decoding frames in the background) went unused.
             options.generatesBackgroundScrubPreviews = false
+            // Its own decoder's packets in memory (96 MB ahead, up to 128 MB played that iOS may take
+            // back), not in temporary files: the QA run measured 340 KB/s written while it played,
+            // which is what the phone's "disk writes" report (1 GB in 3.5 hours) was about.
+            options.softwarePacketCacheStorage = .memory
             // Audio in your language from the first frame, chosen as mpv's is (carried over from the
             // other player, else what you picked in this show or anywhere, then Preferences). Picked
             // after the load instead, AetherEngine reloads the video to switch (a re-buffer at the start).
