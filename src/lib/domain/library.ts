@@ -54,8 +54,8 @@ export function filterLibrary(
         (filters.status === 'all' || title.status === filters.status) &&
         (!filters.queued || title.queued === true) &&
         (!filters.favorites || title.favorite) &&
-        (!filters.genre || title.genres.includes(filters.genre)) &&
-        (!filters.tag || title.tags.includes(filters.tag)) &&
+        (!filters.genre || filters.genre === 'all' || title.genres.includes(filters.genre)) &&
+        (!filters.tag || filters.tag === 'all' || (title.tags ?? []).includes(filters.tag)) &&
         (filters.disk === 'all' ||
           (filters.disk === 'downloads'
             ? title.queued === true

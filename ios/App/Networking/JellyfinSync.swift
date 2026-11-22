@@ -1,0 +1,1061 @@
+import Foundation
+import Observation
+import Security
+import UIKit
+import CryptoKit
+import TwilDiaryCore
+
+/// The owner's Jellyfin server: its address (app settings) and API key (Keychain, this device only).
+/// The phone reads Jellyfin over the home network, so the key never goes to the TwilDiary server.
+@MainActor enum JellyfinSettings {
+    static let addressKey = "jellyfinAddress", excludedKey = "jellyfinExcludedLibraries", summaryKey = "jellyfinLastSync"
+    private static let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "com.amit29533.TwilDiary.jellyfin",
+        kSecAttrAccount as String: "api-key"
+    ]
+    static var address: URL? {
+        guard let text = UserDefaults.standard.string(forKey: addressKey) else { return nil }
+        return normalized(text)
+    }
+    /// "192.168.1.20:8096" → http://192.168.1.20:8096; a trailing slash or /web is dropped.
+    static func normalized(_ text: String) -> URL? {
+        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.contains("://") { value = "http://" + value }
+        while value.hasSuffix("/") { value.removeLast() }
+        if value.hasSuffix("/web") { value.removeLast(4) }
+        guard let url = URL(string: value), let scheme = url.scheme, ["http", "https"].contains(scheme), url.host != nil else { return nil }
+        return url
+    }
+    static var apiKey: String? {
+        var q = query; q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+    static func save(address: URL, apiKey: String?) throws {
+        JellySpace.resetKey()
+        UserDefaults.standard.set(address.absoluteString, forKey: addressKey)
+        guard let apiKey, !apiKey.isEmpty else { return }
+        let data = Data(apiKey.utf8)
+        let updates: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let status = SecItemUpdate(query as CFDictionary, updates as CFDictionary)
+        if status == errSecSuccess { return }
+        var q = query; q[kSecValueData as String] = data; q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        guard SecItemAdd(q as CFDictionary, nil) == errSecSuccess else { throw APIError.message("Could not save the Jellyfin key securely.") }
+    }
+    /// Forgetting the server also drops the Jellyfin list and posters saved on this iPhone.
+    static func forget() {
+        // The account signed in to it goes too (else connecting the same address again signs it back in).
+        JellyAccount.signOut()
+        JellySpace.resetKey()
+        SecItemDelete(query as CFDictionary)
+        for key in [addressKey, excludedKey, summaryKey] { UserDefaults.standard.removeObject(forKey: key) }
+        JellyfinShelf.shared.forget()
+    }
+    static var configured: Bool { address != nil && apiKey != nil }
+    static var keyHint: String? { apiKey.map { String($0.suffix(4)) } }
+}
+
+/// This install's device for Jellyfin, made once and kept. Jellyfin keeps one session per device ID:
+/// with one ID for every install (it was "twildiary-ios"), a sign-in on another iPhone, or a second
+/// sign-in here (Quick Connect after a password), ended the first one's session.
+enum JellyDevice {
+    static let id: String = {
+        let defaults = UserDefaults.standard
+        if let saved = defaults.string(forKey: "jellyspace.deviceID") { return saved }
+        let made = "twildiary-" + UUID().uuidString.lowercased()
+        defaults.set(made, forKey: "jellyspace.deviceID")
+        return made
+    }()
+    /// The Authorization header's start, before any token.
+    static var header: String { "MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"\(id)\", Version=\"2.0\"" }
+}
+
+/// A Jellyfin library. Only Movies and Shows are read; the rest (photos, home videos, music)
+/// are never opened, and a mixed library only when the owner turns it on.
+struct JellyfinLibrary: Identifiable, Sendable, Equatable, Codable {
+    let id: String
+    let name: String
+    let type: String?
+    var readable: Bool { type == "movies" || type == "tvshows" || type == nil || type == "mixed" }
+    var onByDefault: Bool { type == "movies" || type == "tvshows" }
+}
+
+/// One movie or show on Jellyfin, for the Jellyfin page: its drive (from its folder) and the
+/// diary title it is, when the diary has it (matched by TMDB id and type).
+struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
+    let id: String
+    let name: String
+    let year: Int?
+    let movie: Bool
+    let tmdb: Int?
+    let path: String
+    let drive: String
+    let poster: URL?
+    var diaryID: String?
+    /// Jellyfin's genres (from TMDB), for Library's category and genre filters; absent in lists
+    /// saved before they were read.
+    var genres: [String]? = nil
+    /// Anime by Jellyfin's genres, as Library's Anime category counts it.
+    var anime: Bool { genres?.contains { ["anime", "animation"].contains($0.lowercased()) } == true }
+}
+
+/// The Jellyfin list last read at home, kept on this iPhone so the Jellyfin page and Library's
+/// Jellyfin chip work away from the home network, and on the server so every device has it (a
+/// new phone, a reinstall). Reading Jellyfin at home replaces both; away, a newer server copy
+/// (another device read it since) replaces this one. It stays through sign-out (it is the owner's
+/// media server, not the diary); Forget Jellyfin drops only this iPhone's copy.
+@MainActor @Observable final class JellyfinShelf {
+    static let shared = JellyfinShelf()
+    /// `server`: the server's time for this list (to ask "unchanged?"); `uploaded`: a digest of the
+    /// list last sent, so an unchanged list is never written to the server again.
+    private struct Saved: Codable { let at: Date; let personal: Int; let entries: [JellyfinEntry]; var server: String?; var uploaded: String? }
+    private(set) var entries: [JellyfinEntry] = []
+    private(set) var personal = 0
+    private(set) var savedAt: Date?
+    private var server: String?
+    private var uploaded: String?
+    private var lastTry: Date?
+    private let file: URL
+    init(file: URL = URL.applicationSupportDirectory.appending(path: "Jellyfin/library.json")) {
+        self.file = file
+        if let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Saved.self, from: data) { apply(saved) }
+    }
+    private func apply(_ saved: Saved) {
+        entries = saved.entries; personal = saved.personal; savedAt = saved.at; server = saved.server; uploaded = saved.uploaded
+    }
+    /// Preview data (UI tests) is shown but never written over the owner's saved list.
+    func replace(_ entries: [JellyfinEntry], personal: Int, save: Bool = true, at date: Date = .now) {
+        // What the server holds is unchanged by a new read until it is sent (and then only if it differs).
+        apply(Saved(at: date, personal: personal, entries: entries, server: server, uploaded: uploaded))
+        if save { write() }
+    }
+    private func write() {
+        guard let savedAt else { return }
+        do {
+            let folder = file.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let saved = Saved(at: savedAt, personal: personal, entries: entries, server: server, uploaded: uploaded)
+            try JSONEncoder().encode(saved).write(to: file, options: [.atomic, .completeFileProtection])
+            var values = URLResourceValues(); values.isExcludedFromBackup = true
+            var url = folder; try url.setResourceValues(values)
+        } catch {
+            // The list still shows until the app closes; the next read saves it again.
+        }
+    }
+    func forget() {
+        entries = []; personal = 0; savedAt = nil; server = nil; uploaded = nil; lastTry = nil
+        try? FileManager.default.removeItem(at: file)
+        Task { await JellyfinPosterCache.shared.removeAll() }
+    }
+    /// At home: reads Jellyfin, keeps the list here and sends it to the server when it changed.
+    /// Away (or Jellyfin not set up on this device): takes the server's copy when it is newer,
+    /// then still throws Jellyfin's error, so the page can say the list is a saved one.
+    func refresh(store: DiaryStore) async throws {
+        let startedAt = Date.now
+        do {
+            let found = try await JellyfinSync(store: store).browse()
+            replace(found.entries, personal: found.personal, save: !store.isPreview, at: startedAt)
+            if !store.isPreview { await upload(store: store, startedAt: startedAt) }
+        } catch {
+            if !store.isPreview && !(error is CancellationError) { await download(store: store) }
+            throw error
+        }
+    }
+    /// The same, quietly and at most every 10 minutes (Library): the saved list simply stays when
+    /// neither Jellyfin nor the server can be reached.
+    func refreshQuietly(store: DiaryStore) async {
+        guard !store.isPreview, lastTry.map({ Date.now.timeIntervalSince($0) > 600 }) ?? true else { return }
+        lastTry = .now
+        try? await refresh(store: store)
+    }
+    /// What the server keeps per title: no poster URL (it holds the home network address), only
+    /// Jellyfin's image tag, from which each device builds the URL with its own Jellyfin address.
+    static func uploadItem(_ entry: JellyfinEntry) -> [String: Any] {
+        let tag = entry.poster.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "tag" }?.value }
+        return ["id": entry.id, "name": entry.name, "year": entry.year as Any? ?? NSNull(), "kind": entry.movie ? "movie" : "series",
+                "tmdb": entry.tmdb as Any? ?? NSNull(), "path": entry.path, "drive": entry.drive, "imageTag": tag as Any? ?? NSNull(),
+                "genres": entry.genres ?? []]
+    }
+    /// A fingerprint of the list as sent: same list, same digest, no upload.
+    static func digest(_ entries: [JellyfinEntry], personal: Int) -> String {
+        let items = entries.sorted { $0.id < $1.id }.map(uploadItem)
+        let data = (try? JSONSerialization.data(withJSONObject: ["personal": personal, "items": items], options: [.sortedKeys])) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    private func upload(store: DiaryStore, startedAt: Date) async {
+        let digest = Self.digest(entries, personal: personal)
+        guard digest != uploaded else { return }
+        struct Receipt: Decodable { let savedAt: String?; let stale: Bool? }
+        let items = entries.map(Self.uploadItem)
+        let pages = stride(from: 0, to: max(items.count, 1), by: 100).map { Array(items[$0..<min($0 + 100, items.count)]) }
+        do {
+            for (index, page) in pages.enumerated() {
+                let last = index == pages.count - 1
+                let receipt: Receipt = try await store.read("/api/jellyfin/library", method: "POST",
+                    body: ["startedAt": startedAt.formatted(.iso8601), "done": last, "personal": personal, "items": page])
+                if last { server = receipt.savedAt }
+            }
+            uploaded = digest; write()
+        } catch {
+            // Offline or signed out: the next read at home sends it.
+        }
+    }
+    private func download(store: DiaryStore) async {
+        struct Item: Decodable { let id: String; let name: String; let year: Int?; let kind: String; let tmdb: Int?; let path: String; let drive: String; let imageTag: String?; let genres: [String] }
+        struct Library: Decodable { let savedAt: String?; let personal: Int?; let items: [Item]?; let unchanged: Bool? }
+        let path = CatalogTools.apiPath("/api/jellyfin/library", query: server.map { ["since": $0] } ?? [:])
+        guard let library: Library = try? await store.read(path), library.unchanged != true,
+              let at = library.savedAt, let items = library.items, at != server,
+              // Only a copy newer than this one: a list this iPhone read later and couldn't send yet stays.
+              let date = try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(at), date > (savedAt ?? .distantPast) else { return }
+        let base = JellyfinSettings.address
+        let list = items.map { item in
+            JellyfinEntry(id: item.id, name: item.name, year: item.year, movie: item.kind == "movie", tmdb: item.tmdb, path: item.path,
+                          drive: item.drive, poster: base.flatMap { JellyfinClient.posterURL(base: $0, item: item.id, tag: item.imageTag) },
+                          diaryID: nil, genres: item.genres)
+        }
+        apply(Saved(at: date, personal: library.personal ?? 0, entries: list, server: at, uploaded: Self.digest(list, personal: library.personal ?? 0)))
+        write()
+    }
+    /// The diary title each entry is, matched again against the current diary (TMDB id and type),
+    /// so titles added since the list was read count; otherwise the saved match while that title
+    /// is still in the diary. Nothing points at a removed title or a signed-out diary.
+    static func matched(_ entries: [JellyfinEntry], diary titles: [MediaTitle]) -> [JellyfinEntry] {
+        var diary: [String: String] = [:], present = Set<String>()
+        for title in titles {
+            present.insert(title.id)
+            guard let tmdb = title.tmdbId else { continue }
+            let key = (title.isSeries ? "tv:" : "movie:") + String(tmdb)
+            if diary[key] == nil { diary[key] = title.id }
+        }
+        return entries.map { entry in
+            var copy = entry
+            copy.diaryID = entry.tmdb.flatMap { diary[(entry.movie ? "movie:" : "tv:") + String($0)] }
+                ?? entry.diaryID.flatMap { present.contains($0) ? $0 : nil }
+            return copy
+        }
+    }
+    /// The diary titles on Jellyfin, by the saved list (Library's Jellyfin chip).
+    func titleIDs(diary titles: [MediaTitle]) -> Set<String> {
+        Set(Self.matched(entries, diary: titles).compactMap(\.diaryID))
+    }
+    /// Jellyfin titles not in the diary, for Library's Jellyfin chip, through the filters that
+    /// apply to them: category ("movie", "show", "anime" by Jellyfin's genres), genres, and disk
+    /// (LibraryQuery's form). Favourites only leaves none: only diary titles can be favourites.
+    func extras(diary titles: [MediaTitle], category: String, genres: Set<String>, disk: String, favorites: Bool, sort: LibraryQuery.Sort) -> [JellyfinEntry] {
+        guard !favorites else { return [] }
+        let found = Self.matched(entries, diary: titles).filter { entry in
+            guard entry.diaryID == nil else { return false }
+            let categoryMatches = switch category {
+            case "movie": entry.movie
+            case "show": !entry.movie && !entry.anime
+            case "anime": entry.anime
+            default: true
+            }
+            let diskMatches = LibraryQuery.jellyfinDriveMatches(entry.drive, disk: disk)
+            return categoryMatches && diskMatches && (genres.isEmpty || entry.genres?.contains { genres.contains($0) } == true)
+        }
+        // No date added or rating outside the diary: newest year when asked, otherwise by name.
+        return found.sorted { left, right in
+            if sort == .year, (left.year ?? 0) != (right.year ?? 0) { return (left.year ?? 0) > (right.year ?? 0) }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
+    }
+}
+
+/// Jellyfin's posters, kept on disk (outside the diary, so sign-out leaves them) and served from
+/// there without asking Jellyfin again: a poster URL carries its image tag, so a changed poster is
+/// a new URL. Away from home the saved copies still show.
+private final class JellyfinPosterMemory: @unchecked Sendable {
+    // NSCache is safe to use from any thread.
+    let values = NSCache<NSURL, UIImage>()
+}
+
+actor JellyfinPosterCache {
+    static let shared = JellyfinPosterCache()
+    private let session: URLSession
+    private nonisolated let memory = JellyfinPosterMemory()
+    init() {
+        let config = URLSessionConfiguration.default
+        config.httpShouldSetCookies = false; config.httpCookieAcceptPolicy = .never
+        config.timeoutIntervalForRequest = 10; config.timeoutIntervalForResource = 20
+        config.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: 300 * 1024 * 1024,
+                                   directory: URL.applicationSupportDirectory.appending(path: "Jellyfin/Posters"))
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        session = URLSession(configuration: config)
+        // By memory, not count: 300 pictures ran from 150 MB of posters to far more with backdrops.
+        memory.values.countLimit = 400
+        memory.values.totalCostLimit = 150 * 1024 * 1024
+    }
+    nonisolated func resident(_ url: URL) -> UIImage? { memory.values.object(forKey: url as NSURL) }
+    /// A picture asked for while it's on its way (the top card and its glow ask together): the one
+    /// download, shared.
+    private var loading: [URL: Task<UIImage?, Never>] = [:]
+    func image(_ url: URL) async -> UIImage? {
+        if let image = resident(url) { return image }
+        if let pending = loading[url] { return await pending.value }
+        let session = self.session, memory = self.memory
+        let task = Task<UIImage?, Never> {
+            guard let loaded = try? await session.data(from: url),
+                  (loaded.1 as? HTTPURLResponse)?.statusCode == 200, loaded.0.count <= 12 * 1024 * 1024,
+                  let image = UIImage(data: loaded.0) else { return nil }
+            // Decoded here, off the main thread: a UIImage from data otherwise decodes the first time
+            // it's drawn, on the main thread, as you scroll (the hitch of a big poster coming in).
+            let ready = await image.byPreparingForDisplay() ?? image
+            let cost = Int(ready.size.width * ready.scale * ready.size.height * ready.scale * 4)
+            memory.values.setObject(ready, forKey: url as NSURL, cost: cost)
+            return ready
+        }
+        loading[url] = task
+        let image = await task.value
+        loading[url] = nil
+        return image
+    }
+    func removeAll() {
+        memory.values.removeAllObjects()
+        session.configuration.urlCache?.removeAllCachedResponses()
+    }
+}
+
+struct JellyfinSummary: Codable, Sendable, Equatable {
+    let at: Date
+    let mapped: Int
+    let notInDiary: Int
+    let personal: Int
+    let libraries: Int
+}
+
+/// Jellyfin's REST API: PascalCase JSON, the key in a MediaBrowser authorization header.
+struct JellyfinClient: Sendable {
+    let base: URL
+    let key: String
+    struct Folder: Decodable { let Name: String; let CollectionType: String?; let ItemId: String? }
+    struct Item: Codable {
+        let Id: String
+        let kind: String
+        let Path: String?
+        let ProviderIds: [String: String]?
+        let SeriesId: String?
+        let ParentIndexNumber: Int?
+        let Name: String?
+        let ProductionYear: Int?
+        let ImageTags: [String: String]?
+        let Genres: [String]?
+        // JellySpace: an episode's show and number, the show's poster, folders, length and your progress.
+        let SeriesName: String?
+        let IndexNumber: Int?
+        let SeriesPrimaryImageTag: String?
+        let IsFolder: Bool?
+        let RunTimeTicks: Int64?
+        let UserData: ItemUserData?
+        let SeasonId: String?
+        let Overview: String?
+        // Wide pictures: the item's backdrop, or (an episode) its show's.
+        let BackdropImageTags: [String]?
+        let ParentBackdropItemId: String?
+        let ParentBackdropImageTags: [String]?
+        // The top poster's rating; a video's size (which way the player turns before it loads).
+        let CommunityRating: Double?
+        let Width: Int?
+        let Height: Int?
+        // Music: the song's album and artists.
+        let Album: String?
+        let AlbumId: String?
+        let AlbumArtist: String?
+        let Artists: [String]?
+        let AlbumPrimaryImageTag: String?
+        /// When it first aired or came out ("2024-07-12T00:00:00.0000000Z").
+        let PremiereDate: String?
+        /// For recommending (asked for only by the library index): Jellyfin's tags and studios, and
+        /// when the file was added.
+        let Tags: [String]?
+        let Studios: [Studio]?
+        let DateCreated: String?
+        /// The poster's shape (width over height): a cover scan or a video frame is wide.
+        let PrimaryImageAspectRatio: Double?
+        struct Studio: Codable, Sendable { let Name: String? }
+        struct ItemUserData: Codable, Sendable {
+            let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool?
+            let LastPlayedDate: String?
+        }
+        enum CodingKeys: String, CodingKey {
+            case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
+            case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
+            case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
+            case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag, PremiereDate, Tags, Studios, DateCreated
+            case PrimaryImageAspectRatio
+        }
+    }
+    struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
+    struct Server: Decodable { let ServerName: String?; let Version: String? }
+    /// The server's id, version and own address on the network (no sign-in needed): for Chromecast.
+    struct PublicInfo: Decodable, Sendable { let Id: String?; let Version: String?; let LocalAddress: String? }
+
+    func get<T: Decodable & Sendable>(_ path: String, _ query: [URLQueryItem] = []) async throws -> T {
+        var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { components.queryItems = query }
+        var request = URLRequest(url: components.url!, timeoutInterval: 20)
+        request.setValue(JellyDevice.header + ", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let data: Data, response: URLResponse
+        do { (data, response) = try await URLSession.shared.data(for: request) }
+        catch { throw APIError.message("Couldn’t reach Jellyfin. Check the address and that you’re on your home network.") }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 || status == 403 { throw APIError.message("Jellyfin rejected the API key.") }
+        guard (200..<300).contains(status) else { throw APIError.message("Jellyfin answered \(status).") }
+        do { return try JSONDecoder().decode(T.self, from: data) }
+        catch { throw APIError.message("That address doesn’t look like a Jellyfin server.") }
+    }
+    func server() async throws -> Server { try await get("System/Info") }
+    func publicInfo() async throws -> PublicInfo { try await get("System/Info/Public") }
+    /// The item's poster from Jellyfin itself (image requests need no key, so none is put in the URL).
+    func poster(_ item: Item) -> URL? { Self.posterURL(base: base, item: item.Id, tag: item.ImageTags?["Primary"]) }
+    static func posterURL(base: URL, item: String, tag: String?) -> URL? {
+        guard let tag else { return nil }
+        var components = URLComponents(url: base.appending(path: "Items/\(item)/Images/Primary"), resolvingAgainstBaseURL: false)
+        // WebP: a quarter to a third smaller than JPEG (the server converts once and keeps it).
+        components?.queryItems = [URLQueryItem(name: "fillHeight", value: "450"), URLQueryItem(name: "quality", value: "90"),
+                                  URLQueryItem(name: "format", value: "Webp"), URLQueryItem(name: "tag", value: tag)]
+        return components?.url
+    }
+    /// A view of the signed-in user's (a library they can see).
+    struct LibraryView: Decodable, Sendable { let Id: String; let Name: String?; let CollectionType: String? }
+    struct LibraryViews: Decodable, Sendable { let Items: [LibraryView] }
+    /// The libraries: a signed-in account's own (UserViews: a regular account may not read the
+    /// server's list, which answers it 403), else, with the server's API key (no user of its own),
+    /// the server's list (VirtualFolders). Playlists and Live TV aren't libraries here.
+    func libraries() async throws -> [JellyfinLibrary] {
+        if let views: LibraryViews = try? await get("UserViews"), !views.Items.isEmpty {
+            return views.Items.filter { !["playlists", "livetv"].contains($0.CollectionType?.lowercased() ?? "") }
+                .map { JellyfinLibrary(id: $0.Id, name: $0.Name ?? "Library", type: $0.CollectionType?.lowercased()) }
+        }
+        let folders: [Folder] = try await get("Library/VirtualFolders")
+        return folders.compactMap { folder in folder.ItemId.map { JellyfinLibrary(id: $0, name: folder.Name, type: folder.CollectionType?.lowercased()) } }
+    }
+    /// Films, shows and episodes for JellySpace: the newest first, or those matching a search.
+    func videos(search: String, limit: Int = 60) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio"), URLQueryItem(name: "Limit", value: String(limit))]
+        if search.isEmpty { query += [URLQueryItem(name: "SortBy", value: "DateCreated"), URLQueryItem(name: "SortOrder", value: "Descending")] }
+        else { query.append(URLQueryItem(name: "SearchTerm", value: search)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+    /// The file as it is (Jellyfin's static stream): AetherEngine plays it with nothing converted on the server.
+    func streamURL(_ id: String) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/stream"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "static", value: "true"), URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+    // MARK: Browsing (JellySpace)
+    /// What's directly inside a library, folder, show or season (one level), with your progress.
+    func children(of parent: String, user: String?, sort: Sort? = nil, unwatched: Bool = false) async throws -> [Item] {
+        try await childrenPage(of: parent, user: user, sort: sort, unwatched: unwatched, start: 0, limit: 1000).Items
+    }
+    /// One page of everything under a library or folder, however deep its folders go (the Library
+    /// view): films in a film library, shows in a show library, otherwise every video, show and photo.
+    func libraryPage(of parent: String, libraryType: String?, user: String?, order: [URLQueryItem], start: Int, limit: Int) async throws -> Page {
+        let types = switch libraryType {
+        case "movies": "Movie"
+        case "tvshows": "Series"
+        default: "Movie,Video,Series,MusicVideo,Photo"
+        }
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "true"),
+                     URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
+                     URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))] + order
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
+    }
+    /// One page of a folder's own level, in an order and with filters of your choosing.
+    func folderPage(of parent: String, user: String?, order: [URLQueryItem], start: Int, limit: Int) async throws -> Page {
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
+                     URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))] + order
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
+    }
+    /// One page of a folder (a big one loads as you scroll).
+    func childrenPage(of parent: String, user: String?, sort: Sort?, unwatched: Bool, start: Int, limit: Int) async throws -> Page {
+        var query = [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "false"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
+                     URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: String(limit))]
+        query += sort?.query ?? [URLQueryItem(name: "SortBy", value: "ParentIndexNumber,IndexNumber,SortName")]
+        if unwatched { query.append(URLQueryItem(name: "Filters", value: "IsUnplayed")) }
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
+    }
+    /// How a folder or list is ordered.
+    enum Sort: String, CaseIterable, Sendable {
+        case name = "Name", added = "Date added", released = "Release date", year = "Year", rating = "Rating"
+        case critic = "Critic rating", runtime = "Runtime", watched = "Date watched", random = "Random"
+        /// The way round it starts: A to Z and shortest first; newest and best first for the rest.
+        var ascendingByDefault: Bool { self == .name || self == .runtime }
+        var query: [URLQueryItem] { query(ascending: ascendingByDefault) }
+        func query(ascending: Bool) -> [URLQueryItem] {
+            let order = ascending ? "Ascending" : "Descending"
+            let fields = switch self {
+            // Folders first, then the names (so a folder paged in later still sits with the others).
+            case .name: "IsFolder,SortName"
+            case .added: "DateCreated,SortName"
+            case .released: "PremiereDate,ProductionYear,SortName"
+            case .year: "ProductionYear,PremiereDate,SortName"
+            case .rating: "CommunityRating,SortName"
+            case .critic: "CriticRating,SortName"
+            case .runtime: "Runtime,SortName"
+            case .watched: "DatePlayed,SortName"
+            case .random: "Random"
+            }
+            return [URLQueryItem(name: "SortBy", value: fields),
+                    URLQueryItem(name: "SortOrder", value: self == .name ? "Descending," + order : order)]
+        }
+        /// The order's two ways, in words that fit the sort.
+        var orderLabels: (ascending: String, descending: String) {
+            switch self {
+            case .name: ("A to Z", "Z to A")
+            case .added, .released, .year, .watched: ("Oldest first", "Newest first")
+            case .rating, .critic: ("Lowest first", "Highest first")
+            case .runtime: ("Shortest first", "Longest first")
+            case .random: ("Ascending", "Descending")
+            }
+        }
+    }
+    /// Anything across the libraries: a person's films and shows, a genre, your favourites, collections.
+    func items(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, ascending: Bool? = nil, limit: Int = 300) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
+                     URLQueryItem(name: "Limit", value: String(limit))] + sort.query(ascending: ascending ?? sort.ascendingByDefault) + extra
+        if !filters.isEmpty { query.append(URLQueryItem(name: "Filters", value: filters.joined(separator: ","))) }
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+
+    /// These items, as your server has them (order not kept: the caller puts them back in its order).
+    func items(ids: [String], user: String?) async throws -> [Item] {
+        guard !ids.isEmpty else { return [] }
+        var query = [URLQueryItem(name: "Ids", value: ids.joined(separator: ",")), URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+
+    // MARK: Player extras (JellySpace)
+    /// An intro, recap, preview or credits stretch (Jellyfin's media segments, from a plugin such as
+    /// Intro Skipper).
+    struct Segment: Decodable, Sendable {
+        let kind: String
+        let StartTicks: Int64
+        let EndTicks: Int64
+        enum CodingKeys: String, CodingKey { case kind = "Type", StartTicks, EndTicks }
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            kind = (try? container.decode(String.self, forKey: .kind)) ?? ""
+            StartTicks = try container.decode(Int64.self, forKey: .StartTicks)
+            EndTicks = try container.decode(Int64.self, forKey: .EndTicks)
+        }
+    }
+    private struct Segments: Decodable, Sendable { let Items: [Segment] }
+    func segments(_ id: String) async throws -> [Segment] {
+        let page: Segments = try await get("MediaSegments/\(id)")
+        return page.Items
+    }
+    /// A video's chapters and its scrubbing thumbnails (trickplay).
+    struct PlayerInfo: Decodable, Sendable {
+        struct Chapter: Decodable, Sendable { let StartPositionTicks: Int64; let Name: String?; let ImageTag: String? }
+        struct TrickplayInfo: Decodable, Sendable { let Width: Int; let Height: Int; let TileWidth: Int; let TileHeight: Int; let ThumbnailCount: Int; let Interval: Int }
+        /// A subtitle (or other) stream; IsExternal marks a separate file next to the video.
+        struct Stream: Decodable, Sendable {
+            let kind: String?
+            let Index: Int
+            let IsExternal: Bool?
+            let Codec: String?
+            let Language: String?
+            let DisplayTitle: String?
+            let IsForced: Bool?
+            let IsDefault: Bool?
+            let Width: Int?
+            let Height: Int?
+            let RealFrameRate: Double?
+            enum CodingKeys: String, CodingKey { case kind = "Type", Index, IsExternal, Codec, Language, DisplayTitle, IsForced, IsDefault, Width, Height, RealFrameRate }
+        }
+        /// A file inside the video (in an anime's MKV, the fonts its ASS subtitles are drawn in).
+        struct Attachment: Decodable, Sendable { let Index: Int; let FileName: String?; let MimeType: String?; let Codec: String? }
+        struct Source: Decodable, Sendable { let Id: String?; let MediaStreams: [Stream]?; let MediaAttachments: [Attachment]? }
+        let Chapters: [Chapter]?
+        let Trickplay: [String: [String: TrickplayInfo]]?
+        let MediaSources: [Source]?
+        let Genres: [String]?
+    }
+    private struct GenresOnly: Decodable, Sendable { let Genres: [String]? }
+    /// A title's genres (an episode has none of its own: ask for its show's).
+    func genres(_ id: String, user: String?) async throws -> [String] {
+        let found: GenresOnly = try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+        return found.Genres ?? []
+    }
+    func playerInfo(_ id: String, user: String?) async throws -> PlayerInfo {
+        try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+    }
+    /// A separate subtitle file, served by Jellyfin in a format the player reads (srt, ass or vtt).
+    func subtitleURL(_ id: String, source: String, index: Int, format: String) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/\(source)/Subtitles/\(index)/Stream.\(format)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+    /// A file inside the video (a font the subtitles use), as Jellyfin serves it.
+    func attachmentURL(_ id: String, source: String, index: Int) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/\(source)/Attachments/\(index)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+    /// The episode after this one in the whole show (so the last of a season leads to the next season).
+    func episode(after id: String, series: String, user: String?) async throws -> Item? {
+        var query = [URLQueryItem(name: "startItemId", value: id), URLQueryItem(name: "Limit", value: "2"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items.first { $0.Id != id }
+    }
+    /// One sheet of scrubbing thumbnails (a grid of TileWidth x TileHeight).
+    func trickplayURL(_ id: String, width: Int, sheet: Int, source: String) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Videos/\(id)/Trickplay/\(width)/\(sheet).jpg"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "mediaSourceId", value: source), URLQueryItem(name: "api_key", value: key)]
+        return components?.url
+    }
+
+    /// Continue watching: films and episodes you stopped partway through.
+    func resume(user: String) async throws -> [Item] {
+        let page: Page = try await get("UserItems/Resume", [URLQueryItem(name: "userId", value: user), URLQueryItem(name: "MediaTypes", value: "Video"),
+                                                           URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio"), URLQueryItem(name: "Limit", value: "20")])
+        return page.Items
+    }
+
+    /// A film's or show's page: ratings, genres, people, the file's streams and your state.
+    struct Detail: Decodable, Sendable {
+        struct Person: Decodable, Sendable {
+            let Id: String
+            let Name: String?
+            let Role: String?
+            let kind: String?
+            let PrimaryImageTag: String?
+            enum CodingKeys: String, CodingKey { case Id, Name, Role, kind = "Type", PrimaryImageTag }
+        }
+        struct Stream: Decodable, Sendable {
+            let kind: String?
+            let Codec: String?
+            let Width: Int?
+            let Height: Int?
+            let VideoRangeType: String?
+            let RealFrameRate: Double?
+            let Language: String?
+            let DisplayTitle: String?
+            // A track's own title, channels ("5.1"), and whether it's the default or forced one (File info).
+            let Title: String?
+            let Channels: Int?
+            let ChannelLayout: String?
+            let IsDefault: Bool?
+            let IsForced: Bool?
+            enum CodingKeys: String, CodingKey {
+                case kind = "Type", Codec, Width, Height, VideoRangeType, RealFrameRate, Language, DisplayTitle
+                case Title, Channels, ChannelLayout, IsDefault, IsForced
+            }
+        }
+        struct NameID: Decodable, Sendable { let Name: String?; let Id: String }
+        struct Source: Decodable, Sendable { let Id: String?; let Name: String?; let Size: Int64?; let Bitrate: Int?; let Container: String?; let MediaStreams: [Stream]? }
+        struct Trailer: Decodable, Sendable { let Url: String? }
+        struct UserState: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool?; let IsFavorite: Bool?; let UnplayedItemCount: Int? }
+        let Id: String
+        let Name: String?
+        let kind: String
+        let ProductionYear: Int?
+        let EndDate: String?
+        let Overview: String?
+        let Genres: [String]?
+        let GenreItems: [NameID]?
+        let OfficialRating: String?
+        let CommunityRating: Double?
+        let CriticRating: Double?
+        let RunTimeTicks: Int64?
+        let ImageTags: [String: String]?
+        let BackdropImageTags: [String]?
+        let People: [Person]?
+        let MediaSources: [Source]?
+        let RemoteTrailers: [Trailer]?
+        let UserData: UserState?
+        /// "Imdb": "tt…", for sharing.
+        let ProviderIds: [String: String]?
+        enum CodingKeys: String, CodingKey {
+            case Id, Name, kind = "Type", ProductionYear, EndDate, Overview, Genres, GenreItems, OfficialRating, CommunityRating, CriticRating
+            case RunTimeTicks, ImageTags, BackdropImageTags, People, MediaSources, UserData, RemoteTrailers, ProviderIds
+        }
+    }
+    /// The person on this server with this TMDB id: looked for by name (Jellyfin can't look a person up
+    /// by their TMDB id), kept only if the TMDB id it has for them is this one. Nil: not on the server.
+    func person(tmdb: Int, name: String) async throws -> Item? {
+        let query = [URLQueryItem(name: "searchTerm", value: name), URLQueryItem(name: "fields", value: "ProviderIds"),
+                     URLQueryItem(name: "limit", value: "20")]
+        let page: Page = try await get("Persons", query)
+        return page.Items.first { item in item.ProviderIds?.first { $0.key.lowercased() == "tmdb" }?.value == String(tmdb) }
+    }
+    /// Every film, show and video on the server, with what recommending reads (names, files and
+    /// folders, genres, tags, studios, dates, lengths, TMDB ids, watched).
+    func libraryIndex(user: String?, library: String? = nil) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
+                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate,PrimaryImageAspectRatio"),
+                     URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop,Thumb"), URLQueryItem(name: "Limit", value: "8000")]
+        if let library { query.append(URLQueryItem(name: "ParentId", value: library)) }
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items", query)
+        return page.Items
+    }
+    /// A person's films and shows on this server, newest first (the first `limit`), and how many in all.
+    func titles(person id: String, user: String?, limit: Int = 10) async throws -> Page {
+        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series"),
+                     URLQueryItem(name: "PersonIds", value: id), URLQueryItem(name: "SortBy", value: "PremiereDate,ProductionYear"),
+                     URLQueryItem(name: "SortOrder", value: "Descending"), URLQueryItem(name: "Limit", value: String(limit))]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        return try await get("Items", query)
+    }
+    func detail(_ id: String, user: String?) async throws -> Detail {
+        try await get("Items/\(id)", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+    }
+    func similar(_ id: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Limit", value: "12"), URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Items/\(id)/Similar", query)
+        return page.Items
+    }
+    func seasons(of series: String, user: String?) async throws -> [Item] {
+        let page: Page = try await get("Shows/\(series)/Seasons", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
+        return page.Items
+    }
+    /// A show's first episodes across its seasons (specials first, as Jellyfin lists them).
+    func firstEpisodes(of series: String, user: String?, limit: Int) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Limit", value: String(limit)), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items
+    }
+    func episodes(of series: String, season: String, user: String?) async throws -> [Item] {
+        var query = [URLQueryItem(name: "seasonId", value: season), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items
+    }
+    /// The next episode of one show (Play on its page).
+    func nextUp(series: String, user: String) async throws -> Item? {
+        let page: Page = try await get("Shows/NextUp", [URLQueryItem(name: "seriesId", value: series), URLQueryItem(name: "userId", value: user),
+                                                       URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")])
+        return page.Items.first
+    }
+    /// What's newest in one library (its row on JellySpace's home).
+    func latest(in library: String, user: String) async throws -> [Item] {
+        try await get("Items/Latest", [URLQueryItem(name: "parentId", value: library), URLQueryItem(name: "userId", value: user),
+                                       URLQueryItem(name: "Limit", value: "16"), URLQueryItem(name: "Fields", value: "ProviderIds,Genres,PrimaryImageAspectRatio")])
+    }
+    func setPlayed(_ id: String, user: String, _ played: Bool) async throws {
+        try await post("UserPlayedItems/\(id)", [URLQueryItem(name: "userId", value: user)], body: nil, method: played ? "POST" : "DELETE")
+    }
+    func setFavourite(_ id: String, user: String, _ favourite: Bool) async throws {
+        try await post("UserFavoriteItems/\(id)", [URLQueryItem(name: "userId", value: user)], body: nil, method: favourite ? "POST" : "DELETE")
+    }
+    /// Any of an item's pictures (Primary, Backdrop, Logo, Thumb), sized for the phone.
+    static func imageURL(base: URL, item: String, type: String, tag: String?, width: Int = 600) -> URL? {
+        var components = URLComponents(url: base.appending(path: "Items/\(item)/Images/\(type)"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "maxWidth", value: String(width)), URLQueryItem(name: "quality", value: "90"),
+                                  URLQueryItem(name: "format", value: "Webp")]
+            + (tag.map { [URLQueryItem(name: "tag", value: $0)] } ?? [])
+        return components?.url
+    }
+
+    // MARK: Playback state (JellySpace): read and written for one user, named in the request (an API
+    // key has no user of its own, so the session routes would keep nothing).
+    struct UserRow: Decodable, Sendable {
+        struct Policy: Decodable, Sendable {
+            let IsAdministrator: Bool?
+            /// May delete anything, or (the list) in these libraries.
+            let EnableContentDeletion: Bool?
+            let EnableContentDeletionFromFolders: [String]?
+        }
+        let Id: String
+        let Policy: Policy?
+    }
+    struct UserData: Decodable, Sendable { let PlaybackPositionTicks: Int64?; let Played: Bool? }
+    func users() async throws -> [UserRow] { try await get("Users") }
+    func user(_ id: String) async throws -> UserRow { try await get("Users/\(id)") }
+    /// Deletes an item and its files from the server (a show with its seasons and episodes).
+    func delete(_ id: String) async throws {
+        do {
+            try await post("Items/\(id)", [], body: nil, method: "DELETE")
+        } catch APIError.message(let text) where text.contains("401") || text.contains("403") {
+            throw APIError.message("Your Jellyfin account isn't allowed to delete this.")
+        }
+    }
+    /// One item with its provider ids (an episode's show, for the diary match).
+    func item(_ id: String) async throws -> Item? {
+        let page: Page = try await get("Items", [URLQueryItem(name: "Ids", value: id), URLQueryItem(name: "Fields", value: "ProviderIds,PrimaryImageAspectRatio")])
+        return page.Items.first
+    }
+    func userData(_ item: String, user: String) async throws -> UserData {
+        try await get("UserItems/\(item)/UserData", [URLQueryItem(name: "userId", value: user)])
+    }
+    /// Where you stopped, so Jellyfin (and its other apps) resume there.
+    func savePosition(_ item: String, user: String, seconds: Double) async throws {
+        let body: [String: Any] = ["PlaybackPositionTicks": Int64(max(0, seconds) * 10_000_000),
+                                   "LastPlayedDate": Date.now.ISO8601Format()]
+        try await post("UserItems/\(item)/UserData", [URLQueryItem(name: "userId", value: user)], body: body)
+    }
+    func markPlayed(_ item: String, user: String) async throws {
+        try await post("UserPlayedItems/\(item)", [URLQueryItem(name: "userId", value: user)], body: nil)
+    }
+    func post(_ path: String, _ query: [URLQueryItem], body: [String: Any]?, method: String = "POST") async throws {
+        var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { components.queryItems = query }
+        var request = URLRequest(url: components.url!, timeoutInterval: 20)
+        request.httpMethod = method
+        request.setValue(JellyDevice.header + ", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw APIError.message("Jellyfin answered \(status).") }
+    }
+    /// Every item of the given types under a library, a page at a time.
+    func items(in library: String, types: String) async throws -> [Item] {
+        var all: [Item] = [], start = 0
+        while true {
+            let page: Page = try await get("Items", [
+                URLQueryItem(name: "ParentId", value: library), URLQueryItem(name: "Recursive", value: "true"),
+                URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Fields", value: "Path,ProviderIds,Genres,PrimaryImageAspectRatio"),
+                URLQueryItem(name: "StartIndex", value: String(start)), URLQueryItem(name: "Limit", value: "500")
+            ])
+            all += page.Items; start += page.Items.count
+            if page.Items.isEmpty || start >= page.TotalRecordCount { return all }
+        }
+    }
+}
+
+/// Reads Movies and Shows libraries, keeps only items Jellyfin matched to TMDB, IMDb or TVDB
+/// (anything without one is personal and only counted), and sends their folders to the server,
+/// which maps them onto titles already in the diary.
+@MainActor @Observable final class JellyfinSync {
+    private let store: DiaryStore
+    private(set) var libraries: [JellyfinLibrary] = []
+    private(set) var excluded: Set<String>
+    private(set) var summary: JellyfinSummary?
+    private(set) var progress: String?
+    private(set) var running = false
+    var error: String?
+    init(store: DiaryStore) {
+        self.store = store
+        excluded = Set(UserDefaults.standard.stringArray(forKey: JellyfinSettings.excludedKey) ?? [])
+        summary = UserDefaults.standard.data(forKey: JellyfinSettings.summaryKey).flatMap { try? JSONDecoder().decode(JellyfinSummary.self, from: $0) }
+    }
+    var configured: Bool { store.isPreview || JellyfinSettings.configured }
+    func isOn(_ library: JellyfinLibrary) -> Bool {
+        library.readable && (library.onByDefault ? !excluded.contains(library.id) : excluded.contains("+" + library.id))
+    }
+    func toggle(_ library: JellyfinLibrary) {
+        // Movies and Shows are on unless turned off ("id"); a mixed library is off unless turned on ("+id").
+        let mark = library.onByDefault ? library.id : "+" + library.id
+        if excluded.contains(mark) { excluded.remove(mark) } else { excluded.insert(mark) }
+        UserDefaults.standard.set(Array(excluded), forKey: JellyfinSettings.excludedKey)
+    }
+    private var client: JellyfinClient? {
+        guard let base = JellyfinSettings.address, let key = JellyfinSettings.apiKey else { return nil }
+        return JellyfinClient(base: base, key: key)
+    }
+    func loadLibraries() async {
+        #if DEBUG
+        if store.isPreview { libraries = Self.previewLibraries; return }
+        #endif
+        guard let client else { return }
+        // Quiet when Jellyfin can't be reached (away from home): Sync now reports it if tried.
+        if let found = try? await client.libraries() { libraries = found; error = nil }
+    }
+    func run() async {
+        guard !running else { return }
+        running = true; error = nil; defer { running = false; progress = nil }
+        #if DEBUG
+        if store.isPreview {
+            remember(JellyfinSummary(at: store.now, mapped: 42, notInDiary: 118, personal: 12, libraries: 2)); return
+        }
+        #endif
+        guard let client else { error = "Add your Jellyfin address and API key first."; return }
+        do {
+            if libraries.isEmpty { libraries = try await client.libraries() }
+            let chosen = libraries.filter(isOn)
+            guard !chosen.isEmpty else { error = "Turn on at least one Movies or Shows library."; return }
+            let startedAt = Date.now.formatted(.iso8601)
+            var items: [[String: Any]] = [], movieFiles: [(ids: [String: String], file: String)] = [], personal = 0
+            for (index, library) in chosen.enumerated() {
+                progress = "Reading \(library.name) (\(index + 1) of \(chosen.count))…"
+                let found = try await client.items(in: library.id, types: "Movie,Series")
+                var series: [String: (ids: [String: String], folder: String)] = [:]
+                for item in found {
+                    let ids = Self.ids(item.ProviderIds)
+                    guard !ids.isEmpty, let path = item.Path else { personal += 1; continue }
+                    if item.kind == "Series" { series[item.Id] = (ids, path) }
+                    else { movieFiles.append((ids, path)) }
+                }
+                guard !series.isEmpty else { continue }
+                // Season folders and their file counts, from the episodes themselves.
+                var seasons: [String: [Int: (folder: String, count: Int)]] = [:]
+                for episode in try await client.items(in: library.id, types: "Episode") {
+                    guard let show = episode.SeriesId, series[show] != nil, let path = episode.Path else { continue }
+                    let number = episode.ParentIndexNumber ?? 1
+                    let entry = seasons[show]?[number]
+                    seasons[show, default: [:]][number] = (entry?.folder ?? Self.parent(path), (entry?.count ?? 0) + 1)
+                }
+                for (id, show) in series {
+                    let present = (seasons[id] ?? [:]).sorted { $0.key < $1.key }
+                    items.append(["kind": "series", "ids": show.ids, "folder": show.folder, "fileCount": present.reduce(0) { $0 + $1.value.count },
+                                  "seasons": present.map { ["number": $0.key, "folder": $0.value.folder, "fileCount": $0.value.count] }])
+                }
+            }
+            // A movie's location is its folder, unless several movies share that folder (a flat
+            // "Movies" directory): then each keeps its own file, so one doesn't take over another's.
+            let shared = Dictionary(grouping: movieFiles, by: { Self.parent($0.file) }).filter { $0.value.count > 1 }
+            for movie in movieFiles {
+                let folder = Self.parent(movie.file)
+                items.append(["kind": "movie", "ids": movie.ids, "folder": shared[folder] == nil ? folder : movie.file, "fileCount": 1])
+            }
+            if store.phoneOnly {
+                // No server: matched on the phone, and the folders kept here.
+                progress = "Matching with your diary…"
+                let found = Self.match(items, titles: store.workspace.activeTitles, checkedAt: startedAt)
+                PhoneExtras.shared.setJellyfin(found.locations)
+                remember(JellyfinSummary(at: .now, mapped: found.mapped, notInDiary: items.count - found.mapped, personal: personal, libraries: chosen.count))
+                store.applyDiarySource()
+                return
+            }
+            struct Receipt: Decodable { let mapped: Int; let notInDiary: Int }
+            var mapped = 0, notInDiary = 0
+            // Small pages keep each request's database statements well inside the Worker's limits.
+            let pages = stride(from: 0, to: max(items.count, 1), by: 50).map { Array(items[$0..<min($0 + 50, items.count)]) }
+            for (index, page) in pages.enumerated() {
+                progress = "Matching with your diary (\(index + 1) of \(pages.count))…"
+                let receipt: Receipt = try await store.read("/api/files/jellyfin", method: "POST", body: ["startedAt": startedAt, "done": index == pages.count - 1, "items": page])
+                mapped += receipt.mapped; notInDiary += receipt.notInDiary
+            }
+            remember(JellyfinSummary(at: .now, mapped: mapped, notInDiary: notInDiary, personal: personal, libraries: chosen.count))
+            await store.refresh()
+        } catch is CancellationError { } catch { self.error = error.localizedDescription }
+    }
+    /// Everything the chosen Movies and Shows libraries hold, as Sync now reads them, for the
+    /// Jellyfin page. Personal items (no TMDB, IMDb or TVDB id) stay out and are only counted.
+    func browse() async throws -> (entries: [JellyfinEntry], personal: Int) {
+        #if DEBUG
+        if store.isPreview { return (Self.previewEntries, 3) }
+        #endif
+        guard let client else { throw APIError.message("Add your Jellyfin address and API key first.") }
+        if libraries.isEmpty { libraries = try await client.libraries() }
+        let chosen = libraries.filter(isOn)
+        guard !chosen.isEmpty else { throw APIError.message("Turn on at least one Movies or Shows library.") }
+        var diary: [String: String] = [:]
+        for title in store.workspace.activeTitles {
+            if let tmdb = title.tmdbId { diary[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] = title.id }
+        }
+        var entries: [JellyfinEntry] = [], personal = 0, seen = Set<String>()
+        for library in chosen {
+            for item in try await client.items(in: library.id, types: "Movie,Series") where seen.insert(item.Id).inserted {
+                let ids = Self.ids(item.ProviderIds)
+                guard !ids.isEmpty, let path = item.Path else { personal += 1; continue }
+                let movie = item.kind == "Movie", tmdb = ids["tmdb"].flatMap { Int($0) }
+                entries.append(JellyfinEntry(id: item.Id, name: item.Name ?? "Untitled", year: item.ProductionYear, movie: movie, tmdb: tmdb,
+                                             path: path, drive: Self.drive(path), poster: client.poster(item),
+                                             diaryID: tmdb.flatMap { diary[(movie ? "movie:" : "tv:") + String($0)] }, genres: item.Genres))
+            }
+        }
+        entries.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return (entries, personal)
+    }
+    /// The drive a path is on: "E:" for Windows, \\server\share for a network share, or the
+    /// first two folders of a POSIX path (/mnt/media), as the Files & drives page groups them.
+    static func drive(_ path: String) -> String {
+        let characters = Array(path)
+        if characters.count >= 2, characters[1] == ":", characters[0].isLetter { return String(characters[0]).uppercased() + ":" }
+        if path.hasPrefix("\\\\") {
+            let parts = path.split(separator: "\\").map(String.init)
+            return parts.count >= 2 ? "\\\\" + parts[0] + "\\" + parts[1] : path
+        }
+        let parts = path.split(separator: "/").map(String.init)
+        return parts.count >= 3 ? "/" + parts[0] + "/" + parts[1] : "/" + (parts.first ?? "")
+    }
+    private func remember(_ value: JellyfinSummary) {
+        summary = value
+        UserDefaults.standard.set(try? JSONEncoder().encode(value), forKey: JellyfinSettings.summaryKey)
+    }
+    /// Jellyfin's provider IDs, as the server expects them; empty means a personal item.
+    static func ids(_ provider: [String: String]?) -> [String: String] {
+        var ids: [String: String] = [:]
+        for (key, value) in provider ?? [:] where !value.isEmpty {
+            switch key.lowercased() { case "tmdb": ids["tmdb"] = value; case "imdb": ids["imdb"] = value; case "tvdb": ids["tvdb"] = value; default: break }
+        }
+        return ids
+    }
+    /// Sync now's items matched to diary titles by TMDB id (or IMDb/TVDB, from the ids the phone
+    /// knows), as the server matches them: a show is one location per season folder (seasons
+    /// sharing a folder share one), a movie its folder.
+    static func match(_ items: [[String: Any]], titles: [MediaTitle], checkedAt: String) -> (locations: [FileLocation], mapped: Int) {
+        var owners: [String: String] = [:]
+        for title in titles {
+            guard let tmdb = title.tmdbId else { continue }
+            let kind = title.isSeries ? "series" : "movie", key = PhoneExtras.key(title)
+            owners["tmdb:\(kind):\(tmdb)"] = title.id
+            if let known = ServiceIDs.shared.known(key) {
+                if let imdb = known.imdb { owners["imdb:\(kind):\(imdb)"] = title.id }
+                if let tvdb = known.tvdb { owners["tvdb:\(kind):\(tvdb)"] = title.id }
+            }
+        }
+        var locations: [FileLocation] = [], mapped = 0
+        for item in items {
+            guard let kind = item["kind"] as? String, let ids = item["ids"] as? [String: String] else { continue }
+            var owner: String?
+            for provider in ["tmdb", "imdb", "tvdb"] where owner == nil {
+                if let id = ids[provider] { owner = owners["\(provider):\(kind):\(id)"] }
+            }
+            guard let owner else { continue }
+            mapped += 1
+            let seasons = item["seasons"] as? [[String: Any]] ?? []
+            if kind == "series", !seasons.isEmpty {
+                var folders: [String: [(number: Int, count: Int)]] = [:], order: [String] = []
+                for season in seasons {
+                    guard let folder = season["folder"] as? String, let number = season["number"] as? Int else { continue }
+                    if folders[folder] == nil { order.append(folder) }
+                    folders[folder, default: []].append((number, season["fileCount"] as? Int ?? 0))
+                }
+                for folder in order {
+                    let together = folders[folder] ?? []
+                    locations.append(.jellyfin(titleId: owner, folder: folder, season: together.count == 1 ? together[0].number : nil,
+                                               fileCount: together.reduce(0) { $0 + $1.count }, checkedAt: checkedAt))
+                }
+            } else if let folder = item["folder"] as? String {
+                locations.append(.jellyfin(titleId: owner, folder: folder, season: nil, fileCount: item["fileCount"] as? Int ?? 1, checkedAt: checkedAt))
+            }
+        }
+        return (locations, mapped)
+    }
+    /// The folder holding a file, for Windows or POSIX paths.
+    static func parent(_ path: String) -> String {
+        guard let index = path.lastIndex(where: { $0 == "\\" || $0 == "/" }) else { return path }
+        return String(path[..<index])
+    }
+    #if DEBUG
+    static let previewEntries = [
+        JellyfinEntry(id: "j-arrival", name: "Arrival", year: 2016, movie: true, tmdb: 329865, path: "E:\\Movies\\Arrival (2016)", drive: "E:", poster: nil, diaryID: nil, genres: ["Science Fiction", "Drama"]),
+        JellyfinEntry(id: "j-dune", name: "Dune", year: 2021, movie: true, tmdb: 438631, path: "E:\\Movies\\Dune (2021)", drive: "E:", poster: nil, diaryID: nil, genres: ["Science Fiction", "Adventure"]),
+        JellyfinEntry(id: "j-bocchi", name: "Bocchi the Rock!", year: 2022, movie: false, tmdb: 119100, path: "E:\\Anime\\Bocchi the Rock!", drive: "E:", poster: nil, diaryID: nil, genres: ["Animation", "Comedy"]),
+        JellyfinEntry(id: "j-frieren", name: "Frieren: Beyond Journey’s End", year: 2023, movie: false, tmdb: 209867, path: "/mnt/media/Anime/Frieren", drive: "/mnt/media", poster: nil, diaryID: "frieren"),
+        JellyfinEntry(id: "j-severance", name: "Severance", year: 2022, movie: false, tmdb: 95396, path: "D:\\TV\\Severance", drive: "D:", poster: nil, diaryID: "severance")
+    ]
+    static let previewLibraries = [
+        JellyfinLibrary(id: "movies", name: "Movies", type: "movies"),
+        JellyfinLibrary(id: "shows", name: "Shows", type: "tvshows"),
+        JellyfinLibrary(id: "photos", name: "Photos", type: "photos"),
+        JellyfinLibrary(id: "home", name: "Home videos", type: "homevideos")
+    ]
+    #endif
+}

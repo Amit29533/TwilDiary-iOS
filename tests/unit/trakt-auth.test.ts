@@ -9,7 +9,8 @@ import {
   sealTrakt,
   openTrakt,
   connectionStatus,
-  disconnectTrakt
+  disconnectTrakt,
+  directTraktToken
 } from '../../src/lib/server/trakt-auth.ts';
 import {
   mergeDecision,
@@ -123,6 +124,44 @@ test('single-use refresh tokens rotate under a database lease, and disconnect re
   assert.equal((await connectionStatus(f.db, env)).connected, false);
   await assert.rejects(() => authorizedTrakt(f.db, env));
 });
+test('the app gets a current access token for direct Trakt reads, never the refresh token', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  await assert.rejects(() => directTraktToken(f.db, env), /Connect your Trakt account/);
+  await connected(f);
+  let calls = 0;
+  const unused: typeof fetch = async () => {
+    calls++;
+    throw new Error('A fresh token needs no Trakt request');
+  };
+  const fresh = await directTraktToken(f.db, env, unused);
+  assert.equal(fresh.accessToken, 'fixture-access-token-123456789');
+  assert.equal(fresh.clientId, env.TRAKT_CLIENT_ID);
+  assert.equal(fresh.username, 'owner');
+  assert.ok(fresh.expiresAt > Date.now() + 120000);
+  assert.equal(calls, 0);
+  assert.equal(
+    JSON.stringify(fresh).includes('refresh'),
+    false,
+    'The refresh token stays on the Worker'
+  );
+  // Due for refresh: rotated once on the Worker, then handed out.
+  const g = d1Fixture();
+  t.after(g.close);
+  await connected(g, true);
+  const rotate: typeof fetch = async () => {
+    calls++;
+    return json({ ...fixtureTokens(), access_token: 'rotated-access-token-123456789' });
+  };
+  assert.equal(
+    (await directTraktToken(g.db, env, rotate)).accessToken,
+    'rotated-access-token-123456789'
+  );
+  assert.equal(calls, 1);
+  await disconnectTrakt(g.db);
+  await assert.rejects(() => directTraktToken(g.db, env, rotate));
+});
+
 test('merge baselines preserve reviewed differences and always review removals or simultaneous edits', () => {
   assert.deepEqual(mergeDecision('9', null, undefined), { direction: 'push', review: false });
   assert.deepEqual(mergeDecision(null, '8', undefined), { direction: 'pull', review: false });

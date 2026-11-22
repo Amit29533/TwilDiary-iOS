@@ -3,6 +3,7 @@ import type { CastMember } from '../../domain/types.ts';
 import type { DiscoveryItem } from '../../discovery.ts';
 import type { PersonDetails } from '../../people.ts';
 import {
+  blob,
   check,
   foreignKey,
   index,
@@ -633,4 +634,90 @@ export const progressOperations = sqliteTable('progress_operations', {
   input: text('input').notNull(),
   payload: text('payload').notNull(),
   createdAt: text('created_at').notNull()
+});
+
+/** API keys replaced from Settings → APIs. Encrypted (AES-GCM, a key derived from
+ * TRAKT_TOKEN_KEY); only the last four characters are ever returned. A saved key wins over
+ * the Worker secret of the same name, and removing it falls back to that secret. */
+export const apiKeys = sqliteTable('api_keys', {
+  name: text('name').primaryKey(),
+  ciphertext: text('ciphertext').notNull(),
+  hint: text('hint').notNull(),
+  updatedAt: text('updated_at').notNull()
+});
+
+/** Hearted cast (TMDB people) and anime characters (AniList), shown under Favourites. */
+export const favourites = sqliteTable(
+  'favourites',
+  {
+    kind: text('kind', { enum: ['cast', 'character'] }).notNull(),
+    ref: integer('ref').notNull(),
+    name: text('name').notNull(),
+    image: text('image'),
+    subtitle: text('subtitle'),
+    savedAt: text('saved_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.kind, t.ref] }), index('favourites_saved').on(t.savedAt)]
+);
+
+/** The owner's Jellyfin Movies and Shows, as the phone last read them at home (diary or not),
+ * so every device has the list away from home. Personal media (no TMDB, IMDb or TVDB id) is
+ * never sent; only its count is kept. A full read replaces the list (rows it didn't see go). */
+export const jellyfinItems = sqliteTable(
+  'jellyfin_items',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    year: integer('year'),
+    kind: text('kind', { enum: ['movie', 'series'] }).notNull(),
+    tmdb: integer('tmdb'),
+    path: text('path').notNull(),
+    drive: text('drive').notNull(),
+    imageTag: text('image_tag'),
+    genres: text('genres', { mode: 'json' }).$type<string[]>().notNull(),
+    seenAt: text('seen_at').notNull()
+  },
+  (t) => [index('jellyfin_items_seen').on(t.seenAt)]
+);
+/** One row: when the list was last read in full, and how many personal items were left out. */
+export const jellyfinLibraryState = sqliteTable(
+  'jellyfin_library_state',
+  {
+    id: integer('id').primaryKey(),
+    personal: integer('personal').notNull(),
+    savedAt: text('saved_at').notNull()
+  },
+  (t) => [check('jellyfin_library_state_one', sql`${t.id} = 1`)]
+);
+
+/** Bounded, expiring sign-in counters; identifiers contain only hashes and time buckets. */
+export const authAttempts = sqliteTable('auth_attempts', {
+  id: text('id').primaryKey().notNull(),
+  attempts: integer('attempts').notNull(),
+  expiresAt: integer('expires_at').notNull()
+}, (t) => [index('auth_attempts_expiry').on(t.expiresAt)]);
+
+/** Trakt-first phase 3 (migration 0026): manual backups, gzip'd JSON, newest 20 kept. */
+export const backups = sqliteTable(
+  'backups',
+  {
+    id: text('id').primaryKey(),
+    createdAt: text('created_at').notNull(),
+    label: text('label').notNull(),
+    titles: integer('titles').notNull().default(0),
+    watches: integer('watches').notNull().default(0),
+    sizeBytes: integer('size_bytes').notNull(),
+    body: blob('body').notNull()
+  },
+  (t) => [index('backups_created').on(t.createdAt)]
+);
+
+
+/** The phone's extras (tags, Queue, full notes, statuses a service can't keep, Jellyfin folders,
+ * favourite people, the phone's Trash) when the diary lives on Trakt alone: one row, the newest
+ * copy, the same JSON the phone keeps on Google Drive. */
+export const phoneExtras = sqliteTable('phone_extras', {
+  id: text('id').primaryKey(),
+  body: text('body').notNull(),
+  updatedAt: text('updated_at').notNull()
 });

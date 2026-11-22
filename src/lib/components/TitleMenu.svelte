@@ -5,8 +5,10 @@
   import Star from '@lucide/svelte/icons/star';
   import Folder from '@lucide/svelte/icons/folder';
   import Download from '@lucide/svelte/icons/download';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import { goto } from '#lib/client/navigation.ts';
+  import { requestJson } from '#lib/client/api.ts';
   import { useDiary } from '#lib/client/diary-context.ts';
   import CollectionConfirm from './CollectionConfirm.svelte';
   import { titleSection, revealTitleSection } from '#lib/client/title-section.ts';
@@ -19,9 +21,27 @@
   let menu = $state<HTMLDetailsElement>();
   let trashOpen = $state(false);
   let trashVersion = $state<number>();
+  let refreshingMetadata = $state(false);
   const diary = useDiary();
-  const queued = $derived(diary.snapshot.titles.find((title) => title.id === id)?.queued === true);
-  const category = $derived(diary.snapshot.titles.find((title) => title.id === id)?.category);
+  const titleObj = $derived(diary.snapshot.titles.find((title) => title.id === id));
+  const queued = $derived(titleObj?.queued === true);
+  const category = $derived(titleObj?.category);
+  const hasTmdb = $derived(typeof titleObj?.tmdbId === 'number' && titleObj.tmdbId > 0);
+  async function refreshMetadata() {
+    if (!hasTmdb || refreshingMetadata || !diary.ready || diary.saving) return;
+    refreshingMetadata = true;
+    try {
+      await requestJson(`/api/titles/${encodeURIComponent(id)}/metadata`, {
+        method: 'POST',
+        body: '{}'
+      });
+      await diary.refresh();
+    } catch {
+      /* Error feedback is handled by the diary store or ignored in preview mode */
+    } finally {
+      refreshingMetadata = false;
+    }
+  }
   function outside(event: PointerEvent) {
     if (menu && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
   }
@@ -31,6 +51,7 @@
     select.value = '';
     if (!diary.ready || diary.saving) return;
     if (action === 'queue') diary.toggleQueue(id);
+    else if (action === 'refresh-metadata') void refreshMetadata();
     else if (action === 'notes' || action === 'files')
       void revealTitleSection(`/preview/title/${id}`, action);
   }
@@ -56,6 +77,7 @@
     >
       <option value="" disabled>More options</option>
       <option value="queue">{queued ? 'Remove from Queue' : 'Queue'}</option>
+      {#if hasTmdb}<option value="refresh-metadata">Refresh metadata</option>{/if}
       <option value="notes">Notes</option>
       <option value="files">File locations</option>
     </select>
@@ -74,6 +96,15 @@
           if (menu) menu.open = false;
         }}><Download size={17} />{queued ? 'Remove from Queue' : 'Queue'}</button
       >
+      {#if hasTmdb}
+        <button
+          disabled={!diary.ready || diary.saving || refreshingMetadata}
+          onclick={() => {
+            if (menu) menu.open = false;
+            void refreshMetadata();
+          }}><RotateCcw size={17} />{refreshingMetadata ? 'Refreshing…' : 'Refresh metadata'}</button
+        >
+      {/if}
       {#each [{ id: 'episodes', label: category === 'movie' || category === 'anime-movie' ? 'Watch logger' : 'Episodes & details', icon: ListVideo }, { id: 'rating', label: 'Your rating', icon: Star }, { id: 'notes', label: 'Notes', icon: NotebookPen }, { id: 'files', label: 'File locations', icon: Folder }] as section}
         <a
           href="/preview/title/{id}#{section.id}"

@@ -1,5 +1,6 @@
 import XCTest
 @testable import TwilDiary
+import TwilDiaryCore
 
 @MainActor final class AccessSignInTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -78,5 +79,23 @@ import XCTest
         XCTAssertTrue(state.active(ticket), "A late real cookie may still finish after the recoverable message")
         XCTAssertNotNil(state.consume([try cookie()], at: session, ticket: ticket, now: now))
         XCTAssertNil(state.error)
+    }
+}
+
+/// One-tap sign-in needs TwilDiary's app IDs without pasting: the server's list is remembered on
+/// the phone, a missing entry keeps the earlier one, and blanks or unset build settings never count.
+@MainActor final class ProviderAppIDsTests: XCTestCase {
+    func testServerListedIDsAreRememberedAndBlanksIgnored() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ProviderAppIDsTests"))
+        defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
+        // Built into the app: every service's public client ID, as Cinopsys ships its own.
+        for provider in [SyncProviderKind.trakt, .mdblist, .wetrakr] { XCTAssertNotNil(ProviderAppIDs.id(for: provider, defaults: defaults), provider.rawValue) }
+        // A server-listed ID never replaces a built-in one.
+        let builtIn = ProviderAppIDs.id(for: .wetrakr, defaults: defaults)
+        ProviderAppIDs.remember([.wetrakr: "other-app"], defaults: defaults)
+        XCTAssertEqual(ProviderAppIDs.id(for: .wetrakr, defaults: defaults), builtIn)
+        defaults.removePersistentDomain(forName: "ProviderAppIDsTests")
+        XCTAssertNil(ProviderAppIDs.id(for: .cloudflare, defaults: defaults))
+        XCTAssertTrue(ServiceSignIn.supportsSheet(.trakt) && ServiceSignIn.supportsSheet(.wetrakr) && ServiceSignIn.supportsSheet(.mdblist) && !ServiceSignIn.supportsSheet(.cloudflare))
     }
 }

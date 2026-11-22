@@ -74,7 +74,7 @@ import SwiftUI
         router.paths[.library] = path
         XCTAssertTrue(router.goBack()); XCTAssertEqual(router.paths[.library]?.count, 1)
         XCTAssertTrue(router.goBack()); XCTAssertEqual(router.paths[.library]?.count, 0)
-        XCTAssertFalse(router.goBack()); XCTAssertFalse(router.goBack(tab: .stats))
+        XCTAssertFalse(router.goBack()); XCTAssertFalse(router.goBack(tab: .search))
     }
     func testNestedDoneActionUsesItsOwnStackInsteadOfTheParent() {
         let router = AppRouter(); router.paths[.more] = NavigationPath([AppDestination.files])
@@ -105,6 +105,14 @@ import SwiftUI
             XCTAssertEqual(Array(parts.leading) + Array(parts.continuation), Array(text))
             XCTAssertFalse(parts.continuation.isEmpty)
         }
+    }
+    func testSynopsisReservesRoomForMoreOnlyOnTheLastLine() {
+        let text = String(repeating: "A married couple who received a divorce settlement lose their memories. ", count: 6)
+        let full = SynopsisTextLayout.split(text, width: 340), reserved = SynopsisTextLayout.split(text, width: 340, lastLineReserve: 76)
+        XCTAssertEqual(reserved.leading + reserved.continuation, text)
+        XCTAssertLessThan(reserved.leading.count, full.leading.count)
+        // Only the last line gives way: three full-width lines' worth is still there.
+        XCTAssertGreaterThan(reserved.leading.count, full.leading.count * 3 / 4)
     }
     func testEmptyAndUnmeasuredSynopsisRemainLossless() {
         XCTAssertEqual(SynopsisTextLayout.split("", width: 100), .init(leading: "", continuation: ""))

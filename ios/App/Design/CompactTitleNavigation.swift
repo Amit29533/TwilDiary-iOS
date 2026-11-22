@@ -20,6 +20,9 @@ struct CompactTitleNavigation: View {
     let name: String
     let poster: String?
     let state: CompactHeaderState
+    /// The page's width: the title keeps clear of the bar's buttons on both sides (the bar gives a
+    /// centre item all the width it asks for, so a long name ran under the ••• button).
+    var pageWidth: CGFloat = 0
     private var progress: CGFloat { state.progress }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
@@ -27,10 +30,36 @@ struct CompactTitleNavigation: View {
             Artwork(path: poster, title: name, initialsOnly: false).frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 9))
             Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
         }.frame(height: 28)
+            .frame(maxWidth: pageWidth > 0 ? max(120, pageWidth - 160) : nil)
             .opacity(Double(progress))
             .offset(y: reduceMotion ? 0 : (1 - progress) * 6)
             .accessibilityElement(children: .ignore).accessibilityLabel(name).accessibilityIdentifier("compact-title-navigation")
             .accessibilityHidden(progress < 0.5)
+    }
+}
+
+/// A page title that hands over to the heading as it scrolls under the bar (Explore, a person's
+/// lists): the same scroll-linked fade and small lift as a title page's name, never a swap.
+struct ScrollLinkedBarTitle: View {
+    let resting: String
+    let scrolled: String
+    let state: CompactHeaderState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        let progress = state.progress
+        ZStack {
+            Text(resting).opacity(Double(1 - progress)).offset(y: reduceMotion ? 0 : -progress * 6)
+                .accessibilityHidden(progress >= 0.5)
+            Text(scrolled).opacity(Double(progress)).offset(y: reduceMotion ? 0 : (1 - progress) * 6)
+                .accessibilityHidden(progress < 0.5)
+        }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+            .accessibilityAddTraits(.isHeader)
+    }
+    /// From the heading's bottom edge on screen: 0 while it's in view, 1 once it's under the bar.
+    static func progress(headingBottom: CGFloat) -> CGFloat {
+        guard headingBottom.isFinite else { return 0 }
+        let value = min(1, max(0, (130 - headingBottom) / 70))
+        return (value * 32).rounded() / 32
     }
 }
 
@@ -50,49 +79,39 @@ struct CompactHeaderBackdrop: View {
     let state: CompactHeaderState
     let topInset: CGFloat
     var body: some View {
-        Rectangle().fill(.ultraThinMaterial)
-            .overlay(.black.opacity(0.22))
-            .opacity(Double(state.progress))
-            .frame(height: topInset).offset(y: -topInset)
-            .allowsHitTesting(false).accessibilityHidden(true)
+        FeatheredHeaderBackdrop(state: state, height: topInset).offset(y: -topInset)
     }
 }
 
-/// One native toolbar button owns the crossfade. Stacking two interactive
-/// toolbar controls can leave the invisible control intercepting the share tap.
-struct TitleHeaderAction: View {
-    let name: String
-    let kind: MediaKind
-    let id: Int?
-    let state: CompactHeaderState
-    @Binding var informationPresented: Bool
-    var informationIdentifier = "title-information"
-    @State private var sharing = false
-    private var progress: CGFloat { state.progress }
-    private var compact: Bool { progress >= 0.5 }
+/// The title pages' one top-right button (owner's design): a 44 pt dark circle with three white
+/// dots. Its menu holds everything else (Sentiments, Favourite, Queue, Notes, Files, Share, Trash).
+struct TitleMoreButtonLabel: View {
+    /// Title pages: clear Liquid Glass over the artwork (the owner's choice for this button).
+    /// Elsewhere (glass: false): the dark round button.
+    var glass = true
     var body: some View {
-        Button {
-            if compact { sharing = true } else { informationPresented = true }
-        } label: {
-            ZStack {
-                Image(systemName: "square.and.arrow.up").opacity(Double(progress))
-                Image(systemName: "info.circle").opacity(Double(1 - progress))
-            }.frame(width: 32, height: 32)
-        }.accessibilityLabel(compact ? "Share " + name : "Community information")
-            .accessibilityIdentifier(compact ? "title-share" : informationIdentifier)
-            .sheet(isPresented: $sharing) { TitleActivitySheet(name: name, kind: kind, id: id) }
+        let icon = Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+            .frame(width: 44, height: 44).contentShape(Circle())
+        if glass {
+            // In the bar, the system's glass (same as the back button) draws around it.
+            Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+        } else {
+            icon.background(Color(themed: "#2b2b30").opacity(0.94), in: Circle())
+                .overlay(Circle().strokeBorder(HomeStyle.outline(0.14), lineWidth: 0.67))
+        }
     }
 }
 
-@MainActor private struct TitleActivitySheet: UIViewControllerRepresentable {
+/// "Share" in a title's menu: its TMDB page, or just its name when it has no TMDB id.
+struct TitleShareItem: View {
     let name: String
     let kind: MediaKind
     let id: Int?
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let item: Any
-        if let id, id > 0, let url = URL(string: "https://www.themoviedb.org/\(kind == .tv ? "tv" : "movie")/\(id)") { item = url }
-        else { item = name }
-        return UIActivityViewController(activityItems: [item], applicationActivities: nil)
+    var body: some View {
+        if let id, id > 0, let url = URL(string: "https://www.themoviedb.org/\(kind == .tv ? "tv" : "movie")/\(id)") {
+            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("title-share")
+        } else {
+            ShareLink(item: name) { Label("Share", systemImage: "square.and.arrow.up") }.accessibilityIdentifier("title-share")
+        }
     }
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

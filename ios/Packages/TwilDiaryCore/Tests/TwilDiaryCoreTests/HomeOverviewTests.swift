@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import TwilDiaryCore
+import TwilDiaryTestSupport
 
 private struct WebHomeCase: Decodable {
     struct Expected: Decodable {
@@ -38,4 +39,18 @@ private struct WebHomeCase: Decodable {
         #expect(actual.upcoming.map { $0.episode.id } == item.expected.upcoming.map(\.episode))
         #expect(actual.upcoming.map(\.daysAway) == item.expected.upcoming.map(\.daysAway))
     }
+}
+
+@Test func lastWeekMinutesCountOnlyTheSevenDaysBeforeThisWeek() throws {
+    let title = try #require(SampleWorkspace.make().titles.first { $0.id == "again" })
+    let runtime = try #require(title.runtimeMinutes)
+    func watch(_ id: String, _ at: String) throws -> WatchEvent {
+        try JSONDecoder().decode(WatchEvent.self, from: Data(#"{"id":"\#(id)","operationId":"op-\#(id)","titleId":"again","episodeId":null,"watchedAt":"\#(at)","recordedAt":"\#(at)","origin":"manual","version":1}"#.utf8))
+    }
+    // Friday 23 Oct 2026; this week starts Monday 19 Oct, last week Monday 12 Oct.
+    let events = try [watch("this", "2026-10-20T12:00:00Z"), watch("last-a", "2026-10-12T12:00:00Z"), watch("last-b", "2026-10-18T12:00:00Z"), watch("older", "2026-10-11T12:00:00Z")]
+    let overview = HomeOverview(workspace: Workspace(titles: [title], events: events), now: try #require(DiaryDate.parse("2026-10-23T12:00:00Z")), calendar: DiaryDate.calendar(timeZone: TimeZone(identifier: "UTC")!))
+    #expect(runtime > 0)
+    #expect(overview.minutes == runtime)
+    #expect(overview.lastWeekMinutes == runtime * 2)
 }

@@ -1,8 +1,15 @@
 import { building, dev } from '$app/env';
 import type { Handle } from '@sveltejs/kit/hooks';
-import { AccessFailure, assertSameOriginWrite, createAccessVerifier } from '#lib/server/access.ts';
+import {
+  AccessFailure,
+  assertSameOriginWrite,
+  createAccessVerifier,
+  verifyMultiMethodRequest
+} from '#lib/server/access.ts';
 import { localDevelopmentAllowed, localNetworkAllowed } from '#lib/server/local-development.ts';
 import { bumpWorkspaceRevision, changesDiary } from '#lib/server/workspace-revision.ts';
+import { withSavedKeys } from '#lib/server/api-keys.ts';
+import { diaryRecord, recordRefusal, retiredWebPage } from '#lib/server/diary-record.ts';
 
 let cached: { key: string; verify: ReturnType<typeof createAccessVerifier> } | undefined;
 
@@ -13,6 +20,16 @@ export const handle: Handle = async ({ event, resolve }) => {
   // Resolve them lazily: the adapter also renders a data-free fallback in Node at build time.
   const cloudflareEnv = (await import('cloudflare:workers')).env;
   event.locals.bindings = cloudflareEnv;
+  // This route renders only the sign-in UI. It reads no diary data; private APIs still verify owners.
+  if (
+    (event.url.pathname === '/sign-in' || event.route.id === '/sign-in') &&
+    ['GET', 'HEAD'].includes(event.request.method)
+  ) {
+    const response = await resolve(event);
+    response.headers.set('Cache-Control', 'private, no-store');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    return response;
+  }
   if (dev && cloudflareEnv.LOCAL_DIARY === '1') {
     const localPC = localDevelopmentAllowed(
       dev,
@@ -33,6 +50,7 @@ export const handle: Handle = async ({ event, resolve }) => {
         email: 'local@localhost'
       };
       event.locals.tmdbTransport = (await import('../tooling/local-tmdb-fetch.ts')).localTmdbFetch;
+      event.locals.bindings = await withSavedKeys(cloudflareEnv);
       const response = await resolve(event);
       if (changesDiary(event.request.method, event.url.pathname))
         await bumpWorkspaceRevision(cloudflareEnv.DB);
@@ -54,26 +72,70 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (dev && !event.url.pathname.startsWith('/api/')) return resolve(event);
   try {
     const env = event.locals.bindings;
-    if (!env?.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUDIENCE || !env.ACCESS_OWNER_EMAIL) {
-      throw new AccessFailure(
-        503,
-        'Private Cloudflare Access setup is required before this app is hosted.'
-      );
+    let cfVerifier: ReturnType<typeof createAccessVerifier> | undefined;
+    if (env?.ACCESS_TEAM_DOMAIN && env.ACCESS_AUDIENCE && env.ACCESS_OWNER_EMAIL) {
+      const issuer =
+        'https://' + env.ACCESS_TEAM_DOMAIN.replace(/^https:\/\//, '').replace(/\/$/, '');
+      const key = JSON.stringify([issuer, env.ACCESS_AUDIENCE, env.ACCESS_OWNER_EMAIL]);
+      if (cached?.key !== key)
+        cached = {
+          key,
+          verify: createAccessVerifier({
+            issuer,
+            audience: env.ACCESS_AUDIENCE,
+            ownerEmail: env.ACCESS_OWNER_EMAIL
+          })
+        };
+      cfVerifier = cached.verify;
     }
-    const issuer =
-      'https://' + env.ACCESS_TEAM_DOMAIN.replace(/^https:\/\//, '').replace(/\/$/, '');
-    const key = JSON.stringify([issuer, env.ACCESS_AUDIENCE, env.ACCESS_OWNER_EMAIL]);
-    if (cached?.key !== key)
-      cached = {
-        key,
-        verify: createAccessVerifier({
-          issuer,
-          audience: env.ACCESS_AUDIENCE,
-          ownerEmail: env.ACCESS_OWNER_EMAIL
-        })
-      };
-    event.locals.owner = await cached.verify(event.request);
+    if (event.url.pathname === '/api/auth') {
+      assertSameOriginWrite(event.request);
+      try {
+        event.locals.owner = await verifyMultiMethodRequest(event.request, env, cfVerifier);
+      } catch {
+        /* Unauthenticated callers may inspect or initiate sign-in at /api/auth */
+      }
+      const response = await resolve(event);
+      response.headers.set('Cache-Control', 'private, no-store');
+      response.headers.set('X-Content-Type-Options', 'nosniff');
+      return response;
+    }
+    event.locals.owner = await verifyMultiMethodRequest(event.request, env, cfVerifier);
+    // Only authenticated owners may replace server provider keys.
+    if (event.url.pathname.startsWith('/api/')) event.locals.bindings = await withSavedKeys(env);
     assertSameOriginWrite(event.request);
+    // Phase 4c: once a service holds the diary, the web app is retired and the server's own
+    // record (watches, ratings) is kept read-only; the Review sync is off.
+    const record = diaryRecord(env);
+    if (record !== 'server') {
+      const path = event.url.pathname;
+      const method = event.request.method;
+      if (!path.startsWith('/api/') && ['GET', 'HEAD'].includes(method) && event.request.headers.get('Accept')?.includes('text/html'))
+        return new Response(retiredWebPage(record), {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'private, no-store',
+            'X-Content-Type-Options': 'nosniff'
+          }
+        });
+      const body =
+        method === 'PATCH' && /^\/api\/titles\/[^/]+$/.test(path)
+          ? await event.request.clone().json().catch(() => undefined)
+          : undefined;
+      const refusal = recordRefusal(record, method, path, body);
+      if (refusal)
+        return new Response(
+          JSON.stringify({ error: { code: refusal.code, message: refusal.message } }),
+          {
+            status: refusal.status,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'private, no-store',
+              'X-Content-Type-Options': 'nosniff'
+            }
+          }
+        );
+    }
     const response = await resolve(event);
     // After the write has finished, so a resumed app re-reads a diary that already has it.
     if (changesDiary(event.request.method, event.url.pathname))
@@ -87,6 +149,22 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!(error instanceof AccessFailure)) throw error;
     // Status and path only; never the assertion, cookies or headers.
     console.warn('access_rejected', { status: error.status, path: event.url.pathname });
+    if (
+      error.status === 401 &&
+      !event.url.pathname.startsWith('/api/') &&
+      event.request.method === 'GET' &&
+      event.request.headers.get('Accept')?.includes('text/html')
+    ) {
+      return new Response(null, {
+        status: 303,
+        headers: {
+          Location:
+            '/sign-in?' + new URLSearchParams({ returnTo: event.url.pathname + event.url.search }),
+          'Cache-Control': 'private, no-store',
+          'X-Content-Type-Options': 'nosniff'
+        }
+      });
+    }
     return new Response(error.message, {
       status: error.status,
       headers: {

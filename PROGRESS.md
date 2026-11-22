@@ -1,5 +1,424 @@
 # Native TwilDiary progress
 
+## 2 November 2026 — use visible scroll phase, not device gesture distance
+
+af6c19c build 6ae84e6e passed the early header smoke, all 41 native units, all
+nine native navigation/Home/History cases, full 17 Pro and 17e profile matrices,
+and four of five Pro Max matrix cases. The only failure was the test's <48-point
+scroll-distance assertion on the Pro Max Character capture (141.3 points).
+Retained image F08CCB50-3680-4C56-B2D9-AD2676C84928.png shows the entire hero
+name below the native bar, sharp diagnostic stripes and no rectangular strip.
+The sample was valid for the visual contract despite a different scroll distance.
+
+Test now starts on the portrait, clear of nested content, and requires actual
+movement plus the visible hero below the bar with an 8-point gap; no assertion
+about native gesture travel distance. Both initial/partial pixel contrast,
+pinned heart, hidden tabs, all provider samples and three phone sizes remain
+required. No shipping app code changed. New same-SHA native run still required.
+
+## 2 November 2026 — bound the portrait regression gesture
+
+Build 6ae84853 for 3c3ecce again compiled and passed 41 native units plus the
+nine navigation/Home/History journeys and other profile-format cases. Revised
+header test passed initial and partial Cast pixel checks and the Character
+initial check, then failed its phase guard: a short fast drag flung the Character
+hero to y=20.7, above the required expanded position. The sample was in the wrong
+scroll phase; do not waive its geometry or contrast requirements.
+
+Test now drags 24 points slowly and holds the finger stationary before release.
+It requires actual movement over 8 and under 48 points, hero below the toolbar,
+sharp pixels, pinned heart and no tabs. The workflow runs this visual regression
+first as a separate retained smoke result, then retains the entire original
+native batch and three-size matrix. Local grammar/workflow checks pass; native
+execution is pending. App behavior remains the same as a14bcb2.
+
+## 2 November 2026 — a14bcb2 native results and header-test correction
+
+Owner launched focused build 6ae8430aefa7478604700529 for a14bcb2. Five core
+cases, all 41 native units and 13/14 native UI journeys passed on iPhone 17 Pro.
+The only failure was the new header test's assertion that the hidden compact
+title does not exist in accessibility. Retained video shows no compact title
+visually, with the hero still expanded and stripes sharp beneath the toolbar.
+Initial sharpness pixel assertion passed; the follow-up assertion stopped before
+its second sample. This is an incorrect AX-existence assumption, not evidence
+that the hard portrait strip returned.
+
+Replaced that assertion with visible hero bounds below the native toolbar and
+retained both screenshot pixel contrast checks, pinned heart and hidden-tab
+checks on all three profile kinds. No app behavior or failure gate removed.
+Reviewed actual Home/History captures: compact landscape cards, matching surfaces,
+two complete recent cards/next peek and dates beside episodes; both journeys and
+History date/search/paging tests passed. Rating sizing regression passed too.
+Original artifacts and screenshots retained outside repo in
+outputs/profile-format-a14bcb2. Compact/max matrix and device Release packaging
+did not execute after the failing main batch. New same-SHA rerun is required.
+
+## 2 November 2026 — Home/History geometry and review of today's fixes
+
+Owner supplied a current phone capture and reference, then explicitly required
+dates to ALWAYS remain beside the episode. Shared WatchActivityCard now has
+120-point landscape artwork, content-sized footer, one-line normal-size title,
+and trailing date beside the episode. Home upcoming fits two complete cards;
+recent watches show two cards and a next-card peek. Full History grid now reuses
+the same card within its own cell, with 12-point grid gaps and one column at
+accessibility sizes. Existing history list spacing, filters, pagination, event
+identities, actual/unknown dates and native title routes are retained. Rewatch
+status stays on the image rather than repeating beside the episode.
+
+Reviewed the earlier 8aeefa6 portrait/rating changes: shared profile scroll edge
+is explicitly hidden; the compact backdrop is feathered; native pinned controls
+remain. All profile scores reuse RatingBadge with an unbroken star/decimal line;
+provider identity remains accessible without a visible AniList panel. No new
+network requests, mutations or provider conversions were introduced. Removed a
+duplicate card border while extracting the shared surface and kept History list
+spacing separate from grid spacing.
+
+Local Swift grammar (12 files), workflow YAML, Bash/embedded Python and git diff
+checks pass. All 29 local release-tool tests pass. Native card hosting tests,
+Home carousel geometry, History grid/navigation/filter checks, rating sizing and
+three-size profile sharpness checks are selected for the next focused workflow.
+They have NOT executed for this candidate. Chrome window capture timed out even
+after window recovery; no Codemagic build launched and no new IPA is claimed.
+No GitHub check run exists for the earlier pushed 8aeefa6 either. See
+ios/docs/UI-REVIEW-2026-11-02.md for scope and limits.
+
+## 2 November 2026 — profile rating badge follow-up draft
+
+Owner screenshots show character Appears in scores wrapping digit-by-digit inside
+an oversized AniList panel. Removed that nested panel/provider text and reused
+the same RatingBadge as Watched/other posters, with the same bottom-leading inset.
+Voice actor anime scores and accessible profile rows now reuse that badge too.
+The shared badge keeps a single intrinsic-width line; optional provider identity
+is announced by VoiceOver instead of taking space in the visible score.
+Added a native hosting-layout regression for narrow scores 6.8, 8.1 and 10.0 and
+accessibility text, verifying provider identity does not enlarge the badge.
+Local syntax/static checks only; native test execution and new build are pending.
+This draft includes the uncommitted portrait-header correction below.
+
+## 2 November 2026 — portrait toolbar strip reported on physical phone
+
+Owner screenshot still shows a hard blurred strip over Jenna Ortega's portrait.
+Prior retained geometry/format screenshots did not establish that this visual
+defect was fixed. Profile ScrollView hid the navigation-bar background but did
+not disable iOS 26's separate scroll-edge effect. Draft now hides the top effect
+in the shared Cast/Character/Voice shell and feathers the custom compact backdrop.
+Native Back/heart controls and scroll-linked compact title remain in place.
+
+Added a DEBUG-only striped portrait and a native screenshot pixel check at
+initial/partial scroll for all three profile kinds, selected on all three phone
+sizes by the existing format workflow. Swift grammar, Bash/embedded Python syntax
+and git diff checks pass locally. Native compilation/execution remain pending:
+Windows browser automation stopped because it could not confidently determine
+the current browser URL. No new build started, no new accepted IPA, no commit or
+push for this draft. Do not treat the older accepted formatting build as evidence
+that this specific strip is fixed.
+
+## 2 November 2026 — focused profile build accepted with retained evidence
+
+Codemagic 6ae829f22dd1b7e16dab9367 completed successfully for exact source
+37b6dda1bfe690a1ba60a2975c0525175dabf86a in about 26 minutes. Five focused core
+cases, 39 native units and 19 UI executions passed: seven navigation/Home journeys
+plus four profile-format journeys on each of three phone sizes, including XXXL
+facts, full-width Watched rows and trailing-edge navigation. Simulator and arm64
+Release device builds both report zero warnings. Packaging/resource gates passed.
+
+Downloaded IPA: 8,439,549 bytes, version 2.0.0/build 65, arm64 iPhoneOS; ZIP CRC,
+required privacy reasons, Release fixture exclusion and SHA256/provenance match
+verified locally. SHA256 8540aa9d0cf992db3992e57e63265a075a5277cd5bd1363fc7257efed2a1a6e9.
+Reviewed 27 retained fixture screenshots across iPhone 17 Pro, 17e and 17 Pro Max:
+normal facts/biographies/links and accessibility facts/readable rows. No new layout
+defect found in these captures. Originals retained in
+ios/docs/screenshots/profile-formatting-37b6dda; receipt in
+ios/docs/releases/profile-formatting-37b6dda.json. This is focused acceptance;
+full regression and physical-phone acceptance remain unverified.
+
+## 2 November 2026 — completed profile UI checks; workflow timeout correction
+
+Codemagic 6ae8072a verified source 548cbd4: five focused core cases, 39 native
+units, seven navigation/Home journeys, and all four profile-format journeys on
+each of iPhone 17 Pro, 17e and 17 Pro Max passed. This includes full-width row
+geometry and trailing-edge title navigation at accessibility XXXL on all three
+sizes. No compiler warnings or XCTest errors appear in the retained step log.
+The job reached its 40-minute limit during arm64 Release compilation; device build
+completion, package/resource checks, artifact export and visual review did not
+complete. No accepted IPA or complete workflow pass is claimed.
+
+Reviewed shared row actions, profile formatting/date handling and the focused
+workflow. No further app defect established by this review. The workflow left
+each finished simulator booted, increasing resource contention on the M2 runner;
+it now shuts down each selected simulator after its successful test batch. The
+focused workflow limit is 65 minutes to accommodate the observed 38-minute
+three-size path plus Release build, packaging and evidence export. Test selection,
+failure handling, zero-warning checks and release-resource gates are retained.
+The broader local release-tool tests exposed a stale fixture: it included newer
+0023 Jellyfin migration although the rollout tool approves only through 0022. The
+fixture now models that pinned release, with a new test requiring rejection of
+unreviewed pending migrations. The production migration allowlist is unchanged.
+All 29 local release-tool tests pass, along with Bash syntax, workflow YAML,
+embedded Python, reviewed Swift grammar, selected native test names and git diff
+checks. The new candidate still requires complete same-SHA native execution,
+device packaging and retained screenshot/IPA review.
+
+## 2 November 2026 — full-width accessibility row actions
+
+Inspected retained logs and the large-text runtime recording from failed build
+6ae5efb7 (source 5f319cd): five focused core cases, 39 native units and 10/11 UI
+journeys passed. The only failure was the character Watched button's accessibility
+frame (321 points rather than the 374-point content width). The recording shows
+the readable row already occupies the full layout width; its plain button omitted
+the empty trailing area from its action bounds. Shared ProfileMediaRow now gives
+its expanded frame a rectangular content shape, covering Watched and the other
+accessible profile shelves. The existing three-size large-text journey retains
+the exact width assertion and additionally taps the trailing whitespace to verify
+native title navigation for both character and voice profiles. Cancelled the
+unchanged 2 November rerun before replacing it. Changed Swift syntax, focused
+workflow/Bash syntax and git diff checks pass locally. Native compile, three-size
+UI execution and retained screenshot/IPA review still require the same-SHA run;
+no runtime acceptance claimed for this fix yet.
+
+## 31 October 2026 — profile candidate follow-up from native evidence
+
+1270c91 compiled, passed five core cases and 38 native units; 8/11 native UI
+journeys passed. Three failures: obsolete birthday/source-row assertion, linked
+Relatives metadata accessibility lookup, and one-way large-text test overscroll.
+Runtime video also exposed genuinely unreadable narrow credit captions at XXXL.
+Follow-up adapts all profile shelves/voice-role grids to full-width accessible
+rows, uses a bidirectional reveal helper and direct metadata-label checks, fixes
+compact header height, fills unpaired fact rows, preserves strict date precision,
+handles absent/invalid death dates, removes orphan spoiler-only headings, and adds
+same-person TMDB/AniList voice samples. No final acceptance until new same-SHA
+focused three-size run and retained screenshot/IPA checks pass.
+
+## 31 October 2026 — public-profile formatting matrix candidate
+
+Owner requested implementation and repeated checks after the 22-profile audit.
+Shared responsive facts, small role-row source actions, separate website icons and
+native text references, aliases, metadata, biographies, partial dates and captions
+are implemented. DEBUG factual/synthetic-prose matrix covers both providers.
+Focused native profile workflow now repeats its format journeys on three sizes
+and accessibility text; execution/visual review pending. See
+ios/docs/PROFILE-FORMATTING.md. Prior candidate 27f8cf5 build was owner-cancelled.
+
+## 31 October 2026 — profile repairs and recent-date candidate
+
+Draft implements native Cast TMDB filmography, provider-link routing through the
+existing AnimeNavigationLookup, history-based Watched shelves, profile toolbar
+and native tab-bar ownership, theme hearts, AniList credit scores, horizontal
+recommendations and portrait cast, inline personal/community ratings, and right
+aligned recent watch dates beside episode labels. Existing upper Home untouched.
+Focused profile workflow selects five core cases, 29 app units and seven UI
+journeys. Candidate awaiting macOS compile, UI execution and visual inspection;
+no physical-device or full-regression acceptance claimed.
+
+## 31 October 2026 — Home design verified; new profile repair batch active
+
+Home source 53a3f8d passed Codemagic 6ae5a823efa74786046f62fb: 1 core +
+8 model/projection units + 6 UI journeys, zero simulator/device warnings.
+Verified card/list dimensions, horizontal last-event/back scrolling, native
+routes, preference restoration, bottom clearance and date placement screenshots.
+IPA CRC/arm64/iPhoneOS/privacy/Release fixture exclusion/SHA256/provenance pass.
+D:/Downloads/TwilDiary-home-53a3f8d.ipa, 8,288,648 bytes. Receipt and immutable
+fixture screenshots committed. Focused acceptance, not full/device acceptance.
+Owner then added 9 profile/detail fixes: native TMDB, profile toolbar/tab bar,
+accent heart, credit ratings, Watched replacing server section, native AniList
+links/biography handling, horizontal recommendations and portrait cast throughout,
+and personal/community ratings inline. Video/source audit started; no claim of
+profile fixes or new profile build yet. Home upper content remains protected.
+
+## 31 October 2026 — approved Home design below Up next
+
+Active work: implement the approved normal-size Up next posters, portrait Home
+favourites and shared landscape activity cards/compact list rows. Scope starts
+at Up next; exact source comparison confirms the upper Home, header/hero,
+continuation controls, Explore/Canvas, weekly summary and scroll/refresh helpers
+remain unchanged against 59b4649. Existing cached projection, Artwork cache,
+FavouriteLink provider routes, linked-season navigation and event identities
+are reused. Independent persisted Home layout keys remain. History removes
+repeated season bars without changing dates, order, rewatch state or full History.
+Focused gate: core Home golden, 8 model/projection units and 6 UI journeys,
+zero-warning simulator/device builds, retained screenshots and same-source IPA.
+09bec03 passed the 8 native units and 6 UI flows. Owner then requested measured
+geometry correction against the mockup: enlarge 80x45 thumbnails toward 120x68,
+use ~78-point rows, 12-point lower margins/corners and remove blank caption lines.
+Fix the exposed lower-scroll status/header overlap through a Home-only compact
+header, retaining the initial upper content; add bottom clearance and runtime
+geometry assertions. Geometry follow-up native execution pending; see
+ios/docs/HOME-MEDIA-REDESIGN.md. No full suite,
+backend/live-data changes, main merge or new PR.
+50ac449 has now passed the measured row inset/height/clearance journey. Owner
+also requested complete grid verification: tighter identical activity cards,
+unreserved footer lines, runtime card width/ratio/alignment checks and swiping
+to the last recent event and back are included in the next focused candidate.
+
+## 31 October 2026 — approved Favourites gallery redesign
+
+Active owner request: implement the revised Cast / Characters / Voice actors
+Favourites collection preview, retaining the original Favourites title, native
+Back and large text tabs. No segmented control, new search action or source
+caption (including From your diary / From your AniList). Replace the tall
+ranking box with a horizontally scrolling ranked portrait shelf. Hearted stays
+below it with a theme heart, three-column portraits and independent persisted
+list/grid preferences per category. Home's compact favourites strip is unchanged.
+Reuse the existing ranking API, AniList cache/username setup, FavouritesStore,
+Artwork cache and typed native profile routes. View all receives an immutable
+loaded ranking snapshot including roles/counts/provider mappings; no extra
+ranking request or guessed AniList/TMDB identities. Incomplete counting status
+remains accessible and appears on the full ranking page, not in a shifting bar.
+New typed PeopleRankingRoute is registered with the same native chrome/Back/tab
+visibility ownership as other collection pages. The old source descriptions
+were removed. AniList Settings wording now accurately refers to characters;
+Cast/Voice actors continue using the existing diary ranking.
+Focused checks prepared: previous 23 cases plus 3 provider-route/snapshot unit
+cases and 1 UI journey covering all categories, shelf scrolling, View all, typed
+profiles, per-category list preferences and original header. UI-only gallery
+fixtures are DEBUG + --ui-testing guarded, use local data, and never write hosted
+data. No backend or workflow authority changes, main push or new PR.
+First candidate dda72de / Codemagic 6ae56197efa74786046f5746 compiled and passed
+all 19 app unit cases, 3 core cases and four existing UI flows. New gallery UI
+stopped on the initial layout-button lookup: the actual retained hierarchy shows
+Show favourites as list, value Grid, but the heading container identifier replaced
+the nested favourites-layout ID. Moved the heading identifier onto its Text leaf,
+leaving the button and its test assertion unchanged. No IPA was packaged from
+that failed run.
+Completed: corrected source c66c2de passed Codemagic 6ae56469efa74786046f57bb.
+All 3 core + 19 app unit + 5 UI cases pass (27 focused checks); simulator and
+Release device builds have zero warnings. Visually inspected all three galleries,
+complete ranking and persisted list state. IPA SHA256/source/run provenance,
+ZIP CRC, arm64 Mach-O, iPhoneOS platform, privacy resource and Release fixture
+exclusion verified. Saved D:/Downloads/TwilDiary-favourites-c66c2de.ipa,
+8,250,952 bytes. Receipt ios/docs/releases/favourites-gallery-c66c2de.json;
+unaltered screenshots ios/docs/screenshots/favourites-gallery-c66c2de.
+No full regression, other simulator sizes or device-feel claim. Next: owner
+phone walkthrough of live portraits, horizontal scrolling and grid/list choice.
+Development branch only; no main merge, new PR, backend change or deployment.
+
+## 31 October 2026 — approved shared Person profile redesign
+
+Current work: implement the owner's approved Cast / Character / Voice Actor
+previews. Home-sized nearly square hero, name-only theme accent, pinned native
+favourite, neutral body/actions, normal TMDB button, website icon buttons rather
+than colored text, compact facts without a table. Keep existing source-role line,
+biography/spoiler handling and all credit/character/anime navigation. Retain cast
+server / Known for / Shows / Movies shelves; character Voiced by / Appears in;
+voice actor character grid/list and separate anime-caption destination.
+Reuses FavouritesStore, cached Artwork, CompactHeaderState/transition/backdrop,
+InlineFlowLayout, existing native routes, lookup coordinator and metadata APIs.
+Scroll progress is observed only by toolbar leaves. No backend changes, new
+endpoints, hosted-data writes, main push or PR. Source attribution remains an
+explicit website icon; voice actor TMDB continues resolving to native PersonRoute.
+The normal attribution button on PersonRoute opens the source TMDB website,
+since PersonRoute itself already is the native TMDB profile.
+Focused verification: 3 existing core regressions, 10 lookup units, 6 new biography/
+website/date units, and 4 UI journeys covering all profile types, fixed favourites,
+native TMDB, separate anime/character links, filmography and saved favourites.
+Completed on source 54d4ea1: Codemagic 6ae51094efa74786046f4638 passed in
+9m30s. All 3 core + 10 lookup + 6 profile units + 4 UI flows passed; simulator and
+Release iPhone builds each have zero warnings. Downloaded IPA CRC, arm64/iPhoneOS,
+privacy resource, fixture exclusion, SHA256 and exact source/run provenance checked.
+Saved D:/Downloads/TwilDiary-profiles-54d4ea1.ipa (8,206,731 bytes).
+Visually inspected initial Cast / Character / Voice Actor, compact toolbar, icons
+and list mode; immutable fixture screenshots in ios/docs/screenshots/person-redesign-54d4ea1.
+Receipt ios/docs/releases/profile-redesign-54d4ea1.json. This is focused diagnostic
+acceptance; no full regression, other device-size or physical-phone claim.
+Next: owner device walkthrough of live photo crops, long biographies, voice actor
+social icons and scroll/Back feel. Development only; no main merge or new PR.
+
+Reconciled previous notes: source 6dd745f passed Codemagic 6ae503e4efa74786046f4274,
+3 core + 10 lookup + 2 UI checks, zero build warnings. Verified downloaded IPA
+D:/Downloads/TwilDiary-native-fixes-6dd745f.ipa and same-SHA provenance. This is
+focused diagnostic evidence, not full regression acceptance.
+
+## 31 October 2026 — correct native navigation and remove transitional lookup pages
+
+Owner rejected the browser TMDB action and misaligned glass button, then reported
+that every anime tap shows Find anime, including an exact Santa Claus match.
+Current authorized corrections: native PersonRoute; regular solid TMDB-logo
+button centered beside the first biography line (no glass); resolve at the tapped
+card before pushing, exact matches bypass chooser despite unrelated diary hits.
+Audit of ios/App traced PersonView, CastAndRelated, AnimeCharactersRow,
+MostWatchedCast's paired IDs, AniListClient's existing caches/spelling policy,
+Favourites and CatalogAPI. Retain confirmed forward TMDB/AniList mappings for
+reverse navigation; share the existing long-vowel name policy instead of replacing
+it. No new backend endpoint, deployment, credentials or hosted-data writes.
+Unmapped public identities use existing authenticated search/cast APIs, bounded
+to two names or two credits; no guessed cross-provider IDs or browser fallback.
+Lookup cache is session scoped, bounded and expires after five minutes; results
+reconcile current diary identities. Per-card loading stays on the source page;
+leaving the page cancels the task and navigation depth/session checks reject
+late results. Only real ambiguities retain a native Choose title screen.
+Owner also requested a theme-accent filled heart beside the Hearted heading;
+this visual change is included without changing favourite data or actions.
+Verification pending: three focused core cases, native lookup unit class, two
+targeted XCUITests (native person/Back/alignment and both reported anime titles),
+simulator screenshots and zero-warning device compilation. Added dedicated
+Codemagic native-ios-navigation-check; no full suite rerun. First focused run
+`6ae50130efa74786046f41b8` at `e059415`: core3 passed, simulator compiled without
+warnings, both reported anime titles passed direct-navigation UI checks. Native
+person lookup failed for a saved title with null tmdbId (also reproduced in its
+unit fixture), so no IPA was packaged. Added an exact public-metadata fallback
+for that legacy case using the existing search API, and separate tests covering
+saved titles with and without provider identities. No assertion was relaxed.
+Next: commit/push this correction, rerun the same focused workflow (10 lookup
+unit cases plus the same two UI flows), inspect actual screenshots and package.
+
+## 30 October 2026 — character and voice actor anime navigation
+
+Owner confirmed dead show links from Favourites character/voice actor pages and
+requested a fix. Character "Appears in" posters now navigate; voice actor cards
+retain their character links and provide a separate anime link. AniList IDs are
+not used as TMDB IDs: prefer a unique exact title/year/type match in the active
+diary, otherwise search existing TMDB API with up to two English/romaji names.
+Unique matches open directly; ambiguous results offer choices, failures offer
+Retry. Viewing never imports a title. No backend or hosted data changes.
+Owner also requested a TMDB profile link on voice actor pages: show View on TMDB
+with a known TMDB person ID; otherwise Find on TMDB performs a safely encoded
+person-name search (never guesses an ID from AniList). Final owner placement is
+a compact native glass TMDB-logo button to the right of the biography intro
+(Agency in their screenshot), not above Facts. Reuses the bundled original-color
+vector logo. Remaining biography paragraphs keep full width. VoiceOver names the
+actor and distinguishes profile versus search; destination is a SwiftUI Link.
+The complete biography is spoiler-sanitized before paragraph layout so a hidden
+spoiler spanning multiple paragraphs cannot leak through the new intro split.
+Code review against the real search handler found that known TMDB identities
+are returned in `library`, not `online`. Preserve those results as explicit
+choices even when renamed, with focused contract regression coverage. Ambiguous
+local matches remain selectable offline. Retry generations fence stale loading
+and result updates. The first ca9b30a phone job predates this review correction;
+only the following same-source diagnostic may be delivered for this change.
+Added focused matching regressions and a fixture-backed UI navigation regression.
+Completed 31 October: final source `75c178c8da9a295ea2534b3e8dd62ae063a83455`
+passed Codemagic `6ae4e406efa74786046f3833`. Both focused core tests passed,
+Release iPhoneOS build has zero warnings. Downloaded IPA CRC, arm64 platform,
+privacy resource, excluded test fixtures, source provenance and SHA256 verified.
+Saved `D:/Downloads/TwilDiary-anime-links-TMDB-75c178c.ipa` (8,168,107 bytes).
+Receipt: `ios/docs/releases/anime-navigation-75c178c.json`. No full suite rerun;
+new UI test is present for future simulator regression, not run by this quick
+device job. No native runtime screenshot is claimed: placement drawings are
+labelled previews. Earlier 4e148ff/476bff3 jobs were canceled; only this final
+source is the delivered diagnostic. Next phone check: character Appears in,
+voice actor anime link versus character portrait, and the TMDB-logo button.
+
+## 30 October 2026 — focused Jellyfin + Disk fix
+
+Owner requested the fix, focused verification, commit and a quick unsigned IPA;
+do not repeat the full regression suite for this diagnostic. Based on the current
+`feat/ui-motion` head `a0e3a6d`, isolated from the older dirty local checkout.
+Library passes keys such as `drive:E:`; the Jellyfin-only matcher appended a
+second colon and hid movies/shows outside the diary. Shared core matching now
+accepts canonical and legacy keys, with regression cases using the actual E/F/G
+button definitions, wrong-drive exclusions and existing availability/volume keys.
+The app uses that exact tested helper. Native integration assertions also use
+actual shortcut keys. The existing Codemagic device diagnostic runs only the
+focused core case before Release device compilation/resource checks/IPA packaging.
+Completed: Codemagic phone diagnostic `6ae4cd03efa74786046f3049` passed in
+3m26s on exact source `db6689c51688678dc99747494ca3de95fe9a2d2d`. The single
+focused Swift regression passed; Release iPhoneOS compilation has zero warnings.
+Downloaded IPA build65 (8,090,135 bytes) matches provider SHA256/provenance; ZIP
+CRC, arm64 platform, privacy resource and fixture exclusion verified. Saved as
+`D:/Downloads/TwilDiary-Jellyfin-fix-db6689c.ipa`. Evidence:
+`ios/docs/releases/jellyfin-disk-fix-db6689c.json`. No full-regression/stable
+acceptance, hosted data change, backend deployment or migration is claimed.
+
 ## Resume first
 
 Current step: **10 — stabilization, parity and release hardening**. Not finished.
@@ -401,3 +820,60 @@ No secrets/.dev.vars/SQLbackups/privatevideos/.localin commits/output. No mainpu
 force-push, unapprovedirreversibledatachange, signing/AppStore action. Update this
 file before meaningfulstep10commits. User requests autonomouswork; proceed with
 reversible authorized fixes and tests, report material results concisely.
+
+
+### 2026-11-02 — focused native run 10 and navigation driver correction
+
+- Codemagic `6ae857a5e83a9019991c38e8` at `7e5cb3e`: five focused core tests, 41 app units and 13/14 main UI cases passed. Early header smoke and all five main profile formatting cases passed. Home and History geometry/navigation passed again.
+- The old character → appearance → voice journey exceeded its 120-second allowance during slow simulator accessibility calls. Exported recording was a 60-byte XCTest pending-attachment error, not video; app stack was mostly idle and its last accessibility snapshot had no children. This evidence does not establish a shipping app deadlock or an overscroll defect.
+- Update that journey only: explicitly wait for title detail after opening it; use measured, bidirectional held drags instead of one-way full-screen flings; retain bounded attempts and existence/hittability assertions, with a failure screenshot. Allow 240 seconds for this multi-screen journey. No app source changes.
+- Full acceptance and device packaging remain pending. The failed run did not execute compact/large matrices or produce the diagnostic IPA.
+
+
+### 2026-11-02 — personal Profile, milestones and universal Search draft
+
+- Implement owner-approved Profile menu (identity → Statistics → Your diary), nested personal profile with Popular Characters before Milestones, and custom photos only through tapping the avatar. Minimal derived badges; editable local name/character/photo persistence. Statistics no longer renders Fun facts.
+- Replace Stats root tab with Search; More is labelled Profile. Preserve the internal More storage identity, migrate the former Stats launch preference, and route the Home Stats shortcut into nested Statistics. Remove duplicate general search surfaces while retaining scanner replacement and Trakt review-specific filtering.
+- Reuse existing diary search/discovery/artwork/history/Statistics code; add authenticated TMDB people read endpoint for native Cast results and AniList performer/character search. No hosted diary mutations or schema changes.
+- Local checks: 48 targeted provider/discovery/search tests pass (47 initial cases plus anonymous people-route denial); TypeScript/Svelte zero errors/warnings and production build pass. Swift grammar has no new errors versus baseline; YAML and shell/embedded Python validate.
+- Added PersonalProfile units, core milestone history edge cases, five settings UI journeys and dedicated three-phone Codemagic workflow. Native compilation/UI proof and device IPA remain pending. Version 2.0.0 (66). See ios/docs/PERSONAL-PROFILE-AND-SEARCH.md.
+
+
+### 2026-11-02 — first personal-settings native compile
+
+- Codemagic `6ae8bd99e83a9019991c5f68` at `9d89623` passed the three core cases, including both new milestone cases and the unchanged Statistics golden matrix. Compilation then exposed a private synthesized SearchJellyfinView initializer and a PhotosPicker sendable-label capture of main-actor theme storage. Use a computed shared shelf and a pre-read Color value respectively.
+- A public live AniList request confirmed community-ranked avatar IDs/artwork. Performer search initially revealed the provider's one-collection-per-Page constraint. The corrected query uses two aliased Page fields in one request and returned Saori Hayami with Voice Actor/Vocalist occupations. No live acceptance is inferred from test fixtures.
+- Server people-search publication is awaiting the owner's separate deployment decision; Codemagic still only builds native artifacts. No backend deployment performed.
+
+
+### 2026-11-02 — shared Cast-style scrolling and native avatar accessibility
+
+- Native run `6ae8c02fe83a9019991c6062` at `54ec64c` compiled and passed three core cases, 21 app units and six of eight main UI cases. Two avatar journeys found visible choices absent from the accessibility tree. Explicit leaf button/selection semantics repair the controls without weakening tests. Retained recordings and accessibility trees establish the cause.
+- Add separate Cast, Characters and Voice actors search scopes with native routes and bounded All previews. Add a native journey that opens all three profile kinds and returns with its query.
+- Owner requested full-screen scrolling everywhere, using Person/Cast blur as reference. Extract that exact feathered material, reuse it in all page scrollers and title chrome, and remove opaque root header/status panels. Preserve initial safe-area margins, keyboard handling, horizontal shelves and existing buttons. Add all-root and nested Statistics viewport captures/assertions on main, compact and large phones.
+- Changed Swift grammar has no new parse errors versus HEAD; whitespace check passes. Native type-check, screen geometry and device packaging remain pending. No server deployment performed; people API publication decision remains pending.
+
+
+### 2026-11-03 — preserve evidence from stalled native automation
+
+- Run `6ae8c783e83a9019991c62fa` at `a949d03` passed native compilation, all three core cases and all 21 app units. It then stopped producing output during XCTest's second History-grid cell geometry query at 26 seconds; the Codemagic 50-minute timeout killed the runner before attachment export. No crash/assertion or actionable stack was retained, so an app deadlock is not established.
+- Add a bounded test-process watchdog that captures the app/runner process samples, simulator screenshot and recent app logs after 180 seconds without output before terminating the invocation. Keep assertions and gates intact. Run the seven new settings journeys before the separate three Home/History journeys so unrelated automation stalls cannot erase their evidence. No app source changes in this follow-up.
+
+
+### 2026-11-03 — avatar shelf accessibility representation
+
+- Bounded run `6ae8d80ee83a9019991c690c` at `6d2097f` passed three core cases, 21 app units and five of seven settings UI cases. All-root/nested Statistics viewport checks, large text, all three native people-search routes, Statistics and retained Search query passed. Only the two avatar-selection journeys failed at the missing avatar control. No automation stall recurred in this first phase; Home/History did not execute because the gate stopped on those failures.
+- Retained native screenshots and AX hierarchy confirm the horizontal avatar shelf still has no exposed children despite visible choices. Use an eager stack for the bounded 18-choice shelf and a native Button accessibility representation for each artwork control; keep the actual selection/persistence tests unchanged. Other page geometry is unchanged.
+
+
+### 2026-11-03 — match the narrower status-only blur reference
+
+- Owner's new screenshot shows blur confined to the status area. Compared with the retained native scroll capture, the initial shared blur extended through the header-button row. Remove added root control height and cap all shared backdrop heights to the active key window top safe-area inset, so pushed navigation-bar insets cannot enlarge the blur. Keep material/fade, scrolling and button placement intact.
+- Build `6ae8db2de83a9019991c6a28` at `285d4a4` is already testing the avatar accessibility correction and does not include this narrower revision. Capture its avatar result, then verify the final narrower source on the three-phone workflow.
+
+
+### 2026-11-03 — avoid a redundant nested avatar scroll container
+
+- Run `6ae8db2de83a9019991c6a28` at `285d4a4` again passed five settings journeys and failed only the two missing avatar controls. Its exported AX tree still exposes an empty horizontal ScrollView while recording shows the artwork. Eager controls/native accessibility representations alone did not resolve that container boundary.
+- Use the existing ViewThatFits pattern: a plain row if the returned choices fit, otherwise the horizontal scroller. Keep the individual controls, provider ranking, assertions and persistence unchanged. Add a settled pre-selection screenshot and run the avatar journey as an early smoke gate before the complete suite.
+- Queued narrower-blur build `6ae8dd77e83a9019991c6ad6` at `4751908` was cancelled before starting to avoid repeating the known avatar failure. The narrower status-area blur remains committed and will be included with this correction.

@@ -8,19 +8,20 @@ struct CommunityInformationSheet: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var controller = CommunityInformationController()
     @State private var retryRevision = 0
-    @State private var detent = PresentationDetent.large
+    @State private var detent = PresentationDetent.medium
+    @State private var contentHeight: CGFloat = 600
     var body: some View {
         VStack(spacing: 0) {
             Text("Information").font(.headline).frame(maxWidth: .infinity).padding(.top, 24).padding(.bottom, 16)
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("community-information-heading")
-            ScrollView {
+            EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 24) {
                     Text(name).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     // A cached page paints in the first frame; the sheet no longer shows a
                     // 300 pt loading placeholder that is replaced a moment later.
                     if let value = controller.value ?? identity.flatMap({ store.cachedCommunityInformation($0) }) {
                         VStack(alignment: .leading, spacing: 18) {
-                            Text("Community stats").font(.title2.bold())
+                            Text("Sentiments").font(.title2.bold())
                             if let stats = value.stats {
                                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 24) {
                                     GridRow { metric("Watchers", stats.watchers); metric("Plays", stats.plays); metric("Collectors", stats.collectors) }
@@ -34,8 +35,7 @@ struct CommunityInformationSheet: View {
                                 VStack(alignment: .leading, spacing: 16) {
                                     ForEach(Array(sentiments.good.enumerated()), id: \.offset) { index, text in opinion(text, positive: true).accessibilityIdentifier("community-positive-\(index)") }
                                     ForEach(Array(sentiments.bad.enumerated()), id: \.offset) { index, text in opinion(text, positive: false).accessibilityIdentifier("community-negative-\(index)") }
-                                }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                                    .diarySectionBackground(radius: 22, fill: Color(webHex: "#101013"), stroke: .clear)
+                                }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
                                     .accessibilityElement(children: .contain)
                                     .accessibilityIdentifier("community-sentiment-card")
                                 Text("Trakt’s community summary · \(sentiments.commentCount.formatted()) comments · Updated \(sentiments.analyzedAt.prefix(10))")
@@ -51,14 +51,12 @@ struct CommunityInformationSheet: View {
                     Text("Community information from Trakt. These are overall activity and comment summaries, independent of your personal rating.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(20).padding(.bottom, 20)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }.scrollContentBackground(.hidden).background(.clear)
-        }.background {
-            if reduceTransparency { Color(webHex: "#1c1c1e").ignoresSafeArea() }
-            else {
-                DiaryScreenBackground(path: artwork, name: name, forceGlass: true).ignoresSafeArea()
-            }
-        }.presentationDetents([.medium, .large], selection: $detent).presentationDragIndicator(.visible)
-            .presentationBackground(.clear)
+        // Opens at half height; pulling up shows everything at once (as tall as the content, short of
+        // full screen), so it stays on the system glass instead of flashing to the opaque large sheet.
+        }.presentationDetents([.medium, SheetFit.detent(contentHeight, chrome: 100)], selection: $detent).presentationDragIndicator(.visible)
+            .modifier(SolidSheetBackground(enabled: reduceTransparency))
             .task(id: TaskIdentity(identity: identity, session: store.sessionRevision, retry: retryRevision)) {
                 await controller.load(identity, retry: retryRevision > 0) { identity, retry in try await store.communityInformation(identity, retry: retry) }
             }
@@ -86,5 +84,13 @@ struct CommunityInformationSheet: View {
         case .available: text = "Community information was incomplete. Please retry."
         }
         return Text(text).foregroundStyle(.secondary).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Reduce Transparency gets a solid sheet; otherwise the system glass shows through.
+private struct SolidSheetBackground: ViewModifier {
+    let enabled: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled { content.presentationBackground(Color(themed: "#1c1c1e")) } else { content }
     }
 }

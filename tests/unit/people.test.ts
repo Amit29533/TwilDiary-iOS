@@ -47,6 +47,34 @@ const personFixture = () => ({
       { id: -1, media_type: 'movie', title: 'Invalid' }
     ],
     crew: [{ id: 10, media_type: 'movie', title: 'The Movie', job: 'Producer' }]
+  },
+  images: {
+    profiles: [
+      { file_path: '/p1.jpg', aspect_ratio: 0.667 },
+      { file_path: 'https://bad.example/x.jpg' }
+    ]
+  },
+  tagged_images: {
+    results: [
+      {
+        file_path: '/s1.jpg',
+        aspect_ratio: 1.778,
+        image_type: 'backdrop',
+        media: { name: 'The Show' }
+      },
+      {
+        file_path: '/poster.jpg',
+        aspect_ratio: 0.667,
+        image_type: 'poster',
+        media: { title: 'The Movie' }
+      },
+      {
+        file_path: '/p1.jpg',
+        aspect_ratio: 0.667,
+        image_type: 'poster',
+        media: { title: 'Duplicate' }
+      }
+    ]
   }
 });
 
@@ -54,10 +82,18 @@ test('person metadata validates combined credits, keeps movie/TV identities sepa
   const client = createTmdb('fixture-token', async (input) => {
     const url = new URL(String(input));
     assert.equal(url.pathname, '/3/person/42');
-    assert.equal(url.searchParams.get('append_to_response'), 'combined_credits');
+    assert.equal(
+      url.searchParams.get('append_to_response'),
+      'combined_credits,images,tagged_images'
+    );
     return Response.json(personFixture());
   });
   const person = await client.person(42);
+  assert.deepEqual(person.photos, [
+    { path: '/p1.jpg', kind: 'portrait', aspectRatio: 0.667, title: null },
+    { path: '/s1.jpg', kind: 'still', aspectRatio: 1.778, title: 'The Show' },
+    { path: '/poster.jpg', kind: 'poster', aspectRatio: 0.667, title: 'The Movie' }
+  ]);
   assert.equal(person.name, 'Actor Name');
   assert.equal(person.birthday, '1973-02-11');
   assert.deepEqual(person.aliases, ['Alias']);

@@ -1,6 +1,9 @@
 import { sealTrakt } from '../../src/lib/server/trakt-auth.ts';
 import { traktConnections } from '../../src/lib/server/db/schema.ts';
 import type { d1Fixture } from './d1.ts';
+import { traktPacing } from '../../src/lib/server/trakt-sync.ts';
+// Real Trakt needs writes a second apart; fixtures answer instantly.
+traktPacing.writeSpacingMs = 0;
 export const traktEnv = {
   TRAKT_CLIENT_ID: 'fixture-client-id-123456789',
   TRAKT_TOKEN_KEY: Buffer.alloc(32, 7).toString('base64url'),
@@ -36,6 +39,8 @@ export function fakeTrakt() {
     version: 0,
     posts: [] as { path: string; body: any }[],
     lostHistoryResponse: false,
+    /** Trakt answers a history add as accepted but the plays never appear (seen live, Oct 2026). */
+    ignoreHistoryAdds: false,
     missingPagination: false
   };
   const media = (id: number) => ({
@@ -71,7 +76,9 @@ export function fakeTrakt() {
     if (init?.method === 'POST') {
       const body = JSON.parse(String(init.body));
       state.posts.push({ path, body });
-      if (path === '/sync/history') {
+      if (path === '/sync/history' && state.ignoreHistoryAdds) {
+        // Accepted, nothing recorded.
+      } else if (path === '/sync/history') {
         for (const movie of body.movies ?? [])
           state.history.push({
             id: freshId(),

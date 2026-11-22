@@ -25,11 +25,46 @@ enum PreviewCatalog {
         var value = try! JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
         var details = value["details"] as! [String: Any]
         details["id"] = route.id; details["mediaType"] = route.kind.rawValue
+        if ProcessInfo.processInfo.arguments.contains("--ui-anime-navigation"), [910001, 910002].contains(route.id) {
+            details["name"] = route.id == 910001 ? "Rascal Does Not Dream of a Knapsack Kid" : "Rascal Does Not Dream of Santa Claus"
+            details["year"] = route.id == 910001 ? 2023 : 2025
+        }
         details["suggestedCategory"] = route.kind == .movie ? "movie" : "anime"
         details["runtimeMinutes"] = route.kind == .movie ? 112 : 24
         if route.kind == .movie { details["seasons"] = [] }
         value["details"] = details
         return try! JSONDecoder().decode(CatalogBrowse.self, from: JSONSerialization.data(withJSONObject: value))
+    }
+    /// Canvas Lists: six lists built from the catalog fixture's posters, one page.
+    static func canvasLists(page: Int) -> CanvasListsPage {
+        let posters = (decode("catalog-page") as CatalogPage).items.compactMap(\.posterPath)
+        let names = ["Weekend comfort watches", "Anime films worth a rewatch", "Slow-burn mysteries", "Short seasons", "Animated favourites", "Late-night picks"]
+        let lists = names.enumerated().map { index, name in
+            CanvasList(id: index + 1, name: name, user: "preview\(index + 1)", itemCount: 12 + index, likes: 40 - index,
+                       posters: posters.isEmpty ? [] : (0..<4).map { posters[(index + $0) % posters.count] })
+        }
+        return CanvasListsPage(lists: page == 1 ? lists : [], page: page, totalPages: 1)
+    }
+    /// Settings → Cloudflare: steady traffic with one read spike yesterday; storage reported until yesterday.
+    static func cloudflareUsage(range: Int) -> CloudflareUsage {
+        let now = Date.now
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "UTC")!
+        let days = (0..<range).map { index -> CloudflareUsage.Day in
+            let date = calendar.date(byAdding: .day, value: index - range + 1, to: now)!
+            let wave = [1840, 2310, 1975, 2620, 3105, 2480, 2210][index % 7]
+            let today = index == range - 1, spike = index == range - 2
+            return CloudflareUsage.Day(date: CloudflareUsage.day(date), requests: today ? 1290 : wave, errors: index % 5 == 0 ? 3 : 0,
+                                       rowsRead: spike ? 4_520_000 : today ? 612_000 : 380_000 + (wave * 90), rowsWritten: today ? 1_840 : 900 + wave / 2,
+                                       storageBytes: today ? nil : 41_800_000 + index * 120_000)
+        }
+        let reset = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: now)!)
+        return CloudflareUsage(configured: true, range: range, days: days,
+                               limits: .init(requests: 100_000, rowsRead: 5_000_000, rowsWritten: 100_000, storageBytes: 5_000_000_000),
+                               resetsAt: ISO8601DateFormatter().string(from: reset), fetchedAt: ISO8601DateFormatter().string(from: now), unavailable: [])
+    }
+    static func canvasListItems(page: Int) -> CanvasListItemsPage {
+        let items = (decode("catalog-page") as CatalogPage).items.map { CanvasListItem(tmdbId: $0.id, mediaType: $0.mediaType, name: $0.name, year: $0.year, posterPath: $0.posterPath, backdropPath: $0.backdropPath) }
+        return CanvasListItemsPage(items: page == 1 ? items : [], page: page, totalPages: 1)
     }
     static var cast: CastResponse { decode("catalog-cast") }
     static var related: RelatedResponse { decode("catalog-related") }

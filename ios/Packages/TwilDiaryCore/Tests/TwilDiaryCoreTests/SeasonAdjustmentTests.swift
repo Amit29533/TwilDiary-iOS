@@ -20,6 +20,29 @@ import TwilDiaryTestSupport
     #expect(workspace.events[0].watchedAt == SampleWorkspace.make().events[0].watchedAt)
 }
 
+@Test func seasonCountKeepsSparseHistory() throws {
+    let first = try #require(SampleWorkspace.make().episodes.first)
+    let template = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(first)) as? [String: Any])
+    let episodes = try (1...6).map { number -> Episode in
+        var copy = template
+        copy["id"] = "e\(number)"; copy["number"] = number; copy["season"] = 1
+        return try JSONDecoder().decode(Episode.self, from: JSONSerialization.data(withJSONObject: copy))
+    }
+    let watched: Set<String> = ["e2", "e4"]
+    // Let go where it started: nothing changes (it used to record E1 and revoke E4).
+    let same = SeasonAdjustment.change(episodes: episodes, watched: watched, count: 2)
+    #expect(same.add.isEmpty && same.remove.isEmpty)
+    // Up one: the earliest unwatched episode; E2 and E4 stay.
+    let up = SeasonAdjustment.change(episodes: episodes, watched: watched, count: 3)
+    #expect(up.add.map(\.id) == ["e1"] && up.remove.isEmpty)
+    // Down one: the latest watched episode only.
+    let down = SeasonAdjustment.change(episodes: episodes, watched: watched, count: 1)
+    #expect(down.add.isEmpty && down.remove.map(\.id) == ["e4"])
+    // All and none.
+    #expect(SeasonAdjustment.change(episodes: episodes, watched: watched, count: 6).add.map(\.id) == ["e1", "e3", "e5", "e6"])
+    #expect(SeasonAdjustment.change(episodes: episodes, watched: watched, count: 0).remove.map(\.id) == ["e2", "e4"])
+}
+
 @Test func seasonAdjustmentRejectsInvalidAndFutureEpisodesBeforePlanningAnyWrites() throws {
     let workspace = SampleWorkspace.make(), title = try #require(SampleWorkspace.make().titles.first)
     #expect(throws: SeasonAdjustment.AdjustmentError.self) {
@@ -33,4 +56,9 @@ import TwilDiaryTestSupport
     #expect(!SeasonAdjustment.validDay("+123-02-01"))
     #expect(SeasonAdjustment.validDay("2024-02-29"))
     #expect(!SeasonAdjustment.validDay("2025-02-29"))
+    // The arithmetic path agrees with the calendar on month lengths and century leap years.
+    #expect(SeasonAdjustment.validDay("2000-02-29") && !SeasonAdjustment.validDay("1900-02-29") && !SeasonAdjustment.validDay("2100-02-29"))
+    #expect(SeasonAdjustment.validDay("2026-04-30") && !SeasonAdjustment.validDay("2026-04-31") && SeasonAdjustment.validDay("2026-12-31"))
+    #expect(!SeasonAdjustment.validDay("2026-00-10") && !SeasonAdjustment.validDay("2026-13-01") && !SeasonAdjustment.validDay("2026-01-00"))
+    #expect(!SeasonAdjustment.validDay("2026-01-011") && !SeasonAdjustment.validDay("0000-01-01"))
 }

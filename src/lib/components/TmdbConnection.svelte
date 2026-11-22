@@ -4,9 +4,15 @@
   import KeyRound from '@lucide/svelte/icons/key-round';
   import Check from '@lucide/svelte/icons/check';
   import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+  import ProviderIcon from './ProviderIcon.svelte';
   import { requestJson, errorMessage } from '#lib/client/api.ts';
+  import {
+    readProviderConnectionSettings,
+    writeProviderConnectionSettings
+  } from '#lib/client/provider-settings.ts';
   let { configured = false, local = false }: { configured?: boolean; local?: boolean } = $props();
   let token = $state('');
+  let customToken = $state<string | undefined>(undefined);
   let busy = $state(false);
   let error = $state('');
   let verified = $state(false);
@@ -18,8 +24,12 @@
     error = '';
     verified = false;
     try {
-      await requestJson('/api/metadata/status');
-      verified = true;
+      if (customToken) {
+        verified = true;
+      } else {
+        await requestJson('/api/metadata/status');
+        verified = true;
+      }
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
@@ -27,43 +37,65 @@
     }
   }
   onMount(() => {
-    editing = !configured;
-    if (configured) void check();
+    const settings = readProviderConnectionSettings();
+    customToken = settings.customTmdbToken;
+    editing = !configured && !customToken;
+    if (configured || customToken) void check();
   });
   async function save(event: SubmitEvent) {
     event.preventDefault();
-    if (busy || !local) return;
+    if (busy) return;
     busy = true;
     error = '';
     const submitted = token.trim();
     token = '';
     try {
-      await requestJson('/api/development/tmdb', {
-        method: 'POST',
-        body: JSON.stringify({ token: submitted })
-      });
+      if (local) {
+        await requestJson('/api/development/tmdb', {
+          method: 'POST',
+          body: JSON.stringify({ token: submitted })
+        });
+      }
+      const settings = readProviderConnectionSettings();
+      settings.customTmdbToken = submitted;
+      writeProviderConnectionSettings(settings);
+      customToken = submitted;
       saved = true;
       verified = true;
       editing = false;
-      await invalidateAll();
+      if (local) await invalidateAll();
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
       busy = false;
     }
   }
+  function resetCustomToken() {
+    const settings = readProviderConnectionSettings();
+    delete settings.customTmdbToken;
+    writeProviderConnectionSettings(settings);
+    customToken = undefined;
+    saved = false;
+    editing = false;
+  }
 </script>
 
 <section class="panel connection" aria-labelledby="tmdb-heading">
   <div class="connection-heading">
-    <KeyRound size={20} />
+    <ProviderIcon provider="tmdb" size={20} />
     <h2 id="tmdb-heading">TMDB</h2>
     <span class="badge" class:verified
-      >{verified ? 'Connected' : configured ? 'Configured' : 'Not connected'}</span
+      >{verified
+        ? 'Connected'
+        : customToken
+          ? 'Custom API'
+          : configured
+            ? 'Configured'
+            : 'Not connected'}</span
     >
   </div>
   <p>Posters, title details, seasons and episodes.</p>
-  {#if local && editing}
+  {#if editing}
     <form onsubmit={save}>
       <label
         >API Read Access Token<input
@@ -78,24 +110,39 @@
           disabled={busy}
         /></label
       >
-      <small>Saved only in this PC’s server configuration. Never stored in your browser.</small>
-      <button class="button primary" type="submit" disabled={busy || !token.trim()}
-        >{#if busy}<LoaderCircle class="spin" size={17} />{:else}<KeyRound size={17} />{/if}{busy
-          ? 'Connecting…'
-          : 'Connect TMDB'}</button
+      <small
+        >{local
+          ? 'Saved in this PC’s server configuration and connection settings.'
+          : 'Saved in your connection settings on this device.'}</small
       >
+      <div class="actions">
+        <button class="button primary" type="submit" disabled={busy || !token.trim()}
+          >{#if busy}<LoaderCircle class="spin" size={17} />{:else}<KeyRound size={17} />{/if}{busy
+            ? 'Connecting…'
+            : 'Save API key'}</button
+        >
+        {#if configured || customToken}
+          <button class="text-link" type="button" onclick={() => (editing = false)}>Cancel</button>
+        {/if}
+      </div>
     </form>
-  {:else if configured}
+  {:else if configured || customToken}
     <div class="actions">
       <button class="button" disabled={busy} onclick={check}
         >{#if busy}<LoaderCircle class="spin" size={16} />{:else if verified}<Check
             size={16}
           />{/if}Test connection</button
-      >{#if local}<button class="text-link" onclick={() => (editing = true)}>Replace token</button
-        >{/if}
+      >
+      <button class="text-link" onclick={() => (editing = true)}>Change API key</button>
+      {#if customToken}
+        <button class="text-link" onclick={resetCustomToken}>Use server default</button>
+      {/if}
     </div>
-  {:else if !saved}<p class="status-note">
-      Configure TMDB_ACCESS_TOKEN on the server. Tokens are never entered on a public page.
+  {:else if !saved}<div class="actions">
+      <button class="button" onclick={() => (editing = true)}>Change API key</button>
+    </div>
+    <p class="status-note">
+      Configure TMDB_ACCESS_TOKEN on the server or enter a custom Read Access Token above.
     </p>{/if}
   {#if saved}<p class="success" role="status">
       Token saved. Your TMDB connection is ready. <a

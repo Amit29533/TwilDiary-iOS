@@ -31,7 +31,7 @@ struct RandomPickDialog: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color(webHex: "#020106bf").background(.ultraThinMaterial).ignoresSafeArea().contentShape(Rectangle()).onTapGesture { }.accessibilityHidden(true)
+                Color(themed: "#020106bf").background(.ultraThinMaterial).ignoresSafeArea().contentShape(Rectangle()).onTapGesture { }.accessibilityHidden(true)
                 ScrollView {
                     panel(compact: proxy.size.width < 359).fixedSize(horizontal: false, vertical: true)
                 }.scrollIndicators(.hidden)
@@ -64,25 +64,28 @@ struct RandomPickDialog: View {
                             DiaryIcon(name: "sparkles", size: 17)
                             Text("A little surprise").font(.system(size: 14)).accessibilityHidden(true)
                             Spacer(minLength: 0)
-                            Button(action: onClose) { DiaryIcon(name: "x", size: 21).frame(width: 44, height: 44) }
-                                .buttonStyle(.glass).accessibilityLabel("Close random pick")
+                            Button(action: onClose) {
+                                DiaryIcon(name: "x", size: 15).frame(width: 30, height: 30).background(Color.primary.opacity(0.1), in: Circle())
+                                    .frame(width: 44, height: 44).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("Close random pick")
                         }.foregroundStyle(theme.accent).padding(.bottom, 7)
                         if let picked {
                             pickCard(picked, compact: compact).id(sequence)
                                 .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 14)))
                             HStack(spacing: 10) {
-                                Button { choose() } label: { HStack(spacing: 7) { DiaryIcon(name: "shuffle", size: 18); Text("Pick again") }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.glass)
+                                // Two buttons of one kind and one size (owner): the app's capsule buttons, 44 pt.
+                                Button { choose() } label: { HStack(spacing: 6) { DiaryIcon(name: "shuffle", size: 15); Text("Pick again") }.frame(maxWidth: .infinity) }
+                                    .buttonStyle(.diarySecondary)
                                     .disabled(active.count < 2 || rolling).accessibilityIdentifier("random-pick-again")
-                                Button { onOpen(picked.id) } label: { HStack(spacing: 7) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 18) }.frame(maxWidth: .infinity).frame(minHeight: 44) }
-                                    .buttonStyle(.glassProminent).accessibilityIdentifier("random-pick-open")
+                                Button { onOpen(picked.id) } label: { HStack(spacing: 6) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 15) }.frame(maxWidth: .infinity) }
+                                    .buttonStyle(.diaryPrimary).accessibilityIdentifier("random-pick-open")
                             }.font(.system(size: 14, weight: .semibold)).padding(.top, 16)
                         } else {
                             VStack(spacing: 14) {
                                 DiaryIcon(name: "sparkles", size: 32).foregroundStyle(theme.accent)
                                 Text("Your next story starts here").font(.system(size: 20, weight: .bold)).foregroundStyle(.primary)
                                 Text("Add some titles to your collection for a surprise pick.").font(.system(size: 14)).foregroundStyle(.secondary)
-                                Button("Add a title", action: onAdd).buttonStyle(.glassProminent).controlSize(.large)
+                                Button("Add a title", action: onAdd).buttonStyle(.diaryPrimary).controlSize(.large)
                             }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.vertical, 28)
                         }
                     }.padding(16)
@@ -99,7 +102,7 @@ struct RandomPickDialog: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("FROM YOUR COLLECTION").font(.system(size: 11)).tracking(0.77).foregroundStyle(theme.accent)
                 Text(title.name).font(.system(size: 19.2, weight: .bold)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("random-picked-name")
-                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(Color(webHex: "#c5c0cf"))
+                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(Color(themed: "#c5c0cf"))
                 Text(title.status.capitalized).font(.system(size: 12)).foregroundStyle(theme.accent)
                     .padding(.horizontal, 9).padding(.vertical, 4).background(theme.accent.opacity(0.0784), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.2667)))
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -108,10 +111,10 @@ struct RandomPickDialog: View {
                 ZStack {
                     theme.pickBase
                     if let backdrop = title.backdrop { Artwork(path: backdrop).opacity(0.6) }
-                    LinearGradient(colors: [theme.pickVeil, Color(webHex: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
-                    LinearGradient(colors: [Color(webHex: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
+                    LinearGradient(colors: [theme.pickVeil, Color(themed: "#0a090df2")], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [Color(themed: "#08080d"), .clear], startPoint: .bottom, endPoint: .top)
                 }.allowsHitTesting(false)
-            }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(.white.opacity(0.125)))
+            }.clipShape(RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(HomeStyle.outline(0.125)))
     }
     private func choose() {
         guard !rolling else { return }
@@ -139,7 +142,7 @@ private struct RandomPickSurface: UIViewRepresentable {
         view.accessibilityIdentifier = "random-pick-dialog"
         view.layer.cornerRadius = 26
         view.layer.borderWidth = 1
-        view.backgroundColor = UIColor(red: 13 / 255, green: 13 / 255, blue: 18 / 255, alpha: 1)
+        view.backgroundColor = ThemeStore.current.native ? .secondarySystemGroupedBackground : UIColor(red: 13 / 255, green: 13 / 255, blue: 18 / 255, alpha: 1)
         return view
     }
     func updateUIView(_ view: UIView, context: Context) {

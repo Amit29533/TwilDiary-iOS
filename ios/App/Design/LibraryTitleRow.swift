@@ -22,27 +22,27 @@ struct LibraryTitleRow: View {
                     DiaryIcon(name: archived ? "trash-2" : title.statusIconName, size: 16)
                     if title.queued == true { DiaryIcon(name: "download", size: 15) }
                     if present { DiaryIcon(name: "monitor", size: 15) }
-                }.foregroundStyle(Color(webHex: "#c5c0cf"))
+                }.foregroundStyle(Color(themed: "#c5c0cf"))
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 13).padding(.vertical, 11)
-            .foregroundStyle(Color(webHex: "#f3f0f7"))
+            .foregroundStyle(Color(themed: "#f3f0f7"))
             .background {
                 GeometryReader { geometry in
                     ZStack {
-                        Color(webHex: "#101014")
+                        Color(themed: "#101014")
                         if let path = title.poster {
                             LibraryCoverArtwork(path: path).frame(width: geometry.size.width, height: geometry.size.height).opacity(0.65)
                         }
                         LinearGradient(stops: [
-                            .init(color: Color(webHex: "#09090c4d"), location: 0),
-                            .init(color: Color(webHex: "#08080bce"), location: 0.45),
-                            .init(color: Color(webHex: "#08080bf2"), location: 1)
+                            .init(color: Color(themed: "#09090c4d"), location: 0),
+                            .init(color: Color(themed: "#08080bce"), location: 0.45),
+                            .init(color: Color(themed: "#08080bf2"), location: 1)
                         ], startPoint: .leading, endPoint: .trailing)
                     }.allowsHitTesting(false)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.11)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.outline(0.11)))
             .contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue([
                 archived ? "In Trash" : title.status.capitalized,
@@ -63,7 +63,10 @@ private struct LibraryCoverArtwork: View {
         GeometryReader { geometry in
             // Same shared, downsampled cache as Artwork: no AsyncImage re-download
             // or full-size main-thread decode when a row scrolls back into view.
-            let request = PublicArtworkRequest(path: path, pixels: Double(max(geometry.size.width, geometry.size.height) * displayScale))
+            // The poster's own 512 px bitmap, shared with the thumbnail beside it. Sized to the row, this
+            // asked TMDb for a 1280 px poster and decoded ~14 MB per row for a backdrop that sits dimmed
+            // under a gradient; the cache held only a few, so scrolling decoded them again and again.
+            let request = PublicArtworkRequest(path: path, pixels: 512)
             Group {
                 if path.hasPrefix("/demo/"), let image = DemoArtwork.image("asset:" + URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) {
                     crop(Image(uiImage: image), size: geometry.size)

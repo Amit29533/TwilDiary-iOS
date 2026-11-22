@@ -46,6 +46,8 @@ private struct DiscoveryGolden: Decodable {
     filters.minimum = "10.0"; #expect(filters.error(section: .genres) == nil)
     #expect(!DiscoveryGenre.names(type: "movie").contains("Reality"))
     #expect(DiscoveryGenre.names(type: "tv").contains("Reality"))
+    // TMDB has no TV Romance genre; the server finds those shows by keyword.
+    #expect(DiscoveryGenre.names(type: "tv").contains("Romance"))
 }
 
 @Test func discoveryMergesBothPagesByMediaIdentityAndKeepsFirstOccurrence() throws {

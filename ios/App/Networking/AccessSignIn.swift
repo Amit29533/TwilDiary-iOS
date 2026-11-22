@@ -1,5 +1,7 @@
 import SwiftUI
+import AuthenticationServices
 import WebKit
+import TwilDiaryCore
 
 enum SignInNavigationPolicy {
     static func allows(_ url: URL?) -> Bool {
@@ -9,104 +11,373 @@ enum SignInNavigationPolicy {
     }
 }
 
-/// A browser is used only for the existing Cloudflare login, never app screens.
+/// Supports Cloudflare Access SSO, Personal Access Token, Email & Passcode, and Trakt OAuth sign-in.
 @MainActor struct AccessSignIn: View {
+    enum SignInMode: String, CaseIterable, Identifiable {
+        case cloudflare = "Google or email"
+        case passcode = "Owner passcode"
+        case token = "Access token"
+        case trakt = "Trakt"
+        var id: String { rawValue }
+        /// One line under the picker, so the choice explains itself.
+        var hint: String {
+            switch self {
+            case .cloudflare: "Your server’s usual sign-in page (Cloudflare Access): Google, or a one-time code by email."
+            case .passcode: "Owner email and passcode."
+            case .token: "A private access token made for this diary."
+            case .trakt: "Your Trakt app ID and access token."
+            }
+        }
+    }
     let completion: @MainActor (AccessCredential) -> Void
-    @State private var state = AccessSignInState()
-    @State private var browserID = UUID()
+    /// Trakt signed in, but your server didn't give a diary session (Cloudflare Access in front of
+    /// it): open the app on Trakt alone. nil where that isn't offered (connecting a server later).
+    var phoneOnly: (@MainActor (MainTracker) -> Void)? = nil
+    /// "On this phone": no account; nil where it isn't offered.
+    var onThisPhone: (@MainActor () -> Void)? = nil
+    @Environment(DiaryStore.self) private var store
+    @State private var serviceSigningIn: MainTracker?
+    @State private var mode: SignInMode = .passcode
+    @State private var showOtherWays = false
+    @State private var traktSigningIn = false
+    @State private var webSigningIn = false
+    @State private var webError: String?
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
+    @State private var personalToken = ""
+    @State private var ownerEmail = ""
+    @State private var ownerPasscode = ""
+    @State private var traktClientId = ""
+    @State private var traktAccessToken = ""
+    @State private var submitting = false
+    @State private var formError: String?
     var body: some View {
-        VStack(spacing: 0) {
-            AccessAuthenticationBrowser(state: state, completion: completion).id(browserID)
-            if let error = state.error {
+        ScrollView {
+            // The mark, the heading, the ways in (Trakt, then Google or email), then Other ways.
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 10) {
+                    BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
+                    Text(phoneOnly == nil ? "Sign in to your server" : "Sign in to TwilDiary").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                    Text(phoneOnly == nil ? "Google, email or your Trakt account." : "Pick an account. You decide where things are kept in Settings.")
+                        .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                // The ways in, as rows (as Cinopsys lists them): Trakt first, then your server's own
+                // sign-in page. Both open in Apple's sign-in sheet and come straight back.
+                VStack(alignment: .leading, spacing: 10) {
+                    // Trakt's own sign-in page; your server checks it's the Trakt account linked to
+                    // your diary, and this iPhone stays signed in to Trakt as well.
+                    optionRow(busy: traktSigningIn, id: "sign-in-trakt", title: "Trakt", detail: "Syncs to your Trakt account") {
+                        BrandLogo(service: .trakt, size: 40)
+                    } action: {
+                        Task {
+                            if let traktApp = await traktAppID() { await traktSignIn(traktApp) }
+                            else { webError = "Your server hasn’t shared its Trakt app yet. Use Google or email this once; Trakt is offered from then on." }
+                        }
+                    }
+                    // MDBList and WeTrakr: the app opens on that service alone.
+                    if phoneOnly != nil {
+                        ForEach(MainTracker.others, id: \.self) { tracker in
+                            optionRow(busy: serviceSigningIn == tracker, id: "sign-in-" + tracker.rawValue, title: tracker.name,
+                                      detail: "Syncs to your \(tracker.name) account") {
+                                BrandLogo(service: tracker.brand, size: 40)
+                            } action: { Task { await serviceSignIn(tracker) } }
+                        }
+                    }
+                    if let onThisPhone {
+                        optionRow(busy: false, id: "sign-in-local", title: "On this phone", detail: "Stays on this phone. No account") {
+                            Image(systemName: "iphone").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
+                        } action: { onThisPhone() }
+                    }
+                    optionRow(busy: webSigningIn, id: "sign-in-web", title: phoneOnly == nil ? "Google or email" : "Your TwilDiary server",
+                              detail: phoneOnly == nil ? "Your TwilDiary server’s sign-in page" : "Google or email") {
+                        // Your server runs on Cloudflare, behind Cloudflare Access: its mark, as in Settings.
+                        BrandLogo(service: .cloudflare, size: 40)
+                    } action: { Task { await webSignIn() } }
+                    Text("Opens the sign-in page and comes straight back.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
+                    if let webError {
+                        Text(webError).font(.footnote).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("sign-in-browser-error")
+                    }
+                }
+                Button { withAnimation(Motion.smooth) { showOtherWays.toggle() } } label: {
+                    HStack {
+                        Text("Other ways to sign in").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                            .rotationEffect(.degrees(showOtherWays ? 180 : 0))
+                    }.padding(.horizontal, 16).frame(minHeight: 52).contentShape(Rectangle()).modifier(SettingsCard())
+                }.buttonStyle(.plain).accessibilityIdentifier("sign-in-other-ways")
+                if showOtherWays {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(error).font(.subheadline).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("sign-in-browser-error")
-                    Button("Try again") { state.restart(); browserID = UUID() }
-                        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).accessibilityIdentifier("sign-in-browser-retry")
-                }.frame(maxWidth: .infinity, alignment: .leading).padding(16).background(.regularMaterial)
-            }
-        }
+                    HStack {
+                        Text("Other ways").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                        Spacer(minLength: 8)
+                        Menu {
+                            Picker("Sign in with", selection: $mode) {
+                                ForEach(SignInMode.allCases.filter { $0 != .cloudflare }) { item in Text(item.rawValue).tag(item) }
+                            }
+                        } label: {
+                            HStack(spacing: 6) { Text(mode.rawValue); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
+                                .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                                .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
+                        }.accessibilityLabel("Sign in with").accessibilityValue(mode.rawValue).accessibilityIdentifier("sign-in-method-picker")
+                    }
+                    Text(mode.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    alternativeForm
+                }.padding(16).modifier(SettingsCard())
+                }
+            }.padding(20)
+        }.scrollDismissesKeyboard(.interactively)
+            .onChange(of: mode) { _, _ in formError = nil }
     }
-}
 
-@MainActor private struct AccessAuthenticationBrowser: UIViewRepresentable {
-    let state: AccessSignInState
-    let completion: @MainActor (AccessCredential) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(state: state, completion: completion) }
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        let web = WKWebView(frame: .zero, configuration: configuration)
-        context.coordinator.attach(web)
-        web.load(URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/session")))
-        return web
-    }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
-    static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
-        coordinator.stop(); web.navigationDelegate = nil; web.uiDelegate = nil; web.stopLoading()
-    }
-    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver {
-        private let state: AccessSignInState
-        private let ticket: UUID
-        private let completion: @MainActor (AccessCredential) -> Void
-        private weak var web: WKWebView?
-        private var cookieStore: WKHTTPCookieStore?
-        private var checking: Task<Void, Never>?
-        private var reading = false
-        private var readAgain = false
-        init(state: AccessSignInState, completion: @escaping @MainActor (AccessCredential) -> Void) {
-            self.state = state; self.ticket = state.begin(); self.completion = completion
-        }
-        func attach(_ web: WKWebView) {
-            self.web = web; web.navigationDelegate = self; web.uiDelegate = self
-            cookieStore = web.configuration.websiteDataStore.httpCookieStore
-            cookieStore?.add(self)
-        }
-        func stop() {
-            state.stop(ticket); checking?.cancel(); checking = nil
-            cookieStore?.remove(self); cookieStore = nil; web = nil
-        }
-        func cookiesDidChange(in cookieStore: WKHTTPCookieStore) { inspectCookies() }
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-            SignInNavigationPolicy.allows(navigationAction.request.url) ? .allow : .cancel
-        }
-        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if navigationAction.targetFrame == nil, SignInNavigationPolicy.allows(navigationAction.request.url) { webView.load(navigationAction.request) }
-            return nil
-        }
-        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            checking?.cancel(); checking = nil; state.started(ticket)
-        }
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            inspectCookies()
-            // Bound only post-session cookie propagation, never user-driven 2FA.
-            guard state.active(ticket), AccessCookiePolicy.isSessionFinish(webView.url), checking == nil else { return }
-            checking = Task { @MainActor [weak self] in
-                for _ in 0..<6 {
-                    do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
-                    guard let self, self.state.active(self.ticket), AccessCookiePolicy.isSessionFinish(self.web?.url) else { return }
-                    self.inspectCookies()
+    private var alternativeForm: some View {
+            VStack(alignment: .leading, spacing: 16) {
+                if mode == .token {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Personal Access Token").font(.headline)
+                        Text("Use the private access token provided for your diary.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        SecureField("Paste access token", text: $personalToken)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField()
+                            .accessibilityIdentifier("sign-in-token-field")
+                    }
+                } else if mode == .passcode {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Owner email", text: $ownerEmail)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                            .autocorrectionDisabled()
+                            .settingsField()
+                            .accessibilityIdentifier("sign-in-email-field")
+                        SecureField("Passcode", text: $ownerPasscode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField()
+                            .accessibilityIdentifier("sign-in-passcode-field")
+                    }
+                } else if mode == .trakt {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Sign in with Trakt").font(.headline)
+                        Text("Verify ownership using your connected Trakt account’s OAuth token.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        TextField("Trakt Client ID (optional if set on server)", text: $traktClientId)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField()
+                        SecureField("Trakt OAuth Access Token", text: $traktAccessToken)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField()
+                            .accessibilityIdentifier("sign-in-trakt-token-field")
+                    }
                 }
-                guard let self, !Task.isCancelled else { return }
-                self.state.missingCredential(self.ticket); self.checking = nil
+
+                if let formError {
+                    Text(formError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("sign-in-form-error")
+                }
+
+                Button {
+                    Task { await submitAlternativeSignIn() }
+                } label: {
+                    HStack {
+                        if submitting { ProgressView().controlSize(.small) }
+                        Text(submitting ? "Signing in…" : "Sign in")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SettingsWideButtonStyle())
+                .disabled(submitting)
+                .accessibilityIdentifier("sign-in-submit-button")
             }
+    }
+
+    /// Your server's sign-in page in Apple's sign-in sheet; `/api/session/app` hands the session back
+    /// to `twildiary://auth/diary?token=…` once Cloudflare Access has signed you in.
+    private func webSignIn() async {
+        webError = nil; webSigningIn = true
+        defer { webSigningIn = false }
+        do {
+            // With the service token past Cloudflare Access, ask for the diary's own 30-day session
+            // instead of Access's short one (you'd otherwise sign in again every day or so).
+            var start = AppConfiguration.backend.appendingPathComponent("api/session/app")
+            if AppConfiguration.accessServiceToken != nil { start.append(queryItems: [URLQueryItem(name: "session", value: "diary")]) }
+            let callback = try await webAuthenticationSession.authenticate(using: start, callbackURLScheme: ProviderWebSignIn.callbackScheme)
+            let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false)
+            guard parts?.host == "auth", parts?.path == "/diary",
+                  let token = parts?.queryItems?.first(where: { $0.name == "token" })?.value, AccessCookiePolicy.validToken(token) else {
+                webError = "Sign-in finished without a usable diary session. Please try again."; return
+            }
+            completion(AccessCredential(token: token, expires: nil))
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // Closing the sheet is not an error.
+        } catch {
+            webError = "The sign-in page couldn’t finish: " + error.localizedDescription
         }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { state.failed(error, ticket: ticket) }
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { state.failed(error, ticket: ticket) }
-        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { state.interrupted(ticket) }
-        private func inspectCookies() {
-            guard state.active(ticket), AccessCookiePolicy.trusted(web?.url), let cookieStore else { return }
-            if reading { readAgain = true; return }
-            reading = true
-            cookieStore.getAllCookies { [weak self] cookies in
-                guard let self else { return }
-                self.reading = false
-                guard self.state.active(self.ticket) else { return }
-                if let value = self.state.consume(cookies, at: self.web?.url, ticket: self.ticket) {
-                    self.checking?.cancel(); self.checking = nil
-                    self.completion(value)
-                } else if self.readAgain {
-                    self.readAgain = false; self.inspectCookies()
+    }
+
+    private func optionRow<Icon: View>(busy: Bool, id: String, title: String, detail: String, @ViewBuilder icon: () -> Icon, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                icon()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(busy ? "Signing in…" : title).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(detail).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                 }
+                Spacer(minLength: 8)
+                if busy { ProgressView().controlSize(.small) } else { SettingsChevron() }
+            }.padding(.horizontal, 15).frame(minHeight: 68).contentShape(Rectangle()).modifier(SettingsCard())
+        }.buttonStyle(.plain).disabled(webSigningIn || traktSigningIn || serviceSigningIn != nil || submitting).accessibilityIdentifier(id)
+    }
+    /// MDBList or WeTrakr: its own sign-in page, then the app opens on that service.
+    private func serviceSignIn(_ tracker: MainTracker) async {
+        webError = nil; serviceSigningIn = tracker
+        defer { serviceSigningIn = nil }
+        do {
+            if case .signedIn = try await ServiceSignIn.run(tracker.provider, store: store, using: webAuthenticationSession) { phoneOnly?(tracker) }
+        } catch { webError = error.localizedDescription }
+    }
+    /// TwilDiary's Trakt app ID: built in, remembered, or from your server's public sign-in check.
+    private func traktAppID() async -> String? {
+        if let known = ProviderAppIDs.id(for: .trakt) { return known }
+        struct Check: Decodable { let traktClientId: String? }
+        var request = URLRequest(url: AppConfiguration.backend.appendingPathComponent("api/auth"), timeoutInterval: 15)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        AppConfiguration.passAccess(&request)
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let id = (try? JSONDecoder().decode(Check.self, from: data))?.traktClientId else { return nil }
+        ProviderAppIDs.remember([.trakt: id])
+        return ProviderAppIDs.id(for: .trakt)
+    }
+    /// Continue with Trakt: Trakt's page in Apple's sheet (PKCE), then your server signs you in once
+    /// that Trakt account is the one linked to your diary. The same sign-in becomes this iPhone's
+    /// Trakt connection, so Trakt needs no second sign-in.
+    private func traktSignIn(_ clientId: String) async {
+        webError = nil; traktSigningIn = true
+        defer { traktSigningIn = false }
+        do {
+            guard let tokens = try await ServiceSignIn.tokens(.trakt, clientId: clientId, using: webAuthenticationSession, client: DirectProviderClient()) else { return }
+            // The first sign-in screen: Trakt signs in to Trakt only (owner's choice). Your server is
+            // its own, optional sign-in (its row here, or Connections → Server sign-in later).
+            if let phoneOnly {
+                PendingTraktSignIn.waiting = (clientId, tokens)
+                phoneOnly(.trakt)
+                return
+            }
+            let authURL = AppConfiguration.backend.appendingPathComponent("api/auth")
+            var request = URLRequest(url: authURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let host = authURL.host { request.setValue("\(authURL.scheme ?? "https")://\(host)", forHTTPHeaderField: "Origin") }
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["method": "provider", "provider": "trakt", "accessToken": tokens.accessToken, "clientId": clientId])
+            AppConfiguration.passAccess(&request)
+            let reply = try? await URLSession.shared.data(for: request)
+            let json = reply.flatMap { (try? JSONSerialization.jsonObject(with: $0.0)) as? [String: Any] }
+            guard let http = reply?.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let issued = json?["token"] as? String, AccessCookiePolicy.validToken(issued) else {
+                PendingTraktSignIn.waiting = (clientId, tokens)
+                // No diary session from your server (it sits behind Cloudflare Access, or is
+                // offline): Trakt alone opens the app; the server can be connected later.
+                if let phoneOnly { phoneOnly(.trakt); return }
+                PendingTraktSignIn.waiting = nil
+                let message = (json?["error"] as? [String: Any])?["message"] as? String
+                if message == nil, json == nil {
+                    // Not the TwilDiary server answering at all (Cloudflare Access's own page, or no
+                    // answer): Trakt can't get past it, so the account was never even checked.
+                    webError = "Your server is behind Cloudflare Access, which a Trakt sign-in can’t get through. Use Google or email to sign in to it."
+                    return
+                }
+                webError = message ?? "Your server didn’t accept this Trakt account. Use the Trakt account linked to your diary, or Continue with Google or email."
+                return
+            }
+            PendingTraktSignIn.waiting = (clientId, tokens)
+            completion(AccessCredential(token: issued, expires: (json?["expiresAt"] as? String).flatMap(DiaryDate.parse)))
+        } catch {
+            webError = "Trakt sign-in couldn’t finish: " + error.localizedDescription
+        }
+    }
+
+    private func submitAlternativeSignIn() async {
+        formError = nil
+        submitting = true
+        defer { submitting = false }
+
+        var payload: [String: String] = [:]
+        switch mode {
+        case .cloudflare:
+            return
+        case .token:
+            let trimmed = personalToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard AccessCookiePolicy.validToken(trimmed) else {
+                formError = "Enter a valid access token."
+                return
+            }
+            payload = ["method": "token", "token": trimmed]
+        case .passcode:
+            let email = ownerEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+            let code = ownerPasscode.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !email.isEmpty, !code.isEmpty else {
+                formError = "Enter both your owner email and passcode."
+                return
+            }
+            payload = ["method": "passcode", "email": email, "passcode": code]
+        case .trakt:
+            let token = traktAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !token.isEmpty else {
+                formError = "Enter your Trakt OAuth access token."
+                return
+            }
+            payload = [
+                "method": "provider",
+                "provider": "trakt",
+                "accessToken": token,
+                "clientId": traktClientId.trimmingCharacters(in: .whitespacesAndNewlines)
+            ]
+        }
+
+        do {
+            let authURL = AppConfiguration.backend.appendingPathComponent("api/auth")
+            var request = URLRequest(url: authURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let origin = URL(string: "\(authURL.scheme ?? "https")://\(authURL.host ?? "")") {
+                request.setValue(origin.absoluteString, forHTTPHeaderField: "Origin")
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            AppConfiguration.passAccess(&request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                formError = "Could not reach the diary server."
+                return
+            }
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            if (200..<300).contains(http.statusCode),
+               let issuedToken = json?["token"] as? String,
+               AccessCookiePolicy.validToken(issuedToken) {
+                var expiry: Date?
+                if let expStr = json?["expiresAt"] as? String {
+                    expiry = DiaryDate.parse(expStr)
+                }
+                completion(AccessCredential(token: issuedToken, expires: expiry))
+            } else if mode == .token, let rawToken = payload["token"], AccessCookiePolicy.validToken(rawToken) {
+                // A session token pasted as is: kept for your server's backups and extras.
+                completion(AccessCredential(token: rawToken, expires: nil))
+            } else {
+                let errObj = json?["error"] as? [String: Any]
+                formError = (errObj?["message"] as? String) ?? "Sign-in failed (HTTP \(http.statusCode))."
+            }
+        } catch {
+            if mode == .token, let rawToken = payload["token"], AccessCookiePolicy.validToken(rawToken) {
+                completion(AccessCredential(token: rawToken, expires: nil))
+            } else {
+                formError = "Could not connect to sign in. Check your network and try again."
             }
         }
     }

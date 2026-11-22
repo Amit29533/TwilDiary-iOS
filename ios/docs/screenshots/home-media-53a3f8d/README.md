@@ -1,0 +1,1 @@
+Actual iPhone 17 Pro / iOS 26.5 simulator screenshots from source 53a3f8d, Codemagic 6ae5a823efa74786046f62fb. Disposable local fixtures; placeholders are intentional missing fixture portraits. These are runtime screenshots, not generated mockups or live owner data.

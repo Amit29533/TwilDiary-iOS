@@ -190,7 +190,7 @@
   $effect(() => {
     const titles = collection.titles;
     const source = ratings.source;
-    if (diary.ready && source === 'trakt' && !exploring)
+    if (diary.ready && (source === 'trakt' || source === 'mdblist') && !exploring)
       untrack(() => {
         void ratings.prepare(titles);
       });
@@ -407,9 +407,9 @@
         : ' match your filters'
       : ' in your library'}
   </p>
-  {#if ratings.loading}<p class="rating-status" role="status">Loading Trakt community ratings…</p>
+  {#if ratings.loading}<p class="rating-status" role="status">Loading {ratingSourceLabel[ratings.source]} community ratings…</p>
   {:else if ratings.unavailable}<p class="rating-status">
-      Some Trakt ratings are unavailable. Try again later or select TMDB in Settings.
+      Some {ratingSourceLabel[ratings.source]} ratings are unavailable. Try again later or select TMDB in Settings.
     </p>{/if}
   {#if visible.length}{#if view === 'genres' && !selecting && !trash}<GenreShelves
         titles={visible}

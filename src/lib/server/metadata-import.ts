@@ -314,3 +314,98 @@ export async function loadTmdbSeason(
     addedSeasons: manifest.length ? (results.at(-1)?.meta.changes ?? 0) : 0
   };
 }
+
+/**
+ * Refreshes a saved movie or series' top-level TMDb metadata (overview, poster, backdrop,
+ * runtime, genres, communityScore) and discovers any newly announced seasons without
+ * overwriting personal status, rating, favorite, queue, or notes.
+ */
+export async function refreshTitleMetadata(db: Db, client: TmdbClient, titleId: string) {
+  const existing = await getTitle(db, titleId);
+  const link = await db
+    .select({
+      kind: providerIdentities.kind,
+      externalId: providerIdentities.externalId
+    })
+    .from(providerIdentities)
+    .where(and(eq(providerIdentities.titleId, titleId), eq(providerIdentities.provider, 'tmdb')))
+    .get();
+  if (!link?.externalId || !/^\d{1,10}$/.test(link.externalId)) {
+    throw new ApiError(
+      409,
+      'metadata_not_linked',
+      'Link this title to TMDb before refreshing metadata'
+    );
+  }
+  const mediaType = link.kind === 'series' ? 'tv' : 'movie';
+  const details = await client.details(mediaType, Number(link.externalId));
+  const now = new Date().toISOString();
+
+  const statements: SQL[] = [
+    sql`UPDATE titles SET
+          year = COALESCE(${details.year}, titles.year),
+          overview = CASE WHEN ${details.overview} <> '' THEN ${details.overview} ELSE titles.overview END,
+          poster_path = COALESCE(${details.posterPath}, titles.poster_path),
+          backdrop_path = COALESCE(${details.backdropPath}, titles.backdrop_path),
+          runtime_minutes = COALESCE(${details.runtimeMinutes}, titles.runtime_minutes),
+          genres = CASE WHEN ${details.genres.length} > 0 THEN ${JSON.stringify(details.genres)} ELSE titles.genres END,
+          community_score = COALESCE(${details.communityScore}, titles.community_score),
+          version = titles.version + 1,
+          updated_at = ${now}
+        WHERE id = ${existing.id} AND deleted_at IS NULL`
+  ];
+
+  if (details.imdbId && /^tt\d{7,10}$/.test(details.imdbId)) {
+    statements.push(
+      sql`INSERT INTO provider_identities(id,title_id,provider,kind,external_id)
+          VALUES(${`${existing.id}-imdb`},${existing.id},'imdb',${link.kind},${details.imdbId})
+          ON CONFLICT(provider,kind,external_id) DO NOTHING`
+    );
+  }
+
+  let addedSeasons = 0;
+  if (link.kind === 'series' && details.seasons.length > 0) {
+    const existingSeasons = await db
+      .select({ id: seasons.id, number: seasons.number })
+      .from(seasons)
+      .where(eq(seasons.titleId, existing.id))
+      .all();
+    const seasonIdByNumber = new Map(existingSeasons.map((s) => [s.number, s.id]));
+    for (const s of details.seasons) {
+      if (!seasonIdByNumber.has(s.number)) addedSeasons++;
+      statements.push(
+        sql`INSERT INTO seasons(id,title_id,number,name,expected_episodes)
+            VALUES(${`${existing.id}-s${s.number}`},${existing.id},${s.number},${s.name},${s.expectedEpisodes})
+            ON CONFLICT(title_id,number) DO UPDATE SET
+              name = excluded.name,
+              expected_episodes = COALESCE(excluded.expected_episodes, seasons.expected_episodes)`
+      );
+    }
+    const regularNumbers = details.seasons.map((s) => s.number).filter((n) => n > 0);
+    const latestNumber = regularNumbers.length > 0 ? Math.max(...regularNumbers) : null;
+    if (latestNumber !== null && typeof client.season === 'function') {
+      const latestRows = await client
+        .season(Number(link.externalId), latestNumber)
+        .catch(() => null);
+      if (Array.isArray(latestRows) && latestRows.length > 0) {
+        const targetSeasonId =
+          seasonIdByNumber.get(latestNumber) ?? `${existing.id}-s${latestNumber}`;
+        statements.push(
+          ...seasonEpisodeStatements(
+            db,
+            [{ titleId: existing.id, seasonId: targetSeasonId, rows: latestRows }],
+            now
+          )
+        );
+      }
+    }
+  }
+
+  await atomicBatch(db, statements);
+  const updated = await getTitle(db, existing.id);
+  return {
+    title: updated,
+    addedSeasons,
+    refreshedAt: now
+  };
+}

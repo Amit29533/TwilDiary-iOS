@@ -1,6 +1,6 @@
 import {
-  discoveryGenres,
   exploreShelves,
+  genreAvailable,
   filterDiscovery,
   type DiscoveryItem,
   type DiscoveryPage
@@ -79,7 +79,7 @@ export function exploreSectionFilters(
   else if (
     genre &&
     section.source === 'tmdb' &&
-    !discoveryGenres.some((g) => g.name === genre && g[type === 'movie' ? 'movie' : 'tv'] !== null)
+    !genreAvailable(genre, type === 'movie' ? 'movie' : 'tv')
   )
     error = 'Choose a supported genre.';
   else if (genre.length > 100) error = 'Choose a shorter genre.';

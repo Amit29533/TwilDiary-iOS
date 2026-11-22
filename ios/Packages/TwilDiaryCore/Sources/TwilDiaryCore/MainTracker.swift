@@ -1,0 +1,281 @@
+import Foundation
+
+// Main tracker (ios/docs/TRAKT-CLIENT-PLAN.md, "Choose your main tracker"): the owner picks which
+// service is the diary: Trakt, MDBList or WeTrakr. Each one is read into the same
+// `TraktLibrary` model, so the comparison, the cache and (later) the screens are shared. What a
+// service can't hold stays in Cloudflare. Read-only for now: nothing here writes anywhere.
+
+public enum MainTracker: String, Codable, CaseIterable, Identifiable, Sendable {
+    case trakt, mdblist, wetrakr, simkl
+    public var id: String { rawValue }
+    /// The services that can hold the diary. Simkl never does (owner's choice, 2026-11-14): it
+    /// is kept in step with the diary, like the others, but can't be made main.
+    public static let offered: [MainTracker] = [.trakt, .mdblist, .wetrakr]
+    /// Kept in step with the diary, never main.
+    public static let alsoSynced: [MainTracker] = [.simkl]
+    /// A saved main tracker, read back: only one that can hold the diary (a saved "simkl", from
+    /// Simkl's first integration, isn't one).
+    public init?(main name: String) {
+        guard let tracker = MainTracker(rawValue: name), Self.offered.contains(tracker) else { return nil }
+        self = tracker
+    }
+    /// The services besides Trakt that the app reads and writes on the phone.
+    public static let others: [MainTracker] = [.mdblist, .wetrakr]
+
+    /// What the service can hold as the diary. Anything it can't stays in Cloudflare.
+    public struct Capabilities: Equatable, Sendable {
+        /// Several plays of one movie or episode. MDBList keeps one watch each.
+        public let keepsRewatches: Bool
+        public let holdsDropped: Bool
+        public let holdsFavourites: Bool
+        /// Longest note the service keeps; nil when it keeps none.
+        public let noteLimit: Int?
+        /// A cheap "has anything changed?" call, so an unchanged library isn't downloaded again.
+        public let changeCheck: Bool
+        /// Specials (season 0). MDBList answers "added" but never keeps them, so they're neither
+        /// sent there nor counted as missing.
+        public var keepsSpecials = true
+        /// Two plays of one episode or movie at the same moment (within a minute). WeTrakr keeps one
+        /// and answers the second with "Already added!", so a diary that has the same watch twice
+        /// counts it once there, or every match would send it again.
+        public var keepsSamePlayTwice = true
+    }
+
+    public var name: String {
+        switch self { case .trakt: "Trakt"; case .mdblist: "MDBList"; case .wetrakr: "WeTrakr"; case .simkl: "Simkl" }
+    }
+
+    public var capabilities: Capabilities {
+        switch self {
+        case .trakt: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: 500, changeCheck: true)
+        case .mdblist: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true, keepsSpecials: false)
+        // WeTrakr keeps every play, favourites and dropped titles, and its journal names what changed.
+        case .wetrakr: Capabilities(keepsRewatches: true, holdsDropped: true, holdsFavourites: true, noteLimit: nil, changeCheck: true, keepsSamePlayTwice: false)
+        // Simkl keeps one watched state per episode or movie (rewatches are for paid accounts),
+        // ratings, its lists (Plan to watch, Watching, Completed, On hold, Dropped), no favourites;
+        // `/sync/activities` says what changed.
+        case .simkl: Capabilities(keepsRewatches: false, holdsDropped: true, holdsFavourites: false, noteLimit: nil, changeCheck: true)
+        }
+    }
+
+    /// One line on what the service keeps, for the picker.
+    public var summary: String {
+        switch self {
+        case .trakt: "History with rewatches, ratings, watchlist, favourites, dropped shows, notes up to 500 characters."
+        case .mdblist: "History, ratings, watchlist and dropped. No notes or favourites."
+        case .wetrakr: "History with rewatches, ratings, watchlist, favourites and dropped. Notes stay in TwilDiary."
+        case .simkl: "History, ratings, Plan to watch, Watching, Completed, On hold and Dropped. No rewatches, favourites or notes."
+        }
+    }
+
+    /// What stays in the Cloudflare backup with this service as the diary (besides what always does:
+    /// file locations, tags, people favourites and trash).
+    public var keptInCloudflare: [String] {
+        let can = capabilities
+        var result: [String] = []
+        if !can.keepsRewatches { result.append("rewatch counts") }
+        if !can.holdsFavourites { result.append("favourite titles") }
+        if !can.holdsDropped { result.append("dropped titles") }
+        if let limit = can.noteLimit { result.append("the full text of notes over \(limit) characters") } else { result.append("notes") }
+        return result
+    }
+}
+
+/// MDBList and WeTrakr read into the shared library model. Like `TraktDecode`, an item that can't be
+/// identified is skipped and counted, never guessed.
+public enum TrackerDecode {
+    private static func object(_ value: Any?) -> [String: Any]? { value as? [String: Any] }
+    /// A positive whole number, from a JSON number or a numeric string (some services send ids as text).
+    static func int(_ value: Any?) -> Int? {
+        if let text = value as? String { return Int(text.trimmingCharacters(in: .whitespaces)).flatMap { $0 > 0 && $0 <= 9_999_999_999 ? $0 : nil } }
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let integer = number.int64Value
+        return Double(integer) == number.doubleValue && integer > 0 && integer <= 9_999_999_999 ? Int(integer) : nil
+    }
+    private static func date(_ value: Any?) -> String? {
+        guard let text = value as? String, text.count >= 10, text.count <= 40, text.contains("T") else { return nil }
+        return text
+    }
+    private static func text(_ value: Any?) -> String? {
+        guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return String(text.prefix(300))
+    }
+    /// A stable id for a play the service doesn't number itself (FNV-1a of what identifies it).
+    public static func playID(_ parts: String) -> Int64 {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in parts.utf8 { hash ^= UInt64(byte); hash = hash &* 0x100000001b3 }
+        return Int64(bitPattern: hash & 0x7fffffffffffffff)
+    }
+    /// A title from a block with "ids" (or flat id fields), "title" and "year".
+    static func ref(_ media: [String: Any], kind: TraktTitleRef.Kind) -> TraktTitleRef? {
+        let ids = object(media["ids"]) ?? media
+        guard let name = text(media["title"]) ?? text(media["name"]) else { return nil }
+        // MDBList list items have no "ids" block: their "id" is the TMDB id.
+        let tmdb = int(ids["tmdb"]) ?? int(ids["tmdb_id"]) ?? int(ids["tmdbid"])
+            ?? (media["ids"] == nil && media["mediatype"] != nil ? int(media["id"]) : nil)
+        let trakt = int(ids["trakt"]) ?? int(ids["trakt_id"])
+        let imdb = ((ids["imdb"] ?? ids["imdb_id"]) as? String).flatMap { $0.hasPrefix("tt") && $0.count <= 15 ? $0 : nil }
+        guard tmdb != nil || trakt != nil || imdb != nil || int(ids["mdblist"]) != nil else { return nil }
+        return TraktTitleRef(kind: kind, traktId: trakt, tmdbId: tmdb, imdbId: imdb, tvdbId: int(ids["tvdb"]) ?? int(ids["tvdb_id"]),
+                             name: name, year: int(media["year"]) ?? int(media["release_year"]))
+    }
+
+    // MARK: MDBList
+
+    /// The MDBList lists to read again, from what moved in `/sync/last_activities`; nil means all
+    /// of them (first read, or a field TwilDiary doesn't recognise moved).
+    public static func mdblistListsToRead(previous: TraktActivities?, now: TraktActivities) -> Set<TraktDomain>? {
+        guard let previous else { return nil }
+        var lists = Set<TraktDomain>()
+        for key in Set(now.stamps.keys).union(previous.stamps.keys) where now.stamps[key] != previous.stamps[key] {
+            let name = key.lowercased()
+            // Removals show only in the journal's stamp: watches and ratings come from the journal.
+            if name == "journal_at" { lists.formUnion([.history, .ratings]); continue }
+            // Collection, paused, lists and comments aren't read into the diary.
+            if ["collected_at", "paused_at", "episode_paused_at", "list_updated_at", "external_lists_updated_at",
+                "liked_lists_updated_at", "commented_at", "journal.since"].contains(name) { continue }
+            if name.contains("watchlist") { lists.insert(.watchlist) }
+            else if name.contains("rat") { lists.insert(.ratings) }
+            else if name.contains("drop") || name.contains("hidden") { lists.insert(.dropped) }
+            else if name.contains("watch") { lists.insert(.history) }
+            else { return nil }
+        }
+        return lists
+    }
+
+    /// `GET /sync/last_activities` on MDBList is flat ("watched_at", "rated_at", …), unlike Trakt's
+    /// sections; `server_time` changes on every call, so it's left out.
+    public static func flatActivities(from data: Data) throws -> TraktActivities {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Last activities were not an object."))
+        }
+        var stamps: [String: String] = [:]
+        for (key, value) in root where key != "server_time" { if let stamp = value as? String { stamps[key] = stamp } }
+        return TraktActivities(all: nil, stamps: stamps)
+    }
+
+    /// One page of an MDBList sync list (`/sync/watched`, `/sync/ratings`, `/sync/dropped`,
+    /// `/watchlist/items`). MDBList doesn't publish its response format outside the browser, so this
+    /// reads both Trakt-style items ({"movie": {...}} / {"show": {...}, "episode": {...}}) and flat
+    /// ones ({"title", "ids", "mediatype"}), under a top-level list or any of the usual keys.
+    public struct MDBListPage: Equatable, Sendable {
+        public struct Item: Equatable, Sendable {
+            public let title: TraktTitleRef
+            public let season: Int?
+            public let episode: Int?
+            public let date: String?
+            public let rating: Int?
+        }
+        public var items: [Item] = []
+        public var skipped = 0
+        /// The cursor for the next page; nil on the last page.
+        public var next: String?
+    }
+
+    public static func mdblistPage(from data: Data) throws -> MDBListPage {
+        let parsed = try JSONSerialization.jsonObject(with: data)
+        var page = MDBListPage()
+        var entries: [(Any, TraktTitleRef.Kind?)] = []
+        if let list = parsed as? [Any] { entries = list.map { ($0, nil) } }
+        else if let root = parsed as? [String: Any] {
+            for (key, kind) in [("movies", TraktTitleRef.Kind.movie), ("shows", .show), ("episodes", .show), ("seasons", .show)] {
+                for value in (root[key] as? [Any]) ?? [] { entries.append((value, kind)) }
+            }
+            for key in ["items", "results", "data", "watched", "ratings", "dropped", "watchlist"] {
+                for value in (root[key] as? [Any]) ?? [] { entries.append((value, nil)) }
+            }
+            let pagination = object(root["pagination"]) ?? object(root["cursor"])
+            page.next = text(root["next_cursor"]) ?? text(pagination?["next_cursor"]) ?? text(pagination?["next"])
+            if root["has_more"] as? Bool == false { page.next = nil }
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "MDBList returned something unexpected."))
+        }
+        for (value, bucketKind) in entries {
+            guard let item = value as? [String: Any] else { page.skipped += 1; continue }
+            // MDBList's watched episodes carry their show inside the episode ("episode.show").
+            let movieBlock = object(item["movie"]), showBlock = object(item["show"]) ?? object(object(item["episode"])?["show"])
+            let type = ((item["mediatype"] ?? item["type"] ?? item["media_type"]) as? String)?.lowercased()
+            let kind: TraktTitleRef.Kind = movieBlock != nil ? .movie : showBlock != nil ? .show
+                : type == "movie" ? .movie : (type == "show" || type == "tv" || type == "episode" || type == "season") ? .show : bucketKind ?? .movie
+            guard let title = ref(movieBlock ?? showBlock ?? item, kind: kind) else { page.skipped += 1; continue }
+            // Trakt-style watched shows: seasons[].episodes[] inside the show.
+            if kind == .show, let seasons = item["seasons"] as? [Any], !seasons.isEmpty {
+                for case let season as [String: Any] in seasons {
+                    for case let episode as [String: Any] in (season["episodes"] as? [Any]) ?? [] {
+                        guard let seasonNumber = int(season["number"]) ?? (season["number"] as? NSNumber)?.intValue,
+                              let number = int(episode["number"]) else { page.skipped += 1; continue }
+                        page.items.append(.init(title: title, season: seasonNumber, episode: number,
+                                                date: date(episode["last_watched_at"]) ?? date(episode["watched_at"]), rating: nil))
+                    }
+                }
+                continue
+            }
+            let episode = object(item["episode"])
+            let season = int(episode?["season"]) ?? int(item["season"]) ?? int(object(item["season"])?["number"])
+            let number = int(episode?["number"]) ?? int(episode?["episode"]) ?? int(item["episode"]) ?? int(item["episode_number"])
+            let rating = int(item["rating"]) ?? int(item["user_rating"])
+            let stamp = date(item["watched_at"]) ?? date(item["last_watched_at"]) ?? date(item["rated_at"]) ?? date(item["listed_at"]) ?? date(item["dropped_at"]) ?? date(item["added_at"])
+            page.items.append(.init(title: title, season: kind == .show ? season : nil, episode: kind == .show ? number : nil,
+                                    date: stamp, rating: rating.flatMap { (1...10).contains($0) ? $0 : nil }))
+        }
+        return page
+    }
+}
+
+// MARK: MDBList's journal
+
+/// `GET /sync/journal` (MDBList's published schema): the latest retained state per item for
+/// watched and ratings, removals included, 30 days back. Rows are applied as the current truth;
+/// season and show rows are skipped (episode rows carry each episode's own state).
+public enum MDBListJournal {
+    public struct Result: Equatable, Sendable {
+        public var applied = 0
+        /// The window expired (`requires_full_sync`): read the lists in full.
+        public var needsFullRead = false
+        public var nextCursor: String?
+        /// The server's clock for this read: the next `since`.
+        public var serverTime: String?
+    }
+    /// Saved activities without the journal mark kept among them (for "did anything move?").
+    public static func unmarked(_ activities: TraktActivities?) -> TraktActivities? {
+        activities.map { TraktActivities(all: $0.all, stamps: $0.stamps.filter { $0.key != "journal.since" }) }
+    }
+    public static func apply(_ data: Data, to library: inout TraktLibrary) throws -> Result {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "MDBList sent an unreadable journal."))
+        }
+        var result = Result(serverTime: root["server_time"] as? String)
+        if root["requires_full_sync"] as? Bool == true { result.needsFullRead = true; return result }
+        let pagination = root["pagination"] as? [String: Any]
+        if pagination?["has_more"] as? Bool == true { result.nextCursor = pagination?["next_cursor"] as? String }
+        for row in root["journal"] as? [[String: Any]] ?? [] {
+            let ids = row["ids"] as? [String: Any] ?? [:]
+            guard let tmdb = TrackerDecode.int(ids["tmdb"]) else { continue }
+            let type = row["item_type"] as? String, added = row["status"] as? String == "added"
+            let kind: TraktTitleRef.Kind = type == "movie" ? .movie : .show
+            let title = TraktTitleRef(kind: kind, traktId: nil, tmdbId: tmdb, imdbId: ids["imdb"] as? String, tvdbId: TrackerDecode.int(ids["tvdb"]), name: "")
+            let season = (row["season"] as? NSNumber)?.intValue, episode = (row["episode"] as? NSNumber)?.intValue
+            func same(_ other: TraktTitleRef) -> Bool { other.kind == kind && other.tmdbId == tmdb }
+            switch row["category"] as? String {
+            case "watched":
+                guard type == "movie" || type == "episode" else { continue }
+                if type == "episode", season == nil || episode == nil { continue }
+                library.plays.removeAll { same($0.title) && $0.season == season && $0.episode == episode }
+                if added {
+                    let id = TrackerDecode.playID("mdblist|\(kind.rawValue)|\(tmdb)|\(season ?? -1)|\(episode ?? -1)")
+                    library.plays.append(TraktPlay(historyId: id, title: title, season: season, episode: episode, watchedAt: row["value_at"] as? String))
+                }
+                result.applied += 1
+            case "rated":
+                guard type == "movie" || type == "show" else { continue }
+                library.ratings.removeAll { same($0.title) }
+                if added, let rating = TrackerDecode.int(row["rating"]), (1...10).contains(rating) {
+                    library.ratings.append(TraktRating(title: title, rating: rating, ratedAt: row["value_at"] as? String))
+                }
+                result.applied += 1
+            default: continue
+            }
+        }
+        return result
+    }
+}

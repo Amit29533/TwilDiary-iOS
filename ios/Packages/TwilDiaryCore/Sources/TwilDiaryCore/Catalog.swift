@@ -38,26 +38,38 @@ public struct CatalogItem: Decodable, Hashable, Sendable {
     public let job: String?
     public let popularity: Double?
     public let episodeCount: Int?
+    public let isAnime: Bool?
     public var key: String { "\(mediaType.rawValue):\(id)" }
     public var route: CatalogRoute { CatalogRoute(kind: mediaType, id: id) }
     public var displayKey: String { inLibraryId ?? key }
     public var artwork: String? { poster ?? CatalogTools.image(posterPath) }
-    public init(id: Int, mediaType: MediaKind, name: String, year: Int? = nil, overview: String = "", posterPath: String? = nil, backdropPath: String? = nil, rating: Double? = nil, votes: Int? = nil, genres: [String] = [], inLibraryId: String? = nil, poster: String? = nil, backdrop: String? = nil, character: String? = nil, job: String? = nil, popularity: Double? = nil, episodeCount: Int? = nil) {
+    public init(id: Int, mediaType: MediaKind, name: String, year: Int? = nil, overview: String = "", posterPath: String? = nil, backdropPath: String? = nil, rating: Double? = nil, votes: Int? = nil, genres: [String] = [], inLibraryId: String? = nil, poster: String? = nil, backdrop: String? = nil, character: String? = nil, job: String? = nil, popularity: Double? = nil, episodeCount: Int? = nil, isAnime: Bool? = nil) {
         self.id = id; self.mediaType = mediaType; self.name = name; self.year = year; self.overview = overview
         self.posterPath = posterPath; self.backdropPath = backdropPath; self.rating = rating; self.votes = votes
         self.genres = genres; self.inLibraryId = inLibraryId; self.poster = poster; self.backdrop = backdrop
         self.character = character; self.job = job; self.popularity = popularity; self.episodeCount = episodeCount
+        self.isAnime = isAnime
     }
 }
 
 public struct CatalogPage: Decodable, Sendable {
+    public var incomplete: Bool? = nil
     public let items: [CatalogItem]
     public let page: Int
     public let totalPages: Int
-    public init(items: [CatalogItem], page: Int, totalPages: Int) { self.items = items; self.page = page; self.totalPages = totalPages }
+    /// Every match TMDb counts ("48 titles"), when the reply says.
+    public let totalResults: Int?
+    public let originCountry: String?
+    public let searchTheme: String?
+    public init(items: [CatalogItem], page: Int, totalPages: Int, totalResults: Int? = nil, originCountry: String? = nil,
+                searchTheme: String? = nil) {
+        self.items = items; self.page = page; self.totalPages = totalPages; self.totalResults = totalResults; self.originCountry = originCountry
+        self.searchTheme = searchTheme
+    }
 }
 
 public struct CatalogDetails: Decodable, Sendable {
+    public let imdbId: String?
     public let id: Int
     public let mediaType: MediaKind
     public let name: String
@@ -89,7 +101,33 @@ public struct CastPerson: Decodable, Identifiable, Sendable {
     public let profilePath: String?
 }
 public struct CastResponse: Decodable, Sendable { public let cast: [CastPerson]; public let stale: Bool }
-public struct RelatedResponse: Decodable, Sendable { public let items: [CatalogItem]; public let stale: Bool }
+public struct FullTitleCredits: Decodable, Sendable {
+    public struct Person: Decodable, Identifiable, Sendable {
+        public let id: Int
+        public let name: String
+        public let profilePath: String?
+        public let roles: [String]
+
+        public init(id: Int, name: String, profilePath: String?, roles: [String]) {
+            self.id = id
+            self.name = name
+            self.profilePath = profilePath
+            self.roles = roles
+        }
+    }
+
+    public let cast: [Person]
+    public let crew: [Person]
+
+    public init(cast: [Person], crew: [Person]) {
+        self.cast = cast
+        self.crew = crew
+    }
+}
+public struct RelatedResponse: Decodable, Sendable {
+    public let items: [CatalogItem]; public let stale: Bool
+    public init(items: [CatalogItem], stale: Bool) { self.items = items; self.stale = stale }
+}
 public struct PersonResponse: Decodable, Sendable { public let person: PersonDetails; public let stale: Bool }
 public struct PersonDetails: Decodable, Sendable {
     public let id: Int
@@ -102,7 +140,21 @@ public struct PersonDetails: Decodable, Sendable {
     public let department: String
     public let profilePath: String?
     public let credits: [CatalogItem]
+    /// Portraits, and posters and stills they're tagged in (newer servers only).
+    public let photos: [PersonPhoto]?
+}
 
+/// One picture in a person's gallery.
+public struct PersonPhoto: Decodable, Hashable, Sendable, Identifiable {
+    public let path: String
+    /// "portrait", "poster" or "still".
+    public let kind: String
+    public let aspectRatio: Double
+    public let title: String?
+    public var id: String { path }
+    public init(path: String, kind: String, aspectRatio: Double, title: String?) {
+        self.path = path; self.kind = kind; self.aspectRatio = aspectRatio; self.title = title
+    }
 }
 
 public enum CatalogTools {
@@ -110,7 +162,8 @@ public enum CatalogTools {
         workspace.activeTitles.first { $0.id == item.inLibraryId || ($0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv)) }?.id
     }
     public static func image(_ path: String?, size: String = "w500") -> String? {
-        guard let path, ["w185", "w500", "w780"].contains(size),
+        // w342: the season cards' size (it was missing here, so every season poster came back nil).
+        guard let path, ["w185", "w342", "w500", "w780"].contains(size),
               path.range(of: #"^/[a-zA-Z0-9_-]+\.(jpg|png|webp)$"#, options: .regularExpression) != nil else { return nil }
         return "https://image.tmdb.org/t/p/" + size + path
     }
@@ -127,11 +180,17 @@ public enum CatalogTools {
 }
 
 public enum PublicRatingSource: String, CaseIterable, Identifiable, Sendable {
-    case tmdb, trakt
+    case tmdb, trakt, mdblist
     public var id: Self { self }
-    public var label: String { self == .tmdb ? "TMDB" : "Trakt" }
+    public var label: String {
+        switch self {
+        case .tmdb: "TMDB"
+        case .trakt: "Trakt"
+        case .mdblist: "MDBList"
+        }
+    }
 }
-public struct PublicRating: Decodable, Sendable {
+public struct PublicRating: Codable, Sendable {
     public let score: Double?
     public let state: String
     public init(score: Double?, state: String) { self.score = score; self.state = state }

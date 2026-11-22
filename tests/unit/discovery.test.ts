@@ -30,7 +30,7 @@ test('Discovery filters validate provider types, supported genres, bounded years
     'source=public-trakt',
     'type=people',
     'genre=Injected',
-    'type=tv&genre=Romance',
+    'type=tv&genre=Horror',
     'year=18',
     'year=2201',
     'minimum=11',
@@ -233,6 +233,18 @@ test('TMDb discovery sends rating confidence and media-specific filters, drops a
   assert.equal(data.items[0]!.posterPath, null);
   assert.deepEqual(data.items[0]!.genres, ['Romance']);
   assert.equal(data.totalPages, 2);
+});
+test('Romance for shows reads TMDb discover by its keyword, even when trending is chosen', async () => {
+  const seen: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    seen.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(discoveryInput(new URLSearchParams('type=tv&genre=Romance&sort=trending')));
+  assert.equal(seen[0]!.pathname, '/3/discover/tv');
+  assert.equal(seen[0]!.searchParams.get('with_keywords'), '9840');
+  assert.equal(seen[0]!.searchParams.get('with_genres'), null);
+  assert.equal(seen[0]!.searchParams.get('sort_by'), 'popularity.desc');
 });
 test('TMDb related discovery validates a seed and uses the recommendation endpoint', async () => {
   let calls = 0;
@@ -438,5 +450,183 @@ test('Because-you-watched seeds include only active, watched, TMDb-matched title
     assert.deepEqual((await response.json()).items, [{ id, name: 'Watched seed' }]);
   } finally {
     fixture.close();
+  }
+});
+
+test('A title page tag or company reads TMDb discover by that keyword or company only', async () => {
+  for (const query of ['keyword=abc', 'company=0', 'source=trakt&keyword=12', 'network=x&type=tv'])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+  const seen: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    seen.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=tv&keyword=210024&sort=trending'))
+  );
+  assert.equal(seen[0]!.pathname, '/3/discover/tv');
+  assert.equal(seen[0]!.searchParams.get('with_keywords'), '210024');
+  assert.equal(seen[0]!.searchParams.get('with_genres'), null);
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=movie&company=10342&genre=Drama'))
+  );
+  assert.equal(seen[1]!.searchParams.get('with_companies'), '10342');
+  assert.equal(seen[1]!.searchParams.get('with_genres'), '18');
+  await client.discover(discoveryInput(new URLSearchParams('type=tv&network=4513')));
+  assert.equal(seen[2]!.searchParams.get('with_networks'), '4513');
+});
+
+test('Search Lab filters reach TMDb discover: tags any or all, genres, years, status, language, age rating', async () => {
+  for (const query of [
+    'keywords=1,abc',
+    'keywordMode=some',
+    'type=tv&certification=PG',
+    'type=movie&certification=XYZ',
+    'type=movie&status=ended',
+    'yearFrom=99',
+    'language=english',
+    'genres=Injected',
+    'source=trakt&genres=Drama'
+  ])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+  const seen: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    seen.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(
+    discoveryInput(
+      new URLSearchParams(
+        'type=tv&keywords=210024,10541&keywordMode=all&genres=Animation,Romance&yearFrom=2015&yearTo=2026&status=returning&language=ja&sort=trending'
+      )
+    )
+  );
+  const tv = seen[0]!.searchParams;
+  assert.equal(seen[0]!.pathname, '/3/discover/tv');
+  assert.equal(tv.get('with_keywords'), '210024,10541,9840');
+  assert.equal(tv.get('with_genres'), '16');
+  assert.equal(tv.get('first_air_date.gte'), '2015-01-01');
+  assert.ok(tv.get('first_air_date.lte')! <= '2026-12-31');
+  assert.equal(tv.get('with_status'), '0');
+  assert.equal(tv.get('with_original_language'), 'ja');
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=movie&keywords=1,2&certification=PG-13'))
+  );
+  const movie = seen[1]!.searchParams;
+  assert.equal(movie.get('with_keywords'), '1|2');
+  assert.equal(movie.get('certification'), 'PG-13');
+  assert.equal(movie.get('certification_country'), 'US');
+});
+
+test('Tag search returns matching TMDb keywords and ignores one-letter queries', async () => {
+  const client = createTmdb('test-token', async (url) => {
+    assert.equal(new URL(String(url)).searchParams.get('query'), 'isekai');
+    return reply({
+      results: [
+        { id: 237451, name: 'isekai' },
+        { id: 0, name: 'bad' },
+        { id: 3, name: '' }
+      ]
+    });
+  });
+  assert.deepEqual(await client.keywords('  isekai '), { items: [{ id: 237451, name: 'isekai' }] });
+  assert.deepEqual(await client.keywords('a'), { items: [] });
+});
+
+test('Search regions filter by production country for films and television', async () => {
+  for (const query of ['country=fr', 'country=FRA', 'source=trakt&country=JP'])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+  const requests: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    requests.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(discoveryInput(new URLSearchParams('type=movie&country=FR&sort=trending')));
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=tv&country=KR&yearFrom=2020&sort=rating'))
+  );
+  assert.equal(requests[0]!.pathname, '/3/discover/movie');
+  assert.equal(requests[0]!.searchParams.get('with_origin_country'), 'FR');
+  assert.equal(requests[0]!.searchParams.get('vote_count.gte'), '0');
+  assert.equal(requests[1]!.pathname, '/3/discover/tv');
+  assert.equal(requests[1]!.searchParams.get('with_origin_country'), 'KR');
+  assert.equal(requests[1]!.searchParams.get('with_original_language'), null);
+  assert.equal(requests[1]!.searchParams.get('first_air_date.gte'), '2020-01-01');
+  assert.equal(requests[1]!.searchParams.get('vote_count.gte'), '50');
+
+  const fixture = await d1Fixture();
+  try {
+    const response = await discoveryRoute({
+      locals: {
+        owner: { subject: 'fixture-owner', email: 'owner@test.invalid' },
+        tmdbTransport: async (url: URL) => {
+          assert.equal(new URL(String(url)).searchParams.get('with_origin_country'), 'JP');
+          return reply({ page: 1, total_pages: 0, results: [] });
+        }
+      },
+      platform: { env: { DB: fixture.binding, TMDB_ACCESS_TOKEN: 'fixture-token' } },
+      url: new URL('https://diary.test/api/discovery?type=movie&country=JP')
+    } as never);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).originCountry, 'JP');
+  } finally {
+    fixture.close();
+  }
+});
+
+test('Sitcom discovery combines keyword, genre, studio, period, rating and pagination', async () => {
+  const client = createTmdb('test-token', async (url) => {
+    const request = new URL(String(url));
+    const query = request.searchParams;
+    assert.equal(request.pathname, '/3/discover/tv');
+    assert.equal(query.get('with_keywords'), '193171');
+    assert.equal(query.get('with_genres'), '35');
+    assert.equal(query.get('with_companies'), '1957');
+    assert.equal(query.get('first_air_date.gte'), '2000-01-01');
+    assert.equal(query.get('first_air_date.lte'), '2009-12-31');
+    assert.equal(query.get('vote_average.gte'), '7');
+    assert.equal(query.get('sort_by'), 'vote_average.desc');
+    assert.equal(query.get('vote_count.gte'), '50');
+    assert.equal(query.get('page'), '2');
+    return reply({ page: 2, total_pages: 3, results: [] });
+  });
+  const page = await client.discover(
+    discoveryInput(
+      new URLSearchParams(
+        'type=tv&keyword=193171&genre=Comedy&company=1957&yearFrom=2000&yearTo=2009&minimum=7&sort=rating&page=2'
+      )
+    )
+  );
+  assert.equal(page.page, 2);
+  assert.equal(page.totalPages, 3);
+});
+
+test('Search themes apply miniseries type and hidden-gem vote bounds to TMDB', async () => {
+  for (const query of [
+    'type=movie&searchTheme=miniseries',
+    'type=tv&searchTheme=random',
+    'source=trakt&searchTheme=hidden-gems'
+  ])
+    assert.throws(() => discoveryInput(new URLSearchParams(query)), fails(400));
+
+  const requests: URL[] = [];
+  const client = createTmdb('test-token', async (url) => {
+    requests.push(new URL(String(url)));
+    return reply({ page: 1, total_pages: 1, results: [] });
+  });
+  await client.discover(
+    discoveryInput(new URLSearchParams('type=tv&searchTheme=miniseries&sort=trending'))
+  );
+  assert.equal(requests[0]!.pathname, '/3/discover/tv');
+  assert.equal(requests[0]!.searchParams.get('with_type'), '2');
+  for (const type of ['movie', 'tv']) {
+    await client.discover(
+      discoveryInput(new URLSearchParams({ type, searchTheme: 'hidden-gems' }))
+    );
+    const request = requests.at(-1)!;
+    assert.equal(request.pathname, '/3/discover/' + type);
+    assert.equal(request.searchParams.get('vote_average.gte'), '7');
+    assert.equal(request.searchParams.get('vote_count.gte'), '50');
+    assert.equal(request.searchParams.get('vote_count.lte'), '500');
   }
 });

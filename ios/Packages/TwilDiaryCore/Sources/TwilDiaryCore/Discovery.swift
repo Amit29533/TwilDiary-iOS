@@ -13,7 +13,7 @@ public enum DiscoverySection: String, Codable, CaseIterable, Identifiable, Senda
         case .ratedMovies: "Highest rated movies"
         case .popularShows: "Popular shows"
         case .popularMovies: "Popular movies"
-        case .genres: "Browse by genre"
+        case .genres: "Search Lab"
         }
     }
     public var source: String { self == .daily ? "library" : self == .recommended ? "trakt" : "tmdb" }
@@ -41,7 +41,9 @@ public struct DiscoveryGenre: Sendable {
         .init(name: "Kids", movie: nil, tv: 10762), .init(name: "News", movie: nil, tv: 10763),
         .init(name: "Talk", movie: nil, tv: 10767), .init(name: "Soap", movie: nil, tv: 10766)
     ]
-    public static func names(type: String) -> [String] { all.filter { type == "all" || (type == "movie" ? $0.movie : $0.tv) != nil }.map(\.name) }
+    /// TMDB has no TV genre for these; the server finds the shows by TMDB's keyword of the same name.
+    public static let tvKeywordGenres: Set<String> = ["Romance"]
+    public static func names(type: String) -> [String] { all.filter { type == "all" || (type == "movie" ? $0.movie : $0.tv) != nil || (type == "tv" && tvKeywordGenres.contains($0.name)) }.map(\.name) }
 }
 
 public struct DiscoveryFilters: Codable, Hashable, Sendable {
@@ -50,6 +52,26 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
     public var year = ""
     public var sort: String
     public var minimum = "0"
+    /// A title page's tag (TMDB keyword), company or network, with the name the page shows.
+    public var keyword: Int? = nil
+    public var company: Int? = nil
+    public var network: Int? = nil
+    public var label: String? = nil
+    /// Search Lab (optional, so filters saved before it still decode).
+    public var keywords: [Int]? = nil
+    public var matchAllKeywords: Bool? = nil
+    public var genres: [String]? = nil
+    public var certification: String? = nil
+    public var yearFrom: Int? = nil
+    public var yearTo: Int? = nil
+    public var showStatus: String? = nil
+    public var language: String? = nil
+    /// "in" or "not": only titles in (or not yet in) your library. Applied on the phone.
+    public var library: String? = nil
+    /// Search Lab's "Keyword or title": a title search the other filters then narrow.
+    public var text: String? = nil
+    /// The chosen tags' names, in the order of `keywords`, for the results page's chips.
+    public var keywordNames: [String]? = nil
     public init(section: DiscoverySection) {
         type = section.fixedType?.rawValue ?? (section.source == "tmdb" ? "tv" : "all")
         sort = section.defaultSort
@@ -62,9 +84,29 @@ public struct DiscoveryFilters: Codable, Hashable, Sendable {
         return nil
     }
     public func query(section: DiscoverySection, page: Int = 1, limit: Int = 24) -> [String: String] {
-        ["source": section.source, "type": section.fixedType?.rawValue ?? (type == "movie" ? "movie" : "tv"),
-         "genre": genre, "year": year, "sort": sort == "title" ? "popular" : sort,
-         "minimum": minimum, "page": String(page), "limit": String(limit)]
+        var query = ["source": section.source, "type": section.fixedType?.rawValue ?? (type == "movie" ? "movie" : "tv"),
+                     "genre": genre, "year": year, "sort": sort == "title" ? "popular" : sort,
+                     "minimum": minimum, "page": String(page), "limit": String(limit)]
+        if section.source == "tmdb" {
+            if let keyword { query["keyword"] = String(keyword) }
+            if let company { query["company"] = String(company) }
+            if let network { query["network"] = String(network); query["type"] = "tv" }
+            if let keywords, !keywords.isEmpty { query["keywords"] = keywords.map(String.init).joined(separator: ","); query["keywordMode"] = matchAllKeywords == true ? "all" : "any" }
+            if let genres, !genres.isEmpty { query["genres"] = genres.joined(separator: ","); query["genre"] = "" }
+            if let certification, query["type"] == "movie" { query["certification"] = certification }
+            if let yearFrom { query["yearFrom"] = String(yearFrom) }
+            if let yearTo { query["yearTo"] = String(yearTo) }
+            if let showStatus, query["type"] == "tv" { query["status"] = showStatus }
+            if let language { query["language"] = language }
+        }
+        return query
+    }
+    /// "Reset filters" keeps what the list is about (its tag, company or network).
+    public func resettingFilters(section: DiscoverySection = .genres) -> DiscoveryFilters {
+        var reset = DiscoveryFilters(section: section)
+        reset.keyword = keyword; reset.company = company; reset.network = network; reset.label = label
+        if network != nil { reset.type = "tv" } else if keyword != nil || company != nil { reset.type = type == "movie" ? "movie" : "tv" }
+        return reset
     }
     public func applying(_ items: [CatalogItem]) -> [CatalogItem] {
         let threshold = Double(minimum) ?? 0

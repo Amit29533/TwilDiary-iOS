@@ -18,8 +18,13 @@ import type {
 import type { DiaryController } from './diary-context.ts';
 import { isSeries } from '../domain/types.ts';
 import type { SavedTitle, SeasonPage } from './contracts.ts';
-import { readPreview, readSpoilerPreference, writeSpoilerPreference } from '../preview/storage.ts';
-import { sampleDiary } from '../preview/fixtures.ts';
+import { readSpoilerPreference, writeSpoilerPreference } from '../preview/storage.ts';
+import {
+  flushOfflineDiaryMutations,
+  flushWebProviderOutbox,
+  readOfflineDiaryQueue,
+  recordWebProviderMutation
+} from './provider-outbox.ts';
 
 const empty = (): DiarySnapshot => ({
   schemaVersion: 1,
@@ -48,7 +53,8 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
   let undoActions = $state<Undo[]>([]);
   let initialized = false,
     reading: Promise<void> | null = null,
-    lastRead = 0;
+    lastRead = 0,
+    knownRevision: { revision: string; sinceIso: string } | null = null;
   const pending = new Map<
     string,
     { operationId: string; episodeId: string | null; watchedAt: string | null; rewatch: boolean }
@@ -78,15 +84,96 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
     if (saving || (!force && Date.now() - lastRead < 30000)) return;
     reading = (async () => {
       try {
+        if (readOfflineDiaryQueue().length > 0) {
+          await flushOfflineDiaryMutations({ transport }).catch(() => {});
+        }
+        const knownEpisodes = new Map(
+          snapshot.episodes.filter((e) => e.hidden === false).map((e) => [e.id, e])
+        );
+        if (ready && knownRevision && !force) {
+          try {
+            const delta = await request<{
+              revision: string;
+              cursor: string;
+              unchanged?: boolean;
+              fullRefreshRequired: boolean;
+              ids: string[];
+              titles: MediaTitle[];
+              episodes: (Episode & { skipped: boolean })[];
+              events: WatchEvent[];
+              locations: DiarySnapshot['locations'];
+            }>(
+              '/api/workspace/changes?' +
+                new URLSearchParams({
+                  since: knownRevision.sinceIso,
+                  known: knownRevision.revision
+                })
+            );
+            if (!delta.cursor || !Number.isFinite(Date.parse(delta.cursor)))
+              throw new Error('Server cursor unavailable');
+            if (delta.unchanged) {
+              knownRevision = { revision: delta.revision, sinceIso: delta.cursor };
+              lastRead = Date.now();
+              warning = '';
+              return;
+            }
+            if (!delta.fullRefreshRequired) {
+              const changedSet = new Set(delta.ids);
+              const mergedEpisodes = [
+                ...snapshot.episodes.filter((e) => !changedSet.has(e.titleId)),
+                ...delta.episodes.map((e) =>
+                  e.hidden && knownEpisodes.has(e.id)
+                    ? {
+                        ...e,
+                        name: knownEpisodes.get(e.id)!.name,
+                        overview: knownEpisodes.get(e.id)!.overview,
+                        still: knownEpisodes.get(e.id)!.still ?? null,
+                        hidden: false
+                      }
+                    : e
+                )
+              ];
+              const skippedSet = new Set(
+                snapshot.skippedEpisodeIds.filter((epId) => {
+                  const ep = snapshot.episodes.find((item) => item.id === epId);
+                  return ep ? !changedSet.has(ep.titleId) : false;
+                })
+              );
+              for (const ep of delta.episodes) if (ep.skipped) skippedSet.add(ep.id);
+              snapshot = {
+                schemaVersion: 1,
+                titles: [...snapshot.titles.filter((t) => !changedSet.has(t.id)), ...delta.titles],
+                episodes: mergedEpisodes,
+                events: [
+                  ...snapshot.events.filter((e) => !changedSet.has(e.titleId)),
+                  ...delta.events
+                ],
+                locations: [
+                  ...snapshot.locations.filter((l) => !changedSet.has(l.titleId)),
+                  ...delta.locations
+                ],
+                skippedEpisodeIds: [...skippedSet]
+              };
+              knownRevision = { revision: delta.revision, sinceIso: delta.cursor };
+              lastRead = Date.now();
+              warning = '';
+              return;
+            }
+          } catch {
+            /* Older server or unavailable delta route: fall back to full section download */
+          }
+        }
+        // Capture the server cursor and revision BEFORE downloading independent pages.
+        // Changes during pagination are then included by the next delta request.
+        const revResult = await request<{ revision: string; cursor: string }>(
+          '/api/workspace/revision'
+        ).catch(() => null);
         const [titles, rawEpisodes, events, locations] = await Promise.all([
           section<MediaTitle>('titles'),
           section<Episode & { skipped: boolean }>('episodes'),
           section<WatchEvent>('events'),
           section<DiarySnapshot['locations'][number]>('locations')
         ]);
-        const knownEpisodes = new Map(
-          snapshot.episodes.filter((e) => e.hidden === false).map((e) => [e.id, e])
-        );
         snapshot = {
           schemaVersion: 1,
           titles,
@@ -105,6 +192,10 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
           locations,
           skippedEpisodeIds: rawEpisodes.filter((e) => e.skipped).map((e) => e.id)
         };
+        knownRevision =
+          revResult?.revision && Number.isFinite(Date.parse(revResult.cursor))
+            ? { revision: revResult.revision, sinceIso: revResult.cursor }
+            : null;
         lastRead = Date.now();
         ready = true;
         warning = '';
@@ -200,6 +291,21 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
           { method: 'PATCH', body: JSON.stringify({ expectedVersion: title.version, ...values }) }
         );
         replaceTitle(result.title);
+        recordWebProviderMutation(
+          {
+            kind: 'patch',
+            titleId: id,
+            status: typeof values.status === 'string' ? values.status : undefined,
+            score:
+              typeof values.score === 'number' || values.score === null
+                ? (values.score as number | null)
+                : undefined,
+            favorite: typeof values.favorite === 'boolean' ? values.favorite : undefined,
+            queued: typeof values.queued === 'boolean' ? values.queued : undefined
+          },
+          newId()
+        );
+        void flushWebProviderOutbox(snapshot, { transport });
       },
       label,
       celebration
@@ -244,6 +350,16 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
     pending.delete(key);
     replaceEvent(result.event);
     if (result.title) replaceTitle(result.title);
+    recordWebProviderMutation(
+      {
+        kind: 'watch',
+        titleId,
+        episodeId,
+        watchedAt: result.event.watchedAt ?? operation.watchedAt ?? new Date().toISOString()
+      },
+      operation.operationId
+    );
+    void flushWebProviderOutbox(snapshot, { transport });
     return {
       ...result,
       added:
@@ -456,14 +572,8 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
       if (initialized) return;
       initialized = true;
       try {
-        const status = await request<{ migrated: boolean }>('/api/workspace/migrate');
-        if (!status.migrated) {
-          const stored = await readPreview();
-          await request('/api/workspace/migrate', {
-            method: 'POST',
-            body: JSON.stringify(stored.snapshot ?? sampleDiary())
-          });
-        }
+        // Opening a live diary is read-only. Preview/archive imports require an
+        // explicit import action; a missing migration marker is not consent.
         try {
           hideSpoilers = await readSpoilerPreference();
         } catch {}
@@ -574,7 +684,11 @@ export function createLiveDiary(transport: typeof fetch = fetch): DiaryControlle
         );
     },
     updateTitle(id, values) {
-      return patch(id, values, 'score' in values ? 'Rating saved' : 'Notes saved');
+      return patch(
+        id,
+        values,
+        'score' in values ? 'Rating saved' : 'tags' in values ? 'Collections saved' : 'Notes saved'
+      );
     },
     setStatus(id, status: WatchStatus, watchedAt?: string) {
       if (status === 'planned' || status === 'completed') {

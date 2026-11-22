@@ -1,0 +1,137 @@
+import Foundation
+import Observation
+import TwilDiaryCore
+
+/// A public Trakt list on Canvas, with up to four TMDb poster paths for its collage.
+struct CanvasList: Decodable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let user: String
+    let itemCount: Int
+    let likes: Int
+    let posters: [String]
+}
+struct CanvasListsPage: Decodable, Sendable { let lists: [CanvasList]; let page: Int; let totalPages: Int }
+struct CanvasListItem: Decodable, Hashable, Sendable {
+    let tmdbId: Int
+    let mediaType: MediaKind
+    let name: String
+    let year: Int?
+    let posterPath: String?
+    let backdropPath: String?
+}
+struct CanvasListItemsPage: Decodable, Sendable { let items: [CanvasListItem]; let page: Int; let totalPages: Int }
+struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: String }
+
+/// Trakt list pages for Canvas. Each filter change starts a new generation, so a late page
+/// never lands in a newer filter.
+@MainActor @Observable final class CanvasListsLoader {
+    private let store: DiaryStore
+    private var generation = UUID()
+    private var scope: [String: String] = [:]
+    private(set) var lists: [CanvasList] = []
+    private(set) var page = 0
+    private(set) var totalPages = 1
+    private(set) var loading = false
+    private(set) var error: String?
+    init(store: DiaryStore) { self.store = store }
+    var hasMore: Bool { page > 0 && page < totalPages }
+    /// On the phone with your Trakt sign-in and TMDB key; the server otherwise.
+    private static func read(_ query: [String: String], store: DiaryStore) async throws -> CanvasListsPage {
+        if let direct = try await CanvasDirect.lists(query, store: store) { return direct }
+        return try await store.read(CatalogTools.apiPath("/api/canvas/lists", query: query))
+    }
+    func load(sort: String, kind: String, more: Bool = false) async {
+        let requested = ["sort": sort, "kind": kind]
+        if more && (loading || !hasMore || requested != scope) { return }
+        // Back on the Lists tab: the same sort keeps the lists already loaded.
+        if !more, requested == scope, page > 0, error == nil { return }
+        if !more { generation = UUID(); scope = requested; lists = []; page = 0; totalPages = 1 }
+        let request = generation, number = more ? page + 1 : 1
+        loading = true; error = nil
+        defer { if generation == request { loading = false } }
+        do {
+            let next: CanvasListsPage
+            #if DEBUG
+            if store.isPreview { next = PreviewCatalog.canvasLists(page: number) } else { next = try await Self.read(requested.merging(["page": String(number)]) { $1 }, store: store) }
+            #else
+            next = try await Self.read(requested.merging(["page": String(number)]) { $1 }, store: store)
+            #endif
+            guard generation == request, !Task.isCancelled else { return }
+            let known = Set(lists.map(\.id))
+            lists += next.lists.filter { !known.contains($0.id) }
+            page = next.page; totalPages = next.totalPages
+        } catch is CancellationError { }
+        catch { if generation == request && !Task.isCancelled { self.error = error.localizedDescription } }
+    }
+}
+
+/// The titles on one Trakt list, as catalog items that open the saved title when it is in the library.
+@MainActor @Observable final class CanvasListItemsLoader {
+    private let store: DiaryStore
+    private let id: Int
+    private(set) var items: [CatalogItem] = []
+    private(set) var page = 0
+    private(set) var totalPages = 1
+    private(set) var loading = false
+    private(set) var error: String?
+    private let created = Date.now
+    init(store: DiaryStore, id: Int) { self.store = store; self.id = id }
+    /// The last lists opened, so going back and forth shows them at once instead of reloading
+    /// (a public list changes rarely; after 15 minutes it is read again).
+    private static var recent: [Int: CanvasListItemsLoader] = [:]
+    /// Trakt's community rating for every title on one page of a list ("movie:603" → 7.9), straight
+    /// from Trakt with extended info. The page size matches the server's (24), so the pages line up.
+    private static func traktRatings(store: DiaryStore, list: Int, page: Int) async -> [String: Double] {
+        guard !store.isPreview, let client = try? await TraktDirectStore.shared.client(store: store),
+              let reply = try? await client.get("lists/\(list)/items/movie,show", query: ["page": String(page), "limit": "24", "extended": "full"]),
+              let rows = try? JSONSerialization.jsonObject(with: reply.data) as? [[String: Any]] else { return [:] }
+        var result: [String: Double] = [:]
+        for row in rows {
+            for (kind, field) in [("movie", "movie"), ("tv", "show")] {
+                guard let item = row[field] as? [String: Any], let tmdb = (item["ids"] as? [String: Any])?["tmdb"] as? Int,
+                      let rating = item["rating"] as? Double, rating > 0 else { continue }
+                result[kind + ":" + String(tmdb)] = min(10, rating)
+            }
+        }
+        return result
+    }
+    static func shared(store: DiaryStore, id: Int) -> CanvasListItemsLoader {
+        if let kept = recent[id], Date.now.timeIntervalSince(kept.created) < 900, kept.error == nil { return kept }
+        if recent.count >= 24, let oldest = recent.min(by: { $0.value.created < $1.value.created })?.key { recent[oldest] = nil }
+        let loader = CanvasListItemsLoader(store: store, id: id)
+        recent[id] = loader
+        return loader
+    }
+    var hasMore: Bool { page > 0 && page < totalPages }
+    func load(more: Bool = false) async {
+        if loading || (more && !hasMore) || (!more && page > 0) { return }
+        let number = more ? page + 1 : 1
+        loading = true; error = nil
+        defer { loading = false }
+        do {
+            let next: CanvasListItemsPage
+            var ratings: [String: Double]?
+            #if DEBUG
+            if store.isPreview { next = PreviewCatalog.canvasListItems(page: number) }
+            else if let direct = try await CanvasDirect.items(list: id, page: number, store: store) { next = direct.page; ratings = direct.ratings }
+            else { next = try await store.read("/api/canvas/lists/\(id)?page=\(number)") }
+            #else
+            if let direct = try await CanvasDirect.items(list: id, page: number, store: store) { next = direct.page; ratings = direct.ratings }
+            else { next = try await store.read("/api/canvas/lists/\(id)?page=\(number)") }
+            #endif
+            let library = Dictionary(store.workspace.activeTitles.compactMap { title in title.tmdbId.map { ((title.isSeries ? "tv:" : "movie:") + String($0), title.id) } }, uniquingKeysWith: { first, _ in first })
+            // Each title's community rating: from the same read on the phone, or Trakt for the server's page.
+            if ratings == nil { ratings = await Self.traktRatings(store: store, list: id, page: number) }
+            let rated = ratings ?? [:]
+            let converted = next.items.map { item in
+                let key = item.mediaType.rawValue + ":" + String(item.tmdbId)
+                return CatalogItem(id: item.tmdbId, mediaType: item.mediaType, name: item.name, year: item.year, posterPath: item.posterPath, backdropPath: item.backdropPath,
+                                   rating: rated[key], inLibraryId: library[key])
+            }
+            items = CatalogTools.merging(items, converted)
+            page = next.page; totalPages = next.totalPages
+        } catch is CancellationError { }
+        catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+    }
+}

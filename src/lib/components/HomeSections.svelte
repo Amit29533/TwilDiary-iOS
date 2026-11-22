@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import Shuffle from '@lucide/svelte/icons/shuffle';
   import { useDiary } from '#lib/client/diary-context.ts';
-  import { homeOverview } from '#lib/domain/home.ts';
+  import { homeOverview, type AiringCategoryFilter } from '#lib/domain/home.ts';
   import { watchDuration } from '#lib/domain/watch-time.ts';
   import { categoryLabels, episodeCode } from '#lib/domain/types.ts';
   import { availability } from '#lib/domain/locations.ts';
@@ -14,7 +14,13 @@
   let now = $state(new Date());
   let pickOpen = $state(false);
   let upcomingLimit = $state(3);
+  let upcomingCategory = $state<AiringCategoryFilter>('all');
   const data = $derived(homeOverview(diary.snapshot, { now }));
+  const filteredUpcoming = $derived(
+    upcomingCategory === 'all'
+      ? data.upcoming
+      : data.upcoming.filter((item) => item.title.category === upcomingCategory)
+  );
   const maximum = $derived(Math.max(1, ...data.week.days.map((day) => day.minutes)));
   const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' });
   const releaseDate = new Intl.DateTimeFormat('en-GB', {
@@ -124,16 +130,46 @@
   <section aria-labelledby="home-new-heading">
     <div class="section-heading">
       <h2 id="home-new-heading">New episodes</h2>
-      <a href="/preview" data-sveltekit-replacestate>Glance →</a>
+      <span class="heading-links">
+        <a href="/preview/calendar" data-sveltekit-replacestate>Calendar →</a>
+        <a href="/preview" data-sveltekit-replacestate>Glance →</a>
+      </span>
     </div>
-    {#if data.upcoming.length}<div class="upcoming-list">
-        {#each data.upcoming.slice(0, upcomingLimit) as item (item.title.id)}<a
+    {#if data.upcoming.length > 0}
+      <div class="upcoming-filter-chips" role="group" aria-label="Filter upcoming episodes by category">
+        <button
+          type="button"
+          class:active={upcomingCategory === 'all'}
+          onclick={() => (upcomingCategory = 'all')}
+        >
+          All ({data.upcoming.length})
+        </button>
+        <button
+          type="button"
+          class:active={upcomingCategory === 'anime'}
+          onclick={() => (upcomingCategory = 'anime')}
+        >
+          Anime ({data.upcoming.filter((i) => i.title.category === 'anime').length})
+        </button>
+        <button
+          type="button"
+          class:active={upcomingCategory === 'show'}
+          onclick={() => (upcomingCategory = 'show')}
+        >
+          Shows ({data.upcoming.filter((i) => i.title.category === 'show').length})
+        </button>
+      </div>
+    {/if}
+    {#if filteredUpcoming.length}<div class="upcoming-list">
+        {#each filteredUpcoming.slice(0, upcomingLimit) as item (item.title.id)}<a
             class="episode-row lower-panel"
             href="/preview/title/{item.title.id}?season={item.episode.season}#episodes"
             ><span class="episode-poster"
               ><Poster src={item.title.poster} name={item.title.name} /></span
             ><span class="episode-copy"
-              ><strong>{item.title.name}</strong><small>{episodeCode(item.episode)}</small></span
+              ><strong>{item.title.name}</strong><small
+                >{episodeCode(item.episode)} · {categoryLabels[item.title.category]}</small
+              ></span
             ><span class="episode-date"
               ><strong
                 >{item.daysAway === 0
@@ -145,7 +181,7 @@
             ></a
           >{/each}
       </div>
-      {#if upcomingLimit < data.upcoming.length}<button
+      {#if upcomingLimit < filteredUpcoming.length}<button
           class="text-link more-upcoming"
           onclick={() => (upcomingLimit += 5)}>Show more episodes</button
         >{/if}
@@ -373,6 +409,33 @@
   .more-upcoming {
     min-height: 44px;
     margin-top: 8px;
+  }
+  .heading-links {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .upcoming-filter-chips {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .upcoming-filter-chips button {
+    min-height: 30px;
+    padding: 0 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .upcoming-filter-chips button.active {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--text);
   }
   @media (max-width: 359px) {
     .week-panel {

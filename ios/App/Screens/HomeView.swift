@@ -1,136 +1,326 @@
 import SwiftUI
+import UIKit
 import TwilDiaryCore
 
+/// Owner's Home design: a full-bleed Continue watching backdrop behind the header, a wide
+/// Explore button, This week, Up next posters, New episodes and Recently watched.
 struct HomeView: View {
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     @State private var clock = Date.now
-    @State private var showSearch = false
     @State private var upcomingLimit = 3
     /// Changes only when vertical scrolling starts or settles, never per frame.
     @State private var scrolling = false
+    @SceneStorage("home.continue.title") private var continueSelection = ""
     @AppStorage("homeHistoryGrid") private var historyGrid = false
-    @AppStorage("upcomingGrid") private var upcomingGrid = false
+    @AppStorage("upcomingGrid") private var upcomingGrid = true
+    /// Settings → Customise: Home's sections in your order, and Continue watching at the top.
+    @AppStorage(HomeSection.key) private var homeLayout = ""
+    @AppStorage(HomeSection.continueKey) private var showContinue = true
     var body: some View {
         let now = store.isPreview ? store.now : clock
-        let projection = store.homeProjection(at: now)
+        let request = store.homeProjectionRequest(at: now)
+        ZStack {
+            // A missing projection is still loading. Only a loaded diary with no
+            // watching titles should show the shorter Home header.
+            if let projection = store.homeProjection {
+                dashboard(projection, now: now)
+            } else {
+                ProgressView().accessibilityLabel("Opening your diary")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: request) { await store.prepareHomeProjection(request) }
+        // Favourites are kept on the server; one small read per session brings them up to date.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { clock = store.now } }
+        .task {
+            clock = store.now
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                clock = store.now
+            }
+        }
+    }
+    private func dashboard(_ projection: DiaryStore.HomeProjection, now: Date) -> some View {
         let overview = projection.overview
         let watching = projection.watching
         let recent = projection.recent
-        VStack(spacing: 0) {
-            PageHeader(name: "TwilDiary", onSearch: { showSearch.toggle() })
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
-                    if !watching.isEmpty { VStack(spacing: 10) {
-                        SectionHeading(name: "Pick up where you left off") { Button("Glance →") { router.selectedTab = .glance } }
-                        ContinueWatchingCarousel(titles: watching, automaticAllowed: !showSearch && !scrolling)
-                    } }
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 8) {
-                            NavigationLink(value: AppDestination.explore) { shortcut("Explore", "compass") }.accessibilityIdentifier("explore-shortcut")
-                            Button { router.library("queue") } label: { shortcut("Queue", "download") }.accessibilityIdentifier("queue-shortcut")
-                            Button { router.library("disk") } label: { shortcut("Disk Map", "hard-drive") }
-                            Button { router.files() } label: { shortcut("Locations", "folder") }
-                            NavigationLink(value: AppDestination.scanner) { shortcut("Fix mismatches", "scan-search") }.accessibilityIdentifier("scanner-shortcut")
-                        }.buttonStyle(.plain)
-                    }.scrollIndicators(.hidden)
-                    VStack(spacing: 10) {
-                        SectionHeading(name: "This week") { Button("Stats →") { router.statsToday() }.accessibilityIdentifier("home-stats") }
-                        weekPanel(overview, now: now)
+        return EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 0) {
+                if watching.isEmpty || !showContinue { header(overArtwork: false) } else { continueSection(watching) }
+                VStack(alignment: .leading, spacing: 32) {
+                    // Your order and choice of sections (Settings → Customise).
+                    ForEach(HomeSection.layout(homeLayout).visible.compactMap(HomeSection.init(rawValue:))) { section in
+                        homeSection(section, overview: overview, recent: recent, now: now)
                     }
-                    VStack(spacing: 10) {
-                        SectionHeading(name: "Up next") { Button("Planned →") { router.library("planned") } }
-                        Button { router.presentRandomPick(overview.planned.map(\.id)) } label: {
-                            HStack(spacing: 12) {
-                                DiaryIcon(name: "shuffle", size: 23)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Pick for me").font(.system(size: 15, weight: .semibold))
-                                    Text(overview.planned.isEmpty ? "Add a planned movie or show to get a pick" : "Choose from \(overview.planned.count) unwatched planned titles").font(.system(size: 12)).foregroundStyle(.secondary)
-                                }; Spacer(minLength: 0)
-                            }.padding(14).background(theme.accent.opacity(0.13), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(theme.accent.opacity(0.28)))
-                        }.buttonStyle(.plain).disabled(overview.planned.isEmpty).accessibilityIdentifier("home-pick-planned")
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(overview.planned.prefix(3)) { title in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    NavigationLink(value: title.id) { PosterCard(title: title, personalRating: true) }.buttonStyle(.plain)
-                                    Text(title.categoryName + (title.runtimeMinutes.map { " · " + DiaryDate.duration($0) + (title.isSeries ? " / ep" : "") } ?? "")).font(.system(size: 11)).foregroundStyle(.secondary)
+                }.padding(.horizontal, 16).padding(.top, watching.isEmpty || !showContinue ? 8 : 30).padding(.bottom, 24)
+            }
+        }
+        .contentMargins(.bottom, 90, for: .scrollContent)
+        .onScrollPhaseChange { _, phase in
+            // The automatic carousel step must not animate mid-fling under the finger.
+            let active = phase != .idle
+            if scrolling != active { scrolling = active }
+        }
+        .refreshable { clock = store.now; await store.refresh() }
+    }
+    /// One of Home's sections (Settings → Customise orders them and hides any but the shortcuts).
+    @ViewBuilder private func homeSection(_ section: HomeSection, overview: HomeOverview, recent: [HistoryEntry], now: Date) -> some View {
+        switch section {
+        case .shortcuts:
+                // Explore is systematic discovery; Canvas is for browsing artwork at random.
+                HStack(spacing: 10) {
+                    NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress).accessibilityIdentifier("explore-shortcut")
+                    NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
+                }.padding(.bottom, -0)
+        case .week:
+                VStack(alignment: .leading, spacing: 16) {
+                    HomeSectionHeader(title: "This week") {
+                        Button { router.statsToday() } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Stats").accessibilityIdentifier("home-stats")
+                    }
+                    HomeWeekCard(overview: overview, now: now)
+                }
+        case .upNext:
+                if !overview.planned.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HomeSectionHeader(title: "Up next") {
+                            Button { router.library("planned") } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Planned").accessibilityIdentifier("home-upnext-more")
+                        }
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(overview.planned.prefix(12)) { title in
+                                    NavigationLink(value: title.id) {
+                                        HomePoster(artwork: title.poster, name: title.name,
+                                                   subtitle: title.isSeries ? title.categoryName : ([title.category == "anime-movie" ? "Anime movie" : "Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
+                                                   score: title.communityScore)
+                                            .zoomSource(ZoomID.title(title.id))
+                                    }.buttonStyle(.springPress).accessibilityIdentifier("home-planned-" + title.id).shelfTransition()
+                                }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
+                    }
+                }
+        case .saved:
+                // Your saved Library filters, each a shelf.
+                if !SavedFilters.shared.all.isEmpty { HomeSavedShelves() }
+        case .recommended:
+                let seeds = Self.recommendationSeeds(recent)
+                if !seeds.isEmpty { HomeRecommendedShelf(seeds: seeds) }
+        case .favourites:
+                // Recently hearted cast and characters together, right under Up next; › opens them by kind.
+                let favourites = FavouritesStore.shared.items
+                let favouriteShows = store.favouriteTitles
+                if !favourites.isEmpty || !favouriteShows.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HomeSectionHeader(title: "Favourites", icon: "heart.fill") {
+                            NavigationLink(value: AppDestination.favourites) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
+                        }
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(favouriteShows.prefix(6)) { show in
+                                    // Home's standard poster, the size of the characters and people beside it.
+                                    NavigationLink(value: show.id) {
+                                        HomePoster(artwork: show.poster, name: show.name,
+                                                   subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "),
+                                                   score: show.communityScore)
+                                    }.buttonStyle(.plain).accessibilityIdentifier("home-favourite-show-" + show.id)
+                                }
+                                ForEach(favourites.prefix(12)) { item in FavouriteLink(item: item, homeCard: true).shelfTransition() }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
+                    }
+                }
+        case .newEpisodes:
+                VStack(alignment: .leading, spacing: 16) {
+                    HomeSectionHeader(title: "New episodes") {
+                        Button { upcomingGrid.toggle() } label: { HomeRoundIcon(system: upcomingGrid ? "list.bullet" : "square.grid.2x2", selected: upcomingGrid) }
+                            .buttonStyle(.plain).accessibilityLabel(upcomingGrid ? "Show as list" : "Show as cards").accessibilityValue(upcomingGrid ? "Cards" : "List").accessibilityIdentifier("upcoming-layout")
+                        NavigationLink(value: AppDestination.calendar) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Airing calendar").accessibilityIdentifier("home-calendar-more")
+                    }
+                    if overview.upcoming.isEmpty {
+                        Text("No upcoming air dates in your library for the next 30 days.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                            .cardSurface(20)
+                            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                    } else if upcomingGrid {
+                        ScrollView(.horizontal) {
+                            LazyHStack(alignment: .top, spacing: 12) {
+                                ForEach(overview.upcoming.prefix(12)) { item in
+                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeCard(item: item) }
+                                        .buttonStyle(.springPress).accessibilityIdentifier("home-upcoming-" + item.title.id)
+                                }
+                            }.scrollTargetLayout()
+                        }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
+                                NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
+                                    .buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
+                            }
+                            if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.system(size: 14, weight: .semibold)) }
+                        }
+                    }
+                }
+        case .recent:
+                let groups = RecentWatchGroup.make(recent, limit: 3)
+                if !groups.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HomeSectionHeader(title: "Recently watched") {
+                            Button { historyGrid.toggle() } label: { HomeRoundIcon(system: historyGrid ? "list.bullet" : "square.grid.2x2", selected: historyGrid) }
+                                .buttonStyle(.plain).accessibilityLabel(historyGrid ? "Show as list" : "Show as cards").accessibilityValue(historyGrid ? "Cards" : "List").accessibilityIdentifier("home-history-layout")
+                            NavigationLink(value: AppDestination.history) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All history").accessibilityIdentifier("home-history-more")
+                        }
+                        if historyGrid {
+                            ScrollView(.horizontal) {
+                                LazyHStack(alignment: .top, spacing: 12) {
+                                    ForEach(groups) { group in
+                                        NavigationLink(value: group.title.id) { HomeRecentCard(group: group) }.buttonStyle(.springPress).accessibilityIdentifier("home-history-event-" + group.id)
+                                    }
+                                }
+                            }.scrollIndicators(.hidden).scrollClipDisabled()
+                        } else {
+                            VStack(spacing: 10) {
+                                ForEach(groups) { group in
+                                    NavigationLink(value: group.title.id) {
+                                        HomeRow(artwork: group.title.backdrop ?? group.title.poster, name: group.title.name, chip: group.episodeText,
+                                                detail: group.count > 1 ? group.count.counted("episode", "episodes") : nil,
+                                                date: group.date?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
+                                    }.buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + group.id)
                                 }
                             }
-                        }.padding(.top, 8)
+                        }
                     }
-                    VStack(spacing: 10) {
-                        SectionHeading(name: "New episodes") { CollectionLayoutToggle(grid: $upcomingGrid, collection: "upcoming"); Button("Glance →") { router.selectedTab = .glance } }
-                        CollectionLayout(grid: upcomingGrid) { ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
-                            NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) { upcomingRow(item) }.buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
-                        } }
-                        if overview.upcoming.isEmpty { Text("No upcoming air dates in your library for the next 30 days.").font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).diaryPanel() }
-                        if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 } }
-                        Text("Based on your saved episode dates. Air dates may change.").font(.system(size: 11)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if !recent.isEmpty { VStack(spacing: 10) {
-                        SectionHeading(name: "Recently watched") { CollectionLayoutToggle(grid: $historyGrid, collection: "home-history"); NavigationLink("All history →", value: AppDestination.history) }
-                        CollectionLayout(grid: historyGrid) { ForEach(recent) { entry in
-                            NavigationLink(value: entry.title.id) { HistoryRow(entry: entry, grid: historyGrid) }.buttonStyle(.plain)
-                        } }
-                    } }
-                }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 24)
-            }.onScrollPhaseChange { _, phase in
-                // The automatic carousel step must not animate mid-fling under the finger.
-                let active = phase != .idle
-                if scrolling != active { scrolling = active }
-            }
-            .refreshable { clock = store.now; await store.refresh() }
-        }.onChange(of: scenePhase) { _, phase in if phase == .active { clock = store.now } }
-            .task {
-                clock = store.now
-                while !Task.isCancelled {
-                    do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                    clock = store.now
                 }
+        }
+    }
+    /// True full screen: the whole header scrolls away with the artwork.
+    private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork) }
+    /// The selected title's backdrop fills the top of the page, under the status bar and header,
+    /// and fades into the page so the text below it stays readable.
+    private func continueSection(_ titles: [MediaTitle]) -> some View {
+        let current = titles.first { $0.id == continueSelection } ?? titles[0]
+        return VStack(alignment: .leading, spacing: 0) {
+            header(overArtwork: true)
+            Spacer(minLength: 72)
+            // "CONTINUE WATCHING" sits inside each page, right above its title.
+            ContinueWatchingCarousel(titles: titles, selection: $continueSelection, automaticAllowed: !scrolling).padding(.horizontal, 8)
+        }.background(alignment: .top) {
+            // The art fills the section and reaches just under the status bar. It used to reach 140 pt
+            // higher, which enlarged a 16:9 backdrop about 2x and cut off half of it; with only the
+            // status bar's height it is enlarged about 1.7x, so more of the picture shows.
+            GeometryReader { proxy in
+            PullStretchArt(content: Artwork(path: heroArtwork(current), title: current.name).overlay {
+                    // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
+                    LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
+                                           .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                })
+                .task(id: titles.map { heroArtwork($0) ?? "" } + [String(Int(proxy.size.width))]) {
+                    // The same size Artwork asks for (its frame here), so each is already decoded.
+                    let pixels = Double(max(proxy.size.width, proxy.size.height + Self.artLift) * displayScale)
+                    for title in titles where title.id != current.id {
+                        guard !Task.isCancelled else { return }
+                        if let request = PublicArtworkRequest(path: heroArtwork(title), pixels: pixels) {
+                            _ = await PublicArtworkCache.shared.image(request)
+                        }
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height + Self.artLift)
+                .offset(y: -Self.artLift).id(current.id).transition(.opacity)
             }
+            // On the container (outside the art's identity), so switching titles cross-fades
+            // instead of cutting from one picture to the next.
+            .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: current.id)
+            .allowsHitTesting(false).accessibilityHidden(true)
+        }.nativeHero()
     }
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3)
-    private func shortcut(_ name: String, _ icon: String) -> some View {
-        HStack(spacing: 6) { DiaryIcon(name: icon, size: 17); Text(name).font(.system(size: 12, weight: .semibold)) }.foregroundStyle(Color(webHex: "#c5c0cf")).padding(.horizontal, 14).frame(height: 42).background { DiaryControlSurface(shape: Capsule()) }
+    /// Recently watched titles that TMDB knows, newest first, each once.
+    private static func recommendationSeeds(_ recent: [HistoryEntry]) -> [MediaTitle] {
+        var seen = Set<String>(), seeds: [MediaTitle] = []
+        for entry in recent where entry.title.tmdbId != nil && seen.insert(entry.title.id).inserted { seeds.append(entry.title) }
+        return seeds
     }
-    private func upcomingRow(_ item: HomeOverview.Upcoming) -> some View {
-        let layout = upcomingGrid ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
-        return layout {
-            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: upcomingGrid ? nil : 42, height: upcomingGrid ? 150 : 62).frame(maxWidth: upcomingGrid ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 5) { Text(item.title.name).font(.system(size: 14, weight: .semibold)).lineLimit(2); Text("S\(item.episode.season) E\(item.episode.number)").font(.system(size: 12)).foregroundStyle(.secondary) }
-            if !upcomingGrid { Spacer(minLength: 4) }
-            VStack(alignment: upcomingGrid ? .leading : .trailing, spacing: 5) { Text(item.daysAway == 0 ? "Today" : item.daysAway == 1 ? "Tomorrow" : "In \(item.daysAway) days").font(.system(size: 12, weight: .semibold)).foregroundStyle(.tint); Text(item.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated)).font(.system(size: 11)).foregroundStyle(.secondary) }
-        }.foregroundStyle(.primary).diaryPanel()
+    /// The picture Home's hero shows for a title: the first backdrop it showed this session.
+    /// Each refresh rebuilds the diary, and a title could come back for a moment without its
+    /// backdrop (the poster then filled in) or with another copy of it: the hero flashed.
+    private func heroArtwork(_ title: MediaTitle) -> String? {
+        // Kept per TMDB entry too: a title fixed to another entry shows its new backdrop at once.
+        let key = title.id + "|" + (title.tmdbId.map(String.init) ?? "")
+        if let kept = Self.heroArt[key] { return kept }
+        guard let backdrop = title.backdrop else { return title.poster }
+        Self.heroArt[key] = backdrop
+        return backdrop
     }
-    private func weekPanel(_ overview: HomeOverview, now: Date) -> some View {
-        let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 20) { metric(DiaryDate.duration(overview.minutes), "Watch time", accent: true); metric(String(overview.watches), "Watches"); metric("\(overview.streak) \(overview.streak == 1 ? "day" : "days")", "Current streak") }
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
-            HStack(alignment: .top, spacing: 0) { ForEach(overview.days) { day in
-                NavigationLink(value: HistoryRoute(day: day.date)) {
-                    VStack(spacing: 6) {
-                        Text(day.date, format: .dateTime.weekday(.narrow)).font(.system(size: 10)).foregroundStyle(.secondary)
-                        Text(day.date, format: .dateTime.day()).font(.system(size: 16, weight: .semibold)).foregroundStyle(DiaryDate.calendar().isDate(day.date, inSameDayAs: now) ? theme.accent : .primary)
-                        VStack { Spacer(minLength: 0); RoundedRectangle(cornerRadius: 3).fill(day.minutes > 0 ? theme.accent : .white.opacity(0.12)).frame(width: 10, height: day.minutes > 0 ? max(4, 30 * CGFloat(day.minutes) / CGFloat(maximum)) : 2) }.frame(height: 30)
-                    }.frame(maxWidth: .infinity).foregroundStyle(.primary).opacity(day.future ? 0.4 : 1)
-                }.buttonStyle(.plain).disabled(day.future).accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)), \(day.count) watches")
-            } }
-            if overview.unknownDates > 0 || overview.missingRuntime > 0 { Text("Dated watches only. Missing runtimes are excluded from watch time.").font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(3) }
-        }.diaryPanel()
+    @MainActor private static var heroArt: [String: String] = [:]
+    /// Just enough to reach under the status bar; pulling down stretches the art instead of revealing a gap.
+    private static let artLift: CGFloat = 64
+}
+
+/// Home's hero art. Pulling the page down to refresh zooms it from its bottom edge by exactly the
+/// gap that opens above it, so its top stays at the top of the screen.
+///
+/// The zoom is set by UIKit, from the scroll view itself, in the same moment the scroll view moves:
+/// SwiftUI-side versions (a remembered resting position, the scroll geometry, the drawn position)
+/// could be a frame early or late when a refresh starts (the haptic, as the spinner's room is added),
+/// and the poster flashed at the wrong zoom for that frame.
+private struct PullStretchArt<Content: View>: UIViewRepresentable {
+    let content: Content
+    func makeUIView(context: Context) -> PullStretchHost<Content> { PullStretchHost(content) }
+    func updateUIView(_ view: PullStretchHost<Content>, context: Context) { view.host.rootView = content }
+}
+
+/// The host, weakly, for UIKit's observation callback (which Swift sees as able to run anywhere;
+/// UIKit calls it on the main thread, and the host is only touched there).
+private final class WeakHost<Host: AnyObject>: @unchecked Sendable {
+    weak var value: Host?
+    init(_ value: Host) { self.value = value }
+}
+
+private final class PullStretchHost<Content: View>: UIView {
+    let host: UIHostingController<Content>
+    private var observation: NSKeyValueObservation?
+    private weak var scrollView: UIScrollView?
+    init(_ content: Content) {
+        host = UIHostingController(rootView: content)
+        host.safeAreaRegions = []
+        host.view.backgroundColor = .clear
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        addSubview(host.view)
     }
-    private func metric(_ value: String, _ label: String, accent: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 3) { Text(value).font(.system(size: 22, weight: .bold)).tracking(-0.7).foregroundStyle(accent ? theme.accent : .primary).lineLimit(1).minimumScaleFactor(0.7); Text(label).font(.system(size: 11)).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading)
+    required init?(coder: NSCoder) { nil }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        observation = nil; scrollView = nil
+        var view = superview
+        while let current = view, !(current is UIScrollView) { view = current.superview }
+        guard window != nil, let scroll = view as? UIScrollView else { return }
+        scrollView = scroll
+        // Called by UIKit on the main thread, inside the same change that moves the page.
+        let target = WeakHost(self)
+        observation = scroll.observe(\.contentOffset, options: [.new]) { _, _ in
+            MainActor.assumeIsolated { target.value?.stretch() }
+        }
+        stretch()
+    }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        host.view.bounds = CGRect(origin: .zero, size: bounds.size)
+        host.view.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        stretch()
+    }
+    private func stretch() {
+        guard let window, let scrollView, bounds.height > 0 else { return }
+        let top = convert(CGPoint.zero, to: window).y
+        let edge = scrollView.superview?.convert(scrollView.frame, to: window).minY ?? 0
+        let gap = max(0, top - edge)
+        let scale = 1 + gap / bounds.height
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        // Scaled about the middle, then raised by half the growth: the bottom edge stays put.
+        host.view.transform = CGAffineTransform(translationX: 0, y: -gap / 2).scaledBy(x: scale, y: scale)
+        CATransaction.commit()
     }
 }
 
-struct QueueView: View {
-    @Environment(DiaryStore.self) private var store
-    var planned = false
-    var body: some View {
-        ScrollView { LazyVStack { ForEach(store.workspace.activeTitles.filter { planned ? $0.status == "planned" : $0.queued == true }) { title in NavigationLink(value: title.id) { titleRow(title) }.buttonStyle(.plain) } }.padding(14) }.navigationTitle(planned ? "Planned" : "Queue").toolbar(.visible, for: .navigationBar)
-    }
-}

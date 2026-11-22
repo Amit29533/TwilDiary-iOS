@@ -1,0 +1,413 @@
+import SwiftUI
+import TwilDiaryCore
+
+// The owner's Settings design (Settings Redesign.html): every settings page is built from these.
+// Cards are #0e0e12 with a #23232b hairline and 22 pt corners; rows are 64 pt with 15 pt padding,
+// a 15 pt semibold title and a 12 pt #9a9aa8 subtitle; groups have a 13 pt bold uppercase label.
+
+/// "MAKE IT YOURS" over a one-line explanation, at the top of a page.
+struct SettingsIntro: View {
+    let eyebrow: String
+    let text: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if ThemeStore.current.native {
+                // Native: one plain line, as a system page explains itself.
+                Text(text).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(eyebrow.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.padding(.horizontal, ThemeStore.current.native ? 16 : 4)
+    }
+}
+
+/// A group: its label, then its rows in one card.
+struct SettingsGroup<Content: View>: View {
+    var label: String? = nil
+    /// A longer explanation, behind an ⓘ beside the title (settings pages keep their text short).
+    var info: String? = nil
+    @ViewBuilder let content: Content
+    var body: some View {
+        let native = ThemeStore.current.native
+        VStack(alignment: .leading, spacing: native ? 7 : 12) {
+            if let label {
+                HStack(spacing: 4) {
+                    // Native: the grouped list's own header (13 pt, secondary, inset to the rows' text).
+                    Text(label.uppercased()).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary)
+                    if let info { SettingsInfoButton(text: info).padding(.vertical, -10) }
+                }.frame(height: 24).padding(.leading, native ? 16 : 0)
+            }
+            VStack(spacing: 0) { content }.modifier(SettingsCard()).toggleStyle(SettingsToggleStyle())
+        }
+    }
+}
+
+/// A hand-built row's title and its explanation. Native shows the title alone, as iOS Settings
+/// (owner: no explanations on the settings list; a page that needs to explain does it inside).
+struct SettingsRowTitle: View {
+    let title: String
+    let subtitle: String
+    init(_ title: String, _ subtitle: String) { self.title = title; self.subtitle = subtitle }
+    var body: some View {
+        if ThemeStore.current.native {
+            Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+        } else {
+            VStack(alignment: .leading, spacing: 2) { Text(title).font(.system(size: 15, weight: .semibold)); Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary) }
+        }
+    }
+}
+
+extension View {
+    /// A settings row's padding and height: the same for every row (52 pt in Native, as iOS Settings).
+    func settingsRowFrame() -> some View {
+        padding(.horizontal, ThemeStore.current.native ? 16 : 15).frame(minHeight: ThemeStore.current.native ? 52 : 64)
+    }
+    /// A small button's face in Native: flat, solid accent with white text when `prominent`, else a grey
+    /// fill with accent text (owner: no glass on these buttons).
+    func nativeSmallGlass(prominent: Bool, ink: Color? = nil) -> some View {
+        let accent = Color(uiColor: .systemBlue)
+        return foregroundStyle(ink ?? (prominent ? .white : accent))
+            .background(prominent ? accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
+            .contentShape(Capsule())
+    }
+}
+
+/// A settings row that does something: its title (and a short line), with a small glass button on the
+/// right, as iOS Settings' "Force sync · Run" (owner's reference, in place of full-width buttons).
+struct SettingsActionRow: View {
+    let title: String
+    var subtitle: String? = nil
+    let button: String
+    var destructive = false
+    var busy = false
+    var disabled = false
+    let identifier: String
+    let action: () -> Void
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.85)
+                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+            }
+            Spacer(minLength: 8)
+            if busy { ProgressView().controlSize(.small) }
+            Button(action: action) {
+                Text(button).font(.system(size: 15, weight: .semibold)).lineLimit(1).padding(.horizontal, 14).frame(height: 34)
+                    .nativeSmallGlass(prominent: !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
+            }.buttonStyle(.plain).disabled(disabled || busy).opacity(disabled || busy ? 0.5 : 1).accessibilityIdentifier(identifier)
+        }.frame(height: 52).accessibilityElement(children: .contain)
+    }
+}
+
+/// The full-width hairline between two rows of a card.
+struct SettingsDivider: View {
+    var body: some View {
+        if ThemeStore.current.native {
+            // Native: the system separator, inset from the leading edge as in a grouped list.
+            Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 16)
+        } else {
+            Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline)
+        }
+    }
+}
+
+/// A 38 pt #2a2440 tile with a #cdbbff symbol (44 pt for an account's own row).
+struct SettingsTile: View {
+    let symbol: String
+    var size: CGFloat = 38
+    var body: some View {
+        if ThemeStore.current.native {
+            NativeTile(symbol: symbol, size: size >= 44 ? 36 : 30)
+        } else {
+            Image(systemName: symbol).font(.system(size: size * 0.42, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+                .frame(width: size, height: size).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: size * 0.32))
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// One row: optional leading tile, title, subtitle and whatever sits on the right.
+struct SettingsRow<Leading: View, Trailing: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        let native = ThemeStore.current.native
+        HStack(spacing: native ? 12 : 14) {
+            leading
+            VStack(alignment: .leading, spacing: native ? 1 : 2) {
+                // Native: a list row's 17 pt body title and 13 pt secondary line, 52 pt tall.
+                Text(title).font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            trailing
+        }.padding(.horizontal, native ? 16 : 15).padding(.vertical, native ? 8 : 10).frame(minHeight: native ? 52 : 64).contentShape(Rectangle())
+    }
+}
+extension SettingsRow where Leading == EmptyView {
+    init(title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+        self.title = title; self.subtitle = subtitle; self.leading = EmptyView(); self.trailing = trailing()
+    }
+}
+
+/// The design's chevron for rows that open a page.
+struct SettingsChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right").font(.system(size: ThemeStore.current.native ? 14 : 15, weight: .semibold))
+            .foregroundStyle(ThemeStore.current.native ? Color(uiColor: .tertiaryLabel) : Color(themed: "#6a6a78"))
+    }
+}
+
+/// "Run", "Connect", "Save": a small pill button inside a row.
+struct SettingsPillButtonStyle: ButtonStyle {
+    var outlined = false
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 15, weight: .semibold)).padding(.horizontal, 14).frame(height: 34)
+                .nativeSmallGlass(prominent: !outlined)
+        } else {
+            configuration.label.font(.system(size: 13, weight: outlined ? .semibold : .bold))
+                .foregroundStyle(outlined ? HomeStyle.primary : HomeStyle.chipText)
+                .padding(.horizontal, 14).frame(height: 34)
+                .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
+                .overlay(Capsule().strokeBorder(outlined ? HomeStyle.dateChipBorder : .clear, lineWidth: HomeStyle.hairline))
+                .opacity(configuration.isPressed ? 0.7 : 1)
+        }
+    }
+}
+
+/// "Sync now", "Back up now": a 50 pt full-width pill, dark violet with lavender text (the
+/// look of a title page's Add to Planned).
+struct SettingsPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 17, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 50)
+                .nativeGlassCapsule(prominent: true).opacity(enabled ? 1 : 0.45)
+        } else {
+            configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                .frame(maxWidth: .infinity).frame(height: 50)
+                .background(HomeStyle.chip, in: Capsule())
+                .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+        }
+    }
+}
+
+/// "Disconnect Trakt", "Sign out": a 52 pt dark pill with pink text.
+struct SettingsDestructiveButtonStyle: ButtonStyle {
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 17, weight: .regular)).frame(maxWidth: .infinity).frame(height: 50)
+                .nativeGlassCapsule(prominent: false, ink: Color(uiColor: .systemRed))
+        } else {
+            configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                .frame(maxWidth: .infinity).frame(height: 52)
+                .pillSurface(border: nil)
+                .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                .opacity(configuration.isPressed ? 0.75 : 1)
+        }
+    }
+}
+
+/// The design's switch: a 46 × 28 track, the accent with a dark knob when on, #3a3a46 with a light knob when off.
+struct SettingsToggleStyle: ToggleStyle {
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            // Native: the system switch, in the system's green (as in Settings).
+            Toggle(configuration).toggleStyle(.switch).tint(Color(uiColor: .systemGreen))
+        } else {
+            custom(configuration)
+        }
+    }
+    private func custom(_ configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Button { configuration.isOn.toggle() } label: {
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule().fill(configuration.isOn ? theme.accent : Color(themed: "#3a3a46")).frame(width: 46, height: 28)
+                    Circle().fill(configuration.isOn ? ThemeStore.current.accentInk : HomeStyle.primary).frame(width: 22, height: 22).padding(3)
+                }.animation(.snappy(duration: 0.2), value: configuration.isOn)
+            }.buttonStyle(.plain).haptic(.selection, trigger: configuration.isOn)
+        }.accessibilityElement(children: .combine).accessibilityAddTraits(.isToggle)
+            .accessibilityValue(configuration.isOn ? "On" : "Off")
+            .accessibilityAction { configuration.isOn.toggle() }
+    }
+}
+
+/// A 12 pt #9a9aa8 note under a card.
+struct SettingsFootnote: View {
+    let text: String
+    var body: some View { Text(text).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
+}
+
+/// The Episodes page's season card (owner's design "Season — line in the middle"): the season
+/// pill, "N of T watched" over a 6 pt bar over the time left, and the percentage. The same card on
+/// a saved title and a preview (where it reads 0 of T and the season's full running time).
+struct SeasonProgressCard: View {
+    @Binding var season: Int
+    let seasons: [Int]
+    let watched: Int
+    let total: Int
+    let remainingMinutes: Int?
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var percent: Int { total > 0 ? Int((Double(min(watched, total)) / Double(total) * 100).rounded()) : 0 }
+    private var remaining: String {
+        if total > 0 && watched >= total { return "Finished" }
+        guard let minutes = remainingMinutes, minutes > 0 else { return "" }
+        return DiaryDate.duration(minutes) + " left"
+    }
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Menu {
+                Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(HomeStyle.ink).lineLimit(1)
+                    if seasons.count > 1 { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(themed: "#A78BDB")) }
+                }.padding(.leading, 16).padding(.trailing, 14).frame(minHeight: 44)
+                    .background(Color(themed: "#1E1E22"), in: Capsule()).fixedSize()
+            }.disabled(seasons.count < 2).accessibilityLabel("Choose season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)")
+                .accessibilityIdentifier("episodes-page-season")
+            VStack(spacing: 5) {
+                Text("\(watched) of \(total) watched").font(.system(size: 13, weight: .medium)).foregroundStyle(Color(themed: "#C4C4CC")).lineLimit(1).monospacedDigit()
+                Capsule().fill(Color(themed: "#26262B")).frame(height: 6)
+                    .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * CGFloat(percent) / 100) } }
+                    .accessibilityHidden(true)
+                Text(remaining).font(.system(size: 13)).foregroundStyle(Color(themed: "#9A9AA3")).lineLimit(1).monospacedDigit()
+            }.frame(maxWidth: .infinity)
+            Text("\(percent)%").font(.system(size: 28, weight: .bold)).tracking(-0.56).monospacedDigit().foregroundStyle(theme.accent)
+                .frame(minWidth: 58, alignment: .trailing)
+        }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
+            .background(Color(themed: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.outline(0.07), lineWidth: 1))
+            .accessibilityElement(children: .contain)
+    }
+}
+
+// MARK: Service pages (Trakt, MDBList, WeTrakr, AniList, TMDB, APIs): boards 4 and 6–13.
+
+/// What a status pill says about a service: connected (green), configured (purple),
+/// missing (amber) or plain (grey, e.g. "Server secret").
+enum SettingsTone { case good, configured, missing, plain }
+
+/// "Connected", "Configured", "Not set", "@amit29533": 12 pt bold on a 24 pt pill.
+struct SettingsBadge: View {
+    let text: String
+    var tone = SettingsTone.good
+    var body: some View {
+        let (ink, fill): (Color, Color) = switch tone {
+        case .good: (Color(themed: "#7fe0b5"), Color(themed: "#1b2b25"))
+        case .configured: (HomeStyle.chipText, HomeStyle.chip)
+        case .missing: (Color(themed: "#f5c26b"), Color(themed: "#2b2516"))
+        case .plain: (HomeStyle.secondary, Color(themed: "#1e1e26"))
+        }
+        Text(text).font(.system(size: 12, weight: .bold)).foregroundStyle(ink).lineLimit(1).truncationMode(.middle)
+            .padding(.horizontal, 10).frame(height: 24).background(fill, in: Capsule())
+    }
+}
+
+/// A service page's first card: the logo on a dark tile, its name and one line, the status
+/// pill, then anything else the page shows there (a note, "Keeps" chips, buttons).
+struct SettingsServiceHeader<Extra: View>: View {
+    let logo: BrandLogo.Service
+    let title: String
+    let subtitle: String
+    var badge: (text: String, tone: SettingsTone)? = nil
+    @ViewBuilder var extra: Extra
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                BrandLogo(service: logo, size: 30).frame(width: 52, height: 52)
+                    .background(Color(themed: "#1a1a21"), in: RoundedRectangle(cornerRadius: 15))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    if !subtitle.isEmpty { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if let badge { SettingsBadge(text: badge.text, tone: badge.tone).padding(.top, 2) }
+            }
+            extra
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
+    }
+}
+extension SettingsServiceHeader where Extra == EmptyView {
+}
+
+/// A group label with something beside it ("DIRECT FROM MDBLIST  Preview  ⓘ").
+struct SettingsLabel<Accessory: View>: View {
+    let text: String
+    @ViewBuilder var accessory: Accessory
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(text.uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            accessory
+            Spacer(minLength: 0)
+        }.frame(minHeight: 30).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The design's ⓘ: a 30 pt circle that shows its explanation in a small popover.
+struct SettingsInfoButton: View {
+    let text: String
+    @State private var showing = false
+    var body: some View {
+        Button { showing = true } label: {
+            Text("i").font(.system(size: 14, weight: .bold, design: .serif)).italic().foregroundStyle(HomeStyle.chipText)
+                .frame(width: 30, height: 30).background(Color(themed: "#1e1e26"), in: Circle())
+                .frame(width: 44, height: 44).contentShape(Circle())
+        }.buttonStyle(.plain).accessibilityLabel("About this")
+            .popover(isPresented: $showing) {
+                Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).fixedSize(horizontal: false, vertical: true)
+                    .padding(16).frame(width: 280, alignment: .leading).presentationCompactAdaptation(.popover)
+            }
+    }
+}
+
+/// The design's text field: 50 pt, #17171d, 14 pt corners, a #26262e hairline.
+struct SettingsFieldStyle: ViewModifier {
+    var monospaced = false
+    func body(content: Content) -> some View {
+        let native = ThemeStore.current.native
+        content.font(.system(size: native ? 17 : 15, design: monospaced ? .monospaced : .default)).foregroundStyle(HomeStyle.primary)
+            .textInputAutocapitalization(.never).autocorrectionDisabled()
+            .padding(.horizontal, 14).frame(height: native ? 46 : 50)
+            .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: native ? 12 : 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(native ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+    }
+}
+extension View {
+    func settingsField(monospaced: Bool = false) -> some View { modifier(SettingsFieldStyle(monospaced: monospaced)) }
+}
+
+/// "Check now", "Check connection" (tinted) and "Change API key", "Save" (outlined): 50 pt wide pills.
+struct SettingsWideButtonStyle: ButtonStyle {
+    var outlined = false
+    @Environment(\.isEnabled) private var enabled
+    @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+        if ThemeStore.current.native {
+            configuration.label.font(.system(size: 17, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity).frame(height: 50)
+                .nativeGlassCapsule(prominent: !outlined).opacity(enabled ? 1 : 0.5)
+        } else {
+            classic(configuration)
+        }
+    }
+    private func classic(_ configuration: Configuration) -> some View {
+        configuration.label.font(.system(size: 15, weight: .bold)).lineLimit(1)
+            .foregroundStyle(outlined ? (enabled ? HomeStyle.primary : HomeStyle.secondary) : HomeStyle.chipText)
+            .frame(maxWidth: .infinity).frame(height: 50)
+            .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
+            .overlay(Capsule().strokeBorder(outlined ? HomeStyle.dateChipBorder : .clear, lineWidth: HomeStyle.hairline))
+            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.6)
+    }
+}
+
+/// A link line in the accent: "↗ Open MDBList's developer page".
+struct SettingsLinkLabel: View {
+    let text: String
+    var body: some View {
+        HStack(spacing: 6) { Image(systemName: "arrow.up.right.square").font(.system(size: 13, weight: .semibold)); Text(text) }
+            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 36)
+    }
+}

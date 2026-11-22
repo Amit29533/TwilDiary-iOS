@@ -1,0 +1,487 @@
+import SwiftUI
+import TwilDiaryCore
+
+/// Settings → Main tracker: which service is the diary (Trakt, MDBList or WeTrakr). For now the
+/// choice decides which one the read-and-compare preview checks; the switch-over (plan phase 4)
+/// makes it the diary. Nothing is written anywhere from here.
+struct MainTrackerView: View {
+    @AppStorage(MainTrackerView.key) private var selection = MainTracker.trakt.rawValue
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    static let key = "mainTracker"
+    private var tracker: MainTracker { MainTracker(main: selection) ?? .trakt }
+
+    var body: some View {
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 8) {
+                    Text("Where your diary lives").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                VStack(spacing: 0) {
+                    ForEach(Array(MainTracker.offered.enumerated()), id: \.element) { index, option in
+                        if index > 0 { Divider().padding(.leading, 62) }
+                        Button { selection = option.rawValue } label: { row(option) }
+                            .buttonStyle(.plain).accessibilityIdentifier("main-tracker-" + option.rawValue)
+                            .accessibilityAddTraits(option == tracker ? .isSelected : [])
+                    }
+                }.diaryPanel(padding: 0, radius: 18)
+                if tracker != .trakt, !store.providerSettings.config(for: tracker.provider).isAuthenticated {
+                    NavigationLink(value: tracker == .wetrakr ? AppDestination.wetrakr : AppDestination.mdblist) {
+                        Label("Connect \(tracker.name) first", systemImage: "link").frame(maxWidth: .infinity)
+                    }.font(.subheadline).buttonStyle(.diarySecondary).accessibilityIdentifier("main-tracker-connect")
+                }
+                if tracker == .trakt { diarySource } else { trackerDiarySource }
+                TrackerPreviewPanel(tracker: tracker)
+                Text(store.onThisPhone ? "Your diary is on this phone." : store.diaryService.map { "\($0.name) holds your diary." } ?? "Your diary is on this phone.")
+                    .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("main-tracker-record")
+            }.padding(14).padding(.bottom, 40)
+        }.diaryScreenBackground().navigationTitle("Main tracker").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+    }
+
+    /// Phase 4a: browse the whole app with the diary built from Trakt (plus your server's extras),
+    /// before Trakt becomes the record. Editing is paused meanwhile; switching back is instant.
+    private var diarySource: some View {
+        @Bindable var store = store
+        return VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $store.diaryFromTrakt) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show my diary from Trakt").font(.subheadline.weight(.semibold))
+                    Text("Your edits go straight to Trakt").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }.accessibilityIdentifier("diary-from-trakt")
+            if store.diaryFromTrakt {
+                Label("Your diary comes from Trakt. Turn this off to go back to your server’s diary.", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+            }
+        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08)))
+    }
+
+    /// Phase 5: the same from MDBList or WeTrakr; edits go to it.
+    private var trackerDiarySource: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(get: { store.diaryFromTracker == tracker }, set: { store.diaryFromTracker = $0 ? tracker : nil })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show my diary from \(tracker.name)").font(.subheadline.weight(.semibold))
+                    Text("Your edits go straight to \(tracker.name)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }.accessibilityIdentifier("diary-from-" + tracker.rawValue)
+            if store.diaryFromTracker == tracker {
+                Label("Diary from \(tracker.name)", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+            }
+        }.padding(14).background(theme.field, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08)))
+    }
+
+    private func row(_ option: MainTracker) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            BrandLogo(service: option.brand, size: 34)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(option.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
+                Text(option.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: "checkmark").font(.system(size: 17, weight: .bold)).foregroundStyle(theme.accent)
+                .opacity(option == tracker ? 1 : 0).frame(width: 24)
+        }.padding(14).frame(minHeight: 64).contentShape(Rectangle())
+    }
+}
+
+extension MainTracker {
+    var brand: BrandLogo.Service {
+        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl }
+    }
+    var provider: SyncProviderKind {
+        switch self { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl }
+    }
+}
+
+
+/// Reads the chosen tracker directly and compares it with the diary. Changes nothing.
+struct TrackerPreviewPanel: View {
+    let tracker: MainTracker
+    /// Native: the page's own rows that join the Options list (Send my edits first, Account limits last),
+    /// so a service page reads as one list, as Trakt's (owner's request).
+    var leadingOptions: AnyView? = nil
+    var trailingOptions: AnyView? = nil
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var trakt = TraktDirectStore.shared
+    @State private var others = TrackerPreviewStore.shared
+    private var id: String { tracker.rawValue + "-direct" }
+    private var library: TraktLibrary? { tracker == .trakt ? trakt.library : others.libraries[tracker] }
+    private var report: TraktDirectStore.Report? { tracker == .trakt ? trakt.report : others.reports[tracker] }
+    private var error: String? { tracker == .trakt ? trakt.error : others.errors[tracker] }
+    private var running: Bool { tracker == .trakt ? trakt.running : others.running == tracker }
+    /// This service is the diary: there's nothing to make it match.
+    private var holdsDiary: Bool { tracker == .trakt ? store.traktHoldsDiary : (store.diaryService == tracker) }
+    @State private var confirmMatch = false
+    /// Force Match: which side wins.
+    @State private var forceSource = TrackerPreviewStore.ForceSource.diary
+    /// Force Match asks first, with what it would add and take off (both sides read for it).
+    @State private var forcePreview: ForceMatchPlan?
+    @State private var forcePreviewSource = TrackerPreviewStore.ForceSource.diary
+    @State private var readingForForce = false
+    @State private var confirmForce = false
+    @State private var copiedReport = false
+    @State private var clearedLetters = 0
+
+    var body: some View {
+        if tracker == .trakt && store.traktHoldsDiary { traktSyncCard }
+        else if ThemeStore.current.native {
+            VStack(alignment: .leading, spacing: 16) { previewCard; optionsGroup }
+        } else { previewCard }
+    }
+
+    /// Native: every action as a row of one Options list, the same rows and separators as Trakt's page.
+    private var optionsGroup: some View {
+        let plan = report != nil ? others.plans[tracker] : nil
+        let canMatch = tracker != .trakt && !holdsDiary
+        return SettingsGroup(label: "Options") {
+            if let leadingOptions { leadingOptions; SettingsDivider() }
+            if canMatch, let plan, !plan.isEmpty, others.writing == nil {
+                SettingsRow(title: "Make \(tracker.name) match", subtitle: plan.summary.first ?? "Send what it lacks") {
+                    Button("Send") { confirmMatch = true }.buttonStyle(SettingsPillButtonStyle()).disabled(running)
+                        .accessibilityIdentifier(tracker.rawValue + "-make-match")
+                }
+                SettingsDivider()
+            }
+            if canMatch {
+                SettingsRow(title: "Source of truth", subtitle: forceSource == .diary ? "Your diary wins" : "\(tracker.name) wins") { sourceMenu }
+                SettingsDivider()
+                SettingsRow(title: "Force Match") {
+                    Button(others.writing == tracker ? "Matching…" : readingForForce ? "Reading…" : "Run") { startForceMatch() }
+                        .buttonStyle(SettingsPillButtonStyle()).disabled(running || others.writing != nil || readingForForce)
+                        .accessibilityIdentifier(tracker.rawValue + "-force-match")
+                }
+                SettingsDivider()
+            }
+            SettingsRow(title: "Compare with your diary", subtitle: running ? "Reading \(tracker.name)…" : nil) {
+                Button(running ? "Reading…" : "Check") {
+                    Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
+                }.buttonStyle(SettingsPillButtonStyle()).disabled(running || trakt.writing || others.writing != nil).accessibilityIdentifier(id + "-check")
+            }
+            if tracker != .trakt, let log = SyncReport.text(tracker.provider) {
+                SettingsDivider()
+                SettingsRow(title: "Last sync report") {
+                    Button(copiedReport ? "Copied" : "Copy") { UIPasteboard.general.string = log; copiedReport = true }
+                        .buttonStyle(SettingsPillButtonStyle(outlined: true)).accessibilityIdentifier(id + "-report")
+                }
+            }
+            if let trailingOptions { SettingsDivider(); trailingOptions }
+        }
+        .confirmationDialog("Make \(tracker.name) match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
+            Button("Send to \(tracker.name)") { Task { await others.makeMatch(tracker, store: store) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text((plan?.summary ?? []).map { "• " + $0 }.joined(separator: "\n")
+                 + "\n\nNothing is removed from your \(tracker.name) history. \(tracker.name) keeps one watch per episode, so the first is sent and rewatches stay in your diary.")
+        }
+        .alert(forcePreviewSource == .service ? "Change your diary to match \(tracker.name)?" : "Make \(tracker.name) match your diary?", isPresented: $confirmForce) {
+            Button(forcePreviewSource == .service ? "Change my diary" : "Force Match", role: .destructive) {
+                let source = forcePreviewSource
+                Task { await others.forceRun(tracker, source: source, store: store) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(forceConfirmation)
+        }
+    }
+    /// Source of truth's choice, as a small menu button.
+    private var sourceMenu: some View {
+        let intoDiary = others.canForceIntoDiary(tracker, store: store)
+        return Menu {
+            Picker("Source of truth", selection: $forceSource) {
+                Text("Diary").tag(TrackerPreviewStore.ForceSource.diary)
+                if intoDiary { Text(tracker.name).tag(TrackerPreviewStore.ForceSource.service) }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(forceSource == .diary ? "Diary" : tracker.name)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                .padding(.horizontal, 14).frame(height: 34).modifier(SourceMenuFace())
+        }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
+            .accessibilityIdentifier(tracker.rawValue + "-force-source")
+            .onChange(of: intoDiary) { _, can in if !can { forceSource = .diary } }
+    }
+
+    /// Trakt holds the diary: just whether everything is on Trakt, and what's still going there.
+    private var traktSyncCard: some View {
+        let matched = report != nil && trakt.pending.isEmpty
+        let headline = trakt.writeProgress ?? (running ? "Checking Trakt…" : matched ? "Everything is on Trakt"
+            : !trakt.pending.isEmpty ? trakt.pending.count.counted("change", "changes") + " waiting to send" : "Not checked yet")
+        let checked = library.flatMap { DiaryDate.parse($0.fetchedAt) }
+        // Design (board 4): SYNC, then one card: the state with when it was checked, and Sync now.
+        return VStack(alignment: .leading, spacing: 12) {
+            SettingsLabel(text: "Sync") { EmptyView() }
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    Group {
+                        if running || trakt.writeProgress != nil { ProgressView().controlSize(.small).tint(HomeStyle.chipText) }
+                        else { Image(systemName: matched ? "checkmark" : "arrow.triangle.2.circlepath").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .bold)) }
+                    }.foregroundStyle(HomeStyle.chipText).frame(width: 36, height: 36).background(HomeStyle.chip, in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(headline).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                            .accessibilityIdentifier(matched ? id + "-match" : id + "-differences")
+                        if let checked { Text("Checked " + checked.formatted(.relative(presentation: .named))).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }
+                    }
+                    Spacer(minLength: 0)
+                }
+                if let fraction = SendProgress.fraction(trakt.writeProgress) { SendProgressBar(fraction: fraction).accessibilityIdentifier(id + "-progress") }
+                if let error { Text(error).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error") }
+                Button {
+                    Task { await trakt.check(store: store) }
+                } label: {
+                    Label(running || trakt.writing ? "Syncing…" : "Sync now", systemImage: "arrow.clockwise")
+                }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(running || trakt.writing).accessibilityIdentifier(id + "-check")
+            }.padding(15).modifier(SettingsCard())
+        }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
+    }
+
+    private var previewCard: some View {
+        // Design (boards 7 and 13): DIRECT FROM <SERVICE> · Preview · ⓘ, then one card with Check now.
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsLabel(text: "Direct from \(tracker.name)") {
+                SettingsBadge(text: "Preview", tone: .configured)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                if let report { reportView(report) }
+                if let error {
+                    Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error")
+                }
+                if tracker == .trakt, !trakt.pending.isEmpty {
+                    Label(trakt.pending.count.counted("change", "changes") + " waiting for a connection; sent on their own when you’re back online.", systemImage: "icloud.and.arrow.up")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("trakt-pending")
+                }
+                if tracker == .trakt { EmptyView() } else if holdsDiary {
+                    Text("\(tracker.name) holds your diary; nothing is sent from here.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-holds-diary")
+                } else { trackerMatchSection }
+                if ThemeStore.current.native {
+                    // Native: the actions are rows of the Options list below.
+                    EmptyView()
+                } else {
+                Button {
+                    Task { if tracker == .trakt { await trakt.check(store: store) } else { await others.check(tracker, store: store) } }
+                } label: {
+                    Label(running ? "Reading \(tracker.name)…" : "Check now", systemImage: "arrow.clockwise")
+                }.buttonStyle(SettingsWideButtonStyle()).disabled(running || trakt.writing || others.writing != nil).accessibilityIdentifier(id + "-check")
+                }
+                if tracker != .trakt, let log = SyncReport.text(tracker.provider) {
+                    // What the last match sent and what came back, to see why something didn't land.
+                    if ThemeStore.current.native {
+                        EmptyView()
+                    } else {
+                    Button { UIPasteboard.general.string = log; copiedReport = true } label: {
+                        Label(copiedReport ? "Copied" : "Copy last sync report", systemImage: copiedReport ? "checkmark" : "doc.on.doc")
+                    }.buttonStyle(SettingsWideButtonStyle()).accessibilityIdentifier(id + "-report")
+                    }
+                }
+                let ledger = MatchLedger.tokens(tracker)
+                // Simkl: what didn't stick after three tries is ignored quietly (the owner's choice).
+                if !ledger.isEmpty, tracker != .simkl {
+                    // Sent before and not kept by the service: not resent on every match.
+                    HStack(spacing: 8) {
+                        Label("\(ledger.count) didn’t stick on \(tracker.name)", systemImage: "arrow.uturn.backward.circle")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button("Try them again") {
+                            Task { if tracker == .trakt { await trakt.retryLedger(store: store) } else { await others.retryLedger(tracker, store: store) }; clearedLetters += 1 }
+                        }.font(.subheadline.weight(.semibold))
+                    }.id("ledger-\(clearedLetters)").accessibilityIdentifier(id + "-ledger")
+                }
+                let setAside = DeadLetters.list(tracker.provider)
+                if !setAside.isEmpty {
+                    // Edits the service refused or kept failing on: off its queue so the rest go on.
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(setAside, id: \.self) { line in
+                                Text(line).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Button("Clear this list", role: .destructive) { DeadLetters.clear(tracker.provider); clearedLetters += 1 }.font(.caption.weight(.semibold))
+                        }.padding(.top, 6)
+                    } label: {
+                        Label("\(setAside.count) \(setAside.count == 1 ? "edit" : "edits") set aside", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Color(themed: "#f5c26b"))
+                    }.id(clearedLetters).accessibilityIdentifier(id + "-set-aside")
+                }
+            // Full width, as the Options list under it, however short its lines are.
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(15).modifier(SettingsCard())
+                .smoothChange(of: report?.comparison.matchingPlays ?? -1)
+        }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityIdentifier(id + "-panel")
+    }
+
+
+    /// Phase 5: the same for MDBList and WeTrakr, within what each keeps.
+    @ViewBuilder private var trackerMatchSection: some View {
+        let plan = report != nil ? others.plans[tracker] : nil
+        if others.writing == tracker, let progress = others.writeProgress {
+            VStack(alignment: .leading, spacing: 6) {
+                if let fraction = SendProgress.fraction(progress) { SendProgressBar(fraction: fraction).accessibilityIdentifier(tracker.rawValue + "-progress") }
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.caption).foregroundStyle(.secondary) }
+            }
+        } else if let result = others.writeResults[tracker] {
+            Label(result, systemImage: "checkmark").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(tracker.rawValue + "-match-result")
+        }
+        // Simkl sends in the background: where that stands now (the line above is when it was asked).
+        if tracker == .simkl, let fraction = SimklMirror.shared.sendFraction {
+            SendProgressBar(fraction: fraction).accessibilityIdentifier("simkl-progress")
+        }
+        if tracker == .simkl, let status = SimklMirror.shared.status {
+            Label(status.text, systemImage: status.paused ? "pause.circle" : "arrow.up.circle")
+                .font(.caption.weight(status.paused ? .semibold : .regular))
+                .foregroundStyle(status.paused ? Color(themed: "#f5c26b") : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("simkl-send-status")
+        }
+        if let plan, !plan.isEmpty, others.writing == nil, !ThemeStore.current.native {
+            Group {
+                if ThemeStore.current.native {
+                    EmptyView()
+                } else {
+                    Button { confirmMatch = true } label: {
+                        Label("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity)
+                    }.font(.subheadline.weight(.semibold)).buttonStyle(.diaryPrimary).disabled(running).accessibilityIdentifier(tracker.rawValue + "-make-match")
+                }
+            }
+                .confirmationDialog("Make \(tracker.name) match the diary?", isPresented: $confirmMatch, titleVisibility: .visible) {
+                    Button("Send to \(tracker.name)") { Task { await others.makeMatch(tracker, store: store) } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(plan.summary.map { "• " + $0 }.joined(separator: "\n")
+                         + "\n\nNothing is removed from your \(tracker.name) history. \(tracker.name) keeps one watch per episode, so the first is sent and rewatches stay in your diary.")
+                }
+        }
+        if !ThemeStore.current.native { forceMatchSection }
+    }
+
+    /// Force Match: one side made exactly like the other, after a preview of what's added and taken off.
+    @ViewBuilder private var forceMatchSection: some View {
+        let intoDiary = others.canForceIntoDiary(tracker, store: store)
+        VStack(alignment: .leading, spacing: ThemeStore.current.native ? 12 : 10) {
+            HStack(spacing: 8) {
+                Text("Source of truth").font(ThemeStore.current.native ? .system(size: 17) : .subheadline.weight(.semibold))
+                SettingsInfoButton(text: forceSource == .diary
+                 ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
+                 : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.").padding(.vertical, -10)
+                Spacer(minLength: 8)
+                // The app's pill dropdown (as Automatic backups), not the system's plain menu picker.
+                Menu {
+                    Picker("Source of truth", selection: $forceSource) {
+                        Text("Diary").tag(TrackerPreviewStore.ForceSource.diary)
+                        if intoDiary { Text(tracker.name).tag(TrackerPreviewStore.ForceSource.service) }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(forceSource == .diary ? "Diary" : tracker.name)
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+                    }.font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        .padding(.horizontal, 12).frame(height: 32).modifier(SourceMenuFace())
+                }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
+                    .accessibilityIdentifier(tracker.rawValue + "-force-source")
+            }.frame(height: ThemeStore.current.native ? 52 : nil)
+            Group {
+                if ThemeStore.current.native {
+                    SettingsActionRow(title: "Force Match",
+                                      button: others.writing == tracker ? "Matching…" : readingForForce ? "Reading…" : "Run",
+                                      busy: others.writing == tracker || readingForForce, disabled: running || others.writing != nil,
+                                      identifier: tracker.rawValue + "-force-match") { startForceMatch() }
+                } else {
+                    Button { startForceMatch() } label: {
+                        Label(others.writing == tracker ? "Force matching…" : readingForForce ? "Reading both sides…" : "Force Match", systemImage: "equal.circle").frame(maxWidth: .infinity)
+                    }.buttonStyle(SettingsWideButtonStyle()).disabled(running || others.writing != nil || readingForForce)
+                        .accessibilityIdentifier(tracker.rawValue + "-force-match")
+                }
+            }
+                .alert(forcePreviewSource == .service ? "Change your diary to match \(tracker.name)?" : "Make \(tracker.name) match your diary?", isPresented: $confirmForce) {
+                    Button(forcePreviewSource == .service ? "Change my diary" : "Force Match", role: .destructive) {
+                        let source = forcePreviewSource
+                        Task { await others.forceRun(tracker, source: source, store: store) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(forceConfirmation)
+                }
+        }.onChange(of: intoDiary) { _, can in if !can { forceSource = .diary } }
+    }
+    /// Both sides are read and the changes shown before anything is sent.
+    private func startForceMatch() {
+        let source = forceSource
+        readingForForce = true
+        Task {
+            let plan = await others.forcePlan(tracker, source: source, store: store)
+            readingForForce = false
+            // A read that failed says why in the panel.
+            guard let plan else { return }
+            // Nothing to change: the run says so itself.
+            if plan.isEmpty { await others.forceRun(tracker, source: source, store: store); return }
+            forcePreview = plan; forcePreviewSource = source; confirmForce = true
+        }
+    }
+    /// What the previewed Force Match would do, one line per kind of change.
+    private var forceConfirmation: String {
+        guard let plan = forcePreview else { return "" }
+        // Some lines name every title; in an alert they're cut to a line or two.
+        let lines = plan.summary.map { "• " + ($0.count > 140 ? String($0.prefix(140)) + "…" : $0) }
+        var text = lines.joined(separator: "\n")
+        if plan.removalCount > 0 { text += "\n\n\(plan.removalCount.formatted()) taken off \(plan.tracker.name) in all." }
+        if forcePreviewSource == .service, !tracker.capabilities.keepsRewatches {
+            text += "\n\n\(tracker.name) keeps one watch per episode; rewatches already in your diary stay."
+        }
+        return text + "\n\nThis can’t be undone."
+    }
+    @ViewBuilder private func reportView(_ report: TraktDirectStore.Report) -> some View {
+        let library = library ?? TraktLibrary()
+        let compared = report.comparison
+        let timing = report.seconds.formatted(.number.precision(.fractionLength(1))) + " s · " + report.requests.counted("request", "requests")
+        Text(report.fetched.isEmpty ? "Nothing changed on \(tracker.name) since the last check · \(timing)" : "Read in \(timing) · " + report.fetched.map(\.rawValue).joined(separator: ", "))
+            .font(.system(size: 13, weight: .semibold)).accessibilityIdentifier(id + "-timing")
+        Text(counts(library)).font(.caption).foregroundStyle(.secondary)
+        if !report.unavailable.isEmpty {
+            Text("\(tracker.name) didn’t give: " + report.unavailable.map(\.rawValue).joined(separator: ", ") + ". They’re asked for again next time.").font(.caption).foregroundStyle(.secondary)
+        }
+        if report.skipped > 0 || compared.unmatchedTraktTitles > 0 {
+            Text("\(report.skipped) unreadable items · \(compared.unmatchedTraktTitles) titles without a TMDB id").font(.caption).foregroundStyle(.secondary)
+        }
+        if compared.matches {
+            Label("Matches your diary: \(compared.matchingPlays.counted("play", "plays"))", systemImage: "checkmark.seal.fill")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier(id + "-match")
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\(compared.matchingPlays.counted("play", "plays")) match. Differences:").font(.system(size: 13, weight: .semibold))
+                differences("Only on \(tracker.name)", compared.onlyOnTrakt)
+                differences("Only in the diary", compared.onlyInDiary)
+                differences("Ratings", compared.ratingDifferences)
+                differences("Planned / watchlist", compared.plannedDifferences)
+                differences("Favourites", compared.favoriteDifferences)
+                differences("Dropped", compared.droppedDifferences)
+            }.accessibilityElement(children: .contain).accessibilityIdentifier(id + "-differences")
+        }
+    }
+    private func counts(_ library: TraktLibrary) -> String {
+        let can = tracker.capabilities
+        var parts = [library.plays.count.counted(can.keepsRewatches ? "play" : "watch", can.keepsRewatches ? "plays" : "watches"),
+                     library.ratings.count.counted("rating", "ratings"), "\(library.watchlist.count) planned"]
+        if can.holdsFavourites { parts.append(library.favorites.count.counted("favourite", "favourites")) }
+        if can.holdsDropped { parts.append("\(library.dropped.count) dropped") }
+        if can.noteLimit != nil { parts.append(library.notes.count.counted("note", "notes")) }
+        return parts.joined(separator: " · ")
+    }
+    @ViewBuilder private func differences(_ heading: String, _ list: [TraktComparison.Difference]) -> some View {
+        if !list.isEmpty {
+            Text("\(heading): \(list.count)").font(.caption.weight(.semibold))
+            ForEach(Array(list.prefix(3).enumerated()), id: \.offset) { _, item in
+                Text("· \(item.title) — \(item.detail)").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+    }
+}
+
+/// The Source of truth menu's face: the accent chip, or a flat grey capsule in Native.
+private struct SourceMenuFace: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native { content.background(Color(uiColor: .tertiarySystemFill), in: Capsule()) }
+        else { content.background(HomeStyle.chip, in: Capsule()) }
+    }
+}

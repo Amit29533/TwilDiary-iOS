@@ -4,6 +4,7 @@
   import HardDrive from '@lucide/svelte/icons/hard-drive';
   import EyeOff from '@lucide/svelte/icons/eye-off';
   import Download from '@lucide/svelte/icons/download';
+  import Upload from '@lucide/svelte/icons/upload';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import CalendarDays from '@lucide/svelte/icons/calendar-days';
   import History from '@lucide/svelte/icons/history';
@@ -15,8 +16,10 @@
   import Link2 from '@lucide/svelte/icons/link-2';
   import Info from '@lucide/svelte/icons/info';
   import ShieldCheck from '@lucide/svelte/icons/shield-check';
+  import KeyRound from '@lucide/svelte/icons/key-round';
   import Check from '@lucide/svelte/icons/check';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+  import AccountAuthModal from '#lib/components/AccountAuthModal.svelte';
   import { useDiary } from '#lib/client/diary-context.ts';
   import { useTheme } from '#lib/client/theme-context.ts';
   import { useCommunityRatings } from '#lib/client/community-ratings-context.ts';
@@ -29,6 +32,15 @@
     type TraktStatus,
     type TraktSync
   } from '#lib/client/trakt-status.ts';
+  import {
+    defaultProviderConnectionSettings,
+    providerStatusBadge,
+    pullProviderSettingsFromVault,
+    readProviderVaultNotice,
+    resolveProviderVaultConflict,
+    readProviderConnectionSettings,
+    type ProviderConnectionSettings
+  } from '#lib/client/provider-settings.ts';
   import ScreenHeading from '#lib/components/ScreenHeading.svelte';
   import SettingsGroup from '#lib/components/SettingsGroup.svelte';
   import SettingRow from '#lib/components/SettingRow.svelte';
@@ -39,7 +51,10 @@
   const ratings = useCommunityRatings();
   const selectedTheme = $derived(themes.find((item) => item.id === theme.id)!);
   let status = $state<TraktStatus | null>(null),
-    sync = $state<TraktSync | null>(null);
+    sync = $state<TraktSync | null>(null),
+    providerSettings = $state<ProviderConnectionSettings>(defaultProviderConnectionSettings());
+  let vaultNotice = $state('');
+  let vaultReviewBusy = $state(false);
   let checked = $state(false),
     unavailable = $state(false),
     timeZone = $state('Device time zone'),
@@ -51,12 +66,19 @@
   const reviewing = $derived(liveSync?.run && ['review', 'applying'].includes(liveSync.run.state));
   onMount(() => {
     let active = true;
+    vaultNotice = readProviderVaultNotice();
+    const vaultChanged = () => { if (active) vaultNotice = readProviderVaultNotice(); };
+    window.addEventListener('provider-vault-status', vaultChanged);
     timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ');
     const preference = matchMedia('(prefers-reduced-motion: reduce)');
     const updateMotion = () => (motion = preference.matches ? 'Reduced · device' : 'Follow device');
     updateMotion();
     preference.addEventListener('change', updateMotion);
     async function refresh() {
+      providerSettings = readProviderConnectionSettings();
+      void pullProviderSettingsFromVault().then((vaulted) => {
+        if (active && vaulted) providerSettings = vaulted;
+      });
       try {
         const [nextStatus, nextSync] = await Promise.all([
           requestJson<TraktStatus>('/api/trakt/status'),
@@ -81,6 +103,7 @@
     return () => {
       active = false;
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('provider-vault-status', vaultChanged);
       preference.removeEventListener('change', updateMotion);
     };
   });
@@ -93,11 +116,66 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  let importInput = $state<HTMLInputElement | null>(null);
+  let importingBackup = $state(false);
+  let backupNotice = $state('');
+  let showAuthModal = $state(false);
+  let authMethodLabel = $state('Cloudflare / Token');
+  function triggerImportDiary() {
+    importInput?.click();
+  }
+  async function handleImportFile(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || importingBackup) return;
+    importingBackup = true;
+    backupNotice = '';
+    try {
+      const text = await file.text();
+      let payload = text;
+      if (file.name.toLowerCase().endsWith('.csv') || !text.trim().startsWith('{')) {
+        payload = JSON.stringify({ csv: text, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      } else {
+        const parsed = JSON.parse(text) as { schemaVersion?: number; titles?: unknown[] };
+        if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.titles)) {
+          throw new Error('Choose a valid TwilDiary JSON backup or Letterboxd / IMDb / MAL CSV file.');
+        }
+      }
+      const res = await requestJson<{
+        importedTitles: number;
+        importedEpisodes: number;
+        importedEvents: number;
+      }>('/api/workspace/import', {
+        method: 'POST',
+        body: payload
+      });
+      await diary.refresh();
+      backupNotice = `Imported ${res.importedTitles} titles and ${res.importedEvents} watch events.`;
+    } catch (err) {
+      backupNotice = err instanceof Error ? err.message : 'Could not import backup file.';
+    } finally {
+      importingBackup = false;
+    }
+  }
+  async function reviewVault(keepDevice: boolean) {
+    vaultReviewBusy = true;
+    try { await resolveProviderVaultConflict(keepDevice); providerSettings = readProviderConnectionSettings(); }
+    catch (error) { vaultNotice = error instanceof Error ? error.message : 'Settings sync remains pending.'; }
+    finally { vaultReviewBusy = false; }
+  }
 </script>
 
 <svelte:head><title>More · TwilDiary</title></svelte:head>
 <ScreenHeading title="More" />
 <div class="settings-page">
+  {#if vaultNotice}
+    <section class="panel vault-notice" aria-label="Provider settings sync">
+      <p role="status">{vaultNotice}</p>
+      <button onclick={() => reviewVault(true)} disabled={vaultReviewBusy}>Keep this device’s settings</button>
+      <button onclick={() => reviewVault(false)} disabled={vaultReviewBusy}>Use saved online settings</button>
+    </section>
+  {/if}
   <section class="panel sync-card" aria-labelledby="sync-summary">
     <div class="sync-top">
       <span class="sync-label"><Link2 size={16} />Trakt sync</span><span
@@ -170,7 +248,9 @@
           value={ratings.source}
           onchange={(event) => ratings.choose(ratingSource(event.currentTarget.value))}
         >
-          <option value="tmdb">TMDB</option><option value="trakt">Trakt</option>
+          <option value="tmdb">TMDB</option><option value="trakt">Trakt</option><option
+            value="mdblist">MDBList</option
+          >
         </select>{/snippet}
     </SettingRow>
     {#if !ratings.persisted}<p class="preference-note" role="status">
@@ -215,6 +295,12 @@
       subtitle="Recently watched, dates and filters"
       href="/preview/recently-watched"
     />
+    <SettingRow
+      icon={CalendarDays}
+      title="Airing calendar"
+      subtitle="Upcoming episodes for anime and TV shows"
+      href="/preview/calendar"
+    />
     <SettingRow icon={Star} title="Rating scale" value="10 · decimals" />
   </SettingsGroup>
 
@@ -237,28 +323,65 @@
 
   <SettingsGroup title="Connections">
     <SettingRow
-      icon={Database}
+      providerIcon="tmdb"
       title="TMDB"
       subtitle="Posters, details, seasons and episodes"
-      value={data.metadataConnected ? 'Configured' : 'Set up'}
+      value={providerSettings.customTmdbToken
+        ? 'Custom API'
+        : data.metadataConnected
+          ? 'Configured'
+          : 'Set up'}
       badge
-      tone={data.metadataConnected ? 'healthy' : ''}
+      tone={data.metadataConnected || providerSettings.customTmdbToken ? 'healthy' : ''}
       href="/preview/more/tmdb"
     />
     <SettingRow
-      icon={Link2}
+      providerIcon="trakt"
       title="Trakt"
       subtitle="History, ratings and watchlist"
       value={pending
         ? 'Review'
         : status?.needsReconnect
           ? 'Reconnect'
-          : connected
+          : connected || providerStatusBadge(providerSettings.trakt) === 'Connected'
             ? 'Connected'
-            : 'Not connected'}
+            : providerStatusBadge(providerSettings.trakt) === 'Configured'
+              ? 'Configured'
+              : 'Not connected'}
       badge
-      tone={attention ? 'attention' : connected ? 'healthy' : ''}
+      tone={attention
+        ? 'attention'
+        : connected || providerStatusBadge(providerSettings.trakt) === 'Connected'
+          ? 'healthy'
+          : ''}
       href="/preview/more/trakt"
+    />
+    <SettingRow
+      providerIcon="wetrakr"
+      title="WeTrakr"
+      subtitle="Compact sync, decimal ratings and favorites"
+      value={providerStatusBadge(providerSettings.wetrakr)}
+      badge
+      tone={providerStatusBadge(providerSettings.wetrakr) === 'Connected' ? 'healthy' : ''}
+      href="/preview/more/wetrakr"
+    />
+    <SettingRow
+      providerIcon="simkl"
+      title="Simkl"
+      subtitle="Anime, TV and movie watch tracking"
+      value={providerStatusBadge(providerSettings.simkl)}
+      badge
+      tone={providerStatusBadge(providerSettings.simkl) === 'Connected' ? 'healthy' : ''}
+      href="/preview/more/simkl"
+    />
+    <SettingRow
+      providerIcon="mdblist"
+      title="MDBList"
+      subtitle="Multi-source ratings and watchlist sync"
+      value={providerStatusBadge(providerSettings.mdblist)}
+      badge
+      tone={providerStatusBadge(providerSettings.mdblist) === 'Connected' ? 'healthy' : ''}
+      href="/preview/more/mdblist"
     />
   </SettingsGroup>
 
@@ -271,6 +394,29 @@
       disabled={!diary.ready}
     />
     <SettingRow
+      icon={Upload}
+      title="Import diary"
+      subtitle="TwilDiary JSON backup or Letterboxd, IMDb & MAL CSV"
+      value={importingBackup ? 'Importing…' : ''}
+      onclick={triggerImportDiary}
+      disabled={!diary.ready || importingBackup}
+    />
+    <input
+      bind:this={importInput}
+      type="file"
+      accept=".json,.csv,application/json,text/csv"
+      style="display:none"
+      onchange={handleImportFile}
+    />
+    {#if backupNotice}<p class="preference-note" role="status">{backupNotice}</p>{/if}
+    <SettingRow
+      icon={KeyRound}
+      title="Sign-in methods"
+      subtitle="Access Token, Owner Passcode, Trakt OAuth or Cloudflare SSO"
+      value={authMethodLabel}
+      onclick={() => (showAuthModal = true)}
+    />
+    <SettingRow
       icon={ShieldCheck}
       title="Diary storage"
       subtitle={diary.real
@@ -279,6 +425,22 @@
       value={diary.saving ? 'Saving…' : diary.ready ? 'Ready' : 'Loading…'}
     />
   </SettingsGroup>
+
+  <AccountAuthModal
+    open={showAuthModal}
+    onClose={() => (showAuthModal = false)}
+    onSignedIn={(info) => {
+      authMethodLabel =
+        info.method === 'personal_token'
+          ? 'Access Token'
+          : info.method === 'passcode'
+            ? 'Passcode'
+            : info.method === 'provider_oauth'
+              ? 'Trakt OAuth'
+              : 'Authenticated';
+      void diary.refresh();
+    }}
+  />
 
   <SettingsGroup title="About">
     <SettingRow icon={Info} title="About TwilDiary" value={version} href="/preview/more/about" />
@@ -290,6 +452,9 @@
 </div>
 
 <style>
+  .vault-notice { padding: 16px; display: grid; gap: 10px; }
+  .vault-notice p { margin: 0; overflow-wrap: anywhere; color: var(--text-secondary); }
+  .vault-notice button { min-height: 44px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 12px; }
   .rating-source-select {
     flex: 0 0 auto;
     max-width: 105px;

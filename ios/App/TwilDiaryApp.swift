@@ -3,64 +3,153 @@ import UIKit
 import TwilDiaryCore
 
 @main struct TwilDiaryApp: App {
-    @State private var store = DiaryStore()
+    /// Answers the allowed orientations: upright, except JellySpace's player (OrientationLock).
+    @UIApplicationDelegateAdaptor(TwilDiaryAppDelegate.self) private var appDelegate
+    @State private var store: DiaryStore
     @State private var router = AppRouter()
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
+    @AppStorage("use24HourTime") private var use24Hour = false
     init() {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             UserDefaults.standard.set(DiaryTheme.twilight.rawValue, forKey: "theme")
             UserDefaults.standard.set(PublicRatingSource.tmdb.rawValue, forKey: "publicRatingSource")
             UserDefaults.standard.set(true, forKey: "hideSpoilers")
-            for key in ["historyGrid", "homeHistoryGrid", "upcomingGrid", "glanceGrid", "filesGrid", "scannerGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            if ProcessInfo.processInfo.arguments.contains("--ui-personal-profile-reset") {
+                for key in ["profileName", "profileCharacter", "profileUsesPhoto", "recentSearches.v1"] { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            for key in ["historyGrid", "glanceGrid", "filesGrid", "episodesGrid", "traktGrid", "searchGrid", "backlogGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            if !ProcessInfo.processInfo.arguments.contains("--ui-keep-home-layouts") {
+                for key in ["homeHistoryGrid", "upcomingGrid"] { UserDefaults.standard.set(false, forKey: key) }
+            }
             UserDefaults.standard.set(true, forKey: "catalogGrid")
             UserDefaults.standard.set(true, forKey: "trashGrid")
+            for key in ["favouritesCastGrid", "favouritesCharactersGrid", "favouritesVoiceGrid"] { UserDefaults.standard.set(true, forKey: key) }
+            FavouritesStore.shared.reset()
+            // Each UI test starts on the server's diary: a test (or the unit tests sharing this
+            // simulator) that switched to a service's diary or queued Trakt edits must not leave the
+            // next launch on an empty service diary.
+            for key in [DiaryStore.diarySourceKey, "trakt.pendingWrites", "trakt.copiedFromServer", "trakt.autoFilledFromServer"] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            if !ProcessInfo.processInfo.arguments.contains("--ui-keep-launch-tab") { UserDefaults.standard.removeObject(forKey: AppTab.launchKey) }
+            for key in ["favouritesTab", AniListMostWatched.userKey, "canvasTab", "glanceSort", "glanceCategory", "trashCategory", "trashSort", "canvasSort", "canvasListSort", "canvasListKind", "traktConflictDefault", "traktConflictPrefer", "jellyfinAddress", "jellyfinExcludedLibraries", "jellyfinLastSync"] { UserDefaults.standard.removeObject(forKey: key) }
             if !ProcessInfo.processInfo.arguments.contains("--ui-keep-library-preferences") {
                 UserDefaults.standard.set(false, forKey: "library.list")
                 UserDefaults.standard.set(false, forKey: "library.genreRows")
                 UserDefaults.standard.set(LibraryQuery.Sort.library.rawValue, forKey: "library.sort")
             }
+            if ProcessInfo.processInfo.arguments.contains("--ui-favourites-gallery") {
+                FavouritesStore.shared.seedGallery()
+                UserDefaults.standard.set("gallery-reference", forKey: AniListMostWatched.userKey)
+                UserDefaults.standard.set(Favourite.Kind.cast.rawValue, forKey: "favouritesTab")
+            }
         }
         #endif
+        // TMDB's replies may be kept about two hours and then rechecked by ETag; iOS's default cache
+        // (512 KB in memory, 10 MB on disk) held almost none, so pages read the same details again.
+        URLCache.shared = URLCache(memoryCapacity: 32 * 1024 * 1024, diskCapacity: 200 * 1024 * 1024)
+        Task.detached(priority: .background) { PublicArtworkCache.prune() }
+        let diaryStore = DiaryStore()
+        _store = State(initialValue: diaryStore)
+        BackgroundSyncCoordinator.shared.registerBackgroundTasksIfNeeded(store: diaryStore)
+        diaryStore.observeConnectivity()
+        EpisodeNotifications.showWhileOpen()
     }
     var body: some Scene {
         // No app-wide glass button style: it turned every text link, toolbar item and
         // card link into a glass capsule (glass on the system bars' own glass).
         // Actions choose .glass / .glassProminent explicitly; toolbars get system glass.
-        WindowGroup { RootView().environment(store).environment(router).preferredColorScheme(.dark).tint(theme.accent).buttonBorderShape(.capsule) }
+        WindowGroup {
+            // The performance run's player (only with --jellyspace-perf; see JellyPerfHarness), inside
+            // the store and router so the player it opens has them.
+            RootView().modifier(JellyPerfHarness()).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
+                // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
+                .onChange(of: theme, initial: true) { _, chosen in
+                    ThemeStore.shared.apply(chosen)
+                    applyWindowStyle()
+                }
+                .onChange(of: nativeAppearance) { _, _ in applyWindowStyle() }
+        }
+    }
+}
+
+extension TwilDiaryApp {
+    /// SwiftUI doesn't give a window back to the system's appearance when the scheme asked for goes
+    /// from dark to none, so the windows are told directly (Native's Automatic, Light or Dark).
+    @MainActor func applyWindowStyle() {
+        let style: UIUserInterfaceStyle = theme.palette.followsSystemAppearance ? nativeAppearance.interfaceStyle : .dark
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows where window.overrideUserInterfaceStyle != style { window.overrideUserInterfaceStyle = style }
+        }
     }
 }
 
 enum AppTab: String, CaseIterable, Hashable {
-    case home, library, glance, stats, more
-    var label: String { rawValue.capitalized }
-    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "eye"; case .stats: "chart.bar"; case .more: "ellipsis" } }
-    var icon: String {
-        switch self { case .home: "house"; case .library: "library-big"; case .glance: "eye"; case .stats: "chart-no-axes-column-increasing"; case .more: "ellipsis" }
+    case home, library, glance, search, more
+    var label: String { self == .more ? "Profile" : rawValue.capitalized }
+    /// Settings → Appearance → Opens on: the tab a fresh launch starts on (Glance until chosen).
+    static let launchKey = "launchTab"
+    static var launch: AppTab {
+        #if DEBUG
+        // UI tests start on Glance unless a test is checking this setting across a relaunch.
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--ui-testing") && !arguments.contains("--ui-keep-launch-tab") { return .glance }
+        #endif
+        let saved = UserDefaults.standard.string(forKey: launchKey)
+        if saved == "stats" { UserDefaults.standard.set(AppTab.more.rawValue, forKey: launchKey); return .more }
+        let chosen = saved.flatMap(AppTab.init(rawValue:)) ?? .glance
+        // A hidden tab (Settings → Customise) can't be the first one shown.
+        return TabLayout.visible.contains(chosen) ? chosen : (TabLayout.visible.first ?? .home)
     }
+    var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case explore, history, files, trash, scanner, appearance, trakt, tmdb, about }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, jellyspaceSettings, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
+    var query = ""
 }
 struct SavedTitleRoute: Hashable {
     let id: String
     let season: Int
     var focusEpisodes = true
-    var focusNotes = false
 }
 
 @MainActor @Observable final class AppRouter {
-    var selectedTab = AppTab.glance
+    var selectedTab = AppTab.launch
     var randomPick: RandomPickScope?
     var paths: [AppTab: NavigationPath] = [:]
     var libraryShortcut: String?
     var libraryGenreShortcut = ""
     var libraryDiskShortcut = ""
+    /// A saved filter to open the Library with (a Home shelf's ›).
+    var librarySavedShortcut: SavedFilter?
     var libraryRevision = 0
     var statsRevision = 0
+    /// Bumped when Search is tapped while already on Search: the field takes focus (keyboard up).
+    var searchFocusRevision = 0
     var detailTabs = Set<AppTab>()
+    init() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--ui-testing"), let value = args.first(where: { $0.hasPrefix("--ui-profile-format=") }) {
+            let parts = value.dropFirst("--ui-profile-format=".count).split(separator: ":")
+            if parts.count == 2, let id = Int(parts[1]) {
+                selectedTab = .home
+                var path = NavigationPath()
+                switch parts[0] {
+                case "cast": path.append(PersonRoute(id: id, sourceTitle: id == 974169 ? "Wednesday" : nil, sourceRole: id == 974169 ? "Wednesday Addams" : nil))
+                case "character": path.append(CharacterRoute(id: id))
+                case "voice": path.append(VoiceActorRoute(id: id, watchedCount: 15))
+                default: break
+                }
+                paths[.home] = path
+            }
+        }
+        #endif
+    }
     func setDetailVisibility(_ visible: Bool, tab: AppTab) {
         guard detailTabs.contains(tab) != visible else { return }
         if visible { detailTabs.insert(tab) } else { detailTabs.remove(tab) }
@@ -73,21 +162,30 @@ struct SavedTitleRoute: Hashable {
         return true
     }
     func select(_ tab: AppTab) {
-        if selectedTab == tab { paths[tab] = NavigationPath(); detailTabs.remove(tab) }
+        if selectedTab == tab {
+            paths[tab] = NavigationPath(); detailTabs.remove(tab)
+            if tab == .search { searchFocusRevision += 1 }
+        }
         selectedTab = tab
     }
     func presentRandomPick(_ titleIDs: [String]? = nil) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         randomPick = RandomPickScope(titleIDs: titleIDs)
     }
-    func library(_ shortcut: String) { libraryGenreShortcut = ""; libraryDiskShortcut = ""; libraryShortcut = shortcut; libraryRevision += 1; paths[.library] = NavigationPath(); selectedTab = .library }
+    func librarySaved(_ filter: SavedFilter) { library("all"); librarySavedShortcut = filter }
+    func library(_ shortcut: String) { if shortcut == "add" { search(); return }; libraryGenreShortcut = ""; libraryDiskShortcut = ""; librarySavedShortcut = nil; libraryShortcut = shortcut; libraryRevision += 1; paths[.library] = NavigationPath(); selectedTab = .library }
     func libraryGenre(_ genre: String) { library("all"); libraryGenreShortcut = genre }
     func libraryDisk(_ key: String) { library("all"); libraryDiskShortcut = key == "all" ? "" : key }
-    func statsToday() { statsRevision += 1; paths[.stats] = NavigationPath(); selectedTab = .stats }
-    func files() { selectedTab = .more; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.files) }
+    func statsToday() { statsRevision += 1; paths[.more] = NavigationPath(); paths[.more, default: NavigationPath()].append(AppDestination.statistics); selectedTab = .more }
+    func search() { selectedTab = .search; paths[.search] = NavigationPath() }
     func openTitle(_ id: String, tab: AppTab) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         selectedTab = tab; paths[tab, default: NavigationPath()].append(id)
+    }
+    /// A show or movie by its TMDB page (yours, if it's in your diary), in the tab you're on.
+    func openCatalog(_ route: CatalogRoute) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        paths[selectedTab, default: NavigationPath()].append(route)
     }
     func replaceTitle(_ id: String, tab: AppTab) {
         selectedTab = tab
@@ -101,52 +199,73 @@ struct RootView: View {
     @Environment(AppRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showSignIn = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
+    /// Settings → Customise: the tab bar's order, and whether Glance shows.
+    @AppStorage(TabLayout.key) private var tabLayout = ""
+    /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
+    @Namespace private var zoom
+    @State private var askAlerts = false
+    /// The animated splash: shown at launch (not in UI tests unless asked), lifted once it has
+    /// played and there's something to show (your diary, the first screen, or why it can't open).
+    @State private var showSplash = !ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.arguments.contains("--ui-splash")
+    @State private var splashPlayed = false
+    /// The splash lifts on a Home that's ready to draw (its rows worked out), so opening never shows
+    /// a half-built page that then jumps into place; 2.5 s at most.
+    private var readyToShow: Bool {
+        if store.needsSignIn { return true }
+        guard store.hasLoadedWorkspace || !store.loading else { return false }
+        return store.homeProjection != nil || !store.hasLoadedWorkspace || splashWaited
+    }
+    @State private var splashWaited = false
+    private func liftSplash() {
+        guard showSplash, splashPlayed, readyToShow, !ProcessInfo.processInfo.arguments.contains("--ui-splash-hold") else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .smooth(duration: 0.45)) { showSplash = false }
+    }
     var body: some View {
         @Bindable var router = router
         Group {
             if store.needsSignIn {
-                VStack(spacing: 22) {
-                    BrandMark().fill(.tint).frame(width: 56, height: 56)
-                    Text("TwilDiary").font(.largeTitle.bold())
-                    Text("Your diary, now on iOS.").foregroundStyle(.secondary)
-                    Button("Sign in to your diary") { showSignIn = true }.buttonStyle(.glassProminent).controlSize(.large)
-                    if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
-                    .sheet(isPresented: $showSignIn) {
-                        NavigationStack {
-                            AccessSignIn { credential in showSignIn = false; Task { await store.connect(credential) } }
-                                .navigationTitle("Private sign-in").navigationBarTitleDisplayMode(.inline)
-                                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showSignIn = false } } }
+                // The ways in, straight away (as Cinopsys opens): Trakt, then Google or email.
+                AccessSignIn(completion: { credential in Task { await store.signInWithServer(credential) } },
+                             phoneOnly: { tracker in Task { await store.startPhoneOnly(tracker) } },
+                             onThisPhone: { Task { await store.startOnThisPhone() } })
+                    .safeAreaInset(edge: .bottom) {
+                        if let error = store.error {
+                            Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity).padding(.horizontal, 20).padding(.bottom, 8)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(ThemeStore.current.canvas.ignoresSafeArea())
             } else if !store.hasLoadedWorkspace {
                 VStack(spacing: 22) {
                     BrandMark().fill(.tint).frame(width: 48, height: 48)
-                    Text(store.loading || store.restoringCache ? "Opening your diary" : "Your diary is temporarily unavailable").font(.title2.bold())
-                    if store.loading || store.restoringCache { ProgressView() }
+                    Text(store.loading ? "Opening your diary" : "Your diary is temporarily unavailable").font(.title2.bold())
+                    if store.loading { ProgressView() }
                     else {
                         Text(store.error ?? "You’re signed in. Retry to load your diary.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        Button("Retry") { Task { await store.refresh() } }.buttonStyle(.glassProminent).controlSize(.large)
+                        Button("Retry") { Task { await store.refresh() } }.buttonStyle(.diaryPrimary).controlSize(.large)
                         Button("Sign out") { store.signOut() }.foregroundStyle(.secondary)
                     }
-                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(ThemeStore.current.canvas)
             } else {
-                NativeTabShell(selection: $router.selectedTab, accent: UIColor(theme.accent),
-                               pageKey: theme.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
+                // Premiere marks the chosen tab in white on the glass bar, as streaming apps do; red stays for content.
+                NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme == .native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
+                               pageKey: theme.rawValue + ":" + nativeAppearance.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
-                }, onReselect: { router.select($0) }) { tab in
-                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(.dark)
+                }, onReselect: { router.select($0) }, tabs: TabLayout.layout(tabLayout).visible.compactMap(AppTab.init(rawValue:))) { tab in
+                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance))
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
-                    // Title heroes and Glass backgrounds reach under the status bar. The bottom
-                    // stays inside the safe area: filling it too (6a2b723) made the title Undo
-                    // and Trakt Pause UI cases fail where they had passed, and ignoring the
-                    // keyboard region let the keyboard cover the tab bar.
-                    .ignoresSafeArea(.container, edges: .top)
-                    .background(.black)
-                    .overlay(alignment: .top) { RootNoticeBanner() }
+                    // The tab controller fills the screen and hands pages the real insets: heroes
+                    // reach under the status bar, and lists scroll under the floating tab bar to
+                    // the bottom edge instead of stopping at a black home-indicator band.
+                    // Container only: ignoring the keyboard region let the keyboard cover the tab bar.
+                    .ignoresSafeArea(.container)
+                    .background(ThemeStore.current.canvas)
+                    .overlay(alignment: .bottom) { RootNoticeBanner() }
+                    // A check-in running: its banner above the tab bar (time left, Cancel).
+                    .overlay(alignment: .bottom) { CheckInBanner() }
             }
         }.accessibilityHidden(router.randomPick != nil).allowsHitTesting(router.randomPick == nil)
             .overlay {
@@ -157,48 +276,166 @@ struct RootView: View {
                         onAdd: { router.randomPick = nil; router.library("add") }).id(scope.id)
                 }
             }.onChange(of: store.sessionRevision) { _, _ in router.randomPick = nil }
+            .haptic(.selection, trigger: router.selectedTab)
+            .haptic(.error, trigger: store.error) { _, new in new != nil }
+            // Once your diary has loaded the first time: "Turn on notifications", as Cinopsys asks.
+            .task(id: store.hasLoadedWorkspace) {
+                guard store.hasLoadedWorkspace, !store.needsSignIn, !store.isPreview,
+                      !UserDefaults.standard.bool(forKey: EpisodeNotifications.askedKey) else { return }
+                try? await Task.sleep(for: .seconds(2))
+                askAlerts = !Task.isCancelled
+            }
+            .sheet(isPresented: $askAlerts) { EpisodeAlertsPrompt() }
+            // A server sign-in from when the diary lived there: the diary moves to the phone.
+            .task { await store.leaveServerDiary() }
+            // Alerts follow the diary: once it has loaded, and again after a change.
+            .task(id: "\(store.hasLoadedWorkspace)|\(store.homeWorkspaceRevision)") {
+                guard store.hasLoadedWorkspace else { return }
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                await EpisodeNotifications.reschedule(store: store)
+                await ReleaseAlerts.refresh(store: store)
+            }
+            .overlay {
+                if showSplash {
+                    SplashView { splashPlayed = true; liftSplash() }
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 1.12)))
+                        .zIndex(1)
+                }
+            }
+            .onChange(of: readyToShow) { _, _ in liftSplash() }
+            .task { try? await Task.sleep(for: .seconds(2.5)); splashWaited = true; liftSplash() }
+            .task { JellyLiveActivity.endLeftovers() }
+            // JellySpace's Face ID lock: covered while the app is away, locked again after a while.
+            .onChange(of: scenePhase) { _, phase in JellyFaceLock.shared.phase(phase) }
             .task(id: scenePhase) {
-                if scenePhase == .active { await store.refreshOnForeground(); await store.resumeTraktOnForeground() }
+                if scenePhase == .active {
+                    // The anime map, weekly on Wi-Fi, for Simkl's and AniList's syncs (in the background).
+                    if SimklAccount.shared.signedIn || AniListSyncAccount.shared.signedIn { Task { await AnimeMapStore.shared.refreshIfNeeded() } }
+                    await store.refreshOnForeground(); await store.resumeTraktOnForeground()
+                    await SimklMirror.shared.resume(store: store)
+                    await AniListSync.shared.resume(store: store)
+                    // Alerts first: quick, on this phone, and not held up by the syncs below.
+                    await EpisodeNotifications.reschedule(store: store)
+                    // No server: tags, Queue, notes, files, favourite people and Trash from Drive.
+                    await PhoneDriveSync.pullIfDue(store: store)
+                    // And from your server, when you keep them there too.
+                    await PhoneServerSync.shared.pullIfDue(store: store)
+                    // Backups and alerts can wait: they start once the app has settled.
+                    try? await Task.sleep(for: .seconds(4))
+                    guard !Task.isCancelled else { return }
+                    await LocalBackups.write(store: store)
+                    await ServerBackups.runIfDue(store: store)
+                    await GoogleDrive.runIfDue(store: store)
+                    await ReleaseAlerts.refresh(store: store)
+                    await store.keepDiaryServiceCurrent()
+                }
                 else { store.suspendTraktForBackground() }
             }
+    }
+    /// A sync of any kind is running: reading or refreshing the diary, sending edits, or reading or
+    /// matching a service (Force Match included). The Profile tab turns a ring meanwhile.
+    private var syncing: Bool {
+        let trakt = TraktDirectStore.shared, others = TrackerPreviewStore.shared
+        return store.loading || store.busy || trakt.running || trakt.writing || others.running != nil || others.writing != nil
     }
     @ViewBuilder private func tabPage(_ tab: AppTab) -> some View {
         switch tab {
         case .home: diaryStack(tab) { HomeView() }
         case .library: diaryStack(tab) { LibraryView() }
         case .glance: diaryStack(tab) { GlanceView() }
-        case .stats: diaryStack(tab) { StatsView() }
+        case .search: diaryStack(tab) { UniversalSearchView() }
         case .more: diaryStack(tab) { SettingsView() }
         }
     }
     private func diaryStack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
         NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
-            content().background(tab == .library && theme != .glass ? Color(webHex: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
+            // Tab pages draw their own pinned header and status-bar shade. Without this, the bar of a page
+            // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
+            content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(themed: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
                 .diaryNavigationAppearance(tab: tab, detail: false, router: router)
-                .navigationDestination(for: String.self) { TitleDetailView(id: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: SavedTitleRoute.self) { TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes, focusNotes: $0.focusNotes).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
-                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: String.self) { savedTitlePage(TitleDetailView(id: $0), tab: tab) }
+                .navigationDestination(for: SavedTitleRoute.self) {
+                    savedTitlePage(TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes), tab: tab)
+                }
+                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.catalog($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: SearchBrowseRoute.self) { SearchBrowseDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonFilmographyRoute.self) { PersonFilmographyView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PersonRoute.self) { PersonView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: CharacterRoute.self) { CharacterView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: AniAppearance.self) { AnimeAppearanceView(appearance: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: VoiceActorRoute.self) { PersonView(voice: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: VoiceActorCharactersRoute.self) { VoiceActorCharactersView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: HistoryRoute.self) { route in
-                    HistoryView(initialDay: route.day, initialUnknown: route.unknown).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
+                    HistoryView(initialDay: route.day, initialUnknown: route.unknown, initialQuery: route.query).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
+                .navigationDestination(for: OnThisDayRoute.self) { _ in OnThisDayView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: SearchLabRoute.self) { _ in SearchLabView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: ExploreAIPromptRoute.self) { ExploreAIPromptPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: ExploreFeedRoute.self) { ExploreFeedPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: SearchLabResultsRoute.self) { SearchLabResultsView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: MilestonesRoute.self) { _ in MilestonesView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: PersonPhotosRoute.self) { PersonPhotosPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: ShowPageRoute.self) { ShowPageDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: CanvasListRoute.self) { CanvasListView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: YourListsRoute.self) { _ in YourListsView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: CustomiseRoute.self) { _ in CustomiseView().diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: JellyFolderRoute.self) { JellyFolderPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: JellyDetailRoute.self) { JellyDetailPage(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: JellyListRoute.self) { JellyListPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: JellyShelfRoute.self) { JellyShelfPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: JellySettingsPage.self) { JellySettingsPageView(page: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
+                .navigationDestination(for: YourListRoute.self) { YourListPage(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: AppDestination.self) { destination in
                     Group { switch destination {
+                    case .profile: PersonalProfileView()
+                    case .statistics: StatsView()
                     case .explore: ExploreView()
+                    case .canvas: CanvasView()
+                    case .calendar: AiringCalendarView()
                     case .history: HistoryView()
                     case .files: FilesView()
+                    case .jellyfin: JellyfinLibraryView()
+                    case .jellyspace: JellySpaceView()
+                    case .jellyspaceSettings: JellySpaceSettingsView()
                     case .trash: TrashView()
-                    case .scanner: ScannerReviewView()
                     case .appearance: AppearanceView()
                     case .trakt: TraktView(store: store)
                     case .tmdb: TMDBConnectionView()
+                    case .tvdb: TVDBConnectionView()
+                    case .anilist: AniListSettingsView()
+                    case .cloudflare: CloudflareUsageView()
+                    case .apis: APIsView()
+                    case .favourites: FavouritesView()
+                    case .mainTracker: MainTrackerView()
+                    case .connections: ConnectionsView()
+                    case .backups: BackupsView()
+                    case .mdblist: ExternalProviderConnectionView(provider: .mdblist)
+                    case .wetrakr: ExternalProviderConnectionView(provider: .wetrakr)
+                    case .simkl: SimklSettingsView()
                     case .about: AboutView()
-                    } }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
+                    case .languageRegion: LanguageRegionView()
+                    case .syncBackup: SyncBackupView()
+                    case .notifications: NotificationsSettingsView()
+                    } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })
+            .environment(\.zoomNamespace, zoom).environment(\.zoomScope, tab.rawValue)
+    }
+
+    private func savedTitlePage(_ page: TitleDetailView, tab: AppTab) -> some View {
+        Group {
+            if tab == .glance {
+                // A Glance card can move between the hero and the scrolling list as
+                // activity changes. Use the standard push and pop for this route.
+                page
+            } else {
+                page.navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.title(page.id)), in: zoom))
+            }
+        }.diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router)
     }
 }
 
@@ -207,16 +444,21 @@ struct RootView: View {
 private struct RootNoticeBanner: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
+        // Above the check-in banner while one is running.
+        notice.padding(.bottom, LiveCheckIn.shared.active == nil ? 0 : 80)
+    }
+    @ViewBuilder private var notice: some View {
         if let notice = store.mutationRefreshNotice {
-            HStack(alignment: .top, spacing: 12) {
-                Text(notice).font(.caption).accessibilityIdentifier("confirmed-write-notice")
-                Spacer(minLength: 0)
-                Button("Refresh") { Task { await store.refresh() } }
+            // A small pill above the tab bar, not a banner over the page header.
+            HStack(spacing: 10) {
+                Text("Saved · refresh failed" + (store.mutationRefreshReason.map { " (\($0))" } ?? "")).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    .accessibilityLabel(notice).accessibilityIdentifier("confirmed-write-notice")
+                Button("Refresh") { Task { await store.refresh() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
                     .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
-            }.padding(12).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14)).padding()
+            }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).fixedSize().padding(.bottom, 140)
         } else if let error = store.error {
-            HStack { Text(error).font(.caption); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly) }
-                .padding(12).glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14)).padding()
+            HStack(spacing: 8) { Text(error).font(.system(size: 12)).lineLimit(2); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly).frame(minWidth: 36, minHeight: 40) }
+                .padding(.leading, 14).padding(.trailing, 4).glassEffect(.regular, in: Capsule()).padding(.horizontal, 24).padding(.bottom, 140)
         }
     }
 }

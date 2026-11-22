@@ -335,6 +335,7 @@ export async function authorizedTrakt(
     connectionVersion: row.version,
     username: row.username!,
     accessToken: secret.access_token,
+    expiresAt: row.expiresAt!,
     request: async (path: string, options: { method?: 'GET' | 'POST'; body?: unknown } = {}) => {
       try {
         return await traktRequest(path, env.TRAKT_CLIENT_ID!, secret.access_token, {
@@ -355,6 +356,25 @@ export async function authorizedTrakt(
     }
   };
 }
+/**
+ * The owner's current Trakt access token, for the app's direct Trakt reads (Trakt-first plan,
+ * ios/docs/TRAKT-CLIENT-PLAN.md). Refreshed here first when it expires within two minutes; the
+ * refresh token and its encryption key never leave the Worker.
+ */
+export async function directTraktToken(
+  db: Db,
+  env: ServerBindings,
+  transport: typeof fetch = fetch
+) {
+  const trakt = await authorizedTrakt(db, env, transport);
+  return {
+    accessToken: trakt.accessToken,
+    expiresAt: trakt.expiresAt,
+    clientId: env.TRAKT_CLIENT_ID!,
+    username: trakt.username
+  };
+}
+
 export async function disconnectTrakt(db: Db) {
   await db
     .update(traktConnections)

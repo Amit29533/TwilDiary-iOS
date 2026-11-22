@@ -43,8 +43,14 @@ PY
     python3 ios/tools/verify-build-log.py "$ARTIFACTS/logs/simulator-build.log" '** TEST BUILD SUCCEEDED **'
     ;;
   build-device)
+    # TwilDiary's TMDB key comes from the environment (a secret in CI), never from the repo.
+    # Local device builds can read the TheTVDB key from the ignored keys file.
+    if [[ -z "${TWILDIARY_TVDB_KEY:-}" && -f .local/keys.env ]]; then
+      TWILDIARY_TVDB_KEY=$(sed -n 's/^TWILDIARY_TVDB_KEY=//p' .local/keys.env | tail -n 1)
+    fi
     xcodebuild build "${COMMON[@]}" -destination 'generic/platform=iOS' -configuration Release \
-      -derivedDataPath "$PWD/ios/.derived/device" 2>&1 | tee "$ARTIFACTS/logs/device-build.log"
+      -derivedDataPath "$PWD/ios/.derived/device" ${TWILDIARY_TMDB_KEY:+TWILDIARY_TMDB_KEY="$TWILDIARY_TMDB_KEY"} ${TWILDIARY_TVDB_KEY:+TWILDIARY_TVDB_KEY="$TWILDIARY_TVDB_KEY"} ${TWILDIARY_GEMINI_KEY:+TWILDIARY_GEMINI_KEY="$TWILDIARY_GEMINI_KEY"} ${TWILDIARY_GROQ_KEY:+TWILDIARY_GROQ_KEY="$TWILDIARY_GROQ_KEY"} ${TWILDIARY_REQUESTY_KEY:+TWILDIARY_REQUESTY_KEY="$TWILDIARY_REQUESTY_KEY"} ${TWILDIARY_CF_ACCESS_CLIENT_ID:+TWILDIARY_CF_ACCESS_CLIENT_ID="$TWILDIARY_CF_ACCESS_CLIENT_ID"} ${TWILDIARY_CF_ACCESS_CLIENT_SECRET:+TWILDIARY_CF_ACCESS_CLIENT_SECRET="$TWILDIARY_CF_ACCESS_CLIENT_SECRET"} 2>&1 \
+      | sed 's/^\([[:space:]]*TWILDIARY_TVDB_KEY = \).*/\1[configured]/' | tee "$ARTIFACTS/logs/device-build.log"
     python3 -B ios/tools/test_verify_build_log.py
     python3 ios/tools/verify-build-log.py "$ARTIFACTS/logs/device-build.log" '** BUILD SUCCEEDED **'
     ;;
@@ -53,6 +59,11 @@ PY
     python3 ios/tools/verify-release-resources.py "$PWD/ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app" | tee "$ARTIFACTS/logs/release-resources.log"
     mkdir -p "$ARTIFACTS/package/Payload"
     cp -R ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app "$ARTIFACTS/package/Payload/"
+    # An ad-hoc signature carrying the app's permissions (Communication Notifications: a show's
+    # poster in place of the app icon on its alerts). Your sideloading tool re-signs the app as before.
+    codesign --force --deep --sign - --timestamp=none "$ARTIFACTS/package/Payload/TwilDiary.app"
+    codesign --force --sign - --timestamp=none --entitlements ios/Support/TwilDiary.entitlements "$ARTIFACTS/package/Payload/TwilDiary.app"
+    codesign -d --entitlements - "$ARTIFACTS/package/Payload/TwilDiary.app" 2>&1 | tee "$ARTIFACTS/logs/entitlements.log"
     (cd "$ARTIFACTS/package" && ditto -c -k --keepParent Payload ../TwilDiary-unsigned.ipa)
     (cd "$ARTIFACTS" && shasum -a 256 TwilDiary-unsigned.ipa > TwilDiary-unsigned.ipa.sha256)
     ;;
@@ -76,7 +87,7 @@ PY
       -only-testing:TwilDiaryUITests/NativeScreensTests/testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testToastExpiresAndCardCoverAndUsefulMenuWork \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeTabsAndTitleNavigation \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testRootContentSwipesVisitEveryTabWithoutWrappingAndKeepCardGestures \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testSideSwipesChangeCategoriesNotTabsAndKeepCardGestures \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNavigationLensCanBeHeldAndSlidAcrossTheBarAndCancelledOutsideIt \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testCollectionGridsKeepEpisodeActionsFoldersAndHistoryEntries \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleMenuRevealsAndScrollsNotesAndLocationsAndCopiesAPath \
@@ -89,7 +100,7 @@ PY
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeExploreReturnsByBackActiveHomeTabAndFullContentSwipe \
       -only-testing:TwilDiaryUITests/LayoutScreensTests/testEveryThemeIsSelectableAndGlassSearchKeepsOneContainedField \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testPersonShelvesOpenFilmographyLayoutsAndPreserveReturnNavigation \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchUpdatesTheEpisodePiecesAndMovieHistory \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped \
       -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/RepairGate.xcresult" \
       2>&1 | tee "$ARTIFACTS/logs/repair-tests.log"
@@ -97,12 +108,12 @@ PY
   test-progress)
     xcodebuild test-without-building "${COMMON[@]}" -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$SIM_ARCH" \
       -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 360 \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchAndUndoUpdateTheEpisodePiecesAndMovieHistory \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatchAndPreservesUndo \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleWatchUpdatesTheEpisodePiecesAndMovieHistory \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testConfirmedWatchRefreshFailureRecoversWithoutAnotherWatch \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testFilesAndScannerMatchPublishLocationWithoutChangingWatchHistory \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testManualTitleYearValidationStatusRatingAndSavedNavigation \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testContinueCarouselSwipesAndRestoresAcrossTabsWithoutOverflowMenu \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeExploreReturnsByBackActiveHomeTabAndFullContentSwipe \
-      -only-testing:TwilDiaryUITests/NativeScreensTests/testRandomPickKeepsPlannedScopeAndLogoRerollsWithoutRepeating \
+      -only-testing:TwilDiaryUITests/NativeScreensTests/testCanvasShowsAMosaicForTitlesAndCollagesForTraktLists \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testSearchReturnsDirectlyToRetainedResultsAndGlanceRemainsScoped \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testTitleArtworkScrollsAwayBeforeTheEpisodeAndNotesContent \
       -only-testing:TwilDiaryUITests/NativeScreensTests/testNativeBackReturnsFromEverySettingsDestination \
@@ -118,6 +129,10 @@ PY
   test-layouts)
     xcrun simctl shutdown "$SIMULATOR_ID" || true
     layout_status=0
+    layout_selection=(-only-testing:TwilDiaryUITests/LayoutScreensTests)
+    if [ "${TWIL_LAYOUT_PROFILE_CHECKS:-0}" = 1 ]; then
+      layout_selection+=(-only-testing:TwilDiaryUITests/ProfileFormattingUITests -only-testing:TwilDiaryUITests/PersonalSettingsUITests/testLargeTextPersonalProfileKeepsAvatarAndSectionsReadable)
+    fi
     while IFS=$'\t' read -r layout_name layout_id; do
       if ! xcrun simctl boot "$layout_id" || ! xcrun simctl bootstatus "$layout_id" -b; then
         echo "Layout simulator failed to boot: $layout_name" >&2
@@ -126,7 +141,7 @@ PY
         continue
       fi
       if ! xcodebuild test-without-building "${COMMON[@]}" -destination "platform=iOS Simulator,id=$layout_id,arch=$SIM_ARCH" \
-        -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 360 -only-testing:TwilDiaryUITests/LayoutScreensTests \
+        -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 360 "${layout_selection[@]}" \
         -derivedDataPath "$PWD/ios/.derived/simulator" -resultBundlePath "$ARTIFACTS/Layout-$layout_name.xcresult" \
         2>&1 | tee "$ARTIFACTS/logs/layout-$layout_name-tests.log"; then
         layout_status=1

@@ -28,7 +28,7 @@ export interface DiaryController {
   toggleFavorite(id: string): void;
   updateTitle(
     id: string,
-    patch: Partial<Pick<MediaTitle, 'score' | 'notes' | 'status'>>
+    patch: Partial<Pick<MediaTitle, 'score' | 'notes' | 'status' | 'tags'>>
   ): Promise<boolean>;
   setStatus(id: string, status: WatchStatus, watchedAt?: string): Promise<boolean>;
   setSeasonProgress(id: string, season: number, count: number, watchedAt: string): boolean;

@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import TwilDiaryCore
 
-private func location(_ id: String, device: String = "pc", volume: String = "volume", drive: String = "E:", evidence: String = "present") throws -> FileLocation {
-    let value: [String: Any] = ["id": id, "titleId": "title", "deviceName": "Windows PC", "deviceId": device, "volumeId": volume, "driveLetter": drive, "root": "E:/Media///", "relativePath": "///Anime/Season 1", "season": 1, "fileCount": 12, "evidence": evidence, "checkedAt": "2026-10-23T12:00:00Z"]
+private func location(_ id: String, device: String = "pc", volume: String = "volume", drive: String = "E:", evidence: String = "present", root: String = "E:/Media///", relative: String = "///Anime/Season 1") throws -> FileLocation {
+    let value: [String: Any] = ["id": id, "titleId": "title", "deviceName": "Windows PC", "deviceId": device, "volumeId": volume, "driveLetter": drive, "root": root, "relativePath": relative, "season": 1, "fileCount": 12, "evidence": evidence, "checkedAt": "2026-10-23T12:00:00Z"]
     return try JSONDecoder().decode(FileLocation.self, from: JSONSerialization.data(withJSONObject: value))
 }
 
@@ -23,6 +23,8 @@ private func location(_ id: String, device: String = "pc", volume: String = "vol
 @Test func serverLabelsUseOnlyConfirmedRealDriveLettersAndPathsHaveOneSeparator() throws {
     let first = try location("a", drive: " e: "), second = try location("b", drive: "D:"), disconnected = try location("c", drive: "F:", evidence: "unavailable")
     #expect(first.path == "E:\\Media\\Anime\\Season 1")
+    #expect(try location("p", root: "/mnt/media/", relative: "/TV/Frieren").path == "/mnt/media/TV/Frieren")
+    #expect(try location("r", root: "/", relative: "srv/Movies").path == "/srv/Movies")
     #expect(ServerAvailability.label([first, second, disconnected]) == "Available on Server: Drive D / Drive E")
     #expect(ServerAvailability.label([disconnected]) == "Not Available on Server")
     #expect(ServerAvailability.label([]) == "Not Available on Server")

@@ -7,8 +7,6 @@ import TwilDiaryCore
     var fail = false
     var delayed = false
     var waiting: CheckedContinuation<CatalogPage, any Error>?
-    var statusCalls = 0
-    var waitingStatus: CheckedContinuation<TraktStatus, any Error>?
     var now = Date(timeIntervalSince1970: 1_000)
     func page() async throws -> CatalogPage {
         calls += 1
@@ -19,10 +17,6 @@ import TwilDiaryCore
     func resume(id: Int) {
         waiting?.resume(returning: CatalogPage(items: [CatalogItem(id: id, mediaType: .tv, name: "Delayed")], page: 1, totalPages: 1))
         waiting = nil
-    }
-    func status() async throws -> TraktStatus {
-        statusCalls += 1
-        return try await withCheckedThrowingContinuation { waitingStatus = $0 }
     }
 }
 
@@ -113,22 +107,5 @@ import TwilDiaryCore
         XCTAssertNotNil(cache.cached("1", scope: scope, personal: false), "Replacing one cached page must not evict an unrelated page")
         _ = try await cache.page("1", scope: scope, personal: false) { try await loader.page() }
         XCTAssertEqual(loader.calls, 18)
-    }
-    func testConnectionChecksCoalesceButAreRevalidatedAfterCompletion() async throws {
-        let cache = DiscoveryCache(), scope = UUID(), loader = DiscoveryCacheLoader()
-        let first = Task { try await cache.status(scope: scope) { try await loader.status() } }
-        try await waitUntil { loader.waitingStatus != nil }
-        let second = Task { try await cache.status(scope: scope) { try await loader.status() } }
-        for _ in 0..<10 { await Task.yield() }
-        loader.waitingStatus?.resume(returning: TraktStatus(configured: true, connected: true, username: "Account-A"))
-        loader.waitingStatus = nil
-        let a = try await first.value, b = try await second.value
-        XCTAssertEqual(a.username, b.username); XCTAssertEqual(loader.statusCalls, 1)
-        let next = Task { try await cache.status(scope: scope) { try await loader.status() } }
-        try await waitUntil { loader.waitingStatus != nil }
-        loader.waitingStatus?.resume(returning: TraktStatus(configured: true, connected: false))
-        loader.waitingStatus = nil
-        let disconnected = try await next.value
-        XCTAssertFalse(disconnected.connected); XCTAssertEqual(loader.statusCalls, 2)
     }
 }

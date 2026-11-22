@@ -12,3 +12,8 @@ tools_dir="$(mktemp -d "$tool_temp/twildiary-xcodegen.XXXXXX")"
 unzip -q "$archive" -d "$tools_dir"
 "$tools_dir/xcodegen/bin/xcodegen" --version
 "$tools_dir/xcodegen/bin/xcodegen" generate --spec ios/project.yml
+
+# AetherEngine (JellySpace's player) is fetched into the same folder every build uses, then one
+# expression Xcode 26.6 can't type-check is patched (see ios/tools/patch-aetherengine.py).
+xcodebuild -resolvePackageDependencies -project ios/TwilDiary.xcodeproj -scheme TwilDiary   -clonedSourcePackagesDirPath "$PWD/ios/.spm"
+python3 ios/tools/patch-aetherengine.py "$PWD/ios/.spm"

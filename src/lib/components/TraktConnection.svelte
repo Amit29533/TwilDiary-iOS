@@ -5,15 +5,28 @@
   import Link2 from '@lucide/svelte/icons/link-2';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+  import ProviderIcon from './ProviderIcon.svelte';
   import { requestJson, errorMessage } from '#lib/client/api.ts';
   import { useDiary } from '#lib/client/diary-context.ts';
+  import {
+    readProviderConnectionSettings,
+    watchLoggingMethodOptions,
+    writeProviderConnectionSettings,
+    type WatchLoggingMethod
+  } from '#lib/client/provider-settings.ts';
   let { local = false }: { local?: boolean } = $props();
   import Check from '@lucide/svelte/icons/check';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import {
+    incomingTraktHealth,
+    incomingTraktPauseExplanation,
     pendingTraktChanges,
     reviewBatch,
+    traktApplyProgress,
     traktKinds,
+    traktReviewGroups,
+    type IncomingTraktStatus,
+    type TraktGroupDirection,
     type TraktKind,
     type TraktStatus as Status,
     type TraktChange as Change,
@@ -28,7 +41,14 @@
   const diary = useDiary();
   let status = $state<Status | null>(null),
     sync = $state<Sync | null>(null),
+    incoming = $state<IncomingTraktStatus | null>(null),
+    incomingBusy = $state(false),
+    incomingError = $state(''),
+    resolvingGroup = $state<TraktGroupDirection | null>(null),
     clientId = $state(''),
+    directToken = $state(''),
+    loggingMethod = $state<WatchLoggingMethod>('server_and_direct'),
+    showApiPanel = $state(false),
     mode = $state('round'),
     busy = $state(false),
     error = $state(''),
@@ -51,6 +71,10 @@
   );
   const batch = $derived(reviewBatch(sync?.items ?? [], kind, reviewLimit));
   const reviewing = $derived(!!sync?.run && ['review', 'applying'].includes(sync.run.state));
+  const progress = $derived(traktApplyProgress(sync));
+  const reviewGroups = $derived(traktReviewGroups(sync));
+  const incomingHealth = $derived(incomingTraktHealth(incoming));
+  const incomingPause = $derived(incomingTraktPauseExplanation(incoming));
   function reviewValue(kind: string, value: string | null) {
     if (kind === 'rating') return value ?? 'No rating';
     if (kind === 'watchlist') return value === 'true' ? 'Planned' : 'Not planned';
@@ -86,10 +110,99 @@
         }
         clock = Date.now();
         cooldownUntil = clock + (run.run?.retryAfter ?? 0) * 1000;
+        if (connection.connected) void refreshIncoming();
         if (changed) await invalidateAll();
       }
     } catch (cause) {
       if (active && generation === refreshGeneration) error = errorMessage(cause);
+    }
+  }
+  async function refreshIncoming() {
+    if (incomingBusy) return;
+    incomingBusy = true;
+    try {
+      incoming = await requestJson<IncomingTraktStatus>('/api/trakt/incoming');
+      incomingError = '';
+    } catch {
+      incomingError = 'Incoming sync couldn’t be checked. Retry when your diary backend is available.';
+    } finally {
+      incomingBusy = false;
+    }
+  }
+  async function configureIncoming(enabled: boolean) {
+    if (incomingBusy) return;
+    incomingBusy = true;
+    try {
+      incoming = await requestJson<IncomingTraktStatus>('/api/trakt/incoming', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled })
+      });
+      incomingError = '';
+    } catch {
+      incomingError = 'The incoming sync setting couldn’t be confirmed. Refresh its status before retrying.';
+    } finally {
+      incomingBusy = false;
+    }
+  }
+  async function catchUpIncomingNow() {
+    if (incomingBusy) return;
+    incomingBusy = true;
+    try {
+      incoming = await requestJson<IncomingTraktStatus>('/api/trakt/incoming', {
+        method: 'POST',
+        body: '{}'
+      });
+      incomingError = '';
+      if (incoming.tick === 'imported') {
+        diary.refresh();
+        await invalidateAll();
+      }
+    } catch {
+      incomingError = 'Incoming sync couldn’t be checked. Retry when your diary backend is available.';
+    } finally {
+      incomingBusy = false;
+    }
+  }
+  async function resolveGroup(
+    direction: TraktGroupDirection,
+    choice: 'local' | 'trakt' | 'skip'
+  ) {
+    if (busy || !sync?.run) return;
+    busy = true;
+    resolvingGroup = direction;
+    paused = false;
+    error = '';
+    controller = new AbortController();
+    const id = sync.run.id;
+    try {
+      do {
+        const result = await requestJson<Sync>(`/api/trakt/sync/${id}/resolve`, {
+          method: 'POST',
+          body: JSON.stringify({ direction, choice }),
+          signal: controller.signal
+        });
+        if (!active) return;
+        sync = result;
+        if (
+          paused ||
+          !(result.counts['review:' + direction] ?? 0) ||
+          !['review', 'applying'].includes(result.run?.state ?? '')
+        )
+          break;
+      } while (active);
+      if (active) {
+        diary.refresh();
+        await refresh();
+        await invalidateAll();
+      }
+    } catch (cause) {
+      if (active && !controller.signal.aborted) error = errorMessage(cause);
+      if (active) await refresh();
+    } finally {
+      if (active) {
+        resolvingGroup = null;
+        busy = false;
+      }
     }
   }
   async function loadMore() {
@@ -125,6 +238,10 @@
   });
   onMount(() => {
     mounted = true;
+    const savedSettings = readProviderConnectionSettings();
+    loggingMethod = savedSettings.trakt.loggingMethod;
+    clientId = savedSettings.trakt.clientId ?? '';
+    directToken = savedSettings.trakt.accessToken ?? '';
     https = location.protocol === 'https:';
     standalone =
       matchMedia('(display-mode: standalone)').matches ||
@@ -162,21 +279,43 @@
     busy = true;
     error = '';
     const submitted = clientId.trim();
-    clientId = '';
+    const submittedToken = directToken.trim();
     try {
-      await requestJson('/api/development/trakt', {
-        method: 'POST',
-        body: JSON.stringify({ clientId: submitted })
-      });
+      if (local) {
+        await requestJson('/api/development/trakt', {
+          method: 'POST',
+          body: JSON.stringify({ clientId: submitted })
+        });
+      }
+      const settings = readProviderConnectionSettings();
+      settings.trakt = {
+        ...settings.trakt,
+        provider: 'trakt',
+        enabled: Boolean(submitted),
+        loggingMethod,
+        clientId: submitted || undefined,
+        accessToken: submittedToken || undefined
+      };
+      writeProviderConnectionSettings(settings);
       editing = false;
+      showApiPanel = false;
       message = 'App settings saved';
       await refresh();
-      await invalidateAll();
+      if (local) await invalidateAll();
     } catch (cause) {
       error = errorMessage(cause);
     } finally {
       busy = false;
     }
+  }
+  function updateLoggingMethod(next: WatchLoggingMethod) {
+    loggingMethod = next;
+    const settings = readProviderConnectionSettings();
+    settings.trakt = {
+      ...settings.trakt,
+      loggingMethod: next
+    };
+    writeProviderConnectionSettings(settings);
   }
   async function connect() {
     busy = true;
@@ -299,7 +438,7 @@
 <div class="trakt-page">
   <section class="panel connection-card" aria-labelledby="trakt-heading">
     <div class="connection-heading">
-      <span class="connection-icon"><Link2 size={23} /></span>
+      <span class="connection-icon"><ProviderIcon provider="trakt" size={23} /></span>
       <div class="identity">
         <h2 id="trakt-heading">
           {status?.needsReconnect
@@ -390,6 +529,72 @@
       >{/if}
   </section>
 
+  <section class="sync-preferences" aria-labelledby="trakt-api-logging-heading">
+    <h2 class="group-label" id="trakt-api-logging-heading">API &amp; logging settings</h2>
+    <div class="panel preference-card">
+      <label class="rating-rule">
+        <span>
+          <strong>Watch logging method</strong>
+          <small>Keeps server watch logging and optionally fans out directly to Trakt</small>
+        </span>
+        <select
+          aria-label="Watch logging method"
+          value={loggingMethod}
+          onchange={(e) => updateLoggingMethod(e.currentTarget.value as WatchLoggingMethod)}
+          disabled={busy}
+        >
+          {#each watchLoggingMethodOptions as opt (opt.value)}
+            <option value={opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      </label>
+      <div class="sync-includes">
+        <button
+          class="text-link"
+          type="button"
+          onclick={() => (showApiPanel = !showApiPanel)}
+          disabled={busy}
+        >
+          {showApiPanel ? 'Hide API settings' : clientId ? 'Change API settings' : 'Configure custom API'}
+        </button>
+      </div>
+      {#if showApiPanel}
+        <form class="setup" onsubmit={save}>
+          <label>
+            Client ID (trakt-api-key)
+            <input
+              type="text"
+              bind:value={clientId}
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="128"
+              required
+              placeholder="Your Trakt app’s Client ID"
+              disabled={busy}
+            />
+          </label>
+          <label>
+            Direct Access Token / PAT (optional Bearer)
+            <input
+              type="password"
+              bind:value={directToken}
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="512"
+              placeholder="Optional token for direct device API sync"
+              disabled={busy}
+            />
+          </label>
+          <button class="button primary" type="submit" disabled={busy || !clientId.trim()}>
+            Save API settings
+          </button>
+        </form>
+      {/if}
+    </div>
+  </section>
+
   {#if status?.connected}
     <section class="sync-preferences" aria-labelledby="sync-preferences-heading">
       <h2 class="group-label" id="sync-preferences-heading">Sync preferences</h2>
@@ -411,6 +616,48 @@
         </div>
       </div>
     </section>
+    <section class="incoming-section" aria-labelledby="incoming-heading">
+      <div class="panel incoming-card">
+        <div class="incoming-row">
+          <div>
+            <strong id="incoming-heading">Incoming watches</strong>
+            <small
+              >Import completed plays from Trakt automatically. Ratings, watchlist changes and
+              deletions still use review.</small
+            >
+          </div>
+          <button
+            class="button"
+            disabled={incomingBusy || !incoming || status?.needsReconnect}
+            onclick={() => configureIncoming(!(incoming?.enabled ?? false))}
+            >{incoming?.enabled ? 'Turn off' : 'Turn on'}</button
+          >
+        </div>
+        {#if incoming?.enabled}
+          <small>
+            {incomingPause ??
+              (incoming.checkedAt
+                ? `Last checked ${new Date(incoming.checkedAt).toLocaleString()}`
+                : 'Waiting for the first scheduled check.')}
+          </small>
+          {#if incoming.pending > 0 || incoming.review > 0}
+            <small>{incoming.pending} waiting · {incoming.review} need manual review</small>
+          {/if}
+          {#if incomingHealth}<small>{incomingHealth}</small>{/if}
+        {/if}
+        {#if incomingError}<small>{incomingError}</small>{/if}
+        <div class="incoming-actions">
+          {#if incoming?.enabled && !incoming?.paused}<button
+              class="button primary"
+              disabled={incomingBusy || status?.needsReconnect}
+              onclick={catchUpIncomingNow}>Check now</button
+            >{/if}
+          <button class="text-link" disabled={incomingBusy} onclick={refreshIncoming}
+            >Refresh status</button
+          >
+        </div>
+      </div>
+    </section>
     {#if busy || sync?.run?.state === 'building'}<div class="scan-progress panel" role="status">
         <span
           >{sync?.run?.state === 'building'
@@ -424,6 +671,20 @@
             >Continue scan</button
           >{/if}
       </div>{/if}
+    {#if sync?.run && (reviewing || sync.run.state === 'complete')}<div
+        class="panel transfer-progress"
+        role="status"
+      >
+        <div class="transfer-header">
+          <strong>{busy ? 'Importing reviewed changes' : 'Import progress'}</strong>
+          <span class="badge">{progress.percent}%</span>
+        </div>
+        <progress class="transfer-bar" max="1" value={progress.fraction}></progress>
+        <small>
+          {progress.applied.toLocaleString()} saved · {progress.skipped.toLocaleString()} skipped ·
+          {progress.remaining.toLocaleString()} remaining
+        </small>
+      </div>{/if}
     {#if sync?.run}<section class="review-section" aria-labelledby="review-heading">
         <div class="review-title">
           <h2 id="review-heading">Review changes</h2>
@@ -433,6 +694,32 @@
           {sync.run.progress.toLocaleString()} items processed. Review incoming and outgoing changes before
           applying them.
         </p>
+        {#if reviewGroups.length > 0}<div class="panel group-panel">
+            <strong>Decide a whole group</strong>
+            {#each reviewGroups as group (group.direction)}
+              <div class="group-item">
+                <span>{group.title} · {group.count.toLocaleString()}</span>
+                <div class="review-actions">
+                  <button
+                    class="button"
+                    disabled={busy || cooldown > 0}
+                    onclick={() => resolveGroup(group.direction, 'local')}
+                    >{resolvingGroup === group.direction ? 'Working…' : 'Keep TwilDiary'}</button
+                  >
+                  <button
+                    class="button"
+                    disabled={busy || cooldown > 0}
+                    onclick={() => resolveGroup(group.direction, 'trakt')}>Use Trakt</button
+                  >
+                  <button
+                    class="text-link"
+                    disabled={busy}
+                    onclick={() => resolveGroup(group.direction, 'skip')}>Skip all</button
+                  >
+                </div>
+              </div>
+            {/each}
+          </div>{/if}
         <input
           class="review-search"
           type="search"
@@ -911,6 +1198,45 @@
   }
   .success {
     font-size: 0.8rem;
+  }
+  .incoming-card,
+  .transfer-progress,
+  .group-panel {
+    padding: 16px;
+    border-radius: 19px;
+    display: grid;
+    gap: 10px;
+  }
+  .incoming-row,
+  .transfer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .incoming-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .transfer-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 99px;
+    overflow: hidden;
+    accent-color: var(--accent);
+  }
+  .group-panel {
+    margin-bottom: 16px;
+  }
+  .group-item {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+  .group-item > span {
+    font-size: 0.8rem;
+    font-weight: 600;
   }
   @media (max-width: 359px) {
     .connection-card {

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Alerts sent as a message from a show (its poster in the app icon's place). -->
+    <key>NSUserActivityTypes</key>
+    <array><string>INSendMessageIntent</string></array>
+    <!-- ProMotion: up to 120 Hz on Pro iPhones (iOS still lowers it when nothing moves). -->
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
+    <!-- Chromecast: finding Cast devices, and Jellyfin's receiver app on them, on the local network. -->
+    <key>NSBonjourServices</key>
+    <array><string>_googlecast._tcp</string><string>_F007D354._googlecast._tcp</string></array>
+    <key>UIBackgroundModes</key>
+    <array><string>audio</string><string>fetch</string><string>processing</string></array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array><string>com.amit29533.TwilDiary.sync</string><string>com.amit29533.TwilDiary.outbox</string><string>com.amit29533.TwilDiary.match.*</string></array>
+	<!-- Jellyfin on the home network usually serves plain HTTP (192.168.x.x:8096). This allows
+	     only local addresses; every other connection keeps App Transport Security. The rest of
+	     the Info.plist is generated from the INFOPLIST_KEY_ build settings in project.yml. -->
+	<!-- TwilDiary's own app IDs for one-tap "Sign in with …" (public client IDs, never secrets).
+	     Set TWILDIARY_*_CLIENT_ID when building; empty means the app uses the IDs your server lists. -->
+	<key>TwilDiaryTraktClientID</key>
+	<string>$(TWILDIARY_TRAKT_CLIENT_ID)</string>
+	<key>TwilDiaryMDBListClientID</key>
+	<string>$(TWILDIARY_MDBLIST_CLIENT_ID)</string>
+	<key>TwilDiaryTMDBKey</key>
+	<string>$(TWILDIARY_TMDB_KEY)</string>
+	<key>TwilDiaryTVDBKey</key>
+	<string>$(TWILDIARY_TVDB_KEY)</string>
+	<key>TwilDiaryGeminiKey</key>
+	<string>$(TWILDIARY_GEMINI_KEY)</string>
+	<key>TwilDiaryGroqKey</key>
+	<string>$(TWILDIARY_GROQ_KEY)</string>
+	<key>TwilDiaryRequestyKey</key>
+	<string>$(TWILDIARY_REQUESTY_KEY)</string>
+	<key>TwilDiaryAccessClientID</key>
+	<string>$(TWILDIARY_CF_ACCESS_CLIENT_ID)</string>
+	<key>TwilDiaryAccessClientSecret</key>
+	<string>$(TWILDIARY_CF_ACCESS_CLIENT_SECRET)</string>
+	<key>TwilDiaryGoogleClientID</key>
+	<string>$(TWILDIARY_GOOGLE_CLIENT_ID)</string>
+	<key>TwilDiaryWeTrakrClientID</key>
+	<string>$(TWILDIARY_WETRAKR_CLIENT_ID)</string>
+	<!-- Black launch screen, so the animated splash follows it without a seam. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

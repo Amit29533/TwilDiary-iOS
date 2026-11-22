@@ -1,0 +1,27 @@
+{
+  "sourceSHA": "53a3f8d404dda5401f63b9e015b8a2d4be0fb469",
+  "codemagicBuild": "6ae5a823efa74786046f62fb",
+  "date": "2026-10-31",
+  "sha256": "6d75d9cd5ba9a50521aa443e6d0d26fc2085581bfea1ab2a7afff807e9a58f9f",
+  "ipaBytes": 8288648,
+  "platform": "iPhoneOS",
+  "architecture": "arm64",
+  "version": "2.0.0",
+  "buildNumber": "65",
+  "signed": false,
+  "tests": {
+    "core": 1,
+    "nativeUnits": 8,
+    "nativeUI": 6,
+    "failures": 0
+  },
+  "simulator": "iPhone 17 Pro / iOS 26.5",
+  "buildWarnings": 0,
+  "artifactCRC": "passed",
+  "ipaCRC": "passed",
+  "releaseFixtureExclusion": "passed",
+  "fullRegression": false,
+  "physicalDeviceTested": false,
+  "localIPA": "TwilDiary-home-53a3f8d.ipa",
+  "buildURL": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/build/6ae5a823efa74786046f62fb"
+}

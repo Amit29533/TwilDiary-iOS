@@ -56,15 +56,61 @@ export const discoveryGenres = [
   { name: 'Talk', movie: null, tv: 10767 },
   { name: 'Soap', movie: null, tv: 10766 }
 ] as const;
+/** TMDb has no TV genre for these; its keyword of the same name finds the shows instead. */
+export const tvGenreKeywords: Readonly<Record<string, number>> = { Romance: 9840 };
+/** Whether a genre can filter this type: a TMDb genre, or for shows a keyword stand-in. */
+export const genreAvailable = (name: string, type: 'movie' | 'tv') =>
+  discoveryGenres.some((g) => g.name === name && g[type] !== null) ||
+  (type === 'tv' && Object.hasOwn(tvGenreKeywords, name));
+/** TMDb network IDs Canvas offers for shows. */
+export const discoveryNetworks = [
+  { name: 'Netflix', id: 213 },
+  { name: 'HBO', id: 49 },
+  { name: 'Max', id: 3186 },
+  { name: 'Prime Video', id: 1024 },
+  { name: 'Apple TV+', id: 2552 },
+  { name: 'Disney+', id: 2739 },
+  { name: 'Hulu', id: 453 },
+  { name: 'Paramount+', id: 4330 },
+  { name: 'Peacock', id: 3353 },
+  { name: 'AMC', id: 174 },
+  { name: 'FX', id: 88 },
+  { name: 'BBC One', id: 4 },
+  { name: 'Crunchyroll', id: 1112 },
+  { name: 'Adult Swim', id: 80 }
+] as const;
 export interface DiscoveryQuery {
   source: 'tmdb' | 'trakt' | 'because';
   type: 'movie' | 'tv';
   genre: string;
   year: string;
-  sort: 'popular' | 'rating' | 'newest';
+  sort: 'popular' | 'rating' | 'newest' | 'trending' | 'votes';
   minimum: number;
   page: number;
   seed: string;
+  /** A TMDb network ID from discoveryNetworks; shows only. */
+  network?: number | undefined;
+  /** A TMDb keyword (a title page's tag). */
+  keyword?: number | undefined;
+  /** A TMDb production company. */
+  company?: number | undefined;
+  /** Search Lab: several tags (TMDb keywords), any or all of them. */
+  keywords?: number[] | undefined;
+  keywordMode?: 'any' | 'all' | undefined;
+  /** Search Lab: several genres, all required. */
+  genres?: string[] | undefined;
+  /** Search Lab: a US age rating (movies only; TMDb can't filter shows by it). */
+  certification?: string | undefined;
+  yearFrom?: number | undefined;
+  yearTo?: number | undefined;
+  /** Search Lab: a show's status. */
+  status?: 'returning' | 'ended' | 'canceled' | 'production' | undefined;
+  /** Search Lab: original language (ISO 639-1). */
+  language?: string | undefined;
+  /** Browsing by production country (ISO 3166-1 alpha-2). */
+  country?: string | undefined;
+  /** Search presets with provider filters not exposed by Search Lab. */
+  searchTheme?: 'miniseries' | 'hidden-gems' | undefined;
 }
 export interface DiscoveryItem extends SearchMatch {
   backdropPath: string | null;
@@ -80,6 +126,8 @@ export interface DiscoveryPage {
   items: DiscoveryItem[];
   page: number;
   totalPages: number;
+  /** TMDb's count of every match, when it gives one ("48 titles"). */
+  totalResults?: number;
   source: DiscoveryQuery['source'];
   seedName?: string;
 }
@@ -99,11 +147,13 @@ export function filterDiscovery(
       (!query.year || String(item.year) === query.year) &&
       (!query.minimum || (item.rating !== null && item.rating >= query.minimum))
   );
-  return query.sort === 'popular'
+  return query.sort === 'popular' || query.sort === 'trending'
     ? filtered
     : filtered.toSorted((a, b) =>
         query.sort === 'rating'
           ? (b.rating ?? -1) - (a.rating ?? -1) || b.votes - a.votes
-          : (b.year ?? 0) - (a.year ?? 0)
+          : query.sort === 'votes'
+            ? b.votes - a.votes
+            : (b.year ?? 0) - (a.year ?? 0)
       );
 }

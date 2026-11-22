@@ -1,6 +1,106 @@
 # Candidate track. Only a complete pass permits same-SHA promotion to ios-native.
 # No automatic triggers, signing, deployment, credentials or hosted-data writes.
 workflows:
+  native-ios-arena-integration-check:
+    name: TwilDiary Arena integration — current UI and sync repairs
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify Arena integration, current UI, offline delivery and widget extension
+        script: bash ios/scripts/arena-integration-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-arena-integration.ipa
+      - ios/.artifacts/TwilDiary-arena-integration.ipa.sha256
+      - ios/.artifacts/arena-integration-provenance.json
+      - ios/.artifacts/Arena*.xcresult
+      - ios/.artifacts/Layout-*.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
+  native-ios-personal-settings-check:
+    name: TwilDiary Profile, milestones and universal Search
+    instance_type: mac_mini_m2
+    max_build_duration: 50
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify Profile, avatars, milestones, Statistics and Search
+        script: bash ios/scripts/personal-settings-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-personal-settings.ipa
+      - ios/.artifacts/TwilDiary-personal-settings.ipa.sha256
+      - ios/.artifacts/personal-settings-provenance.json
+      - ios/.artifacts/PersonalSettings*.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
+  native-ios-profile-repair-check:
+    name: TwilDiary focused profile repairs and Home dates
+    instance_type: mac_mini_m2
+    # The three-size matrix alone took 38 minutes on the trial M2 runner.
+    # Retain time for the Release build, packaging and evidence export.
+    max_build_duration: 65
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify native profile links, Watched, toolbar and Home dates
+        script: bash ios/scripts/profile-repair-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-profile-repairs.ipa
+      - ios/.artifacts/TwilDiary-profile-repairs.ipa.sha256
+      - ios/.artifacts/profile-repair-provenance.json
+      - ios/.artifacts/ProfileRepairs.xcresult
+      - ios/.artifacts/ProfileHeaderSmoke.xcresult
+      - ios/.artifacts/ProfileLayout-*.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
+  native-ios-home-check:
+    name: TwilDiary focused Home design — iPhone and simulator
+    instance_type: mac_mini_m2
+    max_build_duration: 35
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify lower Home cards, lists and existing navigation
+        script: bash ios/scripts/home-design-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-home-design.ipa
+      - ios/.artifacts/TwilDiary-home-design.ipa.sha256
+      - ios/.artifacts/home-design-provenance.json
+      - ios/.artifacts/HomeDesign.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
+  native-ios-navigation-check:
+    name: TwilDiary focused favourites and profiles — iPhone and simulator
+    instance_type: mac_mini_m2
+    max_build_duration: 35
+    environment:
+      xcode: '26.6'
+      vars:
+        TZ: Asia/Kolkata
+    scripts:
+      - name: Verify favourites galleries and profile navigation
+        script: bash ios/scripts/navigation-check.sh
+    artifacts:
+      - ios/.artifacts/TwilDiary-native-navigation.ipa
+      - ios/.artifacts/TwilDiary-native-navigation.ipa.sha256
+      - ios/.artifacts/native-navigation-provenance.json
+      - ios/.artifacts/Navigation.xcresult
+      - ios/.artifacts/logs/*.log
+      - ios/.artifacts/screenshots/**
+      - ios/.artifacts/toolchain.txt
   native-ios-regression:
     name: TwilDiary native iOS — unsigned regression
     instance_type: mac_mini_m2
@@ -73,6 +173,8 @@ workflows:
           mkdir -p ios/.artifacts/logs
           { sw_vers; xcodebuild -version; } | tee ios/.artifacts/toolchain.txt
           bash ios/scripts/xcodegen.sh
+          # Owner-requested quick fixes: focused regressions, without simulator/UI suites.
+          swift test --package-path ios/Packages/TwilDiaryCore --filter 'jellyfinDiskFilterMatchesLibraryShortcutKeys|animeAppearanceNavigationRequiresAnUnambiguousTitleMatch' 2>&1 | tee ios/.artifacts/logs/focused-navigation-tests.log
           bash ios/scripts/ci.sh build-device
           bash ios/scripts/ci.sh package
           python3 - <<'PY'
@@ -81,13 +183,17 @@ workflows:
           log = (root / 'logs/device-build.log').read_text(errors='replace')
           if '** BUILD SUCCEEDED **' not in log or re.search(r'\bwarning:', log, re.I):
               raise SystemExit('Diagnostic device compilation requires success and zero warnings.')
+          focused = (root / 'logs/focused-navigation-tests.log').read_text(errors='replace')
+          for name in ['jellyfinDiskFilterMatchesLibraryShortcutKeys', 'animeAppearanceNavigationRequiresAnUnambiguousTitleMatch']:
+              if name + '() passed' not in focused:
+                  raise SystemExit('A focused navigation regression did not pass; refusing to package the diagnostic: ' + name)
           ipa = root / 'TwilDiary-device-diagnostic.ipa'
           shutil.copyfile(root / 'TwilDiary-unsigned.ipa', ipa)
           digest = hashlib.sha256(ipa.read_bytes()).hexdigest()
           (root / (ipa.name + '.sha256')).write_text(digest + '  ' + ipa.name + '\n')
           info = plistlib.loads(pathlib.Path('ios/.derived/device/Build/Products/Release-iphoneos/TwilDiary.app/Info.plist').read_bytes())
           value = {'kind': 'device-diagnostic', 'regressionAcceptance': False,
-                   'note': 'Compilation and resource checks only; complete simulator regression is a separate workflow.',
+                   'note': 'Focused Jellyfin drive and anime navigation regressions, compilation and resource checks; complete simulator regression is a separate workflow.',
                    'sourceSHA': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'buildNumber': info['CFBundleVersion'],
                    'codemagicBuild': os.environ['CM_BUILD_ID'], 'sha256': digest}
           (root / 'device-diagnostic-provenance.json').write_text(json.dumps(value, indent=2) + '\n')

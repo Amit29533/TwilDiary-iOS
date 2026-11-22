@@ -76,11 +76,13 @@ export async function cloudflareUsage(
     untilTime: now.toISOString()
   };
   const read = async (metric: UsageMetric) => {
+    // A dropped connection loses only this dataset, like a refused one, not the whole page.
     const response = await transport(ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: QUERIES[metric], variables })
-    });
+    }).catch(() => null);
+    if (!response) return null;
     if (response.status === 401 || response.status === 403)
       throw new ApiError(
         502,

@@ -20,6 +20,16 @@ export interface PersonDetails {
   profilePath: string | null;
   aliases: string[];
   credits: PersonCredit[];
+  /** Portraits and the posters and stills they're tagged in (TMDb), for the profile gallery. */
+  photos?: PersonPhoto[];
+}
+export interface PersonPhoto {
+  path: string;
+  /** "portrait" (their own photos), "poster" or "still" (from titles they appear in). */
+  kind: 'portrait' | 'poster' | 'still';
+  aspectRatio: number;
+  /** The title a poster or still comes from. */
+  title: string | null;
 }
 
 export type FilmographyKind = 'shows' | 'movies' | 'known-for' | 'credits';

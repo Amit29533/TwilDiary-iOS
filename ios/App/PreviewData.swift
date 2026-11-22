@@ -42,6 +42,119 @@ enum PreviewData {
         object["titles"] = titles; object["episodes"] = episodes
         return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
     }
+    /// Profiling (`--ui-large-diary`): the diary copied until it has about `events` watches, as big as
+    /// a real one, each copy with its own ids (and its titles numbered).
+    static func scaled(_ workspace: Workspace, events target: Int = 4_000) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        let titles = object["titles"] as? [[String: Any]] ?? [], episodes = object["episodes"] as? [[String: Any]] ?? []
+        let events = object["events"] as? [[String: Any]] ?? []
+        let copies = max(1, target / max(1, events.count))
+        var allTitles = titles, allEpisodes = episodes, allEvents = events
+        for copy in 1..<copies {
+            let suffix = "-x\(copy)"
+            func renamed(_ value: Any?) -> Any? { (value as? String).map { $0 + suffix } ?? value }
+            allTitles += titles.map { var title = $0; title["id"] = renamed(title["id"]); title["name"] = (title["name"] as? String ?? "") + " \(copy + 1)"; return title }
+            allEpisodes += episodes.map { var episode = $0; episode["id"] = renamed(episode["id"]); episode["titleId"] = renamed(episode["titleId"]); return episode }
+            allEvents += events.map { var event = $0
+                for key in ["id", "operationId", "titleId", "episodeId"] where event[key] is String { event[key] = renamed(event[key]) }
+                return event }
+        }
+        object["titles"] = allTitles; object["episodes"] = allEpisodes; object["events"] = allEvents
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+    /// Design screenshots (`--ui-design-data`): TMDB ids so Recommended has a seed, and new
+    /// episodes airing in the next days so every Home section has something to draw.
+    static var designWorkspace: Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(upcomingWorkspace)) as! [String: Any]
+        var titles = object["titles"] as! [[String: Any]], episodes = object["episodes"] as! [[String: Any]]
+        for index in titles.indices {
+            switch titles[index]["id"] as? String {
+            case "again": titles[index]["tmdbId"] = 900002
+            case "frieren": titles[index]["tmdbId"] = 209867
+            case "night": titles[index]["tmdbId"] = 129818
+            case "severance": titles[index]["tmdbId"] = 95396
+            default: break
+            }
+        }
+        for index in episodes.indices where (episodes[index]["id"] as? String)?.hasPrefix("again-upcoming-") == true {
+            let number = episodes[index]["number"] as? Int ?? 1
+            episodes[index]["airedOn"] = "2026-10-2\(6 + number)"
+        }
+        object["titles"] = titles; object["episodes"] = episodes
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+    /// `--ui-many-titles`: a dozen more planned titles, so Library opens as its overview
+    /// (five posters, "+N See all", genres) the way a real library does.
+    static func withManyTitles(_ workspace: Workspace) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var titles = object["titles"] as! [[String: Any]]
+        guard let template = titles.first else { return workspace }
+        let names = ["Pseudo Harem", "Oh My Ghost", "Filing for Love", "Following", "Witch Hat Atelier", "Made in Abyss",
+                     "The Mentalist", "Doctor Who", "Modern Family", "Obsession", "Dutton Ranch", "A Deliberately Very Long Title That Must Truncate"]
+        for (index, name) in names.enumerated() {
+            var copy = template
+            copy["id"] = "many-\(index)"; copy["name"] = name; copy["status"] = "planned"; copy["year"] = 2015 + index % 12
+            copy["communityScore"] = 7.0 + Double(index % 20) / 10; copy["seasons"] = []; copy["poster"] = NSNull(); copy["backdrop"] = NSNull()
+            copy.removeValue(forKey: "tmdbId")
+            titles.append(copy)
+        }
+        object["titles"] = titles
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+    /// `--ui-old-watches`: a watch dated 1970 and others across many years (like an old import),
+    /// so Statistics' per-year chart can be checked with a long, sparse history.
+    static func withOldWatches(_ workspace: Workspace) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var events = object["events"] as! [[String: Any]]
+        guard let template = events.first else { return workspace }
+        let dated: [(String, Int)] = [("1970-01-01", 1), ("2008-06-01", 2), ("2018-03-01", 30), ("2019-05-01", 60), ("2020-07-01", 25),
+                                      ("2021-02-01", 90), ("2022-09-01", 40), ("2023-04-01", 120), ("2024-08-01", 70), ("2025-01-01", 55)]
+        for (day, count) in dated {
+            for index in 0..<count {
+                var copy = template
+                copy["id"] = "old-\(day)-\(index)"; copy["watchedAt"] = day + String(format: "T%02d:%02d:00.000Z", index % 24, index / 24); copy["recordedAt"] = day + "T00:00:00Z"
+                copy["operationId"] = copy["id"]; copy["revokedAt"] = NSNull()
+                events.append(copy)
+            }
+        }
+        object["events"] = events
+        return (try? JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))) ?? workspace
+    }
+    /// Watches on the design data's "today" (23 Oct) 6 months, 1 year and 4 years back, for On this day.
+    static func withAnniversaries(_ workspace: Workspace, now: Date) -> Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var events = object["events"] as! [[String: Any]]
+        var templates: [[String: Any]] = [], seen = Set<String>()
+        for event in events where seen.insert(event["titleId"] as? String ?? "").inserted { templates.append(event) }
+        guard !templates.isEmpty else { return workspace }
+        let calendar = DiaryDate.calendar()
+        let plan: [(months: Int, hour: Int, template: Int)] = [(6, 17, 0), (6, 21, 1), (12, 20, 2), (48, 22, 1)]
+        for (index, item) in plan.enumerated() {
+            guard let day = calendar.date(byAdding: .month, value: -item.months, to: calendar.startOfDay(for: now)),
+                  let at = calendar.date(byAdding: .hour, value: item.hour, to: day) else { continue }
+            var copy = templates[item.template % templates.count]
+            copy["id"] = "anniversary-\(index)"; copy["operationId"] = copy["id"]; copy["revokedAt"] = NSNull()
+            copy["watchedAt"] = at.formatted(.iso8601); copy["recordedAt"] = copy["watchedAt"]
+            events.append(copy)
+        }
+        object["events"] = events
+        return (try? JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))) ?? workspace
+    }
+    /// Explicit identities/scores for profile repair UI checks; never loaded in Release.
+    static var profileRepairWorkspace: Workspace {
+        var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(workspace)) as! [String: Any]
+        var titles = object["titles"] as! [[String: Any]]
+        for index in titles.indices {
+            switch titles[index]["id"] as? String {
+            case "frieren": titles[index]["tmdbId"] = 209867; titles[index]["communityScore"] = 8.6
+            case "again": titles[index]["tmdbId"] = 900002
+            case "quiet-orbit": titles[index]["tmdbId"] = 900001
+            default: break
+            }
+        }
+        object["titles"] = titles
+        return try! JSONDecoder().decode(Workspace.self, from: JSONSerialization.data(withJSONObject: object))
+    }
     static var metadataWorkspace: Workspace {
         let value = workspace
         var object = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]

@@ -6,20 +6,21 @@ struct DiaryPanelModifier: ViewModifier {
     var padding: CGFloat = 16
     var radius: CGFloat = 22
     var accentBorder = false
+    /// False: no outline (a panel on a dark page whose edge would read as a stray line).
+    var bordered = true
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            // Native: a grouped card, continuous corners, no outline.
+            content.padding(padding).nativeCard(radius: radius)
+        } else {
+            classic(content)
+        }
+    }
+    private func classic(_ content: Content) -> some View {
         content.padding(padding)
-            .background {
-                if theme == .glass && !reduceTransparency {
-                    RoundedRectangle(cornerRadius: 24).fill(.ultraThinMaterial)
-                        .overlay(RoundedRectangle(cornerRadius: 24).fill(.black.opacity(0.22)))
-                } else {
-                    RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).fill(Color(webHex: "#111115"))
-                }
-            }
-            .overlay(RoundedRectangle(cornerRadius: theme == .glass ? 24 : radius).strokeBorder(theme == .glass ? .white.opacity(28.0 / 255) : accentBorder ? theme.accent.opacity(0.2) : .white.opacity(0.13)))
-            .shadow(color: .black.opacity(theme == .glass ? 0.3 : 0), radius: theme == .glass ? 16 : 0, y: theme == .glass ? 12 : 0)
+            .background { RoundedRectangle(cornerRadius: radius).fill(Color(themed: "#111115")) }
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(!bordered ? .clear : accentBorder ? theme.accent.opacity(0.2) : Color.primary.opacity(0.13)))
     }
 }
 /// Flat section and card backgrounds (Settings groups, Explore filters, Files
@@ -28,30 +29,22 @@ struct DiaryPanelModifier: ViewModifier {
 /// theme keeps its exact solid fill, stroke and radius.
 struct DiarySectionBackground: ViewModifier {
     let radius: CGFloat
-    var fill = Color(webHex: "#111115")
-    var stroke = Color.white.opacity(0.13)
+    var fill = Color(themed: "#111115")
+    var stroke = Color.primary.opacity(0.13)
     /// Selected rows keep their accent emphasis on glass too.
     var emphasized = false
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius)
-        let glass = theme == .glass && !reduceTransparency
-        content
-            .background {
-                if glass {
-                    shape.fill(.ultraThinMaterial)
-                        .overlay(shape.fill(emphasized ? theme.accent.opacity(0.12) : .black.opacity(0.22)))
-                } else {
-                    shape.fill(fill)
-                }
-            }
-            .overlay(shape.strokeBorder(glass && !emphasized ? .white.opacity(28.0 / 255) : stroke))
+        if ThemeStore.current.native && !emphasized {
+            content.nativeCard(radius: radius)
+        } else {
+            let shape = RoundedRectangle(cornerRadius: radius, style: ThemeStore.current.native ? .continuous : .circular)
+            content.background { shape.fill(fill) }.overlay(shape.strokeBorder(stroke))
+        }
     }
 }
 extension View {
-    func diarySectionBackground(radius: CGFloat, fill: Color = Color(webHex: "#111115"),
-                                stroke: Color = .white.opacity(0.13), emphasized: Bool = false) -> some View {
+    func diarySectionBackground(radius: CGFloat, fill: Color = Color(themed: "#111115"),
+                                stroke: Color = Color.primary.opacity(0.13), emphasized: Bool = false) -> some View {
         modifier(DiarySectionBackground(radius: radius, fill: fill, stroke: stroke, emphasized: emphasized))
     }
 }
@@ -63,9 +56,12 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var body: some View {
         Group {
-            if field || reduceTransparency {
-                shape.fill(Color(webHex: field ? "#111115" : "#222226"))
-                    .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : .white.opacity(0.13), lineWidth: 1))
+            if ThemeStore.current.native {
+                // Native: a flat fill, as iOS's search fields and Settings (no glass edge).
+                shape.fill(Color(uiColor: .tertiarySystemFill))
+            } else if field || reduceTransparency {
+                shape.fill(Color(themed: field ? "#111115" : "#222226"))
+                    .overlay(shape.stroke(selected ? theme.accent.opacity(0.45) : Color.primary.opacity(0.13), lineWidth: 1))
             } else {
                 shape.fill(.clear).glassEffect(.regular.tint(selected ? theme.accent.opacity(0.16) : .clear).interactive(), in: shape)
             }
@@ -73,65 +69,15 @@ struct DiaryControlSurface<SurfaceShape: Shape>: View {
     }
 }
 
-/// Phone navigation tokens from tokens.css and the Liquid Glass overrides in themes.css.
-struct DiaryNavigationSurface: View {
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    var body: some View {
-        ZStack {
-            if reduceTransparency {
-                Capsule().fill(Color(webHex: theme == .glass ? "#19191d" : "#111115"))
-            } else {
-                Capsule().fill(.clear).glassEffect(in: Capsule())
-                if theme == .glass {
-                    Capsule().fill(Color(webHex: "#242428").opacity(0.2))
-                    Capsule().fill(LinearGradient(stops: [
-                        .init(color: Color(webHex: "#ffffff14"), location: 0),
-                        .init(color: Color(webHex: "#ffffff03"), location: 0.48),
-                        .init(color: Color(webHex: "#ffffff09"), location: 1)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
-                } else {
-                    Capsule().fill(LinearGradient(colors: [Color(webHex: "#111518cf"), Color(webHex: "#080b0ee8")], startPoint: .top, endPoint: .bottom))
-                }
-            }
-            if theme == .glass {
-                Capsule().fill(RadialGradient(colors: [Color(webHex: "#ffffff1c"), .clear], center: UnitPoint(x: 0.1, y: 0), startRadius: 0, endRadius: 245))
-                Capsule().fill(RadialGradient(colors: [Color(webHex: "#b4d4ff0c"), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 160))
-            }
-            Capsule().strokeBorder(Color(webHex: theme == .glass ? "#ffffff30" : "#ffffff26"))
-            Capsule().strokeBorder(LinearGradient(colors: [Color(webHex: theme == .glass ? "#ffffff3b" : "#ffffff20"), .clear, Color(webHex: theme == .glass ? "#ffffff0c" : "#ffffff08")], startPoint: .top, endPoint: .bottom))
-        }.clipShape(Capsule()).shadow(color: .black.opacity(theme == .glass ? 0.6 : 0.53), radius: 16, y: 8).allowsHitTesting(false)
-    }
-}
-
-struct DiaryNavigationSelection: View {
-    let selected: Bool
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    var body: some View {
-        if selected {
-            ZStack {
-                if theme == .glass {
-                    Capsule().fill(LinearGradient(colors: [Color(webHex: "#ffffff14"), Color(webHex: "#ffffff09")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Capsule().fill(RadialGradient(colors: [Color(webHex: "#ffffff2b"), .clear], center: UnitPoint(x: 0.2, y: 0), startRadius: 0, endRadius: 72))
-                } else {
-                    Capsule().fill(LinearGradient(colors: [theme.accent.opacity(0.19), theme.accent.opacity(0.09)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                }
-                Capsule().strokeBorder(theme == .glass ? Color(webHex: "#ffffff12") : theme.accent.opacity(0.15))
-                Capsule().strokeBorder(LinearGradient(colors: [theme == .glass ? Color(webHex: "#ffffff38") : theme.accent.opacity(0.3), .clear], startPoint: .top, endPoint: .center))
-            }.allowsHitTesting(false)
-        }
-    }
-}
-
 /// Fallback surfaces shown when a title has no artwork yet. Twilight keeps its
 /// original hand-tuned values; other themes derive the same roles from their own
 /// accent and ink instead of showing Twilight's violet in every theme.
 extension DiaryTheme {
-    var placeholderGlow: Color { self == .twilight ? Color(webHex: "#a27ac535") : accent.opacity(0x35 / 255.0) }
-    var initialsBase: Color { self == .twilight ? Color(webHex: "#1c1728") : ink.mix(with: .black, by: 0.15) }
+    var placeholderGlow: Color { self == .twilight ? Color(themed: "#a27ac535") : accent.opacity(0x35 / 255.0) }
+    var initialsBase: Color { self == .twilight ? Color(themed: "#1c1728") : ink.mix(with: .black, by: 0.15) }
     /// First stop of the title hero's no-backdrop gradient (Twilight: deep violet).
-    var heroFallbackLead: Color { self == .twilight ? Color(webHex: "#3c2c48") : accent.mix(with: .black, by: 0.7) }
+    var heroFallbackLead: Color { self == .twilight ? Color(themed: "#3c2c48") : accent.mix(with: .black, by: 0.7) }
     /// Random-pick card base under its optional backdrop.
-    var pickBase: Color { self == .twilight ? Color(webHex: "#17121f") : ink.mix(with: .black, by: 0.35) }
-    var pickVeil: Color { self == .twilight ? Color(webHex: "#15101966") : pickBase.opacity(0.4) }
+    var pickBase: Color { self == .twilight ? Color(themed: "#17121f") : ink.mix(with: .black, by: 0.35) }
+    var pickVeil: Color { self == .twilight ? Color(themed: "#15101966") : pickBase.opacity(0.4) }
 }

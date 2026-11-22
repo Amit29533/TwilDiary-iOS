@@ -20,6 +20,8 @@ import TwilDiaryTestSupport
     #expect(CatalogTools.merging([movie], [movie, series]).count == 2)
     #expect(CatalogTools.image("/image_12.jpg") == "https://image.tmdb.org/t/p/w500/image_12.jpg")
     #expect(CatalogTools.image("//evil.test/a.jpg") == nil)
+    // The season cards' size.
+    #expect(CatalogTools.image("/season_2.jpg", size: "w342") == "https://image.tmdb.org/t/p/w342/season_2.jpg")
     #expect(CatalogTools.image("/../private.jpg") == nil)
     #expect(CatalogTools.image("/a.jpg", size: "original") == nil)
 }

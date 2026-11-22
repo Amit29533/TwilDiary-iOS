@@ -1,4 +1,4 @@
-import { asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { database } from './db/index.ts';
 import {
   titles,
@@ -44,6 +44,9 @@ export function workspaceTitle(
     notes: title.notes,
     tags: [],
     deletedAt: title.deletedAt,
+    createdAt: title.createdAt,
+    // When the title last changed: the app syncs with Trakt by whichever change is newer.
+    updatedAt: title.updatedAt,
     version: title.version,
     seasons: seasonList
   };
@@ -210,11 +213,14 @@ export async function workspacePage(db: Db, params: URLSearchParams) {
     ]);
     rows = projectTitles(values, seasonList, ui, identities);
   } else if (section === 'episodes') {
+    // marked=1: only the episodes you marked yourself (skipped). The phone reads episode lists
+    // from TMDB once Trakt holds the diary, so it needs just your marks from here.
+    const marked = params.get('marked') === '1';
     const values = await db
       .select(episodeColumns)
       .from(episodes)
       .innerJoin(seasons, eq(episodes.seasonId, seasons.id))
-      .where(gt(episodes.id, after))
+      .where(marked ? and(gt(episodes.id, after), eq(episodes.skipped, true)) : gt(episodes.id, after))
       .orderBy(asc(episodes.id))
       .limit(limit + 1)
       .all();
@@ -295,5 +301,60 @@ export async function workspaceTitles(db: Db, params: URLSearchParams) {
     episodes: (episodeRows as EpisodeSelection[]).map(projectEpisode),
     events,
     locations
+  };
+}
+
+/**
+ * Single-request delta sync (`GET /api/workspace/changes?since=<iso>`).
+ * Returns the current revision token plus either:
+ * - `fullRefreshRequired: false` with the complete rows for the `0..50` titles modified since `since`, or
+ * - `fullRefreshRequired: true` when `since` is outside the delta window, >50 titles changed, or a structural purge occurred.
+ */
+export async function workspaceChanges(
+  db: Db,
+  params: URLSearchParams,
+  readRevision: (
+    db: Db,
+    params?: URLSearchParams
+  ) => Promise<{ revision: string; changedTitleIds?: string[]; fullRefreshRequired?: boolean }>
+) {
+  const cursor = new Date(Date.now() - 1000).toISOString();
+  const since = params.get('since')?.trim() ?? '';
+  if (!since || since.length > 64 || /[\u0000-\u001f]/.test(since) || Number.isNaN(Date.parse(since)))
+    throw new ApiError(400, 'invalid_input', 'Provide a valid ISO timestamp in since');
+  const rev = await readRevision(db, params);
+  if (rev.fullRefreshRequired || !rev.changedTitleIds) {
+    return {
+      cursor,
+      revision: rev.revision,
+      fullRefreshRequired: true,
+      ids: [] as string[],
+      titles: [],
+      episodes: [],
+      events: [],
+      locations: []
+    };
+  }
+  if (!rev.changedTitleIds.length) {
+    return {
+      cursor,
+      revision: rev.revision,
+      fullRefreshRequired: false,
+      ids: [] as string[],
+      titles: [],
+      episodes: [],
+      events: [],
+      locations: []
+    };
+  }
+  const delta = await workspaceTitles(
+    db,
+    new URLSearchParams({ ids: rev.changedTitleIds.join(',') })
+  );
+  return {
+    cursor,
+    revision: rev.revision,
+    fullRefreshRequired: false,
+    ...delta
   };
 }

@@ -112,10 +112,13 @@
       {#if data.coverage.future}
         {data.coverage.future} future-dated watches are left out until their watch day.{/if}
     </p>
-    {#if data.coverage.unknown}<a
-        class="button quiet compact"
-        href="/preview/recently-watched?unknown=1">Review dates</a
-      >{/if}
+    <div class="coverage-actions">
+      {#if data.coverage.unknown}<a
+          class="button quiet compact"
+          href="/preview/recently-watched?unknown=1">Review dates</a
+        >{/if}
+      <a class="button quiet compact" href="/preview/calendar">Airing calendar →</a>
+    </div>
   </section>
 
   <section class="panel watch-panel" aria-labelledby="trend-heading">
@@ -894,6 +897,11 @@
     .streak-totals strong {
       font-size: 1.05rem;
     }
+  }
+  .coverage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   @media (max-width: 319px) {
     .watch-panel .year-controls h2 {

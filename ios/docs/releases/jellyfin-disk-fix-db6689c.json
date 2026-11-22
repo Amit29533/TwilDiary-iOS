@@ -1,0 +1,16 @@
+{
+  "sourceSHA": "db6689c51688678dc99747494ca3de95fe9a2d2d",
+  "buildURL": "https://codemagic.io/app/6ade764b746d1dee285e9ce8/build/6ae4cd03efa74786046f3049",
+  "sha256": "6eb1ff33633d9f0d4f2dab6696bbee7c14f782866a9caed43868760c125529fc",
+  "bytes": 8090135,
+  "version": "2.0.0",
+  "build": "65",
+  "platform": "arm64 iPhoneOS",
+  "focusedRegressionPassed": true,
+  "buildWarnings": 0,
+  "fullRegressionRerun": false,
+  "kind": "device-diagnostic",
+  "regressionAcceptance": false,
+  "codemagicDuration": "3m26s",
+  "note": "One focused Swift drive-filter test, Release iPhone build and resource verification only; full regression intentionally not repeated."
+}

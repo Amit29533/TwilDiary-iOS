@@ -6,6 +6,7 @@ import { importTmdb, loadTmdbSeason } from '../../src/lib/server/metadata-import
 import { seasonPage, patchTitle, logWatch } from '../../src/lib/server/library.ts';
 import { workspacePage } from '../../src/lib/server/workspace.ts';
 import { GET as castRoute } from '../../src/routes/api/metadata/cast/+server.ts';
+import { GET as fullCreditsRoute } from '../../src/routes/api/metadata/credits/+server.ts';
 import { d1Fixture } from '../helpers/d1.ts';
 const json = (value: unknown) => Response.json(value);
 
@@ -74,6 +75,75 @@ test('credits cache avoids repeat upstream requests, survives outages, and requi
     url: new URL('https://diary.test/api/metadata/cast?type=tv&id=42')
   } as never);
   assert.equal(denied.status, 401);
+});
+
+test('full credits keep cast and crew beyond the preview limit and preserve distinct roles', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const requests: URL[] = [];
+  const transport: typeof fetch = async (url) => {
+    const request = new URL(String(url));
+    requests.push(request);
+    const credits = {
+      cast: [
+        { id: 1, name: 'Lead', roles: [{ character: 'Lead' }, { character: 'Guest' }] },
+        { id: 1, name: 'Lead', character: 'Guest', profile_path: '/lead.jpg' },
+        null,
+        ...Array.from({ length: 125 }, (_, index) => ({
+          id: index + 2,
+          name: `Actor ${index + 2}`,
+          character: `Role ${index + 2}`
+        }))
+      ],
+      crew: [
+        { id: 201, name: 'Editor', department: 'Editing', jobs: [{ job: 'Editor' }, { job: 'Colorist' }] },
+        { id: 201, name: 'Editor', job: 'Editor', profile_path: 'https://untrusted.example/a.jpg' },
+        ...Array.from({ length: 125 }, (_, index) => ({
+          id: index + 202,
+          name: `Crew ${index + 202}`,
+          job: 'Location Manager'
+        }))
+      ]
+    };
+    if (request.searchParams.get('append_to_response') === 'aggregate_credits') {
+      return json({
+        created_by: [{ id: 201, name: 'Editor' }],
+        aggregate_credits: credits
+      });
+    }
+    return json(credits);
+  };
+  const url = new URL('https://diary.test/api/metadata/credits?type=tv&id=42');
+  const denied = await fullCreditsRoute({ locals: { tmdbTransport: transport }, url } as never);
+  assert.equal(denied.status, 401);
+  assert.equal(requests.length, 0);
+  const response = await fullCreditsRoute({
+    locals: { owner: { subject: 'fixture-owner', email: 'owner@test.invalid' }, tmdbTransport: transport },
+    platform: { env: { DB: f.binding, TMDB_ACCESS_TOKEN: 'fixture' } },
+    url
+  } as never);
+  assert.equal(response.status, 200);
+  const credits = await response.json();
+  assert.equal(credits.cast.length, 126);
+  assert.equal(credits.crew.length, 126);
+  assert.equal(credits.cast.at(-1).name, 'Actor 126');
+  assert.equal(credits.crew.at(-1).name, 'Crew 326');
+  assert.deepEqual(credits.cast[0].roles, ['Lead', 'Guest']);
+  assert.equal(credits.cast[0].profilePath, '/lead.jpg');
+  assert.deepEqual(credits.crew[0].roles, ['Creator', 'Editor', 'Colorist']);
+  assert.equal(credits.crew[0].profilePath, null);
+
+  const metadata = createTmdb('fixture', transport);
+  assert.equal((await metadata.fullCredits('movie', 42)).crew.length, 126);
+  assert.equal((await metadata.cast('tv', 42)).length, 24);
+  assert.deepEqual(
+    requests.map((request) => [request.pathname, request.searchParams.get('append_to_response')]),
+    [
+      ['/3/tv/42', 'aggregate_credits'],
+      ['/3/movie/42/credits', null],
+      ['/3/tv/42/aggregate_credits', null]
+    ]
+  );
 });
 
 test('episode community scores upgrade cached metadata without changing watches, notes or spoiler protection', async (t) => {

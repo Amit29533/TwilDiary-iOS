@@ -6,7 +6,9 @@
   "compatibility_date": "2026-10-21",
   "workers_dev": false,
   "preview_urls": false,
-  "triggers": { "crons": ["* * * * *"] },
+  // Phase 4c: the app writes to Trakt itself, so the every-minute import is off. To turn it
+  // back on, restore ["* * * * *"] and deploy this worker again.
+  "triggers": { "crons": [] },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "twildiary-v2",

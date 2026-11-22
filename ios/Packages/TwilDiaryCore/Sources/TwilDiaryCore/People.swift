@@ -9,16 +9,23 @@ public struct PersonFilmographyRoute: Hashable, Sendable {
     public let person: Int
     public let section: PersonSection
     public let onServer: Bool
-    public init(person: Int, section: PersonSection, onServer: Bool = false) { self.person = person; self.section = section; self.onServer = onServer }
+    public let watchedOnly: Bool
+    public init(person: Int, section: PersonSection, onServer: Bool = false, watchedOnly: Bool = false) { self.person = person; self.section = section; self.onServer = onServer; self.watchedOnly = watchedOnly }
 }
 public struct PersonSections: Sendable {
     public let movies: [CatalogItem], shows: [CatalogItem], knownFor: [CatalogItem], localMovies: [CatalogItem], localShows: [CatalogItem]
+    public let watched: [CatalogItem]
     public init(person: PersonDetails, workspace: Workspace) {
         func byYear(_ items: [CatalogItem]) -> [CatalogItem] {
             items.sorted { a, b in (a.year ?? 0) != (b.year ?? 0) ? (a.year ?? 0) > (b.year ?? 0) : a.name.localizedCompare(b.name) == .orderedAscending }
         }
         movies = byYear(person.credits.filter { $0.mediaType == .movie })
         shows = byYear(person.credits.filter { $0.mediaType == .tv })
+        let watchedIDs = Set(workspace.activeEvents.map(\.titleId))
+        let watchedKeys = Set(workspace.activeTitles.filter { watchedIDs.contains($0.id) }.compactMap { title in
+            title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) }
+        })
+        watched = byYear(person.credits.filter { watchedKeys.contains($0.key) })
         let stored = Set(workspace.locations.filter { $0.evidence == "present" }.map(\.titleId))
         func onDisk(_ item: CatalogItem) -> Bool { workspace.titles.contains { stored.contains($0.id) && $0.tmdbId == item.id && $0.isSeries == (item.mediaType == .tv) } }
         localMovies = movies.filter(onDisk); localShows = shows.filter(onDisk)
@@ -41,7 +48,8 @@ public struct PersonFilmographyFilters: Hashable, Sendable {
     public var genre = "", year = "", minimum = "0", query = ""
     public var sort: String
     public var onServer: Bool
-    public init(section: PersonSection, onServer: Bool = false) { sort = section == .knownFor ? "popular" : "newest"; self.onServer = onServer }
+    public var watchedOnly: Bool
+    public init(section: PersonSection, onServer: Bool = false, watchedOnly: Bool = false) { sort = section == .knownFor ? "popular" : "newest"; self.onServer = onServer; self.watchedOnly = watchedOnly }
     public var normalizedQuery: String { query.precomposedStringWithCompatibilityMapping.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
     public var error: String? {
         if normalizedQuery.utf16.count > 200 { return "Keep search within 200 characters." }
@@ -49,7 +57,9 @@ public struct PersonFilmographyFilters: Hashable, Sendable {
         return filters.error(section: .daily)
     }
     public func credits(person: PersonDetails, workspace: Workspace, section: PersonSection) -> [CatalogItem] {
-        PersonSections(person: person, workspace: workspace).items(section, onServer: onServer) ?? person.credits
+        let sections = PersonSections(person: person, workspace: workspace)
+        if watchedOnly { return sections.watched.filter { section != .shows && section != .movies || $0.mediaType == (section == .shows ? .tv : .movie) } }
+        return sections.items(section, onServer: onServer) ?? person.credits
     }
     public func applying(person: PersonDetails, workspace: Workspace, section: PersonSection) -> [CatalogItem] {
         let input = credits(person: person, workspace: workspace, section: section)
@@ -66,5 +76,5 @@ public struct PersonFilmographyFilters: Hashable, Sendable {
         }
         return filtered
     }
-    public func heading(person: PersonDetails, section: PersonSection) -> String { person.name + "’s " + (section == .credits && onServer ? "Titles on your server" : section.label) }
+    public func heading(person: PersonDetails, section: PersonSection) -> String { person.name + "’s " + (watchedOnly ? "Watched" : section == .credits && onServer ? "Titles on your server" : section.label) }
 }

@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import AuthenticationServices
 import TwilDiaryCore
 import UniformTypeIdentifiers
 
@@ -7,113 +9,332 @@ struct SettingsView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
     @AppStorage("hideSpoilers") private var hideSpoilers = true
+    @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
+    @AppStorage(TabLayout.key) private var tabText = ""
+    @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showSearch = false
     @State private var confirmSignOut = false
-    @State private var summary: TraktController?
     @State private var showExport = false
+    @State private var showImport = false
+    @State private var backupNotice: String?
     @State private var exportDocument = DiaryJSONDocument(data: Data())
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(name: "More", onSearch: { showSearch.toggle() })
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if showSearch { CatalogSearchView(onClose: { showSearch = false }).padding(.horizontal, -14) }
-                    traktSummary
-                    settingsSection("Library") {
-                        HStack(spacing: 8) { settingsIcon("star"); VStack(alignment: .leading, spacing: 3) { Text("Library ratings").font(.subheadline.weight(.semibold)); Text("Community scores, not your rating").font(.caption).foregroundStyle(.secondary) }; Spacer(minLength: 0); Picker("Library ratings", selection: $ratingSource) { ForEach(PublicRatingSource.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu).font(.caption).fixedSize().accessibilityIdentifier("settings-rating-source") }.padding(14)
-                        Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.files) { settingsRow("hard-drive", "Files & drives", subtitle: "Folders, seasons and local copies", disclosure: true) }.accessibilityIdentifier("settings-files")
-                        Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.trash) { settingsRow("trash-2", "Trash", subtitle: trashSubtitle, disclosure: true) }
+            EdgeToEdgeScroll {
+                VStack(alignment: .leading, spacing: 16) {
+                    PageHeader(name: "Profile").padding(.horizontal, -16).padding(.bottom, -14)
+                    NavigationLink(value: AppDestination.profile) {
+                        HStack(spacing: 14) {
+                            PersonalAvatar().frame(width: 56, height: 56)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(PersonalProfile.shared.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                Text(accountHandle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                            }
+                            Spacer(); chevron
+                        }.padding(15).modifier(SettingsCard()).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("settings-personal-profile")
+                    diaryCard
+                    settingsSection("LIBRARY") {
+                        HStack(spacing: 12) {
+                            tile("star.fill", .purple)
+                            SettingsRowTitle("Public ratings", "Community scores, not your rating")
+                            Spacer(minLength: 0)
+                            Menu { Picker("Library ratings", selection: $ratingSource) { ForEach(PublicRatingSource.allCases) { Text($0.label).tag($0) } } }
+                                label: { FilterPill(label: ratingSource.label) }.fixedSize().accessibilityLabel("Library ratings").accessibilityValue(ratingSource.label).accessibilityIdentifier("settings-rating-source")
+                        }.settingsRowFrame()
+                        divider
+                        NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
+                        divider
+                        NavigationLink(value: AppDestination.jellyspaceSettings) {
+                            settingsRow(leading: jellyfinTile, "JellySpace", subtitle: nil, value: nil, disclosure: true, padded: true)
+                        }.accessibilityIdentifier("settings-jellyspace")
+                        divider
+                        NavigationLink(value: AppDestination.trash) { settingsRow("trash.fill", .red, "Trash", value: trashCount == 0 ? "Empty" : String(trashCount), disclosure: true) }
                     }
-                    settingsSection("Tracking") {
-                        HStack(spacing: 8) { settingsIcon("eye-off"); Toggle(isOn: $hideSpoilers) { VStack(alignment: .leading, spacing: 3) { Text("Hide episode spoilers").font(.subheadline.weight(.semibold)); Text("Hide unwatched titles, summaries and images").font(.caption).foregroundStyle(.secondary) } }.tint(theme.accent) }.padding(14)
-                        Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.history) { settingsRow("history", "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
-                        Divider().padding(.leading, 58)
-                        settingsRow("star", "Rating scale", value: "10 · decimals")
+                    settingsSection("TRACKING") {
+                        HStack(spacing: 12) {
+                            tile("eye.slash.fill", .indigo)
+                            Toggle(isOn: $hideSpoilers) {
+                                SettingsRowTitle("Hide spoilers", "Names and stills until watched")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }.tint(theme.accent)
+                        }.frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame()
+                        divider
+                        NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
+                        divider
+                        NavigationLink(value: AppDestination.calendar) { settingsRow("calendar", .indigo, "Airing calendar", subtitle: "Upcoming and catch-up episodes", disclosure: true) }.accessibilityIdentifier("settings-calendar")
                     }
-                    settingsSection("Appearance & region") {
-                        NavigationLink(value: AppDestination.appearance) { settingsRow("palette", "Theme", value: theme.name, disclosure: true) }.accessibilityIdentifier("settings-theme")
-                        Divider().padding(.leading, 58)
-                        settingsRow("activity", "Reduce motion", value: reduceMotion ? "Reduced · device" : "Follow device")
-                        Divider().padding(.leading, 58)
-                        settingsRow("globe", "Time zone", subtitle: "Uses your device for dates and stats", value: TimeZone.current.identifier.replacingOccurrences(of: "_", with: " "))
-                        Divider().padding(.leading, 58)
-                        settingsRow("calendar-days", "Week starts on", value: "Monday")
+                    settingsSection("APPEARANCE") {
+                        NavigationLink(value: AppDestination.appearance) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                settingsRow("paintpalette.fill", .pink, "Theme", value: theme.name, disclosure: true, padded: false)
+                                // A glance at every theme; choosing one happens on the Theme page.
+                                HStack(spacing: 12) {
+                                    ForEach(DiaryTheme.allCases) { item in
+                                        Circle().fill(item.accent).frame(width: 26, height: 26)
+                                            .overlay { if item == theme { Circle().strokeBorder(HomeStyle.primary, lineWidth: 2).padding(-3) } }
+                                    }
+                                }.padding(.leading, 52).padding(.bottom, 6).accessibilityHidden(true)
+                            }.padding(.horizontal, 15).padding(.vertical, 12)
+                        }.accessibilityIdentifier("settings-theme")
+                        divider
+                        NavigationLink(value: CustomiseRoute()) {
+                            settingsRow("slider.horizontal.3", .purple, "Customise", subtitle: "Home, Explore, tabs and posters", disclosure: true)
+                        }.accessibilityIdentifier("settings-customise")
+                        divider
+                        HStack(spacing: 12) {
+                            tile("rectangle.portrait.and.arrow.forward", .orange)
+                            SettingsRowTitle("Opens on", "The screen TwilDiary starts on")
+                            Spacer(minLength: 0)
+                            Menu { Picker("Opens on", selection: $launchTab) { ForEach(TabLayout.layout(tabText).visible.compactMap(AppTab.init(rawValue:)), id: \.self) { Text($0.label).tag($0) } } }
+                                label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
+                        }.settingsRowFrame()
+                        divider
+                        settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
+                        divider
+                        settingsRow("globe.asia.australia.fill", .cyan, "Time zone", value: TimeZone.current.identifier.replacingOccurrences(of: "_", with: " "))
+                        divider
+                        NavigationLink(value: AppDestination.languageRegion) { settingsRow("character.bubble.fill", .blue, "Language & region", value: languageRegionSummary, disclosure: true) }
+                            .accessibilityIdentifier("settings-language-region")
                     }
-                    settingsSection("Connections") {
-                        NavigationLink(value: AppDestination.tmdb) { settingsRow("database", "TMDB", subtitle: "Posters, details, seasons and episodes", disclosure: true) }.accessibilityIdentifier("settings-tmdb")
-                        Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.trakt) { settingsRow("link-2", "Trakt", subtitle: "History, ratings and watchlist", value: summary?.status?.needsReconnect == true ? "Reconnect" : summary?.status?.connected == true ? "Connected" : "Set up", disclosure: true) }.accessibilityIdentifier("settings-trakt")
+                    settingsSection("CONNECTIONS AND DATA") {
+                        NavigationLink(value: AppDestination.connections) {
+                            settingsRow("link", .purple, "Connections", subtitle: "Trakt, MDBList, WeTrakr, AniList and more", value: connectionsSummary, disclosure: true)
+                        }.accessibilityIdentifier("settings-connections")
+                        divider
+                        Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress and notes", disclosure: true) }
+                        divider
+                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "From a TwilDiary backup (.json)", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
+                        divider
+                        NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync and backups", disclosure: true) }.accessibilityIdentifier("settings-backups")
+                        divider
+                        NavigationLink(value: AppDestination.notifications) { settingsRow("bell.badge.fill", .red, "Notifications", subtitle: "New episodes and releases", disclosure: true) }.accessibilityIdentifier("settings-notifications")
                     }
-                    settingsSection("Data & backup") {
-                        Button { exportDiary() } label: { settingsRow("download", "Export diary", subtitle: "Titles, progress, notes and file mappings", disclosure: true) }
-                        Divider().padding(.leading, 58)
-                        Button { Task { await store.refresh() } } label: {
-                            settingsRow("shield-check", "Diary storage", subtitle: storageDetail, value: store.loading ? "Refreshing…" : store.busy ? "Saving…" : store.showingCachedSnapshot ? "Saved copy" : "Ready")
-                        }.disabled(store.loading || store.busy).accessibilityIdentifier("settings-refresh-diary").accessibilityHint("Refresh your diary from the server")
-                    }
-                    if let warning = store.cacheWarning {
-                        Text(warning).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 4).accessibilityIdentifier("settings-cache-warning")
-                    }
-                    settingsSection("About") {
-                        NavigationLink(value: AppDestination.about) { settingsRow("info", "About TwilDiary", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0", disclosure: true) }.accessibilityIdentifier("settings-about")
-                        Divider().padding(.leading, 58)
-                        NavigationLink(value: AppDestination.about) { settingsRow("shield-check", "Attribution & licenses", disclosure: true) }
-                    }
-                    Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
-                    Button("Sign out", role: .destructive) { confirmSignOut = true }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 44).disabled(store.busy)
-                }.buttonStyle(.plain).padding(.horizontal, 14).padding(.bottom, 24)
-            }.refreshable { await store.refresh(); await summary?.refresh() }
-        }.confirmationDialog("Sign out on this device? Your hosted diary stays saved.", isPresented: $confirmSignOut, titleVisibility: .visible) { Button("Sign out", role: .destructive) { store.signOut() } }
-            .task(id: store.sessionRevision) { summary = TraktController(service: makeTraktService(store: store)); await summary?.refresh() }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await summary?.refresh() } } }
+                    VStack(spacing: 10) {
+                        NavigationLink(value: AppDestination.about) {
+                            Text("\(Text("TwilDiary \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · ").foregroundStyle(HomeStyle.secondary))\(Text("About and licenses").fontWeight(.semibold).foregroundStyle(HomeStyle.chipText))")
+                                .font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 44)
+                        }.accessibilityIdentifier("settings-about")
+                        Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
+                        Button { confirmSignOut = true } label: {
+                            Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                                .frame(maxWidth: .infinity, minHeight: 52).pillSurface(border: nil)
+                        }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
+                    }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
+                }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)
+            }.refreshable { await store.refresh() }
+        }
+        .alert(TraktDirectStore.shared.pending.count > 0 ? "Sign out? Edits still waiting for Trakt on this device will be removed." : "Sign out on this device?", isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
-    }
-    /// One pass over the library instead of three per render.
-    private var trashSubtitle: String {
-        let removed = store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) }
-        return removed == 0 ? "No removed titles" : "\(removed) removed \(removed == 1 ? "title" : "titles")"
-    }
-    private var storageDetail: String {
-        if let reset = store.quotaBlockedUntil { return "Database allowance resumes " + reset.formatted(date: .abbreviated, time: .shortened) + ". Tap to check again." }
-        let detail = store.showingCachedSnapshot ? "Using the saved copy on this device. Tap to refresh." : "Your diary is saved to your workspace. Tap to refresh."
-        guard let date = store.lastRefreshedAt else { return detail }
-        return detail + " Last updated " + date.formatted(date: .abbreviated, time: .shortened) + "."
-    }
-    private var traktSummary: some View {
-        let value = TraktOverview(status: summary?.status, sync: summary?.sync, checked: summary?.status != nil || summary?.error != nil, unavailable: summary?.error != nil)
-        let color: Color = value.attention ? .yellow : value.badge == "Connected" ? .mint : .secondary
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                HStack(spacing: 6) { DiaryIcon(name: "link-2", size: 16); Text("Trakt sync").font(.caption.bold()) }
-                Spacer(minLength: 0)
-                Text(value.badge).font(.caption2.bold()).foregroundStyle(color).padding(.horizontal, 8).padding(.vertical, 5).background(color.opacity(0.1), in: Capsule()).accessibilityIdentifier("settings-trakt-badge")
+            .fileImporter(isPresented: $showImport, allowedContentTypes: [.json]) { result in
+                switch result {
+                case .success(let url):
+                    Task {
+                        let accessed = url.startAccessingSecurityScopedResource()
+                        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                        do {
+                            let data = try Data(contentsOf: url)
+                            if url.pathExtension.lowercased() == "json" {
+                                // No server: a TwilDiary backup goes where the diary lives, its phone extras onto the phone.
+                                struct Copy: Decodable { let phone: PhoneExtras.Backup? }
+                                let archive = try DiaryExport.decoded(from: data)
+                                let phone = (try? JSONDecoder().decode(Copy.self, from: data))?.phone
+                                _ = try await ServerBackups.restore(archive, phone: phone, store: store)
+                                backupNotice = "Restored"
+                                return
+                            }
+                            throw APIError.message("Import a TwilDiary backup (.json).")
+                        } catch {
+                            store.error = error.localizedDescription
+                        }
+                    }
+                case .failure(let error):
+                    store.error = error.localizedDescription
+                }
             }
-            Text(value.title).font(.system(size: 20, weight: .semibold)).accessibilityIdentifier("settings-trakt-title")
-            Text(value.detail).font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(3)
-            NavigationLink(value: AppDestination.trakt) { Text(value.action).font(.system(size: 13, weight: .semibold)).padding(.horizontal, 16).frame(height: 42).foregroundStyle(theme.ink).background(theme.accent, in: RoundedRectangle(cornerRadius: 12)) }.accessibilityIdentifier("settings-trakt-summary")
-        }.diaryPanel()
+    }
+    /// With no server sign-in, the diary is the service's: reading it, sending your edits, or synced.
+    private var phoneDiaryState: String {
+        if store.onThisPhone { return "On this phone" }
+        guard let service = store.diaryService else { return "Synced" }
+        let reading = service == .trakt ? TraktDirectStore.shared.running : TrackerPreviewStore.shared.running == service
+        let sending = service == .trakt ? TraktDirectStore.shared.pending.count : TrackerPreviewStore.shared.pending[service]?.count ?? 0
+        return reading ? "Refreshing…" : sending > 0 ? "Sending \(sending)…" : "Synced"
+    }
+    /// "Your diary": its state, what it holds, when it was last updated and what it's
+    /// connected to. Tapping refreshes it from the server.
+    private var diaryCard: some View {
+        let titles = store.activeTitles.count, watches = store.activeEvents.count
+        let state = store.phoneOnly ? phoneDiaryState : store.loading ? "Refreshing…" : store.busy ? "Saving…" : "Synced"
+        let tint: Color = state == "Synced" || state == "On this phone" ? Color(themed: "#7fe0b5") : state == "Paused" || state == "Saved copy" ? .orange : HomeStyle.dateChipText
+        return VStack(alignment: .leading, spacing: 0) {
+            Button { Task { if store.phoneOnly { await store.readDiaryServiceIfDue(olderThan: 0) } else { await store.refresh() } } } label: {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("Your diary").font(.system(size: 18, weight: .bold))
+                        Spacer(minLength: 8)
+                        HStack(spacing: 5) { Circle().fill(tint).frame(width: 6, height: 6); Text(state) }
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 22)
+                            .background(state == "Synced" || state == "On this phone" ? Color(themed: "#1b2b25") : tint.opacity(0.14), in: Capsule())
+                    }
+                    HStack(spacing: 8) {
+                        statTile(titles, "titles")
+                        statTile(watches, "watches")
+                        statTile(driveCount, driveCount == 1 ? "drive" : "drives")
+                    }
+                }.foregroundStyle(HomeStyle.primary).padding(17).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.disabled(store.loading || store.busy).accessibilityIdentifier("settings-refresh-diary").accessibilityHint("Refresh your diary from the server")
+            divider
+            NavigationLink(value: AppDestination.statistics) {
+                settingsRow("chart.bar.fill", .purple, "Statistics", subtitle: "Watch time and trends", disclosure: true)
+            }.accessibilityIdentifier("settings-statistics")
+        }.modifier(SettingsCard())
+    }
+    private func statTile(_ value: Int, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value.formatted()).font(.system(size: 20, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+        }.padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 59, alignment: .leading)
+            .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
+            .accessibilityElement(children: .combine)
+    }
+    /// "@amit29533": your AniList name, else your Trakt account.
+    private var accountHandle: String {
+        if !anilistUser.isEmpty { return "@" + anilistUser }
+        if store.traktSignedInOnPhone, let name = store.providerSettings.config(for: .trakt).username, !name.isEmpty { return "@" + name }
+        return "Profile"
+    }
+    private var languageRegionSummary: String {
+        let code = Locale.current.language.languageCode?.identifier ?? "en"
+        let language = Locale.current.localizedString(forLanguageCode: code)?.capitalized ?? code
+        let region = UserDefaults.standard.string(forKey: "streamingRegion") ?? Locale.current.region?.identifier ?? "US"
+        return language + " · " + LanguageRegionView.regionName(region)
+    }
+    private var trashCount: Int { store.phoneOnly ? PhoneTrash.shared.titles.count : store.workspace.titles.reduce(0) { $0 + ($1.deletedAt == nil ? 0 : 1) } }
+    private var driveCount: Int { DiskSummary.make(store.workspace.locations).count }
+    /// Trakt's state in a word for its row; the full sync controls live on the Trakt page.
+    /// "Trakt · 2 connected": the main tracker and how many services are signed in.
+    private var connectionsSummary: String {
+        let settings = store.providerSettings
+        let count = [store.traktSignedInOnPhone, settings.mdblist.isAuthenticated, settings.wetrakr.isAuthenticated,
+                     settings.simkl.isAuthenticated, AniListSyncAccount.shared.signedIn].filter { $0 }.count
+        return count > 0 ? "\(count) on" : "Off"
     }
     private func settingsSection<Content: View>(_ name: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 9) { Text(name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 4); VStack(spacing: 0, content: content).diarySectionBackground(radius: 16, stroke: .white.opacity(0.08)) }
+        // Design: a 13 pt bold #9a9aa8 label, 16 pt above a #0e0e12 card (radius 22).
+        let native = ThemeStore.current.native
+        return VStack(alignment: .leading, spacing: native ? 7 : 16) {
+            Text(name).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20)
+                .padding(.top, 8).padding(.leading, native ? 16 : 0)
+            VStack(spacing: 0, content: content).modifier(SettingsCard())
+        }
     }
-    private func settingsIcon(_ icon: String) -> some View { DiaryIcon(name: icon, size: 18).foregroundStyle(theme.accent).frame(width: 34, height: 34).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10)) }
-    private func settingsRow(_ icon: String, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false) -> some View {
-        HStack(spacing: 10) { settingsIcon(icon); VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white); if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) } }; Spacer(minLength: 4); if let value { Text(value).font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.trailing) }; if disclosure { DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary) } }.padding(14).frame(minHeight: 58).contentShape(Rectangle())
+    /// A full-width #1c1c23 hairline between rows.
+    private var divider: some View { SettingsDivider() }
+    private var chevron: some View { SettingsChevron() }
+    /// iOS Settings-style tiles: a white SF Symbol on a solid colour, fixed across themes.
+    enum TileTint {
+        case purple, indigo, blue, cyan, teal, mint, green, yellow, orange, red, pink, cloudflare
+        var color: Color {
+            switch self {
+            case .purple: Color(themed: "#8E5CF0")
+            case .indigo: Color(themed: "#5E5CE6")
+            case .blue: Color(themed: "#0A84FF")
+            case .cyan: Color(themed: "#32ADE6")
+            case .teal: Color(themed: "#30B0C7")
+            case .mint: Color(themed: "#00B8A3")
+            case .green: Color(themed: "#30B350")
+            case .yellow: Color(themed: "#F2B705")
+            case .orange: Color(themed: "#FF8A1F")
+            case .red: Color(themed: "#FF453A")
+            case .pink: Color(themed: "#FF375F")
+            case .cloudflare: Color(themed: "#F38020")
+            }
+        }
+        /// The system colour of the same name (Native's tiles, right in light and dark).
+        var system: Color {
+            let colour: UIColor = switch self {
+            case .purple: .systemPurple
+            case .indigo: .systemIndigo
+            case .blue: .systemBlue
+            case .cyan: .systemCyan
+            case .teal: .systemTeal
+            case .mint: .systemMint
+            case .green: .systemGreen
+            case .yellow: .systemYellow
+            case .orange, .cloudflare: .systemOrange
+            case .red: .systemRed
+            case .pink: .systemPink
+            }
+            return Color(uiColor: colour)
+        }
+    }
+    /// JellySpace's row: Jellyfin's own logo, at the size of the other rows' tiles (on the design's
+    /// tile, or bare as Native's colour tiles are).
+    @ViewBuilder private var jellyfinTile: some View {
+        if ThemeStore.current.native {
+            BrandLogo(service: .jellyfin, size: 30)
+        } else {
+            BrandLogo(service: .jellyfin, size: 26).frame(width: 38, height: 38)
+                .background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
+        }
+    }
+    @ViewBuilder private func tile(_ symbol: String, _ tint: TileTint) -> some View {
+        if ThemeStore.current.native {
+            // Native: the Settings app's tiles, a white symbol on the row's own system colour.
+            NativeTile(symbol: symbol, size: 30, color: tint.system)
+        } else {
+            // Design: one style for every row, a #cdbbff icon on a 38 pt #2a2440 tile.
+            Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+                .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
+        }
+    }
+    private func settingsRow(_ icon: String, _ tint: TileTint, _ title: String, subtitle: String? = nil, value: String? = nil, disclosure: Bool = false, padded: Bool = true) -> some View {
+        settingsRow(leading: tile(icon, tint), title, subtitle: subtitle, value: value, disclosure: disclosure, padded: padded)
+    }
+    private func settingsRow<Leading: View>(leading: Leading, _ title: String, subtitle: String?, value: String?, disclosure: Bool, padded: Bool) -> some View {
+        HStack(spacing: 14) {
+            leading
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                // Native: no explanation on the list (owner); the row's own page explains.
+                if let subtitle, !ThemeStore.current.native { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+            }.layoutPriority(1)
+            Spacer(minLength: 4)
+            // The value gives way (one line, …) before the title wraps.
+            if let value { Text(value).font(.system(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).lineLimit(1).truncationMode(.tail) }
+            if disclosure { chevron }
+        }.padding(.horizontal, padded ? (ThemeStore.current.native ? 16 : 15) : 0).frame(minHeight: padded ? (ThemeStore.current.native ? 52 : 64) : 40).contentShape(Rectangle())
     }
     private func exportDiary() {
         // Pretty, key-sorted JSON of the whole diary is encoded off the main actor.
         let snapshot = store.workspace
         Task {
             do {
-                let data = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
+                var data = try await Task.detached(priority: .userInitiated) { try DiaryExport(workspace: snapshot).encoded() }.value
+                // No server: tags, Queue, notes and the other extras live on the phone; without them
+                // an exported file restored a diary with none.
+                if store.phoneOnly, let phone = ServerBackups.phoneExtras(),
+                   var root = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    root["phone"] = phone
+                    data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+                }
                 exportDocument = DiaryJSONDocument(data: data); showExport = true
             } catch { store.error = error.localizedDescription }
+        }
+    }
+}
+
+/// Settings' card: #0e0e12, radius 22, a #23232b hairline (design).
+struct SettingsCard: ViewModifier {
+    func body(content: Content) -> some View {
+        if ThemeStore.current.native {
+            // Native: an inset grouped list's section, continuous corners and no outline.
+            content.nativeCard().clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        } else {
+            content.cardSurface(22)
+                .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
         }
     }
 }
@@ -131,21 +352,742 @@ struct TMDBConnectionView: View {
     @State private var checking = false
     @State private var verified = false
     @State private var error: String?
+    @State private var editingApi = false
+    @State private var tokenInput = ""
+    @State private var savedMessage: String?
+
     var body: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 18) {
-            HStack { DiaryIcon(name: "key-round", size: 22).foregroundStyle(.tint); Text("TMDB").font(.title2.bold()); Spacer(); Text(verified ? "Connected" : checking ? "Checking…" : "Not connected").font(.caption).foregroundStyle(verified ? Color.green : Color.secondary) }
-            Text("Posters, title details, seasons and episodes.").font(.subheadline).foregroundStyle(.secondary)
-            Button(checking ? "Checking…" : "Check connection") { Task { await check() } }.buttonStyle(.glass).disabled(checking)
-            if let error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
-            Text("API credentials stay on your server. Use the PC app to configure or replace them.").font(.caption).foregroundStyle(.secondary)
-        }.diaryPanel().padding(16) }.diaryScreenBackground().navigationTitle("TMDB").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar).task { await check() }
+        EdgeToEdgeScroll {
+            // Design (board 9): the service card with its two buttons, then one note.
+            VStack(alignment: .leading, spacing: 14) {
+                let custom = store.providerSettings.customTmdbToken != nil
+                SettingsServiceHeader(logo: .tmdb, title: "TMDB", subtitle: "",
+                                      badge: verified ? ("Connected", .good) : checking ? ("Checking…", .plain) : ("Not connected", .missing)) {
+                    HStack(spacing: 10) {
+                        Button(checking ? "Checking…" : "Check connection") { Task { await check() } }
+                            .buttonStyle(SettingsWideButtonStyle()).disabled(checking)
+                        Button(editingApi ? "Hide" : "Change API key") {
+                            tokenInput = store.providerSettings.customTmdbToken ?? ""
+                            withAnimation(Motion.smooth) { editingApi.toggle() }
+                            savedMessage = nil
+                        }.buttonStyle(SettingsWideButtonStyle(outlined: true)).accessibilityIdentifier("tmdb-api-toggle")
+                    }
+                    if let error { Text(error).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+                    if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(themed: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
+                }
+                if editingApi {
+                    SettingsGroup(label: "Your own token") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Paste a TMDB Read Access Token (without “Bearer”).")
+                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                            SecureField("TMDB Read Access Token", text: $tokenInput).settingsField(monospaced: true)
+                                .accessibilityIdentifier("tmdb-api-token-field")
+                            HStack(spacing: 10) {
+                                Button("Save") {
+                                    guard store.updateCustomTmdbToken(tokenInput) else { savedMessage = store.error; return }
+                                    savedMessage = "Your TMDB token is saved."
+                                    verified = true
+                                    editingApi = false
+                                }.buttonStyle(SettingsWideButtonStyle())
+                                    .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                    .accessibilityIdentifier("tmdb-api-save")
+                                if custom {
+                                    Button("Use server key") {
+                                        tokenInput = ""
+                                        guard store.updateCustomTmdbToken(nil) else { savedMessage = store.error; return }
+                                        savedMessage = "Back to your server’s TMDB key."
+                                        editingApi = false
+                                    }.buttonStyle(SettingsWideButtonStyle(outlined: true)).accessibilityIdentifier("tmdb-api-reset")
+                                }
+                            }
+                        }.padding(15)
+                    }.accessibilityIdentifier("tmdb-api-panel")
+                }
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+        }
+        .diaryScreenBackground()
+        .navigationTitle("TMDB")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .task { await check() }
     }
-    private func check() async { checking = true; error = nil; defer { checking = false }; do { if !store.isPreview { let _: EmptyResponse = try await store.read("/api/metadata/status") }; verified = true } catch { verified = false; self.error = error.localizedDescription } }
+
+    private func check() async {
+        checking = true; error = nil
+        defer { checking = false }
+        if let custom = store.providerSettings.customTmdbToken, !custom.isEmpty {
+            verified = true
+            return
+        }
+        do {
+            if store.isPreview {
+            } else if store.phoneOnly {
+                // No server: the key built into the app is checked with TMDB itself.
+                guard let token = TMDBDirect.builtIn else { throw APIError.message("Add your own TMDB key below.") }
+                _ = try await TMDBDirect.object("configuration", query: [:], token: token)
+            } else {
+                let _: EmptyResponse = try await store.read("/api/metadata/status")
+            }
+            verified = true
+        } catch {
+            verified = false
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+struct ExternalProviderConnectionView: View {
+    let provider: SyncProviderKind
+    @Environment(DiaryStore.self) private var store
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var enabled = false
+    @State private var loggingMethod: WatchLoggingMethod = .serverAndDirectAPI
+    @State private var clientId = ""
+    @State private var apiKey = ""
+    @State private var accessToken = ""
+    @State private var username = ""
+    @State private var testing = false
+    @State private var syncing = false
+    @State private var deviceSession: DeviceCodeAuthSession?
+    @State private var pollingPin = false
+    @State private var statusMessage: String?
+    @State private var errorMessage: String?
+    /// TwilDiary's own app client IDs from the server (Settings → APIs), for "Sign in with …".
+    @State private var apps: ProviderApps?
+    @State private var signingIn = false
+    @State private var confirmTraktSignOut = false
+    /// MDBList's code to approve on mdblist.com, while waiting for approval.
+    @State private var approval: ProviderDeviceSignIn.Authorization?
+    @Environment(\.openURL) private var openURL
+    /// An app ID pasted on this page, for web sign-in before the server has one.
+    @State private var signInAppID = ""
+    @State private var signInTask: Task<Void, Never>?
+    @State private var showOwnKey = false
+    @FocusState private var appIDFocused: Bool
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
+
+    struct ProviderApps: Decodable { let trakt: String?; let mdblist: String? }
+
+    private var brand: BrandLogo.Service {
+        switch provider {
+        case .mdblist: .mdblist
+        case .wetrakr: .wetrakr
+        case .simkl: .simkl
+        case .trakt: .trakt
+        case .cloudflare: .cloudflare
+        }
+    }
+
+    private var displayName: String {
+        switch provider {
+        case .mdblist: "MDBList"
+        case .wetrakr: "WeTrakr"
+        case .simkl: "Simkl"
+        case .trakt: "Trakt"
+        case .cloudflare: "TwilDiary"
+        }
+    }
+
+    private var currentConfig: ExternalProviderConfig {
+        store.providerSettings.config(for: provider)
+    }
+
+    private var pendingOutboxCount: Int {
+        store.outbox.pending(for: provider).count
+    }
+
+    var body: some View {
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 16) {
+                headerCard
+                connectCard
+                let native = ThemeStore.current.native
+                if (currentConfig.isAuthenticated || pendingOutboxCount > 0) && !(native && currentConfig.isAuthenticated && tracker != nil) { sendEditsCard }
+                if currentConfig.isAuthenticated, let tracker {
+                    if native {
+                        // Native: one Options list, as Trakt's page: Send my edits, the actions, Account limits.
+                        TrackerPreviewPanel(tracker: tracker, leadingOptions: AnyView(sendEditsRows), trailingOptions: tracker == .trakt ? nil : AnyView(
+                            NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
+                                SettingsRow(title: "Account limits") { SettingsChevron() }
+                            }.buttonStyle(.plain).accessibilityIdentifier("\(tracker.rawValue)-account-limits")))
+                    } else {
+                        TrackerPreviewPanel(tracker: tracker)
+                    }
+                }
+                if currentConfig.isAuthenticated, let tracker, tracker != .trakt, !native {
+                    NavigationLink { ServiceLimitsView(tracker: tracker) } label: {
+                        SettingsRow(title: "Account limits") { SettingsChevron() }
+                            .modifier(SettingsCard())
+                    }.buttonStyle(.plain).accessibilityIdentifier("\(tracker.rawValue)-account-limits")
+                }
+                ownKeySection
+            }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+        }
+        .diaryScreenBackground()
+        .navigationTitle(displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .onAppear { loadFromStore() }
+        .task { await loadApps() }
+        .onDisappear { signInTask?.cancel(); signInTask = nil }
+        .alert("Sign out of Trakt on this iPhone? Edits still waiting for Trakt stay queued until you sign in again.", isPresented: $confirmTraktSignOut) {
+            Button("Sign out", role: .destructive) { Task { await store.signOutTraktOnPhone(); loadFromStore(); statusMessage = "Signed out of Trakt." } }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var tracker: MainTracker? {
+        switch provider { case .trakt: .trakt; case .mdblist: .mdblist; case .wetrakr: .wetrakr; case .simkl: .simkl; case .cloudflare: nil }
+    }
+
+    /// One switch: whether your edits go to this service, and what's still on its way.
+    private var sendEditsCard: some View { sendEditsRows.modifier(SettingsCard()) }
+    private var sendEditsRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Toggle(isOn: $enabled) {
+                VStack(alignment: .leading, spacing: ThemeStore.current.native ? 1 : 2) {
+                    Text("Send my edits to \(displayName)").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.toggleStyle(SettingsToggleStyle()).settingsRowFrame()
+                .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
+                .accessibilityIdentifier("\(provider.rawValue)-enable-toggle")
+            if pendingOutboxCount > 0 {
+                SettingsDivider()
+                HStack {
+                    Text("\(pendingOutboxCount) waiting to send").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        .accessibilityIdentifier("\(provider.rawValue)-outbox-count")
+                    Spacer()
+                    Button(syncing ? "Sending…" : "Send now") {
+                        Task {
+                            syncing = true; defer { syncing = false }
+                            errorMessage = nil; statusMessage = nil
+                            await store.flushDirectProviders()
+                            let pending = store.outbox.pending(for: provider)
+                            if pending.isEmpty { statusMessage = "Everything reached \(displayName)." }
+                            else { errorMessage = "\(pending.count) still waiting. " + (pending.first?.lastError ?? "") }
+                        }
+                    }.buttonStyle(SettingsPillButtonStyle()).disabled(syncing || !currentConfig.isAuthenticated).accessibilityIdentifier("\(provider.rawValue)-sync-now")
+                }.padding(.horizontal, 15).padding(.vertical, 10)
+            }
+        }
+    }
+
+    /// Your own key or token, folded away: signing in is the simple way.
+    private var ownKeySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { withAnimation(Motion.smooth) { showOwnKey.toggle() } } label: {
+                HStack {
+                    let native = ThemeStore.current.native
+                    Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead")
+                        .font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(native ? Color(uiColor: .tertiaryLabel) : Color(themed: "#6a6a78"))
+                        .rotationEffect(.degrees(showOwnKey ? 180 : 0))
+                }.padding(.horizontal, ThemeStore.current.native ? 16 : 15).frame(minHeight: ThemeStore.current.native ? 52 : 56).contentShape(Rectangle()).modifier(SettingsCard())
+            }.buttonStyle(.plain).accessibilityIdentifier("\(provider.rawValue)-own-key")
+            if showOwnKey { apiSettingsCard }
+        }
+    }
+
+    /// Two ways in: sign in to the service, or (below) your own API key or token.
+    @ViewBuilder private var connectCard: some View {
+        if ThemeStore.current.native { nativeConnect } else { classicConnect }
+    }
+    /// Native: an Account list as iOS Settings: who you're signed in as with a small Sign in button,
+    /// Sign out in red, and the one-time setup as rows only while it's needed.
+    private var nativeConnect: some View {
+        let isTrakt = provider == .trakt
+        let signedIn = isTrakt ? store.traktSignedInOnPhone : currentConfig.isAuthenticated
+        let appId = appClientId ?? ProfileText.line(signInAppID)
+        let needsSetup = appClientId == nil
+        let developer = isTrakt ? "https://trakt.tv/oauth/applications" : provider == .wetrakr ? "https://api.wetrakr.com/" : provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/"
+        let setupInfo: String? = !needsSetup ? nil : isTrakt
+            ? "On trakt.tv/oauth/applications, open your app and add \(ProviderWebSignIn.redirect(for: .trakt)) as a redirect URI, then paste its client ID here."
+            : provider == .mdblist
+            ? "Create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here or under Connections → All keys."
+            : provider == .wetrakr
+            ? "In WeTrakr, open Settings → API, create an app with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID (the app key) here."
+            : "Create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here or under Connections → All keys."
+        return VStack(alignment: .leading, spacing: 8) {
+            SettingsGroup(label: "Account", info: setupInfo) {
+                SettingsRow(title: signedIn ? (currentConfig.username.map { "@" + $0 } ?? "Signed in") : "Not signed in") {
+                    Button(signingIn ? "Signing in…" : signedIn ? "Sign in again" : "Sign in") {
+                        if let appId { startSignIn(appId) } else {
+                            errorMessage = "First, paste your \(displayName) app’s client ID below (one-time setup)."
+                            appIDFocused = true
+                        }
+                    }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                }.accessibilityIdentifier(isTrakt ? "trakt-sign-in-state" : "\(provider.rawValue)-account")
+                if let approval {
+                    SettingsDivider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Approve TwilDiary on \(displayName) with this code:").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(approval.userCode).font(.system(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
+                            .accessibilityIdentifier("\(provider.rawValue)-user-code")
+                        HStack(spacing: 10) {
+                            Button("Open \(displayName)") { openURL(approval.verificationURLComplete ?? approval.verificationURL) }.buttonStyle(SettingsPillButtonStyle())
+                            Button("Cancel") { signInTask?.cancel(); self.approval = nil; signingIn = false }.buttonStyle(SettingsPillButtonStyle(outlined: true))
+                        }
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if needsSetup {
+                    SettingsDivider()
+                    TextField("\(displayName) app client ID", text: $signInAppID).font(.system(size: 17, design: .monospaced))
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($appIDFocused).submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
+                        .settingsRowFrame().accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
+                    SettingsDivider()
+                    Link(destination: URL(string: developer)!) {
+                        SettingsRow(title: isTrakt ? "Trakt app settings" : "\(displayName) developer page") {
+                            Image(systemName: "arrow.up.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
+                        }
+                    }.buttonStyle(.plain)
+                }
+                if isTrakt {
+                    SettingsDivider()
+                    NavigationLink(value: AppDestination.trakt) { SettingsRow(title: "Trakt page") { SettingsChevron() } }
+                        .buttonStyle(.plain).accessibilityIdentifier("trakt-open-page")
+                }
+                if isTrakt && signedIn {
+                    SettingsDivider()
+                    Button { confirmTraktSignOut = true } label: {
+                        Text("Sign out of Trakt").font(.system(size: 17)).foregroundStyle(Color(uiColor: .systemRed))
+                            .frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame().contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("trakt-sign-out")
+                }
+            }
+            messages.padding(.horizontal, 16)
+        }
+    }
+    private var classicConnect: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsLabel(text: "Connect") { EmptyView() }
+            VStack(alignment: .leading, spacing: 12) {
+                switch provider {
+                case .trakt:
+                    // Signed in on this iPhone: Trakt's own page, PKCE, tokens in the Keychain; the
+                    // server isn't involved. A sign-in made earlier through the server still works.
+                    let onPhone = store.traktSignedInOnPhone
+                    let appId = appClientId ?? ProfileText.line(signInAppID)
+                    Text(onPhone ? "Signed in on this iPhone\(currentConfig.username.map { " as @" + $0 } ?? "")."
+                         : "Sign in on Trakt and come straight back.")
+                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("trakt-sign-in-state")
+                    Button {
+                        if let appId { startSignIn(appId) } else {
+                            errorMessage = "First, paste your Trakt app’s client ID below (one-time setup)."
+                            appIDFocused = true
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if signingIn { ProgressView().controlSize(.small) } else { Image(systemName: "person.crop.circle.badge.checkmark") }
+                            Text(signingIn ? "Signing in…" : onPhone ? "Sign in again" : "Sign in with Trakt").lineLimit(1)
+                        }.frame(maxWidth: .infinity)
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(signingIn).accessibilityIdentifier("trakt-sign-in")
+                    if onPhone {
+                        Button(role: .destructive) { confirmTraktSignOut = true } label: {
+                            Text("Sign out of Trakt").frame(maxWidth: .infinity)
+                        }.buttonStyle(SettingsDestructiveButtonStyle()).accessibilityIdentifier("trakt-sign-out")
+                    }
+                    NavigationLink(value: AppDestination.trakt) { SettingsLinkLabel(text: "Open the Trakt page") }
+                        .accessibilityIdentifier("trakt-open-page")
+                    SettingsDivider().padding(.horizontal, -15).padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("One-time setup").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Spacer(minLength: 8)
+                            SettingsInfoButton(text: "On trakt.tv/oauth/applications, open your app and add \(ProviderWebSignIn.redirect(for: .trakt)) as a redirect URI (one per line, next to any you have).")
+                        }
+                        Text("Your Trakt app needs the redirect \(ProviderWebSignIn.redirect(for: .trakt)).")
+                            .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        if appClientId == nil {
+                            TextField("Trakt app client ID", text: $signInAppID).settingsField(monospaced: true)
+                                .focused($appIDFocused)
+                                .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
+                                .accessibilityIdentifier("trakt-sign-in-app-id")
+                        }
+                        Link(destination: URL(string: "https://trakt.tv/oauth/applications")!) { SettingsLinkLabel(text: "Open Trakt’s app settings") }
+                    }
+                case .mdblist, .wetrakr, .simkl:
+                    // Web sign-in is always offered: with TwilDiary's app ID from your server, or one
+                    // you paste here once (a free \(displayName) app with redirect twildiary://auth/…).
+                    let appId = appClientId ?? ProfileText.line(signInAppID)
+                    Button {
+                        if let appId { startSignIn(appId) } else {
+                            errorMessage = "First, paste your \(displayName) app ID below (one-time setup)."
+                            appIDFocused = true
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if signingIn { ProgressView().controlSize(.small) } else { Image(systemName: "globe") }
+                            Text(signingIn ? "Signing in…" : currentConfig.connection == .signIn && currentConfig.isAuthenticated ? "Sign in again" : "Sign in with \(displayName)")
+                        }.frame(maxWidth: .infinity)
+                    }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(signingIn).accessibilityIdentifier("\(provider.rawValue)-sign-in")
+                    if let approval {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Approve TwilDiary on \(displayName) with this code:").font(.caption).foregroundStyle(.secondary)
+                            Text(approval.userCode).font(.system(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
+                                .accessibilityIdentifier("\(provider.rawValue)-user-code")
+                            HStack(spacing: 10) {
+                                Button("Open \(displayName)") { openURL(approval.verificationURLComplete ?? approval.verificationURL) }
+                                    .buttonStyle(.diarySecondary)
+                                Button("Cancel", role: .cancel) { signInTask?.cancel(); self.approval = nil; signingIn = false }
+                                    .buttonStyle(.diarySecondary)
+                            }.font(.subheadline)
+                            Text("Waiting for approval… come back here afterwards; it finishes on its own.").font(.caption).foregroundStyle(.secondary)
+                        }.padding(12).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    if appClientId == nil {
+                        SettingsDivider().padding(.horizontal, -15).padding(.vertical, 4)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("One-time setup").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Spacer(minLength: 8)
+                                SettingsInfoButton(text: provider == .mdblist
+                                    ? "Create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here or under Connections → All keys."
+                                    : provider == .wetrakr
+                                    ? "In WeTrakr, open Settings → API, create an app with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID (the app key) here."
+                                    : "Create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here or under Connections → All keys.")
+                            }
+                            Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : "Paste your \(displayName) client ID.")
+                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
+                            TextField("\(displayName) app client ID", text: $signInAppID).settingsField(monospaced: true)
+                                .focused($appIDFocused)
+                                .submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
+                                .accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
+                            Link(destination: URL(string: provider == .wetrakr ? "https://api.wetrakr.com/" : provider == .simkl ? "https://simkl.com/settings/developer/" : "https://mdblist.com/developer/")!) {
+                                SettingsLinkLabel(text: "Open \(displayName)’s developer page")
+                            }
+                        }
+                    }
+                case .cloudflare:
+                    EmptyView()
+                }
+                messages
+            }.padding(15).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
+        }
+    }
+    private var appClientId: String? {
+        let listed: String? = switch provider {
+        case .mdblist: apps?.mdblist
+        case .trakt: apps?.trakt
+        case .wetrakr, .simkl: nil
+        case .cloudflare: nil
+        }
+        return listed.flatMap { $0.isEmpty ? nil : $0 } ?? ProviderAppIDs.id(for: provider)
+    }
+    private func loadApps() async {
+        #if DEBUG
+        if store.isPreview { apps = ProviderApps(trakt: "preview", mdblist: nil); return }
+        #endif
+        let loaded: ProviderApps? = try? await store.read("/api/providers/apps")
+        if let loaded { ProviderAppIDs.remember([.trakt: loaded.trakt, .mdblist: loaded.mdblist]) }
+        apps = loaded ?? ProviderApps(trakt: nil, mdblist: nil)
+    }
+    private func startSignIn(_ appId: String) {
+        signInTask?.cancel()
+        signInTask = Task { await runSignIn(appId) }
+    }
+    /// Opens the service's sign-in page in Apple's sign-in sheet; when it comes back approved, trades
+    /// the code for tokens, saves them and turns sync on.
+    private func runSignIn(_ appId: String) async {
+        errorMessage = nil; statusMessage = nil
+        // MDBList: its sign-in page (a Public PKCE app); an older "Device Code" app falls back to the code.
+        if provider == .mdblist, ProviderAppIDs.id(for: .mdblist) == nil, appClientId == nil { await runDeviceSignIn(appId); return }
+        guard let request = ProviderWebSignIn.start(provider: provider, clientId: appId) else {
+            errorMessage = "TwilDiary can’t sign in to \(displayName) yet."; return
+        }
+        signingIn = true
+        defer { signingIn = false }
+        do {
+            let callback = try await webAuthenticationSession.authenticate(using: request.url, callbackURLScheme: ProviderWebSignIn.callbackScheme)
+            let code = try ProviderWebSignIn.code(from: callback, for: request)
+            let tokens = try await store.directClient.finishWebSignIn(request, code: code)
+            if provider == .trakt {
+                try await store.finishTraktPhoneSignIn(clientId: appId, tokens: tokens)
+                loadFromStore()
+                statusMessage = "Signed in to Trakt on this iPhone."
+                return
+            }
+            var signedIn = currentConfig
+            signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
+            signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
+            signedIn.connection = .signIn; signedIn.enabled = true; signedIn.loggingMethod = .serverAndDirectAPI
+            if provider == .mdblist { signedIn.apiKey = nil }
+            guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
+            loadFromStore()
+            statusMessage = "Signed in to \(displayName). Sync is on."
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // Closing the sheet is not an error.
+        } catch {
+            if !Task.isCancelled { errorMessage = error.localizedDescription }
+        }
+    }
+    /// MDBList: its sign-in only redirects to web addresses, so it uses the device code instead.
+    /// Shows the code, opens mdblist.com with it filled in, and asks every few seconds until approved.
+    private func runDeviceSignIn(_ appId: String) async {
+        signingIn = true
+        defer { signingIn = false; approval = nil }
+        do {
+            let auth = try await store.directClient.startDeviceSignIn(provider: provider, clientId: appId)
+            approval = auth
+            openURL(auth.verificationURLComplete ?? auth.verificationURL)
+            var interval = auth.interval
+            let deadline = Date.now.addingTimeInterval(TimeInterval(auth.expiresIn))
+            while Date.now < deadline {
+                try await Task.sleep(for: .seconds(interval))
+                switch try await store.directClient.pollDeviceSignIn(provider: provider, clientId: appId, deviceCode: auth.deviceCode) {
+                case .pending: continue
+                case .slowDown: interval += 5
+                case .authorized(let tokens):
+                    var signedIn = currentConfig
+                    signedIn.clientId = appId; signedIn.accessToken = tokens.accessToken
+                    signedIn.refreshToken = tokens.refreshToken; signedIn.tokenExpiresAt = tokens.expiresAt
+                    signedIn.connection = .signIn; signedIn.enabled = true; signedIn.loggingMethod = .serverAndDirectAPI
+                    signedIn.apiKey = nil
+                    guard store.updateProviderConfig(signedIn) else { throw APIError.message(store.error ?? "The sign-in couldn’t be saved.") }
+                    loadFromStore()
+                    statusMessage = "Signed in to \(displayName). Sync is on."
+                    return
+                case .denied: throw APIError.message("The sign-in was declined.")
+                case .expired: throw APIError.message("The code expired. Sign in again.")
+                case .failed(let message): throw APIError.message(message)
+                }
+            }
+            throw APIError.message("The code expired. Sign in again.")
+        } catch {
+            if !Task.isCancelled && !(error is CancellationError) { errorMessage = error.localizedDescription }
+        }
+    }
+
+    @ViewBuilder private var messages: some View {
+        if let statusMessage {
+            Text(statusMessage).font(.caption).foregroundStyle(.mint).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(provider.rawValue)-status-message")
+        }
+        if let errorMessage {
+            Text(errorMessage).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(provider.rawValue)-error-message")
+        }
+    }
+
+    private var headerCard: some View {
+        let badge = currentConfig.statusBadge
+        let tone: SettingsTone = badge == "Connected" ? .good : badge == "Configured" ? .configured : .plain
+        return SettingsServiceHeader(logo: brand, title: displayName, subtitle: currentConfig.username.map { "@" + $0 } ?? "",
+                                     badge: (badge, tone)) {
+            if let lastSync = currentConfig.lastSyncedAt, let date = DiaryDate.parse(lastSync) {
+                Text("Last sent \(date.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+            }
+        }.accessibilityIdentifier("\(provider.rawValue)-status-badge")
+    }
+
+    private var apiSettingsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
+                if provider == .mdblist {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("MDBList API Key (apikey)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        SecureField("Paste your MDBList API key", text: $apiKey)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField(monospaced: true)
+                            .accessibilityIdentifier("\(provider.rawValue)-api-key-field")
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Client ID (\(provider.rawValue)-api-key)")
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        TextField("Your \(displayName) Client ID", text: $clientId)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField(monospaced: true)
+                            .accessibilityIdentifier("\(provider.rawValue)-client-id-field")
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("OAuth Access Token (Bearer)")
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        SecureField("Paste your access token", text: $accessToken)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .settingsField(monospaced: true)
+                            .accessibilityIdentifier("\(provider.rawValue)-access-token-field")
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Account username (optional)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    TextField("username", text: $username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .settingsField(monospaced: true)
+                        .accessibilityIdentifier("\(provider.rawValue)-username-field")
+                }
+
+                InlineFlowLayout(spacing: 8, rowSpacing: 8) {
+                    Button("Save") {
+                        errorMessage = nil
+                        if !enabled && draftConfig().hasCredentials { enabled = true }
+                        var saved = draftConfig()
+                        // New pasted credentials replace a sign-in: its refresh token belongs to the old token.
+                        if saved.accessToken != currentConfig.accessToken || saved.apiKey != currentConfig.apiKey || saved.clientId != currentConfig.clientId {
+                            saved.connection = .apiKey; saved.refreshToken = nil; saved.tokenExpiresAt = nil
+                        }
+                        if !store.updateProviderConfig(saved) { errorMessage = store.error; return }
+                        statusMessage = "\(displayName) API settings saved."
+                    }
+                    .buttonStyle(SettingsPillButtonStyle())
+                    .accessibilityIdentifier("\(provider.rawValue)-save-button")
+
+                    Button(testing ? "Testing…" : "Test") {
+                        Task { await testConnection() }
+                    }
+                    .buttonStyle(SettingsPillButtonStyle(outlined: true))
+                    .disabled(testing || !draftConfig().hasCredentials)
+                    .accessibilityIdentifier("\(provider.rawValue)-test-button")
+
+                    if currentConfig.hasCredentials {
+                        Button("Disconnect", role: .destructive) {
+                            enabled = false; clientId = ""; apiKey = ""; accessToken = ""; username = ""
+                            deviceSession = nil; statusMessage = nil; errorMessage = nil
+                            store.updateProviderConfig(ExternalProviderConfig(provider: provider))
+                        }
+                        .buttonStyle(SettingsPillButtonStyle(outlined: true))
+                        .accessibilityIdentifier("\(provider.rawValue)-disconnect-button")
+                    }
+
+                    if provider == .trakt && !clientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("Sign in with PIN") {
+                            Task { await beginPinAuth() }
+                        }
+                        .buttonStyle(SettingsPillButtonStyle(outlined: true))
+                        .disabled(testing || pollingPin)
+                        .accessibilityIdentifier("\(provider.rawValue)-pin-auth-button")
+                    }
+                }
+
+                if let auth = deviceSession {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Authorize \(displayName) with PIN code:")
+                            .font(.caption.bold())
+                        HStack {
+                            Text(auth.userCode)
+                                .font(.title3.monospaced().bold())
+                                .foregroundStyle(theme.accent)
+                            Spacer()
+                            Link("Open \(auth.verificationURL.host ?? "activation page") ↗", destination: auth.verificationURL)
+                                .font(.caption.weight(.semibold))
+                        }
+                        HStack(spacing: 10) {
+                            Button(pollingPin ? "Checking…" : "I’ve authorized this PIN") {
+                                Task { await checkPinAuthorization() }
+                            }
+                            .buttonStyle(SettingsPillButtonStyle())
+                            .disabled(pollingPin)
+                            Button("Cancel") { deviceSession = nil }
+                                .buttonStyle(SettingsPillButtonStyle(outlined: true))
+                        }
+                    }
+                    .padding(12)
+                    .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }.padding(15).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
+        }
+    }
+
+    private func loadFromStore() {
+        let cfg = store.providerSettings.config(for: provider)
+        enabled = cfg.enabled
+        loggingMethod = cfg.loggingMethod
+        clientId = cfg.clientId ?? ""
+        apiKey = cfg.apiKey ?? ""
+        accessToken = cfg.accessToken ?? ""
+        username = cfg.username ?? ""
+        if cfg.connection == .signIn, let id = cfg.clientId, !id.isEmpty { signInAppID = id }
+    }
+
+    private func draftConfig() -> ExternalProviderConfig {
+        ExternalProviderConfig(
+            provider: provider,
+            enabled: enabled,
+            loggingMethod: loggingMethod,
+            clientId: clientId,
+            apiKey: apiKey,
+            accessToken: accessToken,
+            username: username,
+            lastSyncedAt: currentConfig.lastSyncedAt,
+            // Toggles and the logging method keep how this was connected.
+            refreshToken: currentConfig.refreshToken,
+            tokenExpiresAt: currentConfig.tokenExpiresAt,
+            connection: currentConfig.connection
+        )
+    }
+
+    private func persistDraft() {
+        if !store.updateProviderConfig(draftConfig()) { errorMessage = store.error }
+    }
+
+    private func testConnection() async {
+        testing = true
+        statusMessage = nil
+        errorMessage = nil
+        defer { testing = false }
+        let cfg = draftConfig()
+        do {
+            try await store.testProviderConnection(cfg)
+            var connectedCfg = cfg
+            connectedCfg.enabled = true
+            enabled = true
+            guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
+            statusMessage = "Connected to \(displayName) API."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginPinAuth() async {
+        statusMessage = nil; errorMessage = nil
+        do {
+            deviceSession = try await store.directClient.requestDeviceCode(provider: provider, clientId: clientId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func checkPinAuthorization() async {
+        guard let auth = deviceSession else { return }
+        pollingPin = true; statusMessage = nil; errorMessage = nil
+        defer { pollingPin = false }
+        do {
+            let result = try await store.directClient.pollDeviceToken(session: auth, clientId: clientId)
+            switch result {
+            case .authorized(let token):
+                accessToken = token
+                enabled = true
+                deviceSession = nil
+                var connectedCfg = draftConfig()
+                connectedCfg.accessToken = token
+                connectedCfg.enabled = true
+                // Trakt's device codes issue no refresh token.
+                connectedCfg.connection = .signIn; connectedCfg.refreshToken = nil; connectedCfg.tokenExpiresAt = nil
+                guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
+                statusMessage = "\(displayName) authorized and connected."
+            case .expired:
+                deviceSession = nil
+                errorMessage = "PIN code expired. Request a new code to try again."
+            case .pending:
+                statusMessage = "Waiting for authorization at \(auth.verificationURL.absoluteString)…"
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 struct AboutView: View {
     var body: some View {
-        ScrollView { VStack(alignment: .leading, spacing: 24) {
+        EdgeToEdgeScroll { VStack(alignment: .leading, spacing: 24) {
             VStack(spacing: 12) { BrandMark().fill(.tint).frame(width: 54, height: 54); Text("TwilDiary").font(.title.bold()); Text("Your stories, at your pace.").foregroundStyle(.secondary); Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · Build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")").font(.caption) }.frame(maxWidth: .infinity).diaryPanel()
             VStack(alignment: .leading, spacing: 16) { Text("Attribution & licenses").font(.title2.bold()); Text("Movie & television data").font(.headline); Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.subheadline).foregroundStyle(.secondary); Link("The Movie Database ↗", destination: URL(string: "https://www.themoviedb.org")!); Text("Trakt").font(.headline); Text("Trakt connects your watch history, ratings and watchlist when you authorize it. Scanning prepares a review before changes are applied.").font(.subheadline).foregroundStyle(.secondary); Link("Trakt ↗", destination: URL(string: "https://trakt.tv")!); Text("Icons").font(.headline); Text("Lucide icons are provided under the ISC license.").font(.subheadline).foregroundStyle(.secondary) }.diaryPanel()
             if let url = Bundle.main.url(forResource: "Lucide-LICENSE", withExtension: "txt"), let license = try? String(contentsOf: url, encoding: .utf8) { DisclosureGroup("Lucide ISC license") { Text(license).font(.caption).textSelection(.enabled).padding(.top, 12) }.diaryPanel() }

@@ -11,14 +11,12 @@ import TwilDiaryCore
     private var personalGeneration = UUID()
     private var pages: [String: Entry] = [:]
     private var reads: [String: Read] = [:]
-    private var statusRead: (id: UUID, task: Task<TraktStatus, Error>)?
     private(set) var account: String?
     private let now: @MainActor () -> Date
     init(now: @escaping @MainActor () -> Date = { .now }) { self.now = now }
     func reset() {
         generation = UUID(); personalGeneration = UUID()
         for read in reads.values { read.task.cancel() }
-        statusRead?.task.cancel(); statusRead = nil
         reads = [:]; pages = [:]; account = nil; owner = nil
     }
     private func synchronize(_ scope: UUID) {
@@ -74,30 +72,6 @@ import TwilDiaryCore
         let value = try await task.value
         try Task.checkCancellation()
         guard epoch == generation, !personal || personalEpoch == personalGeneration else { throw CancellationError() }
-        return value
-    }
-    func status(scope: UUID, fetch: @escaping @MainActor @Sendable () async throws -> TraktStatus) async throws -> TraktStatus {
-        synchronize(scope)
-        let epoch = generation
-        if let pending = statusRead {
-            let value = try await pending.task.value
-            try Task.checkCancellation()
-            guard epoch == generation else { throw CancellationError() }
-            return value
-        }
-        let id = UUID()
-        let task = Task { @MainActor [weak self] in
-            guard let self else { throw CancellationError() }
-            defer { if self.statusRead?.id == id { self.statusRead = nil } }
-            let result = try await fetch()
-            try Task.checkCancellation()
-            guard epoch == self.generation else { throw CancellationError() }
-            return result
-        }
-        statusRead = (id, task)
-        let value = try await task.value
-        try Task.checkCancellation()
-        guard epoch == generation else { throw CancellationError() }
         return value
     }
 }

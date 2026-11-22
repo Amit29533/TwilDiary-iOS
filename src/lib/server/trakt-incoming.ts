@@ -153,6 +153,22 @@ export async function configureIncoming(
   return incomingStatus(db, now);
 }
 
+/**
+ * Bounded foreground incoming catch-up (`POST /api/trakt/incoming`).
+ * Reuses the scheduler's durable lease, account/generation fences, due/backoff times,
+ * manual-review exclusion, and D1 work limits so app-open and Cron requests coalesce safely.
+ */
+export async function catchUpIncoming(
+  db: Db,
+  env: ServerBindings,
+  options: { transport?: typeof fetch; tmdb?: TmdbClient; now?: () => number } = {}
+) {
+  const clock = options.now ?? Date.now;
+  const tick = await tickIncoming(db.$client, env, options);
+  const status = await incomingStatus(db, clock());
+  return { tick: tick.state, ...status };
+}
+
 /** A corrupt play must not stall every valid watch on the same provider page. */
 function readHistoryRow(raw: unknown): { item: RemoteTraktItem } | { quarantine: string } | null {
   try {

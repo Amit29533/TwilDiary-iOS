@@ -20,7 +20,11 @@ extension DiscoveryServing {
 
 @MainActor final class LiveDiscoveryService: DiscoveryServing {
     private let store: DiaryStore
-    init(store: DiaryStore) { self.store = store }
+    private let recoverBrowseReads: Bool
+    init(store: DiaryStore, recoverBrowseReads: Bool = false) {
+        self.store = store
+        self.recoverBrowseReads = recoverBrowseReads
+    }
     var recommendationScope: UUID? { store.discoveryRevision }
     var recommendationOwner: String? { store.discoveryCache.account }
     func page(_ query: [String: String]) async throws -> CatalogPage { try await page(query, refresh: false) }
@@ -28,24 +32,67 @@ extension DiscoveryServing {
         guard !store.needsSignIn else { store.discoveryCache.reset(); throw APIError.signIn }
         let revision = store.discoveryRevision
         let key = CatalogTools.apiPath("/api/discovery", query: query)
-        let result = try await store.discoveryCache.page(key, scope: revision, personal: query["source"] == "trakt", refresh: refresh) { [store] in
+        let result = try await store.discoveryCache.page(key, scope: revision, personal: query["source"] == "trakt", refresh: refresh) { [store, recoverBrowseReads] in
             #if DEBUG
             if store.isPreview { return PreviewCatalog.discovery(query) }
             #endif
-            return try await store.read(key)
+            // Trakt picks are read on the phone. With your TMDB key everything else is too; without
+            // one the server adds posters and details.
+            let picks = await Self.phonePicks(query, store: store)
+            var usedServerFallback = false
+            if let token = TMDBDirect.token(store), query["source"] != "trakt" || picks != nil {
+                if !recoverBrowseReads {
+                    return try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
+                }
+                do {
+                    return try await SearchBrowseRead.retry {
+                        try await TMDBDirect.discover(picks ?? query, workspace: store.workspace, token: token)
+                    }
+                } catch let error where SearchBrowseRead.isTransportError(error) {
+                    guard ExtrasStorage.server else { throw APIError.message("Couldn’t connect to TMDB.") }
+                    usedServerFallback = true
+                }
+            }
+            if let picks { return try await store.read(CatalogTools.apiPath("/api/discovery", query: picks)) }
+            do {
+                let reply: CatalogPage = try await store.read(key)
+                if let country = query["country"], reply.originCountry != country {
+                    throw APIError.message("Connect TMDB in Profile to browse by production country.")
+                }
+                if let theme = query["searchTheme"], reply.searchTheme != theme {
+                    throw APIError.message("Connect TMDB in Profile to browse this theme.")
+                }
+                return reply
+            } catch {
+                try Task.checkCancellation()
+                if usedServerFallback { throw APIError.message("Couldn’t connect to TMDB.") }
+                throw error
+            }
         }
         guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
         return reconcileLibrary(result)
     }
+    /// Your Trakt recommendations, read from this iPhone with your own connection (Trakt often
+    /// turns away the server's shared Cloudflare addresses as "busy"), as the TMDB ids for the
+    /// server to fill in. nil when they can't be read here: the server then asks Trakt itself.
+    static func phonePicks(_ query: [String: String], store: DiaryStore) async -> [String: String]? {
+        guard query["source"] == "trakt", !store.isPreview, let type = query["type"] else { return nil }
+        guard let client = try? await TraktDirectStore.shared.client(store: store),
+              let reply = try? await client.get(type == "movie" ? "/recommendations/movies" : "/recommendations/shows",
+                                                query: ["limit": query["limit"] ?? "24"]) else { return nil }
+        struct Pick: Decodable { struct IDs: Decodable { let tmdb: Int? }; let ids: IDs }
+        guard let picks = try? JSONDecoder().decode([Pick].self, from: reply.data) else { return nil }
+        var next = query
+        next["tmdbIds"] = picks.compactMap(\.ids.tmdb).prefix(24).map(String.init).joined(separator: ",")
+        return next
+    }
     func traktConnected() async throws -> Bool {
         guard !store.needsSignIn else { store.discoveryCache.reset(); throw APIError.signIn }
         if store.isPreview { return false }
-        let revision = store.discoveryRevision
-        let status = try await store.discoveryCache.status(scope: revision) { [store] in try await store.read("/api/trakt/status") }
-        guard revision == store.discoveryRevision, !store.needsSignIn else { throw CancellationError() }
-        let connected = status.connected && !status.needsReconnect
-        store.discoveryCache.activateAccount(connected ? status.username : nil)
-        return connected
+        // Trakt picks need Trakt signed in on this iPhone.
+        guard store.traktSignedInOnPhone else { store.discoveryCache.activateAccount(nil); return false }
+        store.discoveryCache.activateAccount(store.providerSettings.config(for: .trakt).username ?? "trakt")
+        return true
     }
     func cachedRecommendations(limit: Int) -> [CatalogItem]? {
         guard !store.needsSignIn, store.discoveryCache.account != nil else { return nil }
@@ -72,7 +119,7 @@ extension DiscoveryServing {
         let items = page.items.map { item in
             CatalogItem(id: item.id, mediaType: item.mediaType, name: item.name, year: item.year, overview: item.overview, posterPath: item.posterPath, backdropPath: item.backdropPath, rating: item.rating, votes: item.votes, genres: item.genres ?? [], inLibraryId: ids[item.key], poster: item.poster, backdrop: item.backdrop, character: item.character, job: item.job, popularity: item.popularity, episodeCount: item.episodeCount)
         }
-        return CatalogPage(items: items, page: page.page, totalPages: page.totalPages)
+        return CatalogPage(items: items, page: page.page, totalPages: page.totalPages, totalResults: page.totalResults)
     }
 }
 
@@ -93,6 +140,9 @@ extension DiscoveryServing {
         if more && (loading || !hasMore) { return }
         var requested = query; requested.removeValue(forKey: "page")
         if more && requested != scope { return }
+        // Back from a title page: the same filters keep every page already loaded (and the scroll
+        // position with them). A failed load is retried.
+        if !more, requested == scope, page > 0, error == nil { return }
         if !more { clear(); scope = requested }
         let request = generation, number = more ? page + 1 : 1
         requested["page"] = String(number)
@@ -117,6 +167,9 @@ extension DiscoveryServing {
     private(set) var items: [CatalogItem] = []
     private(set) var loading = false
     private(set) var connected = false
+    /// Trakt was asked at least once: before that, "Connect Trakt" would be a guess (it flashed for
+    /// people who are connected while the first check was on its way).
+    private(set) var checked = false
     private(set) var error: String?
     init(service: any DiscoveryServing) { self.service = service }
     func load(limit: Int = 8, refresh: Bool = false) async {
@@ -131,6 +184,7 @@ extension DiscoveryServing {
             let account = service.recommendationOwner
             if owner != account { items = []; owner = account }
             connected = available
+            checked = true
             guard available else { items = []; return }
             if let saved = service.cachedRecommendations(limit: limit) { items = saved }
             let retained = items
