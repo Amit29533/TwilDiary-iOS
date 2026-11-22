@@ -162,6 +162,24 @@ import TwilDiaryCore
         XCTAssertEqual(JellyPlainLines.plain("{\\an8}Top\\Nline"), "Top\nline")
     }
 
+    /// mpv's output is set up again by a shape too close to the picture's own to see.
+    func testTheGPUOutputsNudgeIsTooSmallToSee() throws {
+        for (width, height, pixel) in [(1920, 1080, 1.0), (3840, 2160, 1.0), (3840, 1608, 1.0), (1080, 1920, 1.0), (720, 576, 64.0 / 45), (720, 480, 8.0 / 9)] {
+            let own = Double(width) / Double(height) * pixel
+            let first = try XCTUnwrap(JellyMPV.nudged(width: width, height: height, pixel: pixel, step: 1))
+            let second = try XCTUnwrap(JellyMPV.nudged(width: width, height: height, pixel: pixel, step: 2))
+            XCTAssertGreaterThan(first, own)
+            XCTAssertGreaterThan(second, first, "a second try is a change again")
+            XCTAssertLessThan(abs(second - own) * 2556, 0.5, "on the longest phone")
+        }
+        XCTAssertNil(JellyMPV.nudged(width: 0, height: 1080, pixel: 1, step: 1))
+        XCTAssertNil(JellyMPV.nudged(width: 1920, height: 1080, pixel: .nan, step: 1))
+    }
+    func testTheGPUOutputsSizeIsComparedPastRounding() {
+        XCTAssertTrue(JellyMPV.same(CGSize(width: 2556, height: 1179), CGSize(width: 2556, height: 1180)))
+        XCTAssertFalse(JellyMPV.same(CGSize(width: 1179, height: 2556), CGSize(width: 2556, height: 1179)), "still the upright size")
+    }
+
     // MARK: Elsewhere
 
     /// A name alone takes a film of the year it should be, not the first of that name.

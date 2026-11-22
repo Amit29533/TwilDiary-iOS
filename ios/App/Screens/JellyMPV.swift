@@ -135,6 +135,13 @@ final class JellyMPVFeed: @unchecked Sendable {
     /// Jellyfin's separate subtitle files, added once the video has opened.
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
+    /// The checks on the GPU output's size (see fitGPUOutput).
+    private var fitting: Task<Void, Never>?
+    /// The picture's shape is set by hand (see resetOutput).
+    private var aspectHeld = false
+    /// The picture is on (off in the background).
+    private var videoOn = true
+
     var running: Bool { handle != nil }
     /// Subtitles composited into the frames unless set otherwise (Engines → Subtitles in the picture):
     /// on a phone; the Simulator has no VideoToolbox for it.
@@ -255,6 +262,7 @@ final class JellyMPVFeed: @unchecked Sendable {
         Self.addJellyfinProtocol(raw, feed: feed)
         let handle = JellyMPVHandle(raw: raw, layer: layer, feed: feed)
         self.handle = handle
+        videoOn = true
         Self.readEvents(handle) { [weak self] change in self?.apply(change) }
         if let pending {
             self.pending = nil
@@ -284,6 +292,8 @@ final class JellyMPVFeed: @unchecked Sendable {
             set("vf", "")
             set("hwdec", hardwareDecoder)
         }
+        // The last file's shape isn't this one's.
+        releaseAspect()
         time = start ?? 0; duration = 0; audioTracks = []; subtitleTracks = []; audioID = nil; subtitleID = nil
         pendingSubtitles = subtitles
         updateState()
@@ -304,6 +314,8 @@ final class JellyMPVFeed: @unchecked Sendable {
         failure = nil; cannotOpen = false
         let stopping = handle
         handle = nil
+        fitting?.cancel()
+        aspectHeld = false
         layerWatch?.invalidate()
         layerWatch = nil
         sampleLayer = nil
@@ -314,19 +326,78 @@ final class JellyMPVFeed: @unchecked Sendable {
 
     func play() { set("pause", "no") }
 
-    /// mpv's GPU output sets its own drawing size as it starts. Turned sideways before that, the
-    /// layout had already passed and it stayed at the upright size: the picture drew only the left
-    /// part of the screen (now and then; fine after a restart). Once the video's size is known (mpv's
-    /// output is up), the drawable is checked against the layer again, then twice more as it settles.
-    private func fitGPUOutput() {
+    /// mpv's Metal output reads the layer's size only as it sets itself up for a video, and isn't told of
+    /// a change after that. Set up while the phone was still upright, it went on drawing the upright
+    /// picture, in the left part of the screen, once the player had turned (fine after a restart).
+    /// Plezy's mpv asks the layer for its size as it plays; MPVKit's doesn't, so it's done from here:
+    /// as a video starts and whenever the view's size changes, the size mpv draws at is compared with
+    /// the layer's for a few seconds, and where they differ mpv is made to set its output up again.
+    fileprivate func fitGPUOutput() {
         guard handle?.layer is CAMetalLayer else { return }
-        Task { @MainActor [weak self] in
-            for delay in [0, 500, 1500] {
-                if delay > 0 { try? await Task.sleep(for: .milliseconds(delay)) }
-                guard let layer = self?.handle?.layer as? CAMetalLayer else { return }
+        fitting?.cancel()
+        fitting = Task { @MainActor [weak self] in
+            var wrong = 0
+            for check in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(check == 0 ? 60 : 250))
+                guard !Task.isCancelled, let self else { return }
+                let drawn = await self.drawnSize()
+                guard !Task.isCancelled, let layer = self.handle?.layer as? CAMetalLayer else { return }
                 JellyMPVSurfaceView.fit(layer)
+                // No output yet (still opening), or none now (in the background).
+                guard let drawn else { continue }
+                if Self.same(drawn, layer.drawableSize) {
+                    wrong = 0
+                    self.releaseAspect()
+                    if check >= 6 { return }
+                } else {
+                    // At once, again a second later, and then the output from the start.
+                    switch wrong {
+                    case 0, 5: self.resetOutput(wrong == 0 ? 1 : 2)
+                    case 10: if self.videoOn { self.set("vid", "no"); self.set("vid", "auto") }
+                    default: break
+                    }
+                    wrong += 1
+                }
+            }
+            self?.releaseAspect()
+        }
+    }
+    /// The size mpv draws at (nil: it has no output, or hasn't drawn anything yet).
+    private func drawnSize() async -> CGSize? {
+        guard let handle else { return nil }
+        return await withCheckedContinuation { done in
+            Self.calls.async {
+                let width = Self.int(handle.raw, "osd-width") ?? 0, height = Self.int(handle.raw, "osd-height") ?? 0
+                done.resume(returning: width > 1 && height > 1 ? CGSize(width: width, height: height) : nil)
             }
         }
+    }
+    /// mpv sets its output up again when the picture's shape changes: it's given its own, off by too
+    /// little to see, until the size is right (releaseAspect). Unlike the output from the start, the
+    /// decoder and the output stay as they are.
+    private func resetOutput(_ step: Int) {
+        guard let handle else { return }
+        aspectHeld = true
+        Self.calls.async {
+            guard let width = Self.int(handle.raw, "video-params/w"), let height = Self.int(handle.raw, "video-params/h"),
+                  let shape = Self.nudged(width: width, height: height, pixel: Self.string(handle.raw, "video-params/par").flatMap { Double($0) } ?? 1, step: step)
+            else { return }
+            Self.log.notice("the output is set up again at the layer's size (try \(step, privacy: .public))")
+            mpv_set_property_string(handle.raw, "video-aspect-override", String(shape))
+        }
+    }
+    /// The picture's shape from the file again (a recording's may change on the way).
+    private func releaseAspect() {
+        guard aspectHeld else { return }
+        aspectHeld = false
+        set("video-aspect-override", "no")
+    }
+    /// The same size, but for a pixel's rounding.
+    nonisolated static func same(_ a: CGSize, _ b: CGSize) -> Bool { abs(a.width - b.width) <= 2 && abs(a.height - b.height) <= 2 }
+    /// The picture's shape (its pixels may not be square), a hair wider.
+    nonisolated static func nudged(width: Int, height: Int, pixel: Double, step: Int) -> Double? {
+        guard width > 0, height > 0, pixel > 0, pixel.isFinite else { return nil }
+        return Double(width) / Double(height) * pixel * (1 + Double(step) * 0.0000125)
     }
 
     /// The video layer failed (the picture goes black): iOS ends VideoToolbox sessions when the app
@@ -451,7 +522,12 @@ final class JellyMPVFeed: @unchecked Sendable {
                               ("sub-back-color", "#00000000"), ("sub-ass-override", "force")] { set(name, value) }
     }
     /// The picture off in the background (mpv's Metal layer can't draw there) and back.
-    func showVideo(_ on: Bool) { set("vid", on ? "auto" : "no") }
+    func showVideo(_ on: Bool) {
+        videoOn = on
+        set("vid", on ? "auto" : "no")
+        // The phone may have turned meanwhile.
+        if on { fitGPUOutput() }
+    }
 
     /// Smooth motion at 60 or 120 Hz (0 off): frames timed to the screen's refresh, so pans and
     /// handheld shots don't judder. Where the refresh is a whole multiple of the video's rate (120 Hz
@@ -886,12 +962,18 @@ final class JellyMPVLayer: CAMetalLayer {
 
 final class JellyMPVSurfaceView: UIView {
     override class var layerClass: AnyClass { JellyMPVLayer.self }
-    /// The drawable follows the view's size. It's set once as mpv starts, and once MoltenVK has set it
-    /// iOS stops following the view: turned sideways after opening, mpv drew at the upright width in
-    /// a corner. A new size here makes mpv build its output again at that size.
+    /// Tells the player of a new size (mpv doesn't hear of it: see fitGPUOutput).
+    var resized: (() -> Void)?
+    private var laidOut = CGSize.zero
+    /// The drawable follows the view's size: it's set once as mpv starts, and once MoltenVK has set it
+    /// iOS stops following the view.
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let layer = layer as? CAMetalLayer { Self.fit(layer) }
+        guard let layer = layer as? CAMetalLayer else { return }
+        Self.fit(layer)
+        guard bounds.size != laidOut else { return }
+        laidOut = bounds.size
+        resized?()
     }
     /// The drawable at the layer's size in pixels (a no-op when it already is).
     static func fit(_ layer: CAMetalLayer) {
@@ -924,6 +1006,7 @@ struct JellyMPVSurface: UIViewRepresentable {
                 layer.contentsScale = displayScale
                 layer.framebufferOnly = true
                 layer.backgroundColor = UIColor.black.cgColor
+                view.resized = { [weak player] in player?.fitGPUOutput() }
                 player.start(layer: layer, smooth: smooth)
             }
             return view
