@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 import UIKit
 import AVFoundation
@@ -90,6 +91,12 @@ private struct JellyMPVHandle: @unchecked Sendable {
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
     var running: Bool { handle != nil }
+    /// The file has opened (its first frame or its length came).
+    var hasLoaded: Bool { loaded }
+    /// Where mpv is, for the log when it doesn't start.
+    var diagnosis: String { "handle \(handle != nil), pending \(pending != nil), loaded \(loaded), state \(state)" }
+    /// mpv's lifecycle in the system log (Console, or `log show --predicate 'subsystem == "com.amit29533.TwilDiary.mpv"'`).
+    nonisolated static let log = Logger(subsystem: "com.amit29533.TwilDiary.mpv", category: "player")
 
     /// The picture's layer when mpv shows frames through AVFoundation (nil: drawn on the GPU).
     private weak var sampleLayer: AVSampleBufferDisplayLayer?
@@ -123,6 +130,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// mpv on this layer (an AVSampleBufferDisplayLayer, or a Metal layer for smooth motion); a
     /// file asked for already is loaded now.
     func start(layer: CALayer, smooth: Int) {
+        Self.log.notice("start: layer \(layer is CAMetalLayer ? "metal" : "sample", privacy: .public), handle \(self.handle != nil), pending \(self.pending != nil)")
         guard handle == nil else { return }
         guard let raw = mpv_create() else { failure = "mpv couldn't be created."; return }
         mpv_request_log_messages(raw, "warn")
@@ -204,6 +212,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     /// Plays this file (from `start` seconds) with these mpv settings, now or once the picture is up.
     func open(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
+        Self.log.notice("open: \(self.handle == nil ? "waits for the picture" : "loads now", privacy: .public)")
         if handle == nil {
             pending = (url, start, subtitles, settings)
             updateState()
@@ -235,6 +244,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     /// Closes the file and mpv; the event thread frees it once it has shut down.
     func stop() {
+        Self.log.notice("stop: handle \(self.handle != nil), pending \(self.pending != nil)")
         pending = nil
         loaded = false
         let raw = handle?.raw

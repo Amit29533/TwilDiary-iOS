@@ -87,7 +87,7 @@ import TwilDiaryCore
     func testTheServerGetsTheImageTagNotTheHomeAddressAndOnlyAChangedListIsSentAgain() throws {
         let base = try XCTUnwrap(URL(string: "http://192.168.1.20:8096"))
         let poster = JellyfinClient.posterURL(base: base, item: "abc", tag: "f00d")
-        XCTAssertEqual(poster?.absoluteString, "http://192.168.1.20:8096/Items/abc/Images/Primary?fillHeight=450&quality=90&tag=f00d")
+        XCTAssertEqual(poster?.absoluteString, "http://192.168.1.20:8096/Items/abc/Images/Primary?fillHeight=450&quality=90&format=Webp&tag=f00d")
         XCTAssertNil(JellyfinClient.posterURL(base: base, item: "abc", tag: nil))
         let arrival = JellyfinEntry(id: "abc", name: "Arrival", year: 2016, movie: true, tmdb: 329865, path: "E:\\Movies\\Arrival", drive: "E:",
                                     poster: poster, diaryID: "film", genres: ["Drama"])

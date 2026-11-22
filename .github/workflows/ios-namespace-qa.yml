@@ -74,7 +74,7 @@ jobs:
           xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release \
             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa" \
-            -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
+            ENABLE_TESTABILITY=YES -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
           status=$?; tail -3 ios/.artifacts/logs/qa-build.log
           [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/qa-build.log | head -30; exit $status; }
           # The phone's main-thread stack (1 MB), so a stack overflow crashes here as it does on the phone.
@@ -96,6 +96,8 @@ jobs:
         run: |
           shopt -s nullglob
           cp ~/Library/Logs/DiagnosticReports/TwilDiary* ios/.artifacts/qa/crashes/ 2>/dev/null || true
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 3h --style compact --predicate 'subsystem == "com.amit29533.TwilDiary.mpv"' > ios/.artifacts/qa/mpv-log.txt 2>&1 || true
+          if grep -q "didn't start" ios/.artifacts/qa/mpv-log.txt; then echo "mpv didn't start at least once (see mpv-log.txt):"; grep "didn't start" ios/.artifacts/qa/mpv-log.txt | head -5; fi | tee -a "$GITHUB_STEP_SUMMARY"
           {
             for result in ios/.artifacts/qa/*.xcresult; do python3 ios/tools/qa/test_results.py "$result" "$(basename "$result" .xcresult)"; done
             if ls ios/.artifacts/qa/crashes/* >/dev/null 2>&1; then
@@ -153,7 +155,7 @@ jobs:
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b || true
           bash ios/scripts/xcodegen.sh
-          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
+          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             ENABLE_TESTABILITY=YES -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
           status=$?; tail -3 ios/.artifacts/logs/qa-build.log
           [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/qa-build.log | head -30; exit $status; }
           python3 ios/tools/qa/stack_size.py ios/.derived/qa/Build/Products/Release-iphonesimulator/TwilDiary.app 1024
@@ -277,7 +279,7 @@ jobs:
           bash ios/scripts/xcodegen.sh
           xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Debug \
             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
-            -enable${{ matrix.sanitizer }}Sanitizer YES \
+            -enable${{ matrix.sanitizer }}Sanitizer YES 'OTHER_LDFLAGS=$(inherited) -Wl,-no_compact_unwind' \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/san" \
             -only-testing:TwilDiaryUITests > ios/.artifacts/logs/san-build.log 2>&1
           status=$?; tail -3 ios/.artifacts/logs/san-build.log
@@ -366,6 +368,15 @@ jobs:
           set +e
           out=ios/.artifacts/qa; mkdir -p "$out/profile"
           : > "$out/profile.md"
+          {
+            echo "### Disk writes (iOS's disk-writes report counts the logical writes)"; echo
+            echo "| While | Logical writes | Reached the disk | Per day |"; echo "|---|---|---|---|"
+          } > "$out/disk.md"
+          # The app on Home with no video, for a baseline.
+          xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE" 2>/dev/null
+          launch=$(xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE" --ui-testing); pid=${launch##*: }
+          sleep 15
+          python3 ios/tools/qa/disk_writes.py "$pid" 30 "On Home, idle" >> "$out/disk.md"
           for decoder in AetherEngine mpv; do
             extra=""; [ $decoder = mpv ] && extra="--jellyspace-perf-mpv"
             xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE" 2>/dev/null
@@ -373,9 +384,14 @@ jobs:
             pid=${launch##*: }
             echo "$decoder: pid $pid"
             sleep 20
+            # Disk writes over 40 s of playing, and which files take them (fs_usage needs root: skipped without).
+            ( sudo -n fs_usage -w -f filesys -t 40 "$pid" > "$out/profile/$decoder-fs_usage.txt" 2>&1 & )
+            python3 ios/tools/qa/disk_writes.py "$pid" 40 "Playing on $decoder" >> "$out/disk.md"
+            sleep 2
+            python3 ios/tools/qa/files_written.py "$out/profile/$decoder-fs_usage.txt" "$decoder" >> "$out/files.md"
             # Where the CPU goes over 20 s of playing (controls hidden).
-            xcrun xctrace record --template 'Time Profiler' --device "$SIMULATOR_ID" --attach "$pid" --time-limit 20s --output "$out/profile/$decoder.trace" > "$out/profile/$decoder-xctrace.log" 2>&1
-            xcrun xctrace export --input "$out/profile/$decoder.trace" --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' > "$out/profile/$decoder-time.xml" 2>> "$out/profile/$decoder-xctrace.log"
+            python3 ios/tools/run-bounded.py 90 xcrun xctrace record --template 'Time Profiler' --attach "$pid" --time-limit 20s --output "$out/profile/$decoder.trace" > "$out/profile/$decoder-xctrace.log" 2>&1
+            python3 ios/tools/run-bounded.py 120 xcrun xctrace export --input "$out/profile/$decoder.trace" --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' > "$out/profile/$decoder-time.xml" 2>> "$out/profile/$decoder-xctrace.log"
             python3 ios/tools/qa/time_profile.py "$out/profile/$decoder-time.xml" "$decoder: where the CPU time goes (20 s playing)" >> "$out/profile.md"
             # Memory: the footprint by kind, and leaks.
             {
@@ -383,7 +399,7 @@ jobs:
               footprint "$pid" 2>&1 | head -40
               echo '```'; echo
               echo "### $decoder: leaks"; echo; echo '```'
-              leaks "$pid" > "$out/profile/$decoder-leaks.txt" 2>&1
+              python3 ios/tools/run-bounded.py 120 leaks "$pid" > "$out/profile/$decoder-leaks.txt" 2>&1
               grep -E "Process [0-9]+: [0-9]+ leaks|leaks for|total leaked|nodes malloced" "$out/profile/$decoder-leaks.txt" | head -5
               grep -E "^ *[0-9]+ \([0-9.]+[KMG]?\) ROOT LEAK|^Leak:" "$out/profile/$decoder-leaks.txt" | head -15
               echo '```'; echo
@@ -392,5 +408,5 @@ jobs:
             xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE" 2>/dev/null
             sleep 2
           done
-          cat "$out/profile.md" >> "$GITHUB_STEP_SUMMARY"
+          touch "$out/files.md"; cat "$out/disk.md" "$out/files.md" "$out/profile.md" >> "$GITHUB_STEP_SUMMARY"
       - *upload

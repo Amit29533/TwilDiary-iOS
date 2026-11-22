@@ -145,6 +145,7 @@ jobs:
             cp ~/Library/Logs/DiagnosticReports/TwilDiary* ios/.artifacts/perf/crashes/ 2>/dev/null || true
           done 3< "$RUNNER_TEMP/revs.txt"
           git checkout --force -q "$here"
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 3h --style compact --predicate 'subsystem == "com.amit29533.TwilDiary.mpv"' > ios/.artifacts/perf/mpv-log.txt 2>&1 || true
           cat ios/.artifacts/perf/results.md
           cat ios/.artifacts/perf/results.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload results

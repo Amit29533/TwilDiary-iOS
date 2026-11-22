@@ -221,7 +221,7 @@ jobs:
         run: |
           set -o pipefail
           xcrun simctl boot "$SIMULATOR_ID" || true
-          xcodebuild test -project ios/TwilDiary.xcodeproj -scheme TwilDiary -clonedSourcePackagesDirPath "$PWD/ios/.spm"             CODE_SIGNING_ALLOWED=NO -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -enableThreadSanitizer YES             -derivedDataPath "$PWD/ios/.derived/tsan" -only-testing:TwilDiaryTests/UniversalCalendarStressTests             2>&1 | tee ios/.artifacts/logs/tsan.log
+          xcodebuild test -project ios/TwilDiary.xcodeproj -scheme TwilDiary -clonedSourcePackagesDirPath "$PWD/ios/.spm"             CODE_SIGNING_ALLOWED=NO -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -enableThreadSanitizer YES 'OTHER_LDFLAGS=$(inherited) -Wl,-no_compact_unwind'             -derivedDataPath "$PWD/ios/.derived/tsan" -only-testing:TwilDiaryTests/UniversalCalendarStressTests             2>&1 | tee ios/.artifacts/logs/tsan.log
           if grep -q "WARNING: ThreadSanitizer" ios/.artifacts/logs/tsan.log; then echo "Thread Sanitizer found an unsafe overlap"; exit 1; fi
       - name: Upload sanitizer log
         if: always()

@@ -220,6 +220,8 @@ struct JellyPlayerView: View {
     @State private var showFill: JellyFill?
     /// Counts mpv's starts on a new output (its view and the video's opening follow it).
     @State private var mpvRun = 0
+    /// mpv was started again once for this video after it didn't start (see watchMPVStart).
+    @State private var mpvRetried = false
     /// Where the other engine was when you switched (the next start begins there).
     @State private var switchAt: Double?
     /// mpv's smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
@@ -267,13 +269,13 @@ struct JellyPlayerView: View {
             if JellyCast.shared.connected || castClosing {
                 JellyCastRemote(playback: current) { castClosing = true; dismiss() }
             } else {
-                localPlayer
+                AnyView(localPlayer)
             }
         }
         .jellyFaceLock()
     }
     private var localPlayer: some View {
-        player
+        AnyView(player)
             // The rating card, once per video (not again on a decoder switch or a seek).
             .task(id: current.id) { await showRatingCard() }
             // Live subtitle translation (the translator runs itself, with languages already on the phone).
@@ -329,15 +331,38 @@ struct JellyPlayerView: View {
         }
     }
 
+    /// The player: its layers, then what it does as it opens, plays and closes. Its parts are wrapped
+    /// (AnyView) so the player's type stays shallow: written out whole it was hundreds of levels deep,
+    /// and Swift working it out on the first frame ran an iPhone's 1 MB main-thread stack out (the
+    /// crash on opening a video; the Simulator's 8 MB hid it).
     private var player: some View {
+        AnyView(playerTasks)
+            .task(id: thumbnailIndex) { await loadThumbnail(thumbnailIndex) }
+            .task(id: state == .playing) {
+                // Your place, saved every 15 seconds while it plays.
+                guard state == .playing else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(15))
+                    guard !Task.isCancelled, state == .playing else { return }
+                    savePlace()
+                    report("progress")
+                }
+            }
+            .onChange(of: state) { _, now in
+                if now == .playing { scheduleHide() }
+                if now == .paused || now == .playing { report("progress") }
+                if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
+            }
+    }
+    private var playerLayers: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             if usesMPV {
-                mpvPicture
+                AnyView(mpvPicture)
             } else if let engine {
-                picture(engine)
+                AnyView(picture(engine))
             }
-            subtitleLayer
+            AnyView(subtitleLayer)
             // One finger: tap for the controls, double tap 15 seconds back (left) or on (right), hold
             // for 2x, swipe sideways to move through the video, up or down for brightness (left) or
             // volume (right). Two fingers: tap to pause or play, pinch for Fill or Fit.
@@ -387,7 +412,7 @@ struct JellyPlayerView: View {
                     .padding(.horizontal, 16).frame(height: 38).glassEffect(.regular, in: Capsule())
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 18).transition(.opacity).allowsHitTesting(false)
             }
-            ratingLayer
+            AnyView(ratingLayer)
             if let skipFlash {
                 JellySeekArrows(forward: skipFlash > 0, tap: skipTaps)
                     .frame(maxWidth: .infinity, alignment: skipFlash < 0 ? .leading : .trailing)
@@ -395,26 +420,26 @@ struct JellyPlayerView: View {
                     .allowsHitTesting(false)
             }
             if screenLocked {
-                lockedLayer
+                AnyView(lockedLayer)
             } else {
                 // The controls stay built and only fade: building them again on every tap (their glass
                 // included) held up the picture for a moment as they came back.
                 let controlsUp = showsControls || failure != nil
                 let barUp = showsControls && failure == nil && panel == nil
-                Group { controls; centerControls }
+                Group { AnyView(controls); AnyView(centerControls) }
                     .opacity(controlsUp ? 1 : 0).allowsHitTesting(controlsUp).accessibilityHidden(!controlsUp)
-                brightnessBar.opacity(barUp ? 1 : 0).allowsHitTesting(barUp).accessibilityHidden(!barUp)
+                AnyView(brightnessBar).opacity(barUp ? 1 : 0).allowsHitTesting(barUp).accessibilityHidden(!barUp)
             }
             if let segment = activeSegment, panel == nil, countdown == nil, failure == nil, !screenLocked {
-                if skipMode(segment.kind) == .button { skipButton(segment).transition(.opacity) }
-                else if let pendingSkip, pendingSkip.start == segment.StartTicks { autoSkipButton(segment, at: pendingSkip.at).transition(.opacity) }
+                if skipMode(segment.kind) == .button { AnyView(skipButton(segment)).transition(.opacity) }
+                else if let pendingSkip, pendingSkip.start == segment.StartTicks { AnyView(autoSkipButton(segment, at: pendingSkip.at)).transition(.opacity) }
             }
-            if let countdown, let next = nextEpisode { upNext(next, in: countdown) }
-            if let next = stillWatching { stillWatchingCard(next).transition(.opacity) }
+            if let countdown, let next = nextEpisode { AnyView(upNext(next, in: countdown)) }
+            if let next = stillWatching { AnyView(stillWatchingCard(next)).transition(.opacity) }
             if let panel {
-                if panel == .advanced { advancedCard.transition(.opacity) }
-                else if panel == .episodes { episodesPanel.transition(.opacity) }
-                else { panelView(panel).transition(.opacity) }
+                if panel == .advanced { AnyView(advancedCard).transition(.opacity) }
+                else if panel == .episodes { AnyView(episodesPanel).transition(.opacity) }
+                else { AnyView(panelView(panel)).transition(.opacity) }
             }
             if let notice {
                 Text(notice).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
@@ -422,6 +447,10 @@ struct JellyPlayerView: View {
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 14).transition(.opacity).allowsHitTesting(false)
             }
         }
+    }
+    /// The layers with how the player opens and closes, and what follows the decoder's settings.
+    private var playerTasks: some View {
+        AnyView(playerLayers)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         // The menus (Liquid Glass) dark over the picture, as the controls are.
@@ -468,22 +497,6 @@ struct JellyPlayerView: View {
             // mpv's Metal layer can't draw in the background: the picture goes off there (the sound plays on).
             guard usesMPV else { return }
             if phase == .background { mpv.showVideo(false) } else if phase == .active { mpv.showVideo(true) }
-        }
-        .task(id: thumbnailIndex) { await loadThumbnail(thumbnailIndex) }
-        .task(id: state == .playing) {
-            // Your place, saved every 15 seconds while it plays.
-            guard state == .playing else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(15))
-                guard !Task.isCancelled, state == .playing else { return }
-                savePlace()
-                report("progress")
-            }
-        }
-        .onChange(of: state) { _, now in
-            if now == .playing { scheduleHide() }
-            if now == .paused || now == .playing { report("progress") }
-            if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
         }
     }
 
@@ -939,6 +952,7 @@ struct JellyPlayerView: View {
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
             }
             report("start")
+            watchMPVStart(run: mpvRun, from: resume)
         } else {
             guard let engine else { return }
             // An anime's MKV carries its subtitle fonts as attachments, tens of megabytes read before the
@@ -1497,7 +1511,7 @@ struct JellyPlayerView: View {
                 }
                 .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 10)
-                sleepBadge
+                AnyView(sleepBadge)
                 if batteryOn { JellyBattery() }
                 if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
@@ -1521,7 +1535,7 @@ struct JellyPlayerView: View {
                               tint: Self.red, knob: Self.red, scrub: $scrub) { target in
                     Task { await seek(target); scrub = nil; scheduleHide() }
                 }
-                .overlay(alignment: .topLeading) { scrubPreview }
+                .overlay(alignment: .topLeading) { AnyView(scrubPreview) }
                 .disabled(duration <= 0)
                 Button { timeMode = timeMode == "total" ? "left" : "total"; scheduleHide() } label: {
                     JellyTimeLeft(clock: barClock, duration: duration, scrub: scrub, total: timeMode == "total")
@@ -1531,7 +1545,7 @@ struct JellyPlayerView: View {
                 .accessibilityIdentifier("jellyspace-time-left")
             }
             .padding(.horizontal, side)
-            bottomRow.padding(.horizontal, side).padding(.bottom, compact ? 4 : 10)
+            AnyView(bottomRow).padding(.horizontal, side).padding(.bottom, compact ? 4 : 10)
         }
         .background {
             LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .clear, location: 0.25),
@@ -1828,6 +1842,24 @@ struct JellyPlayerView: View {
     /// Smooth motion turned on or off (by you, or by the phone getting hot): mpv moves between its
     /// AVFoundation output and the GPU one, which only the GPU can blend frames on. That's a new
     /// view and a new mpv, opened where the video was.
+    /// mpv opened but nothing came for 20 seconds (no picture, no error: the Simulator QA run caught it
+    /// once in ten opens, a spinner for good): mpv starts again where it was, once; then the error.
+    private func watchMPVStart(run: Int, from start: Double?) {
+        let id = current.id
+        Task {
+            try? await Task.sleep(for: .seconds(20))
+            guard usesMPV, mpvRun == run, current.id == id, !mpv.hasLoaded, mpv.failure == nil, failure == nil, state == .loading else { return }
+            JellyMPV.log.error("mpv didn't start in 20 s (run \(run, privacy: .public)): \(mpv.diagnosis, privacy: .public)")
+            if mpvRetried {
+                failure = "The video didn't start. Close it and try again."
+                return
+            }
+            mpvRetried = true
+            switchAt = start ?? 0
+            mpv.stop()
+            mpvRun += 1
+        }
+    }
     private func moveMPVOutput() {
         guard usesMPV, mpv.running || state != .idle else { return }
         handOver()
