@@ -1870,6 +1870,20 @@ struct JellyPlayerView: View {
         let id = current.id
         Task {
             try? await Task.sleep(for: .seconds(20))
+            // mpv opened the file but the picture hasn't moved from where it started (a file it can't
+            // play here, though AetherEngine can): the video moves to AetherEngine at that place. A
+            // network wait (buffering) gets twenty seconds more first. Not after you paused it.
+            for wait in [0, 20] {
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                guard usesMPV, mpvRun == run, current.id == id, mpv.hasLoaded, mpv.failure == nil, failure == nil,
+                      mpv.state != .paused, mpv.state != .ended, mpv.time < (start ?? 0) + 1 else { break }
+                if mpv.buffering && wait == 0 { continue }
+                JellyMPV.log.error("mpv opened but didn't play in \(20 + wait, privacy: .public) s: \(mpv.diagnosis, privacy: .public)")
+                let reason = mpv.lastMessage.map { ": " + $0 } ?? ""
+                setDecoder(.auto)
+                show("mpv couldn't play this video, so it's on AetherEngine now" + reason, for: 8)
+                return
+            }
             // mpv's own state: once the player has closed, mpv has stopped (idle), so nothing happens.
             guard usesMPV, mpvRun == run, current.id == id, !mpv.hasLoaded, mpv.failure == nil, failure == nil, mpv.state == .loading else { return }
             JellyMPV.log.error("mpv didn't start in 20 s (run \(run, privacy: .public)): \(mpv.diagnosis, privacy: .public)")

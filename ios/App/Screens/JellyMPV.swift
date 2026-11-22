@@ -126,6 +126,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
     #endif
     /// The file has opened (its first frame or its length came).
     var hasLoaded: Bool { loaded }
+    /// mpv's last warning or error, if any.
+    var lastMessage: String? { log.last }
     /// Where mpv is, for the log when it doesn't start.
     var diagnosis: String { "handle \(handle != nil), pending \(pending != nil), loaded \(loaded), state \(state)" }
     /// mpv's lifecycle in the system log (Console, or `log show --predicate 'subsystem == "com.amit29533.TwilDiary.mpv"'`).
@@ -516,6 +518,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
             if text != subtitleText { subtitleText = text }
         case .log(let line):
             log = Array((log + [line]).suffix(4))
+            // mpv's warnings and errors in the phone's log too (Console), for a video it can't play.
+            Self.log.notice("mpv: \(line, privacy: .public)")
         case .failed(let reason):
             failure = ([reason] + log.suffix(1)).joined(separator: "\n")
         case .loaded:
