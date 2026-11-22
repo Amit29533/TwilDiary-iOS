@@ -12,14 +12,27 @@ struct JellyDetailRoute: Hashable {
 struct JellyImage: View {
     let url: URL?
     var mode: ContentMode = .fill
-    @State private var image: UIImage?
+    @State private var loaded: JellyLoadedPicture?
     var body: some View {
-        if let url, let image = image ?? JellyfinPosterCache.shared.resident(url) {
+        if let url, let image = loaded?.image(for: url) ?? JellyfinPosterCache.shared.resident(url) {
             Image(uiImage: image).resizable().aspectRatio(contentMode: mode)
         } else {
-            Color.clear.task(id: url) { if let url { image = await JellyfinPosterCache.shared.image(url) } }
+            Color.clear.task(id: url) { if let url { loaded = await JellyLoadedPicture(url) } }
         }
     }
+}
+
+/// A picture and the address it came from. Kept without it, a view given another address (the next
+/// song's cover in the mini player) went on showing the first one.
+struct JellyLoadedPicture {
+    let url: URL
+    let picture: UIImage
+    init?(_ url: URL) async {
+        guard let picture = await JellyfinPosterCache.shared.image(url) else { return nil }
+        self.url = url
+        self.picture = picture
+    }
+    func image(for url: URL) -> UIImage? { url == self.url ? picture : nil }
 }
 
 /// A film's or show's poster and name in the top bar, faded in once its picture has scrolled under
@@ -59,6 +72,8 @@ struct JellyDetailPage: View {
     @State private var seasons: [JellyfinClient.Item] = []
     @State private var season: String?
     @State private var episodes: [JellyfinClient.Item] = []
+    /// The season they're from.
+    @State private var episodesSeason: String?
     @State private var nextEpisode: JellyfinClient.Item?
     /// A show you haven't started: its first episode (season 1's, not a special's).
     @State private var firstEpisode: JellyfinClient.Item?
@@ -735,7 +750,7 @@ struct JellyDetailPage: View {
             async let next = Self.nextUp(client, series: id, user: user)
             // The show's first episode alongside (it waited for the seasons): used when there's no next up.
             async let firstOfShow = Self.openingEpisode(client, series: id, user: user)
-            seasons = (await seasonList) ?? []
+            seasons = (await seasonList) ?? seasons
             nextEpisode = await next
             // Specials (season 0) come first in Jellyfin's list: the show starts at its first real season.
             let opening = seasons.first { ($0.IndexNumber ?? 0) >= 1 } ?? seasons.first
@@ -839,7 +854,16 @@ struct JellyDetailPage: View {
     }
     private func loadEpisodes() async {
         guard let client = JellySpace.client, let season else { return }
-        episodes = (try? await client.episodes(of: route.id, season: season, user: user)) ?? []
+        let found = try? await client.episodes(of: route.id, season: season, user: user)
+        // Another season picked meanwhile brings its own.
+        guard !Task.isCancelled, season == self.season else { return }
+        if let found {
+            episodes = found
+            episodesSeason = season
+        } else if episodesSeason != season {
+            // Not read: this season's stay on the page (they went with the connection after a video), another's don't.
+            episodes = []
+        }
     }
 }
 

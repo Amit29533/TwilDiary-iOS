@@ -222,6 +222,13 @@ public struct UpcomingSchedule: Sendable {
             "CALSCALE:GREGORIAN",
             "X-WR-CALNAME:TwilDiary Airing Schedule"
         ]
+        // When the file was made: calendars ask for it on every event.
+        let made = DateFormatter()
+        made.calendar = Calendar(identifier: .gregorian)
+        made.timeZone = TimeZone(secondsFromGMT: 0)
+        made.locale = Locale(identifier: "en_US_POSIX")
+        made.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        let stamp = made.string(from: Date.now)
         for item in items {
             let start = formatter.string(from: item.date)
             let end = formatter.string(from: calendar.date(byAdding: .day, value: 1, to: item.date) ?? item.date)
@@ -231,14 +238,21 @@ public struct UpcomingSchedule: Sendable {
             lines.append(contentsOf: [
                 "BEGIN:VEVENT",
                 "UID:twildiary-\(item.title.id)-\(item.episode.id)@twildiary.local",
+                "DTSTAMP:\(stamp)",
                 "DTSTART;VALUE=DATE:\(start)",
                 "DTEND;VALUE=DATE:\(end)",
-                "SUMMARY:\(summary)",
-                "DESCRIPTION:\(item.title.categoryName) — \(epTitle)",
+                "SUMMARY:\(Self.icsText(summary))",
+                "DESCRIPTION:\(Self.icsText("\(item.title.categoryName) — \(epTitle)"))",
                 "END:VEVENT"
             ])
         }
         lines.append("END:VCALENDAR")
         return lines.joined(separator: "\r\n") + "\r\n"
+    }
+    /// Text as a calendar file holds it: its commas, semicolons, backslashes and line breaks marked
+    /// (a comma in a name starts another value otherwise).
+    static func icsText(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: ";", with: "\\;").replacingOccurrences(of: ",", with: "\\,")
+            .replacingOccurrences(of: "\r\n", with: "\\n").replacingOccurrences(of: "\n", with: "\\n")
     }
 }

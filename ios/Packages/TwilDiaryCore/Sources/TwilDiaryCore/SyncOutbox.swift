@@ -308,7 +308,8 @@ public extension WatchCard {
                       let aired = ep.airedOn, SeasonAdjustment.validDay(aired), aired <= day else { return false }
                 return true
             }
-            let episodeByID = Dictionary(uniqueKeysWithValues: seasonEpisodes.map { ($0.id, $0) })
+            // (Never a crash over an episode listed twice.)
+            let episodeByID = Dictionary(seasonEpisodes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             let previousMatch = activeEvents
                 .compactMap { event -> (event: WatchEvent, episode: Episode)? in
                     guard let epID = event.episodeId, let ep = episodeByID[epID] else { return nil }

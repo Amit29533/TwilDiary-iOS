@@ -303,7 +303,11 @@ struct JellyNowPlaying: View {
                 .task(id: track.Id) {
                     // Your server's lyrics, else LRCLIB's (kept on the phone).
                     lyricsLoading = true
-                    lyrics = await JellyLyrics.find(track, client: client)
+                    lyrics = []
+                    let found = await JellyLyrics.find(track, client: client)
+                    // The song has changed meanwhile: its own words are on their way.
+                    guard !Task.isCancelled else { return }
+                    lyrics = found
                     lyricsLoading = false
                 }
                 VStack(spacing: 4) {

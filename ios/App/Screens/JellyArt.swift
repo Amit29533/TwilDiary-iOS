@@ -14,14 +14,22 @@ struct JellyArt<Fallback: View>: View {
     let urls: [URL]
     var shape: JellyArtShape? = nil
     @ViewBuilder let fallback: () -> Fallback
-    @State private var picked: UIImage?
+    /// The picture chosen, and from which addresses (given others, it chooses again).
+    @State private var picked: (urls: [URL], image: UIImage)?
 
     var body: some View {
-        if let image = picked ?? kept {
+        if let image = chosen ?? kept {
             JellyArtPicture(image: image)
         } else {
-            fallback().task(id: urls) { picked = await choose() }
+            fallback().task(id: urls) {
+                let asked = urls
+                if let image = await choose() { picked = (asked, image) }
+            }
         }
+    }
+    private var chosen: UIImage? {
+        guard let picked, picked.urls == urls else { return nil }
+        return picked.image
     }
 
     /// A picture already in memory that will do, without waiting (nil: one has to load first).

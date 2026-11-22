@@ -41,7 +41,7 @@ struct JellyListPage: View {
             VStack(alignment: .leading, spacing: 14) {
                 if let client = JellySpace.client {
                     if route.kind == .person, let person { personHeader(person, client: client).padding(.horizontal, 6) }
-                    if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                    if let failure { RetryNotice(message: failure) { Task { await load(fresh: true) } } }
                     else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
                     else if items.isEmpty {
                         Text(JellyBrowseOptions.decode(optionsRaw).filtering ? "Nothing matches these filters." : "Nothing here.")
@@ -57,8 +57,8 @@ struct JellyListPage: View {
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { JellyBrowseMenu(options: optionsBinding, layout: $layout) } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
-        .task(id: optionsRaw + hiddenRaw) { await load() }
-        .fullScreenCover(item: $playing, onDismiss: { Task { await load() } }) { JellyPlayerView(playback: $0) }
+        .task(id: optionsRaw + hiddenRaw) { await load(fresh: true) }
+        .fullScreenCover(item: $playing, onDismiss: { Task { await load(fresh: false) } }) { JellyPlayerView(playback: $0) }
     }
 
     /// The person's photo and biography from Jellyfin, and (when Jellyfin knows their TMDB id) a link
@@ -96,12 +96,16 @@ struct JellyListPage: View {
         }
     }
 
-    private func load() async {
+    /// `fresh`: another order or filter, shown as it comes. Else (a video closed) the list on the page is
+    /// brought up to date where it is.
+    private func load(fresh: Bool) async {
         guard let client = JellySpace.client else { return }
-        loading = true; failure = nil
-        defer { loading = false }
-        let user = await JellyfinUser.id(client)
         let options = JellyBrowseOptions.decode(optionsRaw)
+        // A random list read again is another list: it stays as it was drawn.
+        if !fresh, options.sort == .random { return }
+        loading = true; failure = nil
+        defer { if !Task.isCancelled { loading = false } }
+        let user = await JellyfinUser.id(client)
         let titles = URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series")
         var extra: [URLQueryItem] = []
         var filters = options.showFilter.map { [$0] } ?? []
@@ -121,8 +125,19 @@ struct JellyListPage: View {
         if let library = route.library { extra.append(URLQueryItem(name: "ParentId", value: library)) }
         do {
             let hidden = JellyHidden.decode(hiddenRaw)
-            items = try await client.items(extra, filters: Array(Set(filters)), user: user, sort: options.sort, ascending: options.isAscending)
-                .filter { hidden[$0.Id] == nil }
+            // A page at a time: only the first 300 showed, so a big genre's or a long list's other titles
+            // couldn't be reached. (A random order is one page: every request shuffles again.)
+            var found: [JellyfinClient.Item] = [], seen = Set<String>(), start = 0
+            while true {
+                let page = try await client.itemsPage(extra, filters: Array(Set(filters)), user: user, sort: options.sort,
+                                                      ascending: options.isAscending, start: start)
+                guard !Task.isCancelled else { return }
+                start += page.Items.count
+                found += page.Items.filter { hidden[$0.Id] == nil && seen.insert($0.Id).inserted }
+                let last = page.Items.isEmpty || start >= page.TotalRecordCount || options.sort == .random
+                if fresh || last { items = found }
+                if last { return }
+            }
         } catch {
             if !Task.isCancelled { failure = error.localizedDescription }
         }

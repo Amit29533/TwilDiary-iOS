@@ -525,12 +525,17 @@ struct JellyfinClient: Sendable {
     }
     /// Anything across the libraries: a person's films and shows, a genre, your favourites, collections.
     func items(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, ascending: Bool? = nil, limit: Int = 300) async throws -> [Item] {
+        try await itemsPage(extra, filters: filters, user: user, sort: sort, ascending: ascending, limit: limit).Items
+    }
+    /// One page of them, and how many there are in all.
+    func itemsPage(_ extra: [URLQueryItem], filters: [String] = [], user: String?, sort: Sort = .name, ascending: Bool? = nil, start: Int = 0,
+                   limit: Int = 300) async throws -> Page {
         var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "Fields", value: "ProviderIds,Path,Overview,PrimaryImageAspectRatio"),
                      URLQueryItem(name: "Limit", value: String(limit))] + sort.query(ascending: ascending ?? sort.ascendingByDefault) + extra
+        if start > 0 { query.append(URLQueryItem(name: "StartIndex", value: String(start))) }
         if !filters.isEmpty { query.append(URLQueryItem(name: "Filters", value: filters.joined(separator: ","))) }
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
-        let page: Page = try await get("Items", query)
-        return page.Items
+        return try await get("Items", query)
     }
 
     /// These items, as your server has them (order not kept: the caller puts them back in its order).

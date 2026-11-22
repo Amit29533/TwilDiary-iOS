@@ -114,7 +114,8 @@ enum HistoryImport {
             for row in CSV.rows(file.data) {
                 guard let id = row["const"], id.hasPrefix("tt"), let name = row["title"] else { continue }
                 let type = (row["title type"] ?? "movie").lowercased()
-                if type.contains("episode") { continue }
+                // Games and podcasts are rated on IMDb too: TMDB has neither, and their names found films.
+                if type.contains("episode") || type.contains("game") || type.contains("podcast") { continue }
                 var title = titles[id] ?? ImportEntry(kind: type.contains("series") ? .show : .movie, name: name, year: row["year"].flatMap { Int($0) }, imdb: id)
                 if let rating = row["your rating"].flatMap({ Double($0) }) {
                     title.rating = rating
@@ -197,6 +198,8 @@ enum HistoryImport {
         func first(_ list: Any?) -> Int? { ((list as? [[String: Any]])?.first?["id"] as? NSNumber)?.intValue }
         if let imdb = entry.imdb, let found = try? await TMDBDirect.object("find/\(imdb)", query: ["external_source": "imdb_id"], token: token) {
             if let id = first(entry.kind == .movie ? found["movie_results"] : found["tv_results"]) { return id }
+            // TMDB has it as the other kind (a TV special it keeps as a show): not some film of its name.
+            if first(entry.kind == .movie ? found["tv_results"] : found["movie_results"]) != nil { return nil }
         }
         if let tvdb = entry.tvdb, let found = try? await TMDBDirect.object("find/\(tvdb)", query: ["external_source": "tvdb_id"], token: token),
            let id = first(found["tv_results"]) { return id }
@@ -204,8 +207,21 @@ enum HistoryImport {
         if let year = entry.year,
            let found = try? await TMDBDirect.object(path, query: ["query": entry.name, entry.kind == .movie ? "year" : "first_air_date_year": String(year)], token: token),
            let id = first(found["results"]) { return id }
-        if let found = try? await TMDBDirect.object(path, query: ["query": entry.name], token: token) { return first(found["results"]) }
+        if let found = try? await TMDBDirect.object(path, query: ["query": entry.name], token: token) {
+            return pick((found["results"] as? [[String: Any]]) ?? [], year: entry.year, movie: entry.kind == .movie)
+        }
         return nil
+    }
+    /// Of TMDB's answers to a name alone, the first from the year it should be, or the one beside it (a
+    /// festival's year and the cinema's); without a year to go by, the first. The first whatever its year
+    /// logged a watch of another film with the same name.
+    nonisolated static func pick(_ results: [[String: Any]], year: Int?, movie: Bool) -> Int? {
+        let fitting = results.first { row in
+            guard let year else { return true }
+            guard let day = row[movie ? "release_date" : "first_air_date"] as? String, let its = Int(day.prefix(4)) else { return false }
+            return abs(its - year) <= 1
+        }
+        return (fitting?["id"] as? NSNumber)?.intValue
     }
 
     // MARK: Into the diary

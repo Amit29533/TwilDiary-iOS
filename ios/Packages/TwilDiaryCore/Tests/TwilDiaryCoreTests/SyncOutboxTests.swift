@@ -268,6 +268,8 @@ import TwilDiaryTestSupport
     let ics = upcoming.icsString(hideSpoilers: false)
     #expect(ics.contains("BEGIN:VCALENDAR"))
     #expect(ics.contains("SUMMARY:Frieren · S01E02"))
+    #expect(ics.contains("DTSTAMP:2"))
+    #expect(UpcomingSchedule.icsText("Love, Death; Robots") == "Love" + #"\,"# + " Death" + #"\;"# + " Robots")
 
     let catchup = UpcomingSchedule(workspace: workspace, now: now, category: .all, horizonDays: 14, mode: .catchup)
     #expect(catchup.totalCount == 1)

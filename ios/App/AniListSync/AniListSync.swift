@@ -129,6 +129,8 @@ struct AniListSyncAPI: Sendable {
     private static let savingKey = AniListSyncStorage.prefix + "saving"
     private static let expiresKey = AniListSyncStorage.prefix + "expires"
     private static let idKey = AniListSyncStorage.prefix + "userId"
+    /// The account last signed in to, kept through a sign-out.
+    private static let lastIDKey = AniListSyncStorage.prefix + "lastUserId"
     private static let avatarKey = AniListSyncStorage.prefix + "avatar"
     /// Your AniList picture (Connections shows it, as the other services' rows do).
     private(set) var avatar: String? = UserDefaults.standard.string(forKey: AniListSyncAccount.avatarKey)
@@ -209,6 +211,10 @@ struct AniListSyncAPI: Sendable {
             throw AniListSyncAPI.Failure.refused("AniList didn’t say who’s signed in.")
         }
         userId = id; UserDefaults.standard.set(id, forKey: Self.idKey)
+        // Another account than the one signed in before: what was saved to that one isn't on this one.
+        let before = UserDefaults.standard.integer(forKey: Self.lastIDKey)
+        if before > 0, before != id { AniListSync.shared.accountChanged() }
+        UserDefaults.standard.set(id, forKey: Self.lastIDKey)
         if let picture = viewer["avatar"] as? [String: Any], let url = (picture["large"] as? String) ?? (picture["medium"] as? String) {
             avatar = url; UserDefaults.standard.set(url, forKey: Self.avatarKey)
         }
@@ -238,6 +244,8 @@ struct AniListSyncAPI: Sendable {
     /// Signs out on this iPhone: the token goes; what's waiting stays until you sign in again.
     func signOut() {
         AniListSyncStorage.setSecret(nil, "token")
+        // (Signed in before the account was kept through a sign-out.)
+        if let userId { UserDefaults.standard.set(userId, forKey: Self.lastIDKey) }
         UserDefaults.standard.removeObject(forKey: Self.expiresKey); UserDefaults.standard.removeObject(forKey: Self.nameKey)
         UserDefaults.standard.removeObject(forKey: Self.idKey); UserDefaults.standard.removeObject(forKey: Self.avatarKey)
         hasToken = false; expiresAt = nil; username = nil; userId = nil; avatar = nil
@@ -330,6 +338,15 @@ struct AniListSyncAPI: Sendable {
         AniListSyncStorage.save(waiting, "waiting.json")
     }
     func clearNotKept() { notKept = []; AniListSyncStorage.save(notKept, "not-kept.json") }
+    /// Signed in to another AniList account: every title waits to be sent to it, and nothing read from or
+    /// saved to the last one counts here (its entries passed for this account's, so they never went).
+    func accountChanged() {
+        sent = [:]; AniListSyncStorage.save(sent, "sent.json")
+        listIds = [:]; comparison = nil; checkedAt = nil; readStats = nil; adoptions = [:]; lastResult = nil
+        retry = RetryStop(); AniListSyncStorage.save(retry, "retry.json")
+        guard let diary = store?.workspace else { return }
+        mark(diary.activeTitles.filter(Self.counts).compactMap(Self.key))
+    }
     func forget() {
         waiting = []; notKept = []; chains = [:]; sent = [:]; days = [:]; lastProblem = nil; progress = nil; comparison = nil; checkedAt = nil
         readStats = nil; adoptions = [:]; lastResult = nil
@@ -673,7 +690,10 @@ struct AniListSyncAPI: Sendable {
     private func delete(_ mediaId: Int, _ record: Sent, api: AniListSyncAPI) async throws {
         if let listId = record.listId {
             try await pace()
-            _ = try await api.call("mutation($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }", ["id": listId])
+            do { _ = try await api.call("mutation($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }", ["id": listId]) }
+            catch AniListSyncAPI.Failure.refused(let message) where message.localizedCaseInsensitiveContains("not found") {
+                // Taken off on AniList already (it was refused again at every later edit of the title).
+            }
         }
         sent[mediaId] = nil
     }

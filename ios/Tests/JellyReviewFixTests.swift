@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 import TwilDiaryCore
 @testable import TwilDiary
@@ -57,6 +58,124 @@ import TwilDiaryCore
         XCTAssertEqual(AlertOpening.titleID([AlertOpening.key: "tv:1399"], identifier: "anything"), "tv:1399")
         XCTAssertEqual(AlertOpening.titleID([:], identifier: "episode|tv:1399|2026-11-22"), "tv:1399")
         XCTAssertNil(AlertOpening.titleID([:], identifier: "twildiary.checkin.end"))
+    }
+
+    // MARK: Settings
+
+    /// A change made before the libraries have loaded leaves their rows where they were.
+    func testRowsNotShownKeepTheirPlaces() {
+        let saved = ["resume", "latest:a", "latest:b", "genres", "random:a", "themes"]
+        let others = ["latest:a", "latest:b", "random:a"]
+        XCTAssertEqual(JellyHomeSettingsModel.keeping(others, from: saved, in: ["resume", "genres", "themes"]), saved)
+        XCTAssertEqual(JellyHomeSettingsModel.keeping(others, from: saved, in: ["themes", "resume", "genres"]),
+                       ["themes", "resume", "latest:a", "latest:b", "genres", "random:a"], "each after what came before it")
+        XCTAssertEqual(JellyHomeSettingsModel.keeping(["a", "b"], from: ["a", "b", "c"], in: []), ["a", "b"])
+        XCTAssertEqual(JellyHomeSettingsModel.keeping([], from: saved, in: ["genres"]), ["genres"])
+    }
+
+    /// Settings go in a backup; who's signed in and this install's own records don't.
+    func testABackupCarriesSettingsOnly() {
+        for key in ["jellyspace.home.rows", "jellyspace.subtitle.font", "jellyspace.hidden", "customise.tabs", "library.savedFilters", "theme", "use24HourTime"] {
+            XCTAssertTrue(SettingsBackup.carries(key), key)
+        }
+        for key in ["jellyspace.account.user", "jellyspace.deviceID", "jellyspace.userID", "jellyspace.seenUnwatched", "trakt.pendingWrites",
+                    "googleDrive.connected", "jellyfinAddress", "phoneOnlyDiary"] {
+            XCTAssertFalse(SettingsBackup.carries(key), key)
+        }
+    }
+    func testSettingsComeBackWithoutReplacingWhatsSetHere() throws {
+        let name = "settings-backup-test", from = try XCTUnwrap(UserDefaults(suiteName: name + "-from")), to = try XCTUnwrap(UserDefaults(suiteName: name + "-to"))
+        defer { from.removePersistentDomain(forName: name + "-from"); to.removePersistentDomain(forName: name + "-to") }
+        from.set(30, forKey: "jellyspace.skipSeconds")
+        from.set("serif", forKey: "jellyspace.subtitle.font")
+        from.set("someone", forKey: "jellyspace.account.user")
+        to.set(10, forKey: "jellyspace.skipSeconds")
+        SettingsBackup.restore(SettingsBackup.data(from), to: to)
+        XCTAssertEqual(to.integer(forKey: "jellyspace.skipSeconds"), 10, "what's set on this phone stays")
+        XCTAssertEqual(to.string(forKey: "jellyspace.subtitle.font"), "serif")
+        XCTAssertNil(to.string(forKey: "jellyspace.account.user"))
+    }
+
+    func testEveryRegionCanBeChosen() {
+        XCTAssertTrue(Set(["IN", "US", "PK", "AE", "NZ", "SG"]).isSubset(of: Set(LanguageRegionView.regions)))
+        XCTAssertFalse(LanguageRegionView.regions.contains("001"), "the world isn't a country")
+    }
+
+    func testATimeFollowsTheClockChosen() {
+        let defaults = UserDefaults.standard, before = defaults.object(forKey: "use24HourTime")
+        defer { defaults.set(before, forKey: "use24HourTime") }
+        let evening = Calendar.current.date(bySettingHour: 21, minute: 5, second: 0, of: .now)!
+        defaults.set(true, forKey: "use24HourTime")
+        XCTAssertTrue(evening.diaryTime().contains("21"), evening.diaryTime())
+    }
+
+    // MARK: Player
+
+    /// AetherEngine rests paused at the very end, with no Up Next: a move there lands a second before.
+    func testAMoveToTheEndLeavesTheLastSecondToPlay() {
+        XCTAssertEqual(JellyPlayerView.landing(3600, of: 3600), 3599)
+        XCTAssertEqual(JellyPlayerView.landing(100, of: 3600), 100)
+        XCTAssertEqual(JellyPlayerView.landing(1, of: 1.5), 1, "too short to keep a second of")
+        XCTAssertEqual(JellyPlayerView.landing(5, of: 0), 5, "the length isn't known")
+    }
+    /// Only a file the server has and gives out is the other engine's to try.
+    func testWhatTheServerSaysOfAFileThatDidntOpen() {
+        XCTAssertEqual(JellyPlayerView.served(206), .here)
+        XCTAssertEqual(JellyPlayerView.served(404), .missing)
+        XCTAssertEqual(JellyPlayerView.served(401), .refused)
+        XCTAssertEqual(JellyPlayerView.served(500), .refused)
+    }
+    func testCommentariesAndDescriptionsAreKnownByName() {
+        XCTAssertTrue(JellyMPV.isCommentary("Director's Commentary"))
+        XCTAssertFalse(JellyMPV.isCommentary("English 5.1"))
+        XCTAssertTrue(JellyMPV.isDescription("English (Audio Description)"))
+        XCTAssertFalse(JellyMPV.isDescription("English"))
+    }
+    func testSDHIsKnownByItsMarkToo() {
+        XCTAssertTrue(JellySubtitlePick.isSDH("English", marked: true))
+        XCTAssertTrue(JellySubtitlePick.isSDH("English SDH", marked: false))
+        XCTAssertFalse(JellySubtitlePick.isSDH("English", marked: false))
+    }
+    /// A script's canvas lies over the whole picture, whatever its own shape.
+    func testAStyledScriptCoversThePictureWhateverItsShape() {
+        let screen = CGSize(width: 800, height: 400)
+        let wide = JellyASSLayer.picture(canvas: CGSize(width: 1920, height: 1080), video: CGSize(width: 1920, height: 800), in: screen, fill: .fit, originalSize: .zero)
+        XCTAssertEqual(wide.width, 800, accuracy: 0.01)
+        XCTAssertEqual(wide.height, 800 * 800 / 1920, accuracy: 0.01)
+        let old = JellyASSLayer.picture(canvas: CGSize(width: 640, height: 480), video: CGSize(width: 1280, height: 720), in: screen, fill: .fit, originalSize: .zero)
+        XCTAssertEqual(old.width, 400 * 16 / 9, accuracy: 0.01)
+        XCTAssertEqual(old.height, 400, accuracy: 0.01)
+        let unknown = JellyASSLayer.picture(canvas: CGSize(width: 640, height: 480), video: .zero, in: screen, fill: .fit, originalSize: .zero)
+        XCTAssertEqual(unknown.width, 400 * 4 / 3, accuracy: 0.01, "the video's shape isn't known: the script's own")
+    }
+    /// SRT's own italics and places are kept.
+    func testPlainLinesKeepTheirItalicsAndPlace() {
+        var italic = AttributedString("Is it?")
+        italic.font = Font.body.italic()
+        let blocks = JellyPlainLines.blocks([.init(text: "Hello"), .init(text: "EXIT", alignment: 8), .init(text: "Is it?", styled: italic),
+                                             .init(text: "Odd", alignment: 12)])
+        XCTAssertEqual(blocks.map(\.alignment), [2, 8])
+        XCTAssertEqual(blocks.first?.text, "Hello\nIs it?\nOdd")
+        XCTAssertEqual(blocks.first?.styled.map { String($0.characters) }, "Hello\nIs it?\nOdd")
+        XCTAssertNil(blocks.last?.styled)
+        XCTAssertTrue(JellyPlainLines.blocks([]).isEmpty)
+        XCTAssertEqual(JellyPlainLines.plain("{\\an8}Top\\Nline"), "Top\nline")
+    }
+
+    // MARK: Elsewhere
+
+    /// A name alone takes a film of the year it should be, not the first of that name.
+    func testAnImportedNameIsMatchedByItsYear() {
+        let rows: [[String: Any]] = [["id": 1, "release_date": "1984-05-04"], ["id": 2, "release_date": "2021-10-22"], ["id": 3, "release_date": ""]]
+        XCTAssertEqual(HistoryImport.pick(rows, year: 2021, movie: true), 2)
+        XCTAssertEqual(HistoryImport.pick(rows, year: 1985, movie: true), 1, "a year either side")
+        XCTAssertNil(HistoryImport.pick(rows, year: 2005, movie: true))
+        XCTAssertEqual(HistoryImport.pick(rows, year: nil, movie: true), 1)
+        XCTAssertNil(HistoryImport.pick([], year: nil, movie: false))
+    }
+    func testGamesAndPodcastsArentImported() {
+        let csv = "Const,Your Rating,Date Rated,Title,Title Type,Year\ntt1,8,2024-01-02,A Film,Movie,2020\ntt2,9,2024-01-02,A Game,Video Game,2020\ntt3,7,2024-01-02,A Show,Podcast Series,2020\n"
+        XCTAssertEqual(HistoryImport.imdb([(name: "ratings.csv", data: Data(csv.utf8))]).map(\.name), ["A Film"])
     }
 
     func testAKeptBackupIsNeverTakenForTheBackup() {

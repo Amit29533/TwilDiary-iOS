@@ -143,12 +143,12 @@ struct JellyfinEntryCard: View {
 struct JellyfinPoster<Fallback: View>: View {
     let url: URL
     @ViewBuilder let fallback: () -> Fallback
-    @State private var image: UIImage?
+    @State private var loaded: JellyLoadedPicture?
     var body: some View {
-        if let image = image ?? JellyfinPosterCache.shared.resident(url) {
+        if let image = loaded?.image(for: url) ?? JellyfinPosterCache.shared.resident(url) {
             Image(uiImage: image).resizable().scaledToFill()
         } else {
-            fallback().task(id: url) { image = await JellyfinPosterCache.shared.image(url) }
+            fallback().task(id: url) { loaded = await JellyLoadedPicture(url) }
         }
     }
 }
