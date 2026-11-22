@@ -52,6 +52,7 @@ struct JellyListPage: View {
             }.padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 110)
         }
         .diaryScreenBackground()
+        .jellyFaceLock()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { JellyBrowseMenu(options: optionsBinding, layout: $layout) } }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }

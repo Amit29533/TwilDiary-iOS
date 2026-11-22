@@ -6,7 +6,7 @@ import NaturalLanguage
 /// One title of the server, as recommending reads it: the words in its name, file and folder (each
 /// reduced to its root: "dancing" and "danced" are "dance"), its folder, date, length, genres, tags,
 /// studios and TMDB id, and a key that two copies of the same thing share.
-struct JellyIndexEntry: Sendable {
+struct JellyIndexEntry: Codable, Sendable {
     let item: JellyfinClient.Item
     /// The library it's in ("" when not known).
     let library: String
@@ -28,7 +28,7 @@ struct JellyIndexEntry: Sendable {
 
 /// Every film, show and video on the server, read once (kept while the app runs), with how many titles
 /// each word appears in: a word in few titles says more than one in half the library.
-struct JellyLibraryIndex: Sendable {
+struct JellyLibraryIndex: Codable, Sendable {
     let entries: [JellyIndexEntry]
     let position: [String: Int]
     let frequency: [String: Int]
@@ -385,6 +385,13 @@ extension JellyRecommender {
             return kept.index
         }
         if let building { return await building.value }
+        // Just launched: the one saved last time, at once (it took the whole library downloaded and
+        // read again on every launch), and a fresh one behind it when it's old.
+        if kept == nil, let saved = await JellyDiskCache.load(JellyIndexSnapshot.self, name: "index"), saved.key == key {
+            if kept == nil { kept = (key, saved.at, saved.index) }
+            if Date.now.timeIntervalSince(saved.at) >= 900, building == nil { Task { _ = await rebuild(client: client, user: user, key: key) } }
+            return saved.index
+        }
         return await rebuild(client: client, user: user, key: key)
     }
     /// Starts building it now (as the home opens), so More like this finds it ready.
@@ -418,7 +425,10 @@ extension JellyRecommender {
         building = task
         let built = await task.value
         building = nil
-        if let built { kept = (key, .now, built) }
+        if let built {
+            kept = (key, .now, built)
+            JellyDiskCache.save(JellyIndexSnapshot(key: key, at: .now, index: built), name: "index")
+        }
         return built
     }
 }

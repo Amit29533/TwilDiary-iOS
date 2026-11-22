@@ -120,6 +120,7 @@ struct JellyDetailPage: View {
             }.padding(.bottom, 48)
         }
         .diaryScreenBackground()
+        .jellyFaceLock()
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .toolbar {
             ToolbarItem(placement: .principal) {

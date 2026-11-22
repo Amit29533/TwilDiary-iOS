@@ -76,11 +76,20 @@ struct JellySpaceView: View {
     /// The top card on show (its colours light the top of the page).
     @State private var hero = JellyHeroSelection()
     @Environment(AppRouter.self) private var router
+    /// Where JellySpace sits in its tab's stack (to tell leaving it from going deeper).
+    @State private var entry: (tab: AppTab, depth: Int)?
 
     /// The home, with the hooks added later kept apart from its long body (which the compiler checks
     /// in one go).
     var body: some View {
         home
+            .jellyFaceLock()
+            // Face ID lock: leaving JellySpace (back out of it) locks it, so tapping into it again
+            // scans your face before anything shows. Going deeper (a title, the player) doesn't.
+            .onAppear { if entry == nil { entry = (router.selectedTab, router.paths[router.selectedTab]?.count ?? 0) } }
+            .onDisappear {
+                if let entry, (router.paths[entry.tab]?.count ?? 0) < entry.depth { JellyFaceLock.shared.relock() }
+            }
             .task(id: discoverID) { await loadDiscover() }
             // A library switched on or off for recommending: For you and the dynamic rows again.
             .onChange(of: recommendOffRaw) { _, _ in Task { await loadRows() } }
@@ -642,6 +651,15 @@ struct JellySpaceView: View {
             discover = cached
             return
         }
+        // Just launched: the shelves drawn last time (within half a day), so the page opens whole and
+        // the rows don't change under you as it loads.
+        if !force, JellyHomeCache.discover == nil, let saved = await JellyDiskCache.load(JellyDiscoverSnapshot.self, name: "discover"),
+           saved.key == key, Date.now.timeIntervalSince(saved.at) < 12 * 3600 {
+            discover = saved.discover
+            JellyHomeCache.discover = saved.discover
+            JellyHomeCache.discoverKey = key
+            return
+        }
         let all = libraries.isEmpty ? ((try? await client.libraries()) ?? []) : libraries
         let hiddenIDs = self.hidden
         let defaults = UserDefaults.standard, turn = defaults.integer(forKey: "jellyspace.discover.turn")
@@ -652,6 +670,7 @@ struct JellySpaceView: View {
         withAnimation(.smooth(duration: 0.3)) { discover = found }
         JellyHomeCache.discover = found
         JellyHomeCache.discoverKey = key
+        JellyDiskCache.save(JellyDiscoverSnapshot(key: key, at: .now, discover: found), name: "discover")
     }
 
     /// Off Continue Watching: its place is cleared in Jellyfin (it starts from the beginning next time).
@@ -676,55 +695,75 @@ struct JellySpaceView: View {
             collections = JellyHomeCache.collections; latest = JellyHomeCache.latest
             nextUp = JellyHomeCache.nextUp; forYou = JellyHomeCache.forYou; loaded = true
         }
+        // Just launched: the rows saved last time, at once (no blank page while the server answers);
+        // they're refreshed in place below.
+        if libraries.isEmpty, JellyHomeCache.at == nil, let saved = await JellyDiskCache.load(JellyHomeSnapshot.self, name: "home"),
+           saved.server == server, libraries.isEmpty {
+            libraries = saved.libraries; resume = saved.resume; nextUp = saved.nextUp; favourites = saved.favourites
+            collections = saved.collections; latest = saved.latest; forYou = saved.forYou; loaded = true
+        }
         if JellyHomeCache.server == server, let at = JellyHomeCache.at, Date.now.timeIntervalSince(at) < 60, !libraries.isEmpty { return }
         await loadHome()
     }
     private func loadHome() async {
-        guard let client = JellySpace.client else { return }
+        guard JellySpace.client != nil else { return }
         loading = libraries.isEmpty; failure = nil
         defer { loading = false; loaded = true }
-        do {
-            libraries = try await client.libraries()
-        } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
-        }
-        await loadRows()
+        await loadRows(listLibraries: true)
     }
     /// Continue Watching, favourites, each library's newest and collections (they change after each watch).
-    private func loadRows() async {
+    /// Every row asked at once (they took turns: Recently added waited for Because you watched, the
+    /// slowest), shown as each arrives in the page's order, Because you watched last. With
+    /// `listLibraries` the library list is asked again too, beside the rows that don't need it.
+    private func loadRows(listLibraries: Bool = false) async {
         guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
-        // The library index for recommending, built beside the rows (More like this then finds it ready).
         JellyIndexStore.warm(client: client, user: user)
-        // Whether Delete from server is offered (asked once a session).
         Task { await JellyServerEdits.shared.check(client: client) }
         async let started = client.resume(user: user)
+        async let following = client.nextUp(user: user)
         async let liked = client.items([URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Episode")], filters: ["IsFavorite"], user: user, sort: .added, limit: 20)
         async let sets = client.items([URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")], user: user, limit: 20)
-        async let following = client.nextUp(user: user)
+        if listLibraries {
+            do {
+                let found = try await client.libraries()
+                if found != libraries { libraries = found }
+            } catch {
+                if !Task.isCancelled, libraries.isEmpty { failure = error.localizedDescription }
+            }
+        }
         // Only the film libraries shown on the home (a hidden library's titles mustn't turn up here).
         let filmLibraries = recommendLibraries.filter { $0.type == "movies" }.map(\.id)
+        async let newest = Self.newest(client: client, user: user, libraries: libraries.map(\.id))
         async let picks = JellyForYou.load(client: client, user: user, libraries: filmLibraries)
-        resume = (try? await started) ?? []
-        nextUp = (try? await following) ?? []
-        forYou = await picks
-        favourites = (try? await liked) ?? []
-        collections = (try? await sets) ?? []
-        // Every library's newest at once.
-        latest = await withTaskGroup(of: (String, [JellyfinClient.Item]).self) { group in
-            for id in libraries.map(\.id) {
+        // Each row as it comes, faded in when it's new (in place when it was there: no jump).
+        let nowResume = (try? await started) ?? [], nowNext = (try? await following) ?? []
+        withAnimation(.smooth(duration: 0.25)) { resume = nowResume; nextUp = nowNext }
+        let nowLatest = await newest
+        withAnimation(.smooth(duration: 0.25)) { latest = nowLatest }
+        let nowFavourites = (try? await liked) ?? [], nowSets = (try? await sets) ?? []
+        withAnimation(.smooth(duration: 0.25)) { favourites = nowFavourites; collections = nowSets }
+        let nowPicks = await picks
+        withAnimation(.smooth(duration: 0.25)) { forYou = nowPicks }
+        JellyNewEpisodes.note(latest.values.flatMap { $0 } + favourites)
+        JellyHomeCache.server = client.base.absoluteString + "|" + user; JellyHomeCache.at = .now
+        JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
+        JellyHomeCache.collections = collections; JellyHomeCache.latest = latest
+        JellyHomeCache.nextUp = nextUp; JellyHomeCache.forYou = forYou
+        // Kept for the next launch.
+        JellyDiskCache.save(JellyHomeSnapshot(server: client.base.absoluteString + "|" + user, libraries: libraries, resume: resume, nextUp: nextUp,
+                                              favourites: favourites, collections: collections, latest: latest, forYou: forYou), name: "home")
+        await loadThemes()
+    }
+    /// Each library's Recently added, all at once.
+    nonisolated private static func newest(client: JellyfinClient, user: String, libraries: [String]) async -> [String: [JellyfinClient.Item]] {
+        await withTaskGroup(of: (String, [JellyfinClient.Item]).self) { group in
+            for id in libraries {
                 group.addTask { (id, (try? await client.latest(in: id, user: user)) ?? []) }
             }
             var newest: [String: [JellyfinClient.Item]] = [:]
             for await (id, items) in group { newest[id] = items }
             return newest
         }
-        // Each show's unwatched count, for "3 new" on its poster.
-        JellyNewEpisodes.note(latest.values.flatMap { $0 } + favourites)
-        JellyHomeCache.server = client.base.absoluteString + "|" + user; JellyHomeCache.at = .now
-        JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
-        JellyHomeCache.collections = collections; JellyHomeCache.latest = latest
-        JellyHomeCache.nextUp = nextUp; JellyHomeCache.forYou = forYou
-        await loadThemes()
     }
     /// The Dynamic recommendations rows across the whole server, from the library index (built once in
     /// the background), as many as the setting says.
@@ -1068,16 +1107,23 @@ struct JellyContinueEntry {
 }
 
 /// The For you row: its heading ("Because you watched Your Name") and Jellyfin's picks.
-struct JellyForYou: Sendable {
+struct JellyForYou: Sendable, Codable {
     let title: String
     let items: [JellyfinClient.Item]
 
-    /// From each library in turn until one has picks "because you watched" something; else the first
-    /// library with any picks at all.
+    /// Every library asked at once (in turn, it took the sum of them); then, in the libraries' order,
+    /// the first with picks "because you watched" something, else the first with any picks at all.
     static func load(client: JellyfinClient, user: String, libraries: [String]) async -> JellyForYou? {
+        let answers = await withTaskGroup(of: (Int, [JellyfinClient.Recommendation]).self) { group in
+            for (offset, library) in libraries.enumerated() {
+                group.addTask { (offset, (try? await client.recommendations(user: user, library: library)) ?? []) }
+            }
+            var found: [(Int, [JellyfinClient.Recommendation])] = []
+            for await answer in group { found.append(answer) }
+            return found.sorted { $0.0 < $1.0 }.map(\.1)
+        }
         var fallback: JellyForYou?
-        for library in libraries {
-            let groups = (try? await client.recommendations(user: user, library: library)) ?? []
+        for groups in answers {
             if groups.contains(where: { ($0.RecommendationType ?? "").hasPrefix("SimilarTo") && !($0.Items ?? []).isEmpty }) { return pick(groups) }
             if fallback == nil { fallback = pick(groups) }
         }
@@ -1207,6 +1253,7 @@ struct JellyFolderPage: View {
             }.padding(.horizontal, route.kind == "Season" ? 16 : 10).padding(.top, 8).padding(.bottom, 110)
         }
         .diaryScreenBackground()
+        .jellyFaceLock()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .toolbar {
             if sortable {

@@ -399,7 +399,7 @@ struct JellyCastBar: View {
             .contentShape(Rectangle()).onTapGesture { open = true }
             .padding(.horizontal, 12)
             .accessibilityIdentifier("jellyspace-cast-bar")
-            .fullScreenCover(isPresented: $open) { JellyCastRemote(playback: nil) { open = false } }
+            .fullScreenCover(isPresented: $open) { JellyCastRemote(playback: nil) { open = false }.jellyFaceLock() }
         }
     }
 }

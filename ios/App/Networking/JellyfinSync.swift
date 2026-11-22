@@ -74,7 +74,7 @@ enum JellyDevice {
 
 /// A Jellyfin library. Only Movies and Shows are read; the rest (photos, home videos, music)
 /// are never opened, and a mixed library only when the owner turns it on.
-struct JellyfinLibrary: Identifiable, Sendable, Equatable {
+struct JellyfinLibrary: Identifiable, Sendable, Equatable, Codable {
     let id: String
     let name: String
     let type: String?
@@ -332,7 +332,7 @@ struct JellyfinClient: Sendable {
     let base: URL
     let key: String
     struct Folder: Decodable { let Name: String; let CollectionType: String?; let ItemId: String? }
-    struct Item: Decodable {
+    struct Item: Codable {
         let Id: String
         let kind: String
         let Path: String?
@@ -375,8 +375,8 @@ struct JellyfinClient: Sendable {
         let DateCreated: String?
         /// The poster's shape (width over height): a cover scan or a video frame is wide.
         let PrimaryImageAspectRatio: Double?
-        struct Studio: Decodable, Sendable { let Name: String? }
-        struct ItemUserData: Decodable, Sendable {
+        struct Studio: Codable, Sendable { let Name: String? }
+        struct ItemUserData: Codable, Sendable {
             let PlayedPercentage: Double?; let Played: Bool?; let UnplayedItemCount: Int?; let IsFavorite: Bool?
             let LastPlayedDate: String?
         }

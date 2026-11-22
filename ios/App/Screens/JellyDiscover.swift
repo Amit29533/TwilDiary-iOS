@@ -4,7 +4,7 @@ import SwiftUI
 
 /// One shelf of Discover: its heading, its titles, and the library it was drawn from (for its
 /// shuffle button), or the genre for "Tonight".
-struct JellyShelf: Sendable, Identifiable {
+struct JellyShelf: Sendable, Identifiable, Codable {
     let id: String
     let title: String
     var items: [JellyfinClient.Item]
@@ -19,7 +19,7 @@ struct JellyShelf: Sendable, Identifiable {
 /// rated 7.5 or more), a genre for tonight, and a random shelf of its own for every video library
 /// (posters for a film or show library, wide frames for a plain one). Drawn once a session,
 /// freshly shuffled, from the libraries shown on the home only.
-struct JellyDiscover: Sendable {
+struct JellyDiscover: Sendable, Codable {
     var genres: [JellyfinClient.Item] = []
     var top: JellyShelf?
     var gems: [JellyfinClient.Item] = []

@@ -256,11 +256,14 @@ struct JellyPlayerView: View {
         // Casting to a Chromecast: the player is a remote for the TV (the phone plays nothing).
         // (Kept while the remote closes: the TV lets go a moment later, and the phone mustn't start
         // playing meanwhile.)
-        if JellyCast.shared.connected || castClosing {
-            JellyCastRemote(playback: current) { castClosing = true; dismiss() }
-        } else {
-            localPlayer
+        Group {
+            if JellyCast.shared.connected || castClosing {
+                JellyCastRemote(playback: current) { castClosing = true; dismiss() }
+            } else {
+                localPlayer
+            }
         }
+        .jellyFaceLock()
     }
     private var localPlayer: some View {
         player

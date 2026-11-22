@@ -75,6 +75,7 @@ targets:
         INFOPLIST_FILE: Support/Info.plist
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: TwilDiary reads your Jellyfin server on your home network to find where your movies and shows are stored, and finds the Chromecasts you can cast them to.
         # A person's photo viewer: Download saves the picture to Photos.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: TwilDiary uses Face ID to unlock JellySpace when you've turned its lock on.
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: TwilDiary saves the photos you download to your photo library.
         INFOPLIST_KEY_CFBundleDisplayName: TwilDiary
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

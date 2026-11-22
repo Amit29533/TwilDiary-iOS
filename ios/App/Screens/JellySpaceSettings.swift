@@ -34,6 +34,10 @@ enum JellyPrefs {
     static let holdKey = "jellyspace.gesture.hold"
     static let seerrAddressKey = "jellyspace.seerr.address"
     static let fillKey = "jellyspace.fill"
+    /// JellySpace behind Face ID (Preferences → Privacy), and the seconds away before it locks again.
+    static let faceLockKey = "jellyspace.faceLock"
+    static let faceLockAfterKey = "jellyspace.faceLock.after"
+    static let faceLockAfterChoices: [(String, Int)] = [("Immediately", 0), ("After 1 minute", 60), ("After 5 minutes", 300), ("After 15 minutes", 900)]
     /// mpv's Fill and Original on its GPU output (on: styled subtitles kept, a second of black as it
     /// switches); off, Fill zooms at once on the AVFoundation output and the app draws the subtitles.
     static let gpuZoomKey = "jellyspace.mpv.gpuZoom"
@@ -285,6 +289,8 @@ enum JellySecrets {
         JellySecrets.write("user-token", nil)
         cachedToken = nil
         JellySpace.resetKey()
+        // Nothing of the server kept on the phone.
+        JellyDiskCache.clear()
     }
 }
 
@@ -824,6 +830,7 @@ private struct JellyPreferencesGroups: View {
             JellySubtitleLanguageGroup()
             JellyAspectGroup()
             JellyRememberGroup()
+            JellyPrivacyGroup()
         }
     }
 }
@@ -842,6 +849,28 @@ private struct JellyAudioLanguageGroup: View {
             }
         }
         JellyDecoderNote(text: "File's choice plays the track the file marks as its default.")
+    }
+}
+
+/// Privacy: JellySpace behind Face ID, and how soon it locks again.
+private struct JellyPrivacyGroup: View {
+    @AppStorage(JellyPrefs.faceLockKey) private var on = false
+    @AppStorage(JellyPrefs.faceLockAfterKey) private var after = 0
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
+
+    var body: some View {
+        SettingsGroup(label: "Privacy") {
+            JellySettingsRows.toggle("Face ID lock", Binding(get: { on }, set: { value in
+                // Turned on here, it starts unlocked: it locks the next time the app is away.
+                if value { JellyFaceLock.shared.turnedOn() }
+                on = value
+            }), accent: theme.accent)
+            if on {
+                SettingsDivider()
+                JellySettingsRows.choice("Lock again", $after, JellyPrefs.faceLockAfterChoices)
+            }
+        }
+        JellyDecoderNote(text: "Face ID (or your passcode) each time you open JellySpace, and again when you come back to the app after the time above. Hidden in the app switcher.")
     }
 }
 

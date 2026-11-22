@@ -306,6 +306,8 @@ struct RootView: View {
             .onChange(of: readyToShow) { _, _ in liftSplash() }
             .task { try? await Task.sleep(for: .seconds(2.5)); splashWaited = true; liftSplash() }
             .task { JellyLiveActivity.endLeftovers() }
+            // JellySpace's Face ID lock: covered while the app is away, locked again after a while.
+            .onChange(of: scenePhase) { _, phase in JellyFaceLock.shared.phase(phase) }
             .task(id: scenePhase) {
                 if scenePhase == .active {
                     // The anime map, weekly on Wi-Fi, for Simkl's and AniList's syncs (in the background).
