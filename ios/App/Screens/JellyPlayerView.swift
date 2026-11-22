@@ -220,8 +220,8 @@ struct JellyPlayerView: View {
     @State private var showFill: JellyFill?
     /// Counts mpv's starts on a new output (its view and the video's opening follow it).
     @State private var mpvRun = 0
-    /// mpv was started again once for this video after it didn't start (see watchMPVStart).
-    @State private var mpvRetried = false
+    /// The video mpv was started again for after it didn't start (see watchMPVStart).
+    @State private var mpvRetriedFor: String?
     /// Where the other engine was when you switched (the next start begins there).
     @State private var switchAt: Double?
     /// mpv's smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
@@ -1868,13 +1868,15 @@ struct JellyPlayerView: View {
         let id = current.id
         Task {
             try? await Task.sleep(for: .seconds(20))
-            guard usesMPV, mpvRun == run, current.id == id, !mpv.hasLoaded, mpv.failure == nil, failure == nil, state == .loading else { return }
+            // mpv's own state: once the player has closed, mpv has stopped (idle), so nothing happens.
+            guard usesMPV, mpvRun == run, current.id == id, !mpv.hasLoaded, mpv.failure == nil, failure == nil, mpv.state == .loading else { return }
             JellyMPV.log.error("mpv didn't start in 20 s (run \(run, privacy: .public)): \(mpv.diagnosis, privacy: .public)")
-            if mpvRetried {
+            // Once a video: the next episode gets its own try.
+            if mpvRetriedFor == id {
                 failure = "The video didn't start. Close it and try again."
                 return
             }
-            mpvRetried = true
+            mpvRetriedFor = id
             switchAt = start ?? 0
             mpv.stop()
             mpvRun += 1
