@@ -1632,40 +1632,44 @@ struct JellyPlayerView: View {
                        superResolution: superResolution)
     }
     /// What the menus' choices do.
-    private var menuActions: JellyMenuActions {
+    /// The menus' actions. They reach the player through one shared copy of it (`me`): each of these
+    /// closures took its own copy of the whole view before, all at once on the main thread's stack (the
+    /// crash on opening a video, with the larger values in the view).
+    private var menuActions: JellyMenuActions { Self.menuActions(JellyPlayerRef(self)) }
+    private static func menuActions(_ me: JellyPlayerRef) -> JellyMenuActions {
         JellyMenuActions(
-            opened: { menuShown() },
-            closed: { menuGone() },
-            sleep: { choice in menuUsed(); setSleep(choice < 0 ? nil : choice) },
-            speed: { value in menuUsed(); speed = Float(value); engineRate(Float(value)) },
-            upscale: { mode in menuUsed(); setUpscale(mode) },
-            subtitle: { id in pickSubtitle(id) },
-            audio: { id in pickAudio(id) },
-            download: { openPanel(.subtitleSearch) },
-            advanced: { openPanel(.advanced) },
+            opened: { me.view.menuShown() },
+            closed: { me.view.menuGone() },
+            sleep: { choice in me.view.menuUsed(); me.view.setSleep(choice < 0 ? nil : choice) },
+            speed: { value in me.view.menuUsed(); me.view.speed = Float(value); me.view.engineRate(Float(value)) },
+            upscale: { mode in me.view.menuUsed(); me.view.setUpscale(mode) },
+            subtitle: { id in me.view.pickSubtitle(id) },
+            audio: { id in me.view.pickAudio(id) },
+            download: { me.view.openPanel(.subtitleSearch) },
+            advanced: { me.view.openPanel(.advanced) },
             dialogue: { level in
-                menuUsed(); dialogueBoost = level
-                applySound("Dialogue boost: " + (JellySound.dialogue.first { $0.1 == level }?.0 ?? "Off"))
+                me.view.menuUsed(); me.view.dialogueBoost = level
+                me.view.applySound("Dialogue boost: " + (JellySound.dialogue.first { $0.1 == level }?.0 ?? "Off"))
             },
-            night: { on in menuUsed(); nightMode = on; applySound(on ? "Night mode on" : "Night mode off") },
+            night: { on in me.view.menuUsed(); me.view.nightMode = on; me.view.applySound(on ? "Night mode on" : "Night mode off") },
             boost: { percent in
-                menuUsed(); volumeBoost = percent
-                applySound("Volume boost: " + (JellySound.boost.first { $0.1 == percent }?.0 ?? "Off"))
+                me.view.menuUsed(); me.view.volumeBoost = percent
+                me.view.applySound("Volume boost: " + (JellySound.boost.first { $0.1 == percent }?.0 ?? "Off"))
             },
-            fill: { next in menuUsed(); setFill(next) },
-            rotation: { menuUsed(); toggleRotation() },
-            info: { on in menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { showsInfo = on } },
-            decoder: { path in menuUsed(); setDecoder(path) },
+            fill: { next in me.view.menuUsed(); me.view.setFill(next) },
+            rotation: { me.view.menuUsed(); me.view.toggleRotation() },
+            info: { on in me.view.menuUsed(); withAnimation(.easeInOut(duration: 0.2)) { me.view.showsInfo = on } },
+            decoder: { path in me.view.menuUsed(); me.view.setDecoder(path) },
             superResolution: { mode in
-                menuUsed(); superResolution = mode
+                me.view.menuUsed(); me.view.superResolution = mode
                 let power = JellyPower.shared
                 let name = JellyPlayerView.superResolutions.first { $0.1 == mode }?.0 ?? mode
-                show(mode == "off" ? "Super Resolution off" : power.constrained ? "Super Resolution: \(name), paused " + power.reason : "Super Resolution: " + name)
+                me.view.show(mode == "off" ? "Super Resolution off" : power.constrained ? "Super Resolution: \(name), paused " + power.reason : "Super Resolution: " + name)
             },
             smooth: { rate in
-                menuUsed(); smoothRate = rate
+                me.view.menuUsed(); me.view.smoothRate = rate
                 let power = JellyPower.shared
-                show(rate == 0 ? "Smooth motion off" : power.constrained ? "Smooth motion: \(rate) Hz, paused " + power.reason : "Smooth motion: \(rate) Hz")
+                me.view.show(rate == 0 ? "Smooth motion off" : power.constrained ? "Smooth motion: \(rate) Hz, paused " + power.reason : "Smooth motion: \(rate) Hz")
             })
     }
     /// A subtitle picked (-1 for off): turned on, and its language remembered.
@@ -2695,6 +2699,12 @@ private struct JellyAirPlayButton: UIViewRepresentable {
 /// redraw only the subtitles.
 @MainActor @Observable final class JellySubtitleClock {
     var time: Double = 0
+}
+
+/// One shared copy of the player, for its menus' actions (see JellyPlayerView.menuActions).
+@MainActor fileprivate final class JellyPlayerRef {
+    let view: JellyPlayerView
+    init(_ view: JellyPlayerView) { self.view = view }
 }
 
 /// The player's larger values (see JellyPlayerView.heavy).
