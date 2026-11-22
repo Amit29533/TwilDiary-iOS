@@ -31,6 +31,12 @@ import LocalAuthentication
     }
     /// Just turned on: you're here, so it starts unlocked (it locks the next time you leave).
     func turnedOn() { unlocked = true }
+    /// About to open JellySpace: Face ID first when it's locked. True when it may open.
+    func enter() async -> Bool {
+        guard enabled, !unlocked else { return true }
+        await unlock()
+        return unlocked
+    }
     /// Left JellySpace: the next time in, Face ID first.
     func relock() { if enabled { unlocked = false } }
 

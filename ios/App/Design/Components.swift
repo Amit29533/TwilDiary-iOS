@@ -357,7 +357,13 @@ struct PageHeader: View {
             // The release that ends a long press (the random pick) isn't a tap.
             if heldForPick { heldForPick = false; return }
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.65)) { angle += 270 }
-            router.paths[router.selectedTab, default: NavigationPath()].append(AppDestination.jellyspace)
+            // With JellySpace's Face ID lock on, the scan happens here, on Home, and JellySpace opens
+            // once it passes (not a grey page first, then the scan).
+            let tab = router.selectedTab
+            Task {
+                guard await JellyFaceLock.shared.enter() else { return }
+                router.paths[tab, default: NavigationPath()].append(AppDestination.jellyspace)
+            }
         } label: {
             // The original Liquid Glass logo (owner's choice): the mark in the theme's accent on glass.
             BrandMark().fill(theme.accent).frame(width: 22, height: 22).rotationEffect(.degrees(angle))

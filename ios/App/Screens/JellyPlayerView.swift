@@ -61,7 +61,7 @@ struct JellyPlayerView: View {
     @AppStorage(JellyPrefs.boostKey) private var volumeBoost = 0
     /// Subtitles' look (Settings → JellySpace → Subtitles), read as the player opens; the size can be
     /// changed in the player too (Advanced options).
-    @State private var subtitleLook = JellySubtitleLook.current
+    private var subtitleLook: JellySubtitleLook { get { heavy.subtitleLook } nonmutating set { heavy.subtitleLook = newValue } }
     /// Live subtitle translation (Advanced options → Translate).
     @StateObject private var translator = JellyTranslator()
     /// mpv's subtitle line now (translated, it's drawn by the player instead).
@@ -73,23 +73,23 @@ struct JellyPlayerView: View {
     /// GPU Enabled Zoom (Preferences → Picture): mpv's Fill on its GPU output, or instant on AVFoundation.
     @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
     /// The rating card (Netflix's): the rating and IMDb's warnings, a moment after a video starts.
-    @State private var ratingInfo: JellyRatingInfo?
+    private var ratingInfo: JellyRatingInfo? { get { heavy.ratingInfo } nonmutating set { heavy.ratingInfo = newValue } }
     @State private var showsRating = false
     @AppStorage(JellyPrefs.stillWatchingKey) private var stillWatchingAfter = 3
     /// Episodes started on their own in a row, with no touch between (for "Are you still watching?").
     @State private var autoplayStreak = 0
     /// The episode waiting behind "Are you still watching?".
-    @State private var stillWatching: JellyfinClient.Item?
-    @State private var current: JellyPlayback
+    private var stillWatching: JellyfinClient.Item? { get { heavy.stillWatching } nonmutating set { heavy.stillWatching = newValue } }
+    private var current: JellyPlayback { get { heavy.current } nonmutating set { heavy.current = newValue } }
     @State private var engine: AetherEngine?
     @State private var pip = JellyPiP()
     @State private var state: PlaybackState = .idle
     @State private var time: Double = 0
     /// The source time of the frame on screen: what subtitle cues are timed against.
     /// The file's details as fetched for the video playing, kept for a switch to the other engine.
-    @State private var loadedInfo: (id: String, info: JellyfinClient.PlayerInfo?)?
+    private var loadedInfo: (id: String, info: JellyfinClient.PlayerInfo?)? { get { heavy.loadedInfo } nonmutating set { heavy.loadedInfo = newValue } }
     /// The audio and subtitle language ("off": none) to pick on the other engine after a switch.
-    @State private var carriedTracks: (audio: String?, subtitle: String?, subtitleName: String)?
+    private var carriedTracks: (audio: String?, subtitle: String?, subtitleName: String)? { get { heavy.carriedTracks } nonmutating set { heavy.carriedTracks = newValue } }
     /// The clock the subtitles follow, ten times a second: only the subtitles read it, so its ticks
     /// don't redraw the player.
     @State private var subtitleClock = JellySubtitleClock()
@@ -112,7 +112,7 @@ struct JellyPlayerView: View {
     @State private var noticeID = 0
     @State private var userID: String?
     /// The next episode's file details and resume point, fetched during Up Next so it opens at once.
-    @State private var prefetch: JellyPrefetch?
+    private var prefetch: JellyPrefetch? { get { heavy.prefetch } nonmutating set { heavy.prefetch = newValue } }
     @State private var pickedSubtitle = false
     /// The file's own subtitles (or your languages) already put on while waiting for the one you
     /// picked last time, which may be a separate file mpv adds after the video opens.
@@ -137,12 +137,12 @@ struct JellyPlayerView: View {
     @State private var pickedAudio = false
     @State private var segments: [JellyfinClient.Segment] = []
     @State private var chapters: [JellyfinClient.PlayerInfo.Chapter] = []
-    @State private var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
+    private var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)? { get { heavy.trickplay } nonmutating set { heavy.trickplay = newValue } }
     @State private var thumbnail: UIImage?
     /// The one sheet of scrubbing thumbnails in use (each is a big picture, so only one is kept).
-    @State private var sheet: (index: Int, image: UIImage)?
+    private var sheet: (index: Int, image: UIImage)? { get { heavy.sheet } nonmutating set { heavy.sheet = newValue } }
     /// The next episode beyond this season (the first of the next one).
-    @State private var following: JellyfinClient.Item?
+    private var following: JellyfinClient.Item? { get { heavy.following } nonmutating set { heavy.following = newValue } }
     @State private var countdownTask: Task<Void, Never>?
     @State private var subtitleDelay: Double = 0
     @State private var audioDelay: Double = 0
@@ -180,7 +180,7 @@ struct JellyPlayerView: View {
     @State private var menuItems = 0
     /// What an open menu shows, kept as it was when it opened: the track lists are published again as
     /// the video plays, and a menu redrawn while open jumped back to its top under your finger.
-    @State private var openMenus: JellyMenuState?
+    private var openMenus: JellyMenuState? { get { heavy.openMenus } nonmutating set { heavy.openMenus = newValue } }
     private var menuOpen: Bool { menuItems > 0 }
     /// The sleep timer's choice in its menu: -1 off, 0 the end of this video, else minutes.
     @State private var sleepChoice = -1
@@ -229,8 +229,13 @@ struct JellyPlayerView: View {
     @State private var refresh = JellyRefreshRate()
     @Environment(\.scenePhase) private var scenePhase
 
+    /// The player's larger values (a whole Jellyfin item is hundreds of bytes, and there were several),
+    /// kept out of the view's own storage: SwiftUI copies the view as it draws (each menu action took a
+    /// copy), and with them inside, the copies ran past the main thread's stack: a crash on opening a
+    /// video. The names above read and write them here.
+    @State private var heavy: JellyPlayerStore
     init(playback: JellyPlayback) {
-        _current = State(initialValue: playback)
+        _heavy = State(initialValue: JellyPlayerStore(current: playback))
         _usesMPV = State(initialValue: JellyMPVChoice.isOn(playback.id))
         _showFill = State(initialValue: Self.savedFill(playback.item))
     }
@@ -2690,6 +2695,22 @@ private struct JellyAirPlayButton: UIViewRepresentable {
 /// redraw only the subtitles.
 @MainActor @Observable final class JellySubtitleClock {
     var time: Double = 0
+}
+
+/// The player's larger values (see JellyPlayerView.heavy).
+@MainActor @Observable fileprivate final class JellyPlayerStore {
+    var current: JellyPlayback
+    var subtitleLook = JellySubtitleLook.current
+    var ratingInfo: JellyRatingInfo?
+    var stillWatching: JellyfinClient.Item?
+    var following: JellyfinClient.Item?
+    var loadedInfo: (id: String, info: JellyfinClient.PlayerInfo?)?
+    var carriedTracks: (audio: String?, subtitle: String?, subtitleName: String)?
+    var prefetch: JellyPrefetch?
+    var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
+    var sheet: (index: Int, image: UIImage)?
+    var openMenus: JellyMenuState?
+    init(current: JellyPlayback) { self.current = current }
 }
 
 /// The next episode's details, fetched ahead during Up Next.
