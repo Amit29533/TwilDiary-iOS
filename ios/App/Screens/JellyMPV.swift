@@ -678,8 +678,12 @@ final class JellyMPVStream: @unchecked Sendable {
     private var position: Int64 = 0
     /// The file's length (-1 until the server has said).
     private(set) var length: Int64 = -1
-    private var buffer = Data()
-    private var bufferStart: Int64 = 0
+    /// The pieces fetched last, most recently read last. One piece at a time wasn't enough: in a file
+    /// whose audio and video lie far apart, mpv reads from two places in turn, and every turn fetched
+    /// 4 MB again for a few kilobytes: the video never started (nothing loaded ahead on the bar)
+    /// while AetherEngine, reading its own way, played it. Eight pieces (32 MB) hold both places.
+    private var pieces: [(start: Int64, data: Data)] = []
+    private static let keptPieces = 8
     private let lock = NSLock()
     private var task: URLSessionDataTask?
     private var cancelled = false
@@ -687,18 +691,25 @@ final class JellyMPVStream: @unchecked Sendable {
     /// Opens it with its first piece (which also gives its length); nil when the server won't serve it.
     init?(url: URL) {
         self.url = url
-        guard fill(at: 0) else { return nil }
+        guard let first = fetch(from: 0) else { return nil }
+        if !first.isEmpty { pieces = [(0, first)] }
     }
 
     func read(into out: UnsafeMutablePointer<CChar>, count: UInt64) -> Int64 {
         if length >= 0, position >= length { return 0 }
-        if position < bufferStart || position >= bufferStart + Int64(buffer.count) {
-            guard fill(at: position) else { return -1 }
-            if buffer.isEmpty { return 0 }
+        let piece: (start: Int64, data: Data)
+        if let at = pieces.firstIndex(where: { position >= $0.start && position < $0.start + Int64($0.data.count) }) {
+            piece = pieces.remove(at: at)
+        } else {
+            guard let data = fetch(from: position) else { return -1 }
+            if data.isEmpty { return 0 }
+            piece = (position, data)
         }
-        let offset = Int(position - bufferStart)
-        let taken = min(Int(min(count, UInt64(Int.max))), buffer.count - offset)
-        buffer.withUnsafeBytes { bytes in
+        pieces.append(piece)
+        if pieces.count > Self.keptPieces { pieces.removeFirst() }
+        let offset = Int(position - piece.start)
+        let taken = min(Int(min(count, UInt64(Int.max))), piece.data.count - offset)
+        piece.data.withUnsafeBytes { bytes in
             if let base = bytes.baseAddress { memcpy(out, base + offset, taken) }
         }
         position += Int64(taken)
@@ -719,12 +730,12 @@ final class JellyMPVStream: @unchecked Sendable {
         running?.cancel()
     }
 
-    /// The piece starting here.
-    private func fill(at start: Int64) -> Bool {
+    /// The piece starting here (empty past the end); nil when it couldn't be had.
+    private func fetch(from start: Int64) -> Data? {
         lock.lock()
         let stop = cancelled
         lock.unlock()
-        if stop { return false }
+        if stop { return nil }
         var request = URLRequest(url: url)
         request.setValue("bytes=\(start)-\(start + Self.chunk - 1)", forHTTPHeaderField: "Range")
         let done = DispatchSemaphore(value: 0)
@@ -740,15 +751,13 @@ final class JellyMPVStream: @unchecked Sendable {
         lock.lock(); self.task = nil; lock.unlock()
         // Only a range answer: a server sending the whole file at once would fill the memory.
         guard let response = result.response, response.statusCode == 206, let data = result.data else {
-            if let response = result.response, response.statusCode == 416 { buffer = Data(); bufferStart = start; return true }
-            return false
+            if let response = result.response, response.statusCode == 416 { return Data() }
+            return nil
         }
         if let range = response.value(forHTTPHeaderField: "Content-Range"), let total = range.split(separator: "/").last.flatMap({ Int64($0) }) {
             length = total
         }
-        buffer = data
-        bufferStart = start
-        return true
+        return data
     }
 }
 
