@@ -157,7 +157,10 @@ private struct JellyMPVHandle: @unchecked Sendable {
             ("sub-auto", "no"), ("subs-fallback", "yes"), ("audio-display", "no"),
             // 150 MB ahead (20 seconds of most files, a 4K remux's few); 25 MB behind, not mpv's 50: a
             // few seconds back stays instant, and less memory is held (as Yattee keeps it).
-            ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-max-back-bytes", "25MiB"), ("demuxer-readahead-secs", "20"),
+            ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-max-back-bytes", "25MiB"),
+            // In bursts: a minute ahead, then nothing read until 20 seconds are left, so the Wi-Fi radio
+            // can rest between (it trickled all the time). The 150 MB cap still bounds a large file.
+            ("demuxer-readahead-secs", "60"), ("demuxer-hysteresis-secs", "20"),
             // Behind, frames are dropped at the decoder first (lighter), then at the output.
             ("framedrop", "decoder+vo"),
             // On the GPU (smooth motion), lighter drawing than mpv's defaults, which are made for a

@@ -484,7 +484,8 @@ struct JellyPlayerView: View {
         let surface = AetherPlayerSurface(engine: engine)
             .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
             .onReceive(engine.clock.$currentTime) { seconds in tick(seconds) }
-            .onReceive(engine.clock.$sourceTime) { subtitleClock.time = $0 }
+            // The subtitles' clock only while some show (it redrew them ten times a second for nothing).
+            .onReceive(engine.clock.$sourceTime) { seconds in if activeSubtitle != nil { subtitleClock.time = seconds } }
             .onReceive(engine.$duration) { duration = $0 }
             .onReceive(engine.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(engine.$subtitleTracks) { tracks in
@@ -527,7 +528,9 @@ struct JellyPlayerView: View {
         JellyMPVSurface(player: mpv, smooth: activeSmooth, gpu: mpvOnGPU, fill: fill)
             .id(mpvRun)
             .onReceive(mpv.$state) { state = $0 }
-            .onReceive(mpv.$time) { seconds in subtitleClock.time = seconds; tick(seconds) }
+            // mpv draws its own subtitles (and the app's, translated or filled, follow its line), so the
+            // player's subtitle clock isn't needed here.
+            .onReceive(mpv.$time) { seconds in tick(seconds) }
             .onReceive(mpv.$duration) { duration = $0 }
             .onReceive(mpv.$buffering) { buffering = $0 }
             .onReceive(mpv.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
@@ -926,6 +929,9 @@ struct JellyPlayerView: View {
             // first frame. The fonts come from Jellyfin instead (JellyASSFonts, fetched alongside and
             // kept), so the file opens without them: a quicker start and less memory (as Swiftly does).
             options.skipsContainerAttachments = true
+            // The scrub bar's pictures come from Jellyfin's trickplay: AetherEngine's own (a second
+            // reader downloading and decoding frames in the background) went unused.
+            options.generatesBackgroundScrubPreviews = false
             // Audio in your language from the first frame, chosen as mpv's is (carried over from the
             // other player, else what you picked in this show or anywhere, then Preferences). Picked
             // after the load instead, AetherEngine reloads the video to switch (a re-buffer at the start).
