@@ -276,13 +276,14 @@ private struct JellyMPVHandle: @unchecked Sendable {
         Self.log.notice("stop: handle \(self.handle != nil), pending \(self.pending != nil)")
         pending = nil
         loaded = false
-        let raw = handle?.raw
+        let stopping = handle
         handle = nil
         layerWatch?.invalidate()
         layerWatch = nil
         sampleLayer = nil
         updateState()
-        if let raw { mpv_command_string(raw, "quit") }
+        // After everything already sent (the same queue); the event thread frees mpv once it has quit.
+        if let stopping { Self.calls.async { mpv_command_string(stopping.raw, "quit") } }
     }
 
     func play() { set("pause", "no") }
@@ -410,11 +411,12 @@ private struct JellyMPVHandle: @unchecked Sendable {
         }
     }
     private func applyTextWatch() {
-        guard let raw = handle?.raw else { return }
+        guard let handle else { return }
+        let watch = Self.textWatch
         if watchesText {
-            mpv_observe_property(raw, Self.textWatch, "sub-text", MPV_FORMAT_STRING)
+            Self.calls.async { mpv_observe_property(handle.raw, watch, "sub-text", MPV_FORMAT_STRING) }
         } else {
-            mpv_unobserve_property(raw, Self.textWatch)
+            Self.calls.async { _ = mpv_unobserve_property(handle.raw, watch) }
             if !subtitleText.isEmpty { subtitleText = "" }
         }
     }
@@ -464,16 +466,24 @@ private struct JellyMPVHandle: @unchecked Sendable {
                 ("interpolation", whole ? "no" : "yes"), ("tscale", "oversample")]
     }
 
+    /// Every call into a running mpv goes through this queue, in order and off the main thread, as
+    /// Streamyfin's player sends them. mpv's AVFoundation output sets its layer up on the main thread
+    /// as a video starts; a call made from the main thread at that moment waited on mpv while mpv
+    /// waited on the main thread: the player froze on its spinner (now and then, at 0% CPU).
+    nonisolated private static let calls = DispatchQueue(label: "twildiary.jellyspace.mpv", qos: .userInitiated)
+
     private func set(_ name: String, _ value: String) {
-        guard let raw = handle?.raw else { return }
-        mpv_set_property_string(raw, name, value)
+        guard let handle else { return }
+        Self.calls.async { mpv_set_property_string(handle.raw, name, value) }
     }
 
     private func command(_ args: [String]) {
-        guard let raw = handle?.raw else { return }
-        var cargs: [UnsafePointer<CChar>?] = args.map { UnsafePointer(strdup($0)) } + [nil]
-        defer { for pointer in cargs { free(UnsafeMutablePointer(mutating: pointer)) } }
-        mpv_command(raw, &cargs)
+        guard let handle else { return }
+        Self.calls.async {
+            var cargs: [UnsafePointer<CChar>?] = args.map { UnsafePointer(strdup($0)) } + [nil]
+            defer { for pointer in cargs { free(UnsafeMutablePointer(mutating: pointer)) } }
+            mpv_command(handle.raw, &cargs)
+        }
     }
 
     private func updateState() {

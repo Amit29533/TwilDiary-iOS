@@ -2,7 +2,7 @@
 # Plays the performance video in the simulator and measures the app while it plays with the controls
 # hidden (how a film is watched), over 45 seconds:
 #   CPU: the CPU time it used, and its share sampled once a second;
-#   GPU: its own GPU time (powermetrics, per process) and how busy the Mac's GPU was;
+#   (GPU isn't measured: powermetrics reports none on the Namespace runners, which are virtual Macs);
 #   energy: macOS's energy impact for the process (the number Activity Monitor shows);
 #   memory: its peak resident memory;
 #   disk: what it wrote (logical writes, what iOS's disk-writes report counts).
@@ -34,10 +34,10 @@ fields = list(buffer)[2:]
 print(f"{fields[27]} {fields[17]}" if ok else "0 0")
 PY
 }
-# GPU and energy for the same 45 seconds (powermetrics needs root: left out without it).
+# Energy impact for the same 45 seconds (powermetrics needs root: left out without it).
 power="$OUT/$file.power.plist"
 rm -f "$power"
-sudo -n powermetrics -i 1000 -n 45 --samplers tasks,gpu_power --show-process-gpu --show-process-energy -f plist -o "$power" >/dev/null 2>&1 &
+sudo -n powermetrics -i 1000 -n 45 --samplers tasks --show-process-energy -f plist -o "$power" >/dev/null 2>&1 &
 powerpid=$!
 before=$(seconds "$pid"); started=$(date +%s); writtenBefore=$(writes "$pid")
 : > "$OUT/$file.samples"
@@ -54,7 +54,7 @@ import plistlib, statistics, sys
 path, label, before, after, started, ended, pid, power, written_before, written_after = sys.argv[1:11]
 rows = [line.split() for line in open(path) if line.strip()]
 if len(rows) < 10:
-    print(f"| {label} | the app quit after {len(rows)} s | | | | | | | |")
+    print(f"| {label} | the app quit after {len(rows)} s | | | | | |")
     raise SystemExit
 cpu = [float(row[0]) for row in rows]
 memory = max(int(row[1]) for row in rows) / 1024
@@ -63,7 +63,7 @@ used = float(after) - float(before)
 logical = (int(written_after.split()[0]) - int(written_before.split()[0])) / wall / 1024
 
 # powermetrics: one plist per sample, separated by NUL bytes.
-app_gpu, mac_gpu, energy = [], [], []
+energy = []
 try:
     data = open(power, 'rb').read()
 except OSError:
@@ -78,20 +78,15 @@ for chunk in data.split(b'\0'):
         continue
     for task in sample.get('tasks', []):
         if str(task.get('pid')) == pid or task.get('name') == 'TwilDiary':
-            if 'gputime_ms_per_s' in task:
-                app_gpu.append(float(task['gputime_ms_per_s']) / 10)  # ms per second -> % of one GPU
             if 'energy_impact' in task:
                 energy.append(float(task['energy_impact']))
             break
-    gpu = sample.get('gpu', {})
-    if 'idle_ratio' in gpu:
-        mac_gpu.append((1 - float(gpu['idle_ratio'])) * 100)
 
 def mean(values, fmt):
     return fmt.format(statistics.mean(values)) if values else 'n/a'
 
 print(f"| {label} | {100 * used / wall:.1f}% | {statistics.median(cpu):.1f}% | {max(cpu):.1f}% "
-      f"| {mean(app_gpu, '{:.1f}%')} | {mean(mac_gpu, '{:.0f}%')} | {mean(energy, '{:.1f}')} "
+      f"| {mean(energy, '{:.1f}')} "
       f"| {memory:.0f} MB | {logical:.0f} KB/s |")
 PY
 tail -1 "$OUT/results.md"
