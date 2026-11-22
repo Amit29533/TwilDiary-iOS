@@ -145,7 +145,7 @@ struct APIsView: View {
     /// "Ready", "2 of 3 ready", or "Resting until 17:05 · daily limit" when nothing can answer now.
     @ViewBuilder private func healthBadge(_ health: SemanticSearch.Health, keys: Int) -> some View {
         if health.total > 0, health.ready == 0, let back = health.back {
-            HStack(spacing: 5) { Circle().fill(Color(themed: "#f5c26b")).frame(width: 6, height: 6); Text("Back " + back.formatted(date: .omitted, time: .shortened) + (health.why.map { " · " + $0 } ?? "")) }
+            HStack(spacing: 5) { Circle().fill(Color(themed: "#f5c26b")).frame(width: 6, height: 6); Text("Back " + back.diaryTime() + (health.why.map { " · " + $0 } ?? "")) }
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).lineLimit(1)
         } else if health.ready < health.total {
             status(true, "\(health.ready) of \(health.total) ready")

@@ -125,7 +125,7 @@ struct SettingsView: View {
                 }.buttonStyle(.plain).toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).padding(.bottom, 24)
             }.refreshable { await store.refresh() }
         }
-        .alert(TraktDirectStore.shared.pending.count > 0 ? "Sign out? Edits still waiting for Trakt on this device will be removed." : "Sign out on this device?", isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
+        .alert(signOutTitle, isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
             .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
             .fileImporter(isPresented: $showImport, allowedContentTypes: [.json]) { result in
                 switch result {
@@ -153,6 +153,12 @@ struct SettingsView: View {
                     store.error = error.localizedDescription
                 }
             }
+    }
+    /// Signing out drops the edits not sent yet, whichever service they're for.
+    private var signOutTitle: String {
+        let waiting = store.servicesWithWaitingEdits
+        return waiting.isEmpty ? "Sign out on this device?"
+            : "Sign out? Edits still waiting for \(waiting.formatted(.list(type: .and))) on this device will be removed."
     }
     /// With no server sign-in, the diary is the service's: reading it, sending your edits, or synced.
     private var phoneDiaryState: String {
@@ -879,7 +885,7 @@ struct ExternalProviderConnectionView: View {
         return SettingsServiceHeader(logo: brand, title: displayName, subtitle: currentConfig.username.map { "@" + $0 } ?? "",
                                      badge: (badge, tone)) {
             if let lastSync = currentConfig.lastSyncedAt, let date = DiaryDate.parse(lastSync) {
-                Text("Last sent \(date.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                Text("Last sent \(date.diaryTime(date: .abbreviated))").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
             }
         }.accessibilityIdentifier("\(provider.rawValue)-status-badge")
     }

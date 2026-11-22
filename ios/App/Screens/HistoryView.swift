@@ -178,7 +178,7 @@ struct HistoryDayRow: View {
                     if model.isRewatch { Text("Rewatched").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }
                 }.lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            if let date = model.date { Text(date.formatted(date: .omitted, time: .shortened)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+            if let date = model.date { Text(date.diaryTime()).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
         }.padding(.horizontal, 12).padding(.vertical, 10).contentShape(Rectangle())
             .accessibilityElement(children: .combine).accessibilityLabel(model.accessibilityLabel)
     }

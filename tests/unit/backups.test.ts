@@ -43,3 +43,15 @@ test('backups are gzip round-trips and keep only the newest twenty', async () =>
   await assert.rejects(saveBackup(db, { diary: { titles: 'no' } }), /titles and watches/);
   await assert.rejects(saveBackup(db, []), /JSON object/);
 });
+
+test('a backup keeps what the phone holds itself', async () => {
+  const { db, writes } = fakeDb();
+  const phone = { entries: { 'tv:1399': { tags: ['comfy'] } }, locations: [], settings: 'YnBsaXN0' };
+  await saveBackup(db, { diary: { titles: [], events: [] }, phone });
+  const stored = JSON.parse(await gunzip(writes[0]!.values[6] as Uint8Array));
+  assert.deepEqual(stored.phone, phone);
+
+  await saveBackup(db, { diary: { titles: [], events: [] } });
+  const without = JSON.parse(await gunzip(writes[2]!.values[6] as Uint8Array));
+  assert.equal('phone' in without, false);
+});

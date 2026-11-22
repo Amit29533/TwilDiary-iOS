@@ -33,6 +33,8 @@ enum JellyPrefs {
     static let swipeLevelsKey = "jellyspace.gesture.levels"
     static let holdKey = "jellyspace.gesture.hold"
     static let seerrAddressKey = "jellyspace.seerr.address"
+    /// Whether Jellyseerr answered when its address and key were last saved.
+    static let seerrOnKey = "jellyspace.seerr.on"
     static let fillKey = "jellyspace.fill"
     /// JellySpace behind Face ID (Preferences → Privacy), and the seconds away before it locks again.
     static let faceLockKey = "jellyspace.faceLock"
@@ -290,6 +292,8 @@ enum JellySecrets {
         JellySpace.resetKey()
     }
     static func signOut() {
+        // The server's side too: the token stayed good there.
+        if let base = JellyfinSettings.address, let token { Task.detached { await JellyAuth.signOut(base, token: token) } }
         for key in [userKey, nameKey, serverKey] { UserDefaults.standard.removeObject(forKey: key) }
         JellySecrets.write("user-token", nil)
         cachedToken = nil
@@ -363,6 +367,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
 struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
+    @AppStorage(JellyPrefs.seerrOnKey) private var seerrOn = true
     @AppStorage(JellyPrefs.engineKey) private var engine = JellyDecoder.auto.rawValue
     @State private var libraries: [JellyfinLibrary] = JellySettingsLibraries.cached
     @State private var profiles: [JellyfinClient.Profile] = []
@@ -399,7 +404,7 @@ struct JellySpaceSettingsView: View {
                     JellySettingsLink(page: .gestures)
                 }
                 SettingsGroup(label: "More") {
-                    JellySettingsLink(page: .requests, value: seerrAddress.isEmpty ? "Off" : "On")
+                    JellySettingsLink(page: .requests, value: seerrAddress.isEmpty ? "Off" : seerrOn ? "On" : "Not connected")
                     SettingsDivider()
                     JellySettingsLink(page: .musicDiary)
                 }
@@ -408,6 +413,9 @@ struct JellySpaceSettingsView: View {
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
         }
         .diaryScreenBackground().diaryPageNavigation("JellySpace")
+        // Behind the lock as JellySpace's own pages are: these name what you've hidden, and turn it off.
+        .jellyFaceLock()
+        .jellyPage()
         .task {
             signedIn = JellyAccount.userName
             await load()
@@ -475,6 +483,8 @@ struct JellySettingsPageView: View {
                 pageScroll(hiddenItems)
             }
         }
+        .jellyFaceLock()
+        .jellyPage()
         .task {
             guard page == .home || page == .libraries else { return }
             let found = await JellySettingsLibraries.load()
@@ -738,8 +748,8 @@ private struct JellyPrivacyGroup: View {
         SettingsGroup(label: "Privacy") {
             JellySettingsRows.toggle("Face ID lock", Binding(get: { on }, set: { value in
                 // Turned on here, it starts unlocked: it locks the next time the app is away.
-                if value { JellyFaceLock.shared.turnedOn() }
-                on = value
+                if value { JellyFaceLock.shared.turnedOn(); on = true; return }
+                Task { if await JellyFaceLock.shared.confirm("Turn off the Face ID lock") { on = false } }
             }), accent: theme.accent)
             if on {
                 SettingsDivider()
@@ -1077,7 +1087,7 @@ struct JellyEnginesGroups: View {
                 SettingsDivider()
                 JellySettingsRows.toggle("Subtitles in the picture", $composite, accent: accent)
             }
-            JellyDecoderNote(text: "Super resolution and smooth motion pause while the phone is hot or in Low Power Mode. GPU Enabled Zoom: Fill keeps styled subtitles as made, with a second of black as you switch; off (as it starts), Fill is instant and cooler. Original always uses the GPU. Subtitles in the picture: they show in Picture in Picture too; off, they're drawn over it.")
+            JellyDecoderNote(text: "Super resolution and smooth motion pause while the phone is hot or in Low Power Mode. GPU Enabled Zoom: Fill keeps styled subtitles as made, with a second of black as you switch; off (as it starts), Fill is instant and cooler. Original always uses the GPU. Subtitles in the picture: mpv draws them into each frame; off, they're drawn over it.")
             SettingsGroup(label: "Videos") {
                 Button(role: .destructive) {
                     JellyMPVChoice.forgetAll()
@@ -1142,7 +1152,11 @@ private struct JellyMusicDiaryGroups: View {
 /// Its own view: a letter typed in the address redraws these few rows, not the page.
 private struct JellyRequestsGroup: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
+    @AppStorage(JellyPrefs.seerrAddressKey) private var savedAddress = ""
+    @AppStorage(JellyPrefs.seerrOnKey) private var seerrOn = true
+    /// The address as typed: kept only when saved, with its key. Kept as it was typed, a search meanwhile
+    /// sent the key to whatever the half-typed address named.
+    @State private var seerrAddress = ""
     /// Read from the Keychain once the group is up.
     @State private var seerrKey = ""
     @State private var seerrNotice: String?
@@ -1162,16 +1176,32 @@ private struct JellyRequestsGroup: View {
             }
             if let seerrNotice { Text(seerrNotice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
         }
-        .task { if seerrKey.isEmpty { seerrKey = JellySecrets.read("seerr-key") ?? "" } }
+        .task {
+            if seerrAddress.isEmpty { seerrAddress = savedAddress }
+            if seerrKey.isEmpty { seerrKey = JellySecrets.read("seerr-key") ?? "" }
+        }
     }
     private func saveSeerr() async {
-        JellySecrets.write("seerr-key", seerrKey.trimmingCharacters(in: .whitespacesAndNewlines))
-        guard let seerr = JellySpace.seerr else { seerrNotice = seerrAddress.isEmpty ? "Removed" : "Check the address"; return }
+        let address = seerrAddress.trimmingCharacters(in: .whitespacesAndNewlines), key = seerrKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        // No address: removed, its key with it (which stayed in the Keychain).
+        guard !address.isEmpty else {
+            JellySecrets.write("seerr-key", nil)
+            savedAddress = ""; seerrKey = ""; seerrOn = true
+            seerrNotice = "Removed"
+            return
+        }
+        guard JellyfinSettings.normalized(address) != nil else { seerrNotice = "Check the address"; return }
+        guard !key.isEmpty else { seerrNotice = "Enter the API key"; return }
+        savedAddress = address
+        JellySecrets.write("seerr-key", key)
+        guard let seerr = JellySpace.seerr else { seerrNotice = "Check the address"; return }
         seerrNotice = "Checking…"
         do {
             try await seerr.check()
+            seerrOn = true
             seerrNotice = "Connected"
         } catch {
+            seerrOn = false
             seerrNotice = error.localizedDescription
         }
     }

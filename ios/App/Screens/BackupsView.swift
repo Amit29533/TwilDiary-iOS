@@ -108,7 +108,7 @@ struct BackupsView: View {
         }.padding(.horizontal, 15).padding(.vertical, 14).frame(minHeight: 84)
     }
     private func date(_ backup: Summary) -> String {
-        DiaryDate.parse(backup.createdAt)?.formatted(date: .abbreviated, time: .shortened) ?? backup.createdAt
+        DiaryDate.parse(backup.createdAt)?.diaryTime(date: .abbreviated) ?? backup.createdAt
     }
 
     private func load() async {

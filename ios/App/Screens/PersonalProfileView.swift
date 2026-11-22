@@ -743,7 +743,7 @@ struct OnThisDayView: View {
             "S\(episode.season) · E\(episode.number)" + (episode.name.isEmpty || episode.name.hasPrefix("Episode ") ? "" : " · " + episode.name)
         } ?? [entry.title.categoryName, entry.title.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
         let meta = [entry.title.runtimeMinutes.flatMap { $0 > 0 ? DiaryDate.duration($0) : nil },
-                    watched.map { $0.formatted(date: .omitted, time: .shortened) }].compactMap { $0 }.joined(separator: " · ")
+                    watched.map { $0.diaryTime() }].compactMap { $0 }.joined(separator: " · ")
         return HStack(spacing: 14) {
             Color.clear.frame(width: 106, height: 60)
                 .overlay { Artwork(path: entry.title.backdrop ?? entry.title.poster, title: entry.title.name, initialsOnly: false) }

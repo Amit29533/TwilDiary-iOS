@@ -326,7 +326,7 @@ struct ConnectionsView: View {
         mainTracker = tracker.rawValue
         note = "\(tracker.name) holds your diary now."
         guard !store.isPreview else { return }
-        store.diarySource = tracker.rawValue
+        store.keepDiary(on: tracker)
     }
     private func check(_ tracker: MainTracker) async {
         note = nil

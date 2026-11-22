@@ -42,7 +42,11 @@ export const gzip = (text: string) =>
 export const gunzip = async (data: Uint8Array) =>
   new TextDecoder().decode(await pipe(data, new DecompressionStream('gzip')));
 
-/** Saves a snapshot `{ label, diary, trakt }` and keeps only the newest BACKUP_LIMIT. */
+/**
+ * Saves a snapshot `{ label, diary, trakt, phone }` and keeps only the newest BACKUP_LIMIT. `phone` is
+ * what the app keeps itself (tags, Queue, notes, favourite people, Trash, settings): the app sent it and
+ * reads it back, and it was left out of what was stored.
+ */
 export async function saveBackup(
   db: D1Database,
   input: unknown,
@@ -50,7 +54,7 @@ export async function saveBackup(
 ): Promise<BackupSummary> {
   if (!input || typeof input !== 'object' || Array.isArray(input))
     throw new ApiError(400, 'invalid_backup', 'Send the backup as a JSON object.');
-  const value = input as { label?: unknown; diary?: unknown; trakt?: unknown };
+  const value = input as { label?: unknown; diary?: unknown; trakt?: unknown; phone?: unknown };
   const diary = value.diary as { titles?: unknown[]; events?: unknown[] } | undefined;
   if (
     !diary ||
@@ -64,7 +68,13 @@ export async function saveBackup(
       ? value.label.trim().slice(0, 80)
       : 'Manual backup';
   const body = await gzip(
-    JSON.stringify({ version: 1, label, diary: value.diary, trakt: value.trakt ?? null })
+    JSON.stringify({
+      version: 1,
+      label,
+      diary: value.diary,
+      trakt: value.trakt ?? null,
+      ...(value.phone ? { phone: value.phone } : {})
+    })
   );
   if (body.byteLength > MAX_STORED_BYTES)
     throw new ApiError(413, 'too_large', 'This backup is too large to keep on the free plan.');

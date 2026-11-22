@@ -204,7 +204,7 @@ struct EpisodeInfoSheet: View {
         } label: {
             HStack(spacing: 8) {
                 DiaryIcon(name: "history", size: 17)
-                Text([history.latest.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Date unknown", history.plays.counted("play", "plays")].joined(separator: " · "))
+                Text([history.latest.map { $0.diaryTime(date: .abbreviated) } ?? "Date unknown", history.plays.counted("play", "plays")].joined(separator: " · "))
                 DiaryIcon(name: "chevron-right", size: 13)
             }.font(.system(size: 14)).foregroundStyle(HomeStyle.dateChipText).frame(maxWidth: .infinity).frame(minHeight: 44)
         }.buttonStyle(.plain).accessibilityIdentifier("episode-sheet-history")

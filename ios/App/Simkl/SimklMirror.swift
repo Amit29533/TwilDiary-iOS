@@ -1089,7 +1089,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
         if !SimklAccount.shared.saving { return (count + " · paused: turn on “Also save my activity to Simkl” to send", true) }
         if sending { return ("Sending · " + count, false) }
         if let wake = queue.nextWake, wake.timeIntervalSinceNow > 60 {
-            let time = wake.formatted(date: .omitted, time: .shortened)
+            let time = wake.diaryTime()
             let quota = ProviderQuota.daily(host: SimklAPI.quotaHost)
             let limit = SimklUsage.today().limitReachedAt != nil || (quota.map { $0.used >= $0.limit } ?? false)
             return (count + (limit ? " · paused: Simkl’s daily limit is used up · resumes \(time)" : " · next try \(time)"), true)

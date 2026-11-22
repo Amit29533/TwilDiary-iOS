@@ -26,12 +26,14 @@ import TwilDiaryCore
         var purged: Bool?
         var isEmpty: Bool { (tags ?? []).isEmpty && queued != true && (notes ?? "").isEmpty && status == nil && favorite == nil }
     }
-    /// What a backup carries for the phone: these, favourite people and the phone's Trash.
+    /// What a backup carries for the phone: these, favourite people, the phone's Trash and the app's
+    /// settings.
     struct Backup: Codable, Sendable {
         var entries: [String: Entry]
         var locations: [FileLocation]
         var favourites: [Favourite]?
         var trash: [MediaTitle]?
+        var settings: Data?
     }
     private struct Saved: Codable {
         var entries: [String: Entry]
@@ -142,7 +144,8 @@ import TwilDiaryCore
     }
 
     var backup: Backup {
-        Backup(entries: entries, locations: locations, favourites: FavouritesStore.shared.items, trash: PhoneTrash.shared.titles)
+        Backup(entries: entries, locations: locations, favourites: FavouritesStore.shared.items, trash: PhoneTrash.shared.titles,
+               settings: SettingsBackup.data())
     }
     /// A backup's phone extras come back, merging (what's on the phone now wins). An older backup
     /// (or your server's) carries them on its titles instead: tags, Queue, long notes and statuses.
@@ -169,6 +172,7 @@ import TwilDiaryCore
         save()
         if let favourites = backup?.favourites { FavouritesStore.shared.merge(favourites) }
         if let trash = backup?.trash { PhoneTrash.shared.merge(trash) }
+        SettingsBackup.restore(backup?.settings)
     }
 
     /// The extras as the record TraktDiary.build lays the service's diary over (in place of the

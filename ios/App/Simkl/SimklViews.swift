@@ -20,7 +20,7 @@ struct SimklSettingsView: View {
         let today = ProviderQuota.daily(host: SimklAPI.quotaHost).map { "\($0.used.formatted()) of \($0.limit.formatted()) today" }
             ?? "\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") today"
         if let wake = mirror.queue.nextWake, wake.timeIntervalSinceNow > 600 {
-            return (usage.limitReachedAt != nil ? "Daily limit reached · resumes " : "Paused until ") + wake.formatted(date: .omitted, time: .shortened) + " · " + today
+            return (usage.limitReachedAt != nil ? "Daily limit reached · resumes " : "Paused until ") + wake.diaryTime() + " · " + today
         }
         return today
     }

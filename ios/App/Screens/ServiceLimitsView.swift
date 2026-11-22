@@ -181,7 +181,7 @@ struct ServiceLimitsView: View {
         let quota = ProviderQuota.daily(host: SimklAPI.quotaHost)
         let waiting = SimklMirror.shared.queue.jobs.count
         let resets = quota?.resetsAt ?? Date().addingTimeInterval(SimklAPI.untilTomorrow())
-        let time = resets.formatted(date: .omitted, time: .shortened)
+        let time = resets.diaryTime()
         let reached = usage.limitReachedAt != nil || (quota.map { $0.used >= $0.limit } ?? false)
         return SettingsGroup(label: "Daily requests", info: dailyNote) {
             VStack(alignment: .leading, spacing: 8) {

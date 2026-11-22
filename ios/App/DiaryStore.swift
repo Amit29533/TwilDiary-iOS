@@ -260,6 +260,8 @@ import TwilDiaryCore
                 phoneOnly = true; needsSignIn = false; hasLoadedWorkspace = true
                 loadPhoneOutbox()
                 if diarySource != tracker.rawValue { UserDefaults.standard.set(tracker.rawValue, forKey: Self.diarySourceKey); diarySource = tracker.rawValue }
+                // Connections ticks the service the diary really comes from.
+                UserDefaults.standard.set(tracker.rawValue, forKey: MainTrackerView.key)
                 applyDiarySource()
             }
         }
@@ -316,6 +318,25 @@ import TwilDiaryCore
         needsSignIn = false
         await readService()
     }
+    /// Make main tracker: the diary comes from this service from now on, the next time the app opens
+    /// too. Only the diary on screen changed before: the next launch went back to the service first
+    /// signed in with (its edits with it), while Connections still ticked this one.
+    func keepDiary(on tracker: MainTracker) {
+        // From "On this phone": its diary stays in its own file, and the service's shows.
+        if TraktDirectStore.shared.localOnly { TraktDirectStore.shared.useLocal(false) }
+        if phoneOnly { UserDefaults.standard.set(tracker.rawValue, forKey: Self.phoneOnlyKey) }
+        UserDefaults.standard.set(tracker.rawValue, forKey: MainTrackerView.key)
+        diarySource = tracker.rawValue
+    }
+    /// The services with edits still waiting on this phone, which signing out drops.
+    var servicesWithWaitingEdits: [String] {
+        var names: [String] = []
+        func add(_ name: String) { if !names.contains(name) { names.append(name) } }
+        if !TraktDirectStore.shared.pending.isEmpty { add(MainTracker.trakt.name) }
+        for (tracker, writes) in TrackerPreviewStore.shared.pending.sorted(by: { $0.key.rawValue < $1.key.rawValue }) where !writes.isEmpty { add(tracker.name) }
+        for provider in SyncProviderKind.allCases where provider != .cloudflare && !outbox.pending(for: provider).isEmpty { add(provider.displayName) }
+        return names
+    }
     /// Phone-only: reads the service the diary comes from.
     private func readService() async {
         if let tracker = diaryFromTracker { await TrackerPreviewStore.shared.check(tracker, store: self) }
@@ -345,6 +366,8 @@ import TwilDiaryCore
         }
         BackgroundSyncCoordinator.shared.endLiveActivity()
         BackgroundSyncCoordinator.shared.endBackgroundExecution()
+        // This diary's alerts go with it (they kept coming); signing in again sets them again.
+        Task { await EpisodeNotifications.clear(); await ReleaseAlerts.clear() }
         sessionGeneration = UUID(); snapshotGeneration = UUID()
         lastForegroundRead = nil
         invalidateDiscovery()

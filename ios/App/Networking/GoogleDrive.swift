@@ -290,7 +290,7 @@ struct GoogleDriveRow: View {
     private var subtitle: String {
         guard connected else { return store.phoneOnly ? "Backups, and sync for tags, notes, files and Trash" : "A private copy in your own Drive" }
         guard let last = GoogleDrive.last else { return "Connected. Backs up on your schedule" }
-        return "Last: " + last.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+        return "Last: " + last.formatted(.dateTime.day().month(.abbreviated).hour().minute().locale(.diaryClock))
     }
     private func backUpMessage() async throws -> String {
         let size = try await GoogleDrive.backUp(store: store)

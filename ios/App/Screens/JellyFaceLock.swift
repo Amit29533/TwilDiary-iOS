@@ -29,6 +29,14 @@ import LocalAuthentication
             unlocked = true
         }
     }
+    /// Your face (or passcode) once more, for turning the lock off: that opens all it covers, and
+    /// anyone holding the phone could.
+    func confirm(_ reason: String) async -> Bool {
+        let context = LAContext()
+        var problem: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &problem) else { return true }
+        return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) == true
+    }
     /// Just turned on: you're here, so it starts unlocked (it locks the next time you leave).
     func turnedOn() { unlocked = true }
     /// About to open JellySpace: Face ID first when it's locked. True when it may open.

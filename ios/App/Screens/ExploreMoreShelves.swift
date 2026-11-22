@@ -556,6 +556,7 @@ private struct ComingTile: View {
     @Environment(DiaryStore.self) private var store
     @State private var adding = false
     @State private var confirmRemove = false
+    @AppStorage("confirmDeletions") private var confirmDeletions = true
 
     var body: some View {
         let saved = store.libraryIdentity(entry.item)
@@ -566,7 +567,11 @@ private struct ComingTile: View {
                 if let saved { NavigationLink(value: saved) { poster } } else { NavigationLink(value: entry.item.route) { poster } }
             }.buttonStyle(.springPress).accessibilityIdentifier("explore-coming-" + entry.id)
             // Over the poster, outside the link, so it doesn't open the page.
-            Button { if saved != nil { confirmRemove = true } else { Task { await remind() } } } label: {
+            Button {
+                if saved == nil { Task { await remind() } }
+                else if confirmDeletions { confirmRemove = true }
+                else { Task { await unremind() } }
+            } label: {
                 Group {
                     if adding { ProgressView().controlSize(.small) }
                     else { Image(systemName: saved != nil ? "bell.fill" : "bell").font(.system(size: 13, weight: .semibold)) }

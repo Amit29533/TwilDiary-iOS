@@ -36,7 +36,7 @@ import TwilDiaryCore
         UserDefaults.standard.set(false, forKey: enabledKey)
         Task { await clear() }
     }
-    private static func clear() async {
+    static func clear() async {
         let center = UNUserNotificationCenter.current()
         let ids = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("episode|") }
         center.removePendingNotificationRequests(withIdentifiers: ids)
@@ -137,7 +137,7 @@ import TwilDiaryCore
             return (date, request.content.title)
         }.min { $0.date < $1.date }
         guard let next else { return "No alert set: nothing you follow airs in the next two weeks." }
-        return "Next: \(next.title), \(next.date.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))"
+        return "Next: \(next.title), \(next.date.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute().locale(.diaryClock)))"
     }
 }
 

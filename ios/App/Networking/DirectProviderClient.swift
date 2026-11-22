@@ -479,7 +479,7 @@ enum ProviderCooldowns {
     /// Throws while the service has asked TwilDiary to wait.
     static func check(_ url: URL) throws {
         guard let until = until(url), let host = url.host else { return }
-        throw APIError.message("\(name(host)) asked TwilDiary to slow down. It tries again after \(until.formatted(date: .omitted, time: .shortened)).")
+        throw APIError.message("\(name(host)) asked TwilDiary to slow down. It tries again after \(until.diaryTime()).")
     }
     static func record(_ url: URL, _ response: HTTPURLResponse, now: Date = .now) {
         guard let host = url.host else { return }

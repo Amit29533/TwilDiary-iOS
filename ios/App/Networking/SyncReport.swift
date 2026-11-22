@@ -30,7 +30,7 @@ struct OutboxDeadLetter: LocalizedError { let reason: String; var errorDescripti
     private static func key(_ provider: SyncProviderKind) -> String { "deadLetters." + provider.rawValue }
     static func add(_ provider: SyncProviderKind, title: String, reason: String) {
         var list = UserDefaults.standard.stringArray(forKey: key(provider)) ?? []
-        list.insert(Date.now.formatted(date: .abbreviated, time: .shortened) + " · " + title + ": " + reason, at: 0)
+        list.insert(Date.now.diaryTime(date: .abbreviated) + " · " + title + ": " + reason, at: 0)
         UserDefaults.standard.set(Array(list.prefix(50)), forKey: key(provider))
     }
     static func list(_ provider: SyncProviderKind) -> [String] { UserDefaults.standard.stringArray(forKey: key(provider)) ?? [] }

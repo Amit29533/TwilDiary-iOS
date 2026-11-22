@@ -13,7 +13,7 @@ import TwilDiaryCore
     @ViewBuilder private var page: some View {
         let saved = store.providerSettings.trakt
         let connected = store.traktSignedInOnPhone
-        let synced = DiaryDate.parse(saved.lastSyncedAt).map { "Last synced " + $0.formatted(date: .abbreviated, time: .shortened) }
+        let synced = DiaryDate.parse(saved.lastSyncedAt).map { "Last synced " + $0.diaryTime(date: .abbreviated) }
         SettingsServiceHeader(logo: .trakt, title: "Trakt", subtitle: synced ?? (connected ? "Connected" : ""),
                               badge: connected ? (saved.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
             if !connected {

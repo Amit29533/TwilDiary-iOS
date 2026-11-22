@@ -29,6 +29,13 @@ enum JellyAuth {
         let state: QuickState? = try? await send(base, "QuickConnect/Connect", query: [URLQueryItem(name: "secret", value: secret)], method: "GET")
         return state?.Authenticated == true
     }
+    /// Ends a session on the server: its token is no good there any more.
+    static func signOut(_ base: URL, token: String) async {
+        var request = URLRequest(url: base.appending(path: "Sessions/Logout"), timeoutInterval: 15)
+        request.httpMethod = "POST"
+        request.setValue(JellyDevice.header + ", Token=\"\(token)\"", forHTTPHeaderField: "Authorization")
+        _ = try? await URLSession.shared.data(for: request)
+    }
     static func finishQuickConnect(_ base: URL, secret: String) async throws -> Session {
         try await send(base, "Users/AuthenticateWithQuickConnect", body: ["Secret": secret])
     }

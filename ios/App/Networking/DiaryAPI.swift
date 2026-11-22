@@ -93,7 +93,7 @@ enum APIError: LocalizedError {
         case .rejected(_, let text): text
         case .databaseLimit(let reset):
             if let reset {
-                "Cloudflare’s daily database limit has been reached. Your data is safe. Try again after \(reset.formatted(date: .abbreviated, time: .shortened))."
+                "Cloudflare’s daily database limit has been reached. Your data is safe. Try again after \(reset.diaryTime(date: .abbreviated))."
             } else {
                 "Cloudflare’s daily database limit has been reached. Your data is safe. Try again after midnight UTC."
             }

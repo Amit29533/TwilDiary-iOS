@@ -121,6 +121,7 @@ struct CatalogSearchView: View {
     @State private var addFailures: [String: String] = [:]
     /// A Planned result whose removal is being asked about (its library id).
     @State private var removingPlanned: String?
+    @AppStorage("confirmDeletions") private var confirmDeletions = true
     var body: some View {
         let scope = searchScope
         let ranked = universal && ready ? allResults : []
@@ -379,7 +380,7 @@ struct CatalogSearchView: View {
     /// "✓ Planned": tapping it asks, then takes the title back out of Planned (into Trash).
     private func plannedButton(_ id: String, title: String) -> some View {
         let busy = adding.contains(id)
-        return Button { removingPlanned = id } label: {
+        return Button { if confirmDeletions { removingPlanned = id } else { Task { await removePlanned(id) } } } label: {
             Label("Planned", systemImage: "checkmark").lineLimit(1)
                 .font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
                 .opacity(busy ? 0 : 1)

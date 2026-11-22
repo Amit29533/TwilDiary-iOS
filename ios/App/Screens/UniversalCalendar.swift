@@ -349,7 +349,7 @@ private struct ReleaseRow: View {
     }
     private var when: String {
         let day = (time ?? date)?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) ?? item.day
-        return time.map { day + " · " + $0.formatted(date: .omitted, time: .shortened) } ?? day
+        return time.map { day + " · " + $0.diaryTime() } ?? day
     }
     private var daysAway: Int {
         let calendar = Calendar.current

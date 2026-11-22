@@ -30,6 +30,7 @@ struct LibraryView: View {
     @State private var chipRow = CGRect.null
     /// The visible height of the scroll view, so a short category still fills it and takes the swipe.
     @State private var viewport: CGFloat = 0
+    @AppStorage("confirmDeletions") private var confirmDeletions = true
     @AppStorage("library.list") private var list = false
     @AppStorage("library.genreRows") private var genreRows = false
     @AppStorage("library.sort") private var sort = LibraryQuery.Sort.added
@@ -334,7 +335,11 @@ struct LibraryView: View {
                     Button(title.favorite ? "Remove favorite" : "Favorite", systemImage: title.favorite ? "heart.slash" : "heart") { review = CollectionReview(titles: [title], change: .favorite(!title.favorite)) }
                     Button(title.queued == true ? "Remove from Queue" : "Add to Queue", systemImage: "text.badge.plus") { review = CollectionReview(titles: [title], change: .queue(title.queued != true)) }
                     if title.tmdbId != nil { Button("Add to list", systemImage: "list.bullet.rectangle") { addingToList = ListTarget(item: DiscoveryTools.item(title)) } }
-                    Button("Move to Trash", systemImage: "trash", role: .destructive) { review = CollectionReview(titles: [title], change: .trash) }
+                    Button("Move to Trash", systemImage: "trash", role: .destructive) {
+                        // Several selected are always reviewed; one follows Confirm deletions.
+                        if confirmDeletions { review = CollectionReview(titles: [title], change: .trash) }
+                        else { Task { await store.manage([title], change: .trash) } }
+                    }
                 }
         }
     }

@@ -67,7 +67,12 @@ struct LanguageRegionView: View {
     @AppStorage(AnimeTitleChoice.key) private var animeEnglish = false
     @AppStorage("ignoreTitleArticles") private var ignoreArticles = false
     @Environment(\.openURL) private var openURL
-    static let regions = ["AU", "BR", "CA", "DE", "ES", "FR", "GB", "IN", "IT", "JP", "KR", "MX", "NL", "SE", "US"]
+    /// Every country, by name (a list of fifteen left most phones' own region out, so nothing was ticked).
+    static let regions: [String] = {
+        let codes = Set(Locale.Region.isoRegions.map(\.identifier).filter { $0.count == 2 && $0.allSatisfy(\.isLetter) })
+        return codes.filter { LanguageRegionView.regionName($0) != $0 }
+            .sorted { LanguageRegionView.regionName($0).localizedCompare(LanguageRegionView.regionName($1)) == .orderedAscending }
+    }()
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 22) {
@@ -79,7 +84,11 @@ struct LanguageRegionView: View {
                     }.buttonStyle(.plain).accessibilityHint("Opens TwilDiary in the Settings app, where iOS sets its language")
                     SettingsDivider()
                     Menu {
-                        Picker("Region", selection: $region) { ForEach(Self.regions, id: \.self) { Text(Self.regionName($0)).tag($0) } }
+                        Picker("Region", selection: $region) {
+                            // The one in use leads, so it's there to see however long the list.
+                            Text(Self.regionName(region)).tag(region)
+                            ForEach(Self.regions.filter { $0 != region }, id: \.self) { Text(Self.regionName($0)).tag($0) }
+                        }
                     } label: {
                         row("globe", "Region", subtitle: "For streaming services") {
                             HStack(spacing: 6) { Text(Self.regionName(region)).foregroundStyle(.secondary); DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
@@ -117,11 +126,21 @@ struct LanguageRegionView: View {
 
 /// The 24-hour time choice for dates shown by SwiftUI text (the system clock setting otherwise).
 extension Locale {
+    /// With the clock chosen in Language & region, for a time put into words on its own.
+    static var diaryClock: Locale { diary(use24Hour: UserDefaults.standard.bool(forKey: "use24HourTime")) }
     static func diary(use24Hour: Bool) -> Locale {
         guard use24Hour else { return .autoupdatingCurrent }
         var components = Locale.Components(locale: .current)
         components.hourCycle = .zeroToTwentyThree
         return Locale(components: components)
+    }
+}
+
+extension Date {
+    /// The time (with the date before it, if asked for) in the clock chosen in Language & region. Put into
+    /// words on its own, a time follows the phone's clock: nearly every one shown ignored the switch.
+    func diaryTime(date: Date.FormatStyle.DateStyle = .omitted) -> String {
+        formatted(Date.FormatStyle(date: date, time: .shortened, locale: .diaryClock))
     }
 }
 
@@ -195,7 +214,7 @@ struct SyncBackupView: View {
                 if ServerBackups.available(store) {
                 SettingsGroup(label: "Backup") {
                     NavigationLink(value: AppDestination.backups) {
-                        SettingsLine(title: "Server backups", subtitle: lastServerBackup.map { "Last: " + $0.formatted(.dateTime.day().month(.abbreviated).hour().minute()) } ?? "Copies of your diary kept on your server") {
+                        SettingsLine(title: "Server backups", subtitle: lastServerBackup.map { "Last: " + $0.formatted(.dateTime.day().month(.abbreviated).hour().minute().locale(.diaryClock)) } ?? "Copies of your diary kept on your server") {
                             DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                         }
                     }.buttonStyle(.plain).accessibilityIdentifier("sync-backup-server")

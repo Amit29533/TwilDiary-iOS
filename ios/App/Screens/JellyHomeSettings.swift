@@ -242,6 +242,12 @@ private struct JellyHomeLibraryPicker: View {
     private var otherRows: [String] = []
     private var otherOff: [String] = []
     private var otherMedia: [String] = []
+    /// The saved lists as they were read, for the places of what this page doesn't show.
+    private var savedRows: [String] = []
+    private var savedMedia: [String] = []
+    /// The libraries a group had ticked when its row was hidden: ticked again when it's shown.
+    private var ticksKept: [Group: [String]] = [:]
+    private static func ticksKey(_ group: Group) -> String { "jellyspace.home.ticked." + group.rawValue }
     private var changed = false
 
     func load(_ all: [JellyfinLibrary]) {
@@ -270,9 +276,13 @@ private struct JellyHomeLibraryPicker: View {
         shown = order.filter { isOn($0, off: off) }
         hidden = order.filter { !isOn($0, off: off) }
         let known = Set(sections.map(\.id) + [JellyHomeRow.hero.rawValue, JellyHomeRow.media.rawValue])
-        otherRows = rowsRaw.split(separator: ",").map(String.init).filter { !known.contains($0) && !Self.groupTokens.contains($0) }
-        otherOff = hiddenRaw.split(separator: ",").map(String.init).filter { !known.contains($0) && !Self.groupTokens.contains($0) }
-        otherMedia = mediaRaw.split(separator: ",").map(String.init).filter { id in !all.contains { $0.id == id } }
+        // (The old whole-group entries are opened out into the libraries' own, once those are known.)
+        savedRows = rowsRaw.split(separator: ",").map(String.init)
+        savedMedia = mediaRaw.split(separator: ",").map(String.init)
+        otherRows = savedRows.filter { !known.contains($0) && (all.isEmpty || !Self.groupTokens.contains($0)) }
+        otherOff = hiddenRaw.split(separator: ",").map(String.init).filter { !known.contains($0) && (all.isEmpty || !Self.groupTokens.contains($0)) }
+        otherMedia = savedMedia.filter { id in !all.contains { $0.id == id } }
+        for group in [Group.latest, .random] { ticksKept[group] = defaults.stringArray(forKey: Self.ticksKey(group)) }
         changed = false
     }
     private static let groupTokens: Set<String> = [JellyHomeRow.libraries.rawValue, JellyHomeRow.random.rawValue]
@@ -307,13 +317,17 @@ private struct JellyHomeLibraryPicker: View {
         guard let at = shown.firstIndex(of: row) else { return }
         shown.remove(at: at)
         hidden.append(row)
+        if let group = row.group, !ticked(group).isEmpty { ticksKept[group] = ticked(group) }
         changed = true
     }
     func show(_ row: Row) {
         guard let at = hidden.firstIndex(of: row) else { return }
         hidden.remove(at: at)
-        // A group added back with nothing ticked gets every library.
-        if let group = row.group, ticked(group).isEmpty { setAll(group, choices(group).map(\.id)) }
+        // A group added back gets the libraries it had when it was hidden, or (none kept) every one.
+        if let group = row.group, ticked(group).isEmpty {
+            let all = choices(group).map(\.id), had = (ticksKept[group] ?? []).filter(all.contains)
+            setAll(group, had.isEmpty ? all : had)
+        }
         switch row {
         case .fixed(.hero): shown.insert(row, at: 0)
         case .fixed(.media): shown.insert(row, at: shown.first == .fixed(.hero) ? 1 : 0)
@@ -363,7 +377,7 @@ private struct JellyHomeLibraryPicker: View {
                 return (on + choices(group).map(\.id).filter { !on.contains($0) }).map { group.prefix + $0 }
             }
         }
-        let rows = (shown + hidden).filter { !$0.fixedAtTop }.flatMap(ids) + otherRows
+        let rows = Self.keeping(otherRows, from: savedRows, in: (shown + hidden).filter { !$0.fixedAtTop }.flatMap(ids))
         var off = otherOff
         for row in hidden { off += ids(row) }
         for row in shown {
@@ -374,7 +388,23 @@ private struct JellyHomeLibraryPicker: View {
         let defaults = UserDefaults.standard
         defaults.set(rows.joined(separator: ","), forKey: JellyPrefs.rowsKey)
         defaults.set(Array(Set(off)).sorted().joined(separator: ","), forKey: JellyPrefs.hiddenRowsKey)
-        defaults.set((libraries.map(\.id) + otherMedia).joined(separator: ","), forKey: JellyPrefs.mediaOrderKey)
+        defaults.set(Self.keeping(otherMedia, from: savedMedia, in: libraries.map(\.id)).joined(separator: ","), forKey: JellyPrefs.mediaOrderKey)
         defaults.set(recommendOff.sorted().joined(separator: ","), forKey: JellyRecommendOff.key)
+        for (group, ids) in ticksKept { defaults.set(ids, forKey: Self.ticksKey(group)) }
+    }
+    /// What a saved list holds that this page doesn't show (a hidden library's row, or every library's
+    /// while they haven't loaded), back in its place: after what came before it there. Put at the end,
+    /// the libraries' rows lost their places to any change made before they had loaded.
+    nonisolated static func keeping(_ others: [String], from saved: [String], in list: [String]) -> [String] {
+        var result = list
+        let wanted = Set(others)
+        for (index, token) in saved.enumerated() where wanted.contains(token) && !result.contains(token) {
+            if let before = saved[..<index].last(where: { result.contains($0) }), let at = result.firstIndex(of: before) {
+                result.insert(token, at: at + 1)
+            } else {
+                result.insert(token, at: 0)
+            }
+        }
+        return result
     }
 }

@@ -512,6 +512,6 @@ enum JellyNames {
         let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
         let day = date.formatted(.dateTime.day().month(.abbreviated).year())
         guard (parts.hour ?? 0) != 0 || (parts.minute ?? 0) != 0 || (parts.second ?? 0) != 0 else { return day }
-        return day + " · " + date.formatted(.dateTime.hour().minute())
+        return day + " · " + date.formatted(.dateTime.hour().minute().locale(.diaryClock))
     }
 }

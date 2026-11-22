@@ -248,7 +248,7 @@ struct AiringCalendarView: View {
         guard let at = airTime(item) else { return (item.date.formatted(dayFormat), item.daysAway) }
         let calendar = DiaryDate.calendar()
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: store.now), to: calendar.startOfDay(for: at)).day ?? item.daysAway
-        return (at.formatted(dayFormat) + " · " + at.formatted(date: .omitted, time: .shortened), days)
+        return (at.formatted(dayFormat) + " · " + at.diaryTime(), days)
     }
     private func upcomingRow(_ item: UpcomingSchedule.Item) -> some View {
         let summary = hideSpoilers ? item.title.overview : (item.episode.overview.isEmpty ? item.title.overview : item.episode.overview)

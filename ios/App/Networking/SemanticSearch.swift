@@ -382,7 +382,7 @@ import TwilDiaryCore
     /// What to say when nothing answered.
     private static func summary(_ failures: [(Route, Failure)], all: [Route]) -> String {
         let back = resting.filter { id, _ in all.contains { $0.id == id } }.values.min()
-        let when = back.map { " Back " + ($0.timeIntervalSinceNow < 90 ? "in a moment." : "at " + $0.formatted(date: .omitted, time: .shortened) + ".") } ?? ""
+        let when = back.map { " Back " + ($0.timeIntervalSinceNow < 90 ? "in a moment." : "at " + $0.diaryTime() + ".") } ?? ""
         let reasons = failures.map(\.1)
         if !reasons.isEmpty, reasons.allSatisfy({ if case .limited = $0 { true } else { false } }) {
             return "Every AI key has used its free limit for now." + when

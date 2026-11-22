@@ -52,6 +52,8 @@ struct SavedFilter: Codable, Identifiable, Equatable, Sendable {
     nonisolated private static func load() -> [SavedFilter] {
         UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([SavedFilter].self, from: $0) } ?? []
     }
+    /// Read again (a backup's were put back).
+    func reload() { all = Self.load() }
     func add(_ filter: SavedFilter) { all.append(filter) }
     func rename(_ id: String, to name: String) {
         let kept = name.trimmingCharacters(in: .whitespacesAndNewlines)
