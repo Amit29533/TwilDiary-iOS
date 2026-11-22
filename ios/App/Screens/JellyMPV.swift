@@ -51,7 +51,7 @@ enum JellyDecoder: String, CaseIterable, Sendable {
     var title: String {
         switch self {
         case .auto: "Auto"
-        case .app: "App"
+        case .app: "AetherEngine"
         case .mpv: "mpv"
         }
     }
@@ -124,6 +124,8 @@ final class JellyMPVFeed: @unchecked Sendable {
     @Published private(set) var videoSize = CGSize.zero
     /// Why the video didn't open, in mpv's words (with its latest warning or error).
     @Published private(set) var failure: String?
+    /// The failure is a file it couldn't open (not a connection it lost, or one that failed later on).
+    private(set) var cannotOpen = false
 
     private var handle: JellyMPVHandle?
     private var loaded = false, paused = false, ended = false
@@ -184,7 +186,7 @@ final class JellyMPVFeed: @unchecked Sendable {
     func start(layer: CALayer, smooth: Int) {
         Self.log.notice("start: layer \(layer is CAMetalLayer ? "metal" : "sample", privacy: .public), handle \(self.handle != nil), pending \(self.pending != nil)")
         guard handle == nil else { return }
-        guard let raw = mpv_create() else { failure = "mpv couldn't be created."; return }
+        guard let raw = mpv_create() else { cannotOpen = true; failure = "mpv couldn't be created."; return }
         mpv_request_log_messages(raw, "warn")
         var wid = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
         mpv_set_option(raw, "wid", MPV_FORMAT_INT64, &wid)
@@ -236,6 +238,7 @@ final class JellyMPVFeed: @unchecked Sendable {
         Self.prepareFonts(raw)
         let started = mpv_initialize(raw)
         guard started >= 0 else {
+            cannotOpen = true
             failure = "mpv didn't start: " + String(cString: mpv_error_string(started))
             mpv_terminate_destroy(raw)
             return
@@ -271,7 +274,7 @@ final class JellyMPVFeed: @unchecked Sendable {
     }
 
     private func load(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
-        loaded = false; ended = false; paused = false; failure = nil; log = []
+        loaded = false; ended = false; paused = false; failure = nil; cannotOpen = false; log = []
         handle?.feed.lost = false
         decoderResets = 0
         // The last file's deinterlacing off first: the filter and decoder mode outlive a loadfile, and
@@ -297,6 +300,8 @@ final class JellyMPVFeed: @unchecked Sendable {
         Self.log.notice("stop: handle \(self.handle != nil), pending \(self.pending != nil)")
         pending = nil
         loaded = false
+        // Its failure goes with it: it would pass for the next start's.
+        failure = nil; cannotOpen = false
         let stopping = handle
         handle = nil
         layerWatch?.invalidate()
@@ -542,10 +547,12 @@ final class JellyMPVFeed: @unchecked Sendable {
             // mpv's warnings and errors in the phone's log too (Console), for a video it can't play.
             Self.log.notice("mpv: \(line, privacy: .public)")
         case .failed(let reason):
+            cannotOpen = !loaded
             failure = ([reason] + log.suffix(1)).joined(separator: "\n")
         case .lost:
+            cannotOpen = false
             Self.log.error("the connection was given up on at \(self.time, privacy: .public) s")
-            failure = "The connection to your server was lost. Close the player and open the video again to carry on from here."
+            failure = "The connection to your server was lost."
         case .loaded:
             loaded = true; buffering = false
             updateState()
@@ -662,9 +669,13 @@ final class JellyMPVFeed: @unchecked Sendable {
         for index in 0..<count {
             let base = "track-list/\(index)/"
             guard let type = string(raw, base + "type"), let id = int(raw, base + "id") else { continue }
-            let track = TrackInfo(id: id, name: string(raw, base + "title") ?? "", codec: string(raw, base + "codec") ?? "",
+            let name = string(raw, base + "title") ?? ""
+            let track = TrackInfo(id: id, name: name, codec: string(raw, base + "codec") ?? "",
                                   language: string(raw, base + "lang"), channels: int(raw, base + "demux-channel-count") ?? 0,
                                   isDefault: string(raw, base + "default") == "yes", isForced: string(raw, base + "forced") == "yes",
+                                  isHearingImpaired: string(raw, base + "hearing-impaired") == "yes",
+                                  isCommentary: Self.isCommentary(name),
+                                  isVisualImpaired: string(raw, base + "visual-impaired") == "yes" || Self.isDescription(name),
                                   isExternal: string(raw, base + "external") == "yes")
             let selected = string(raw, base + "selected") == "yes"
             switch type {
@@ -674,6 +685,12 @@ final class JellyMPVFeed: @unchecked Sendable {
             }
         }
         return .tracks(audio: audio, subtitles: subtitles, aid: aid, sid: sid)
+    }
+    /// mpv doesn't say which tracks are commentaries (nor, in most files, which describe the picture for
+    /// people who can't see it), so they're known by their names.
+    nonisolated static func isCommentary(_ name: String) -> Bool { name.localizedCaseInsensitiveContains("commentary") }
+    nonisolated static func isDescription(_ name: String) -> Bool {
+        name.localizedCaseInsensitiveContains("audio description") || name.localizedCaseInsensitiveContains("descriptive audio")
     }
     nonisolated private static func string(_ raw: OpaquePointer, _ name: String) -> String? {
         guard let value = mpv_get_property_string(raw, name) else { return nil }

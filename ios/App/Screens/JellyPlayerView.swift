@@ -23,16 +23,15 @@ enum JellyFill: String, CaseIterable {
 }
 
 /// JellySpace's player: AetherEngine's picture, laid out as Netflix's is. The title at the top left with
-/// Picture in Picture, the lock and close at the right; brightness up the left side; back, play/pause
-/// and on in the middle (or a double tap on either side); the red bar with the time left; then More,
-/// Speed, Episodes, Audio & Subtitles and Next Episode. It resumes where Jellyfin says you stopped, saves your place there as you watch,
+/// Picture in Picture, AirPlay, Cast, the lock and close at the right; brightness up the left side; back,
+/// play/pause and on in the middle (or a double tap on either side); the red bar with the time left; then More,
+/// Speed, Episodes (a film's Chapters), Audio & Subtitles and Next Episode. It resumes where Jellyfin says you stopped, saves your place there as you watch,
 /// and at 90% marks it played in Jellyfin and watched in your diary. At an episode's end the next
 /// one starts after a short countdown.
 struct JellyPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
     @Environment(DiaryStore.self) private var store
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage("jellyspace.fill") private var fillRaw = JellyFill.fit.rawValue
     // Settings → JellySpace.
     @AppStorage(JellyPrefs.skipIntroKey) private var skipIntro = JellySkipMode.button.rawValue
@@ -186,8 +185,6 @@ struct JellyPlayerView: View {
     private var menuOpen: Bool { menuItems > 0 }
     /// The sleep timer's choice in its menu: -1 off, 0 the end of this video, else minutes.
     @State private var sleepChoice = -1
-    /// The phone's volume, shown in the top-right slider (kept current from the system).
-    @State private var volumeLevel = AVAudioSession.sharedInstance().outputVolume
     /// What a one-finger swipe is doing: brightness (left half, up or down), volume (right half), or
     /// moving through the video (sideways).
     @State private var swipeKind: SwipeKind?
@@ -220,8 +217,8 @@ struct JellyPlayerView: View {
     @State private var holdTap = UIImpactFeedbackGenerator(style: .light)
     /// The show's own aspect ratio (Preferences → Remember aspect ratio per show), nil for your default.
     @State private var showFill: JellyFill?
-    /// Counts mpv's starts on a new output (its view and the video's opening follow it).
-    @State private var mpvRun = 0
+    /// Counts the starts again: mpv on a new output (its view follows this), or the video opened once more.
+    @State private var startRun = 0
     /// The video mpv was started again for after it didn't start (see watchMPVStart).
     @State private var mpvRetriedFor: String?
     /// Where the other engine was when you switched (the next start begins there).
@@ -303,7 +300,7 @@ struct JellyPlayerView: View {
             let lift: CGFloat = showsControls && failure == nil ? (verticalSizeClass == .compact ? 72 : 96) : 0
             ZStack {
                 JellySubtitles(cues: cues, clock: subtitleClock, delay: subtitleDelay, look: subtitleLook, insets: safe.safeAreaInsets,
-                               fill: fill, videoPixels: videoSize,
+                               fill: fill, videoPixels: videoSize, pixelAspect: usesMPV ? 1 : CGFloat(engine?.sourceVideoPixelAspectRatio ?? 1),
                                originalSize: CGSize(width: videoSize.width / displayScale, height: videoSize.height / displayScale),
                                sheet: subtitleLook.styled == "mine" ? nil : assSheet, lift: lift,
                                translated: translator.translating ? translator.lines : nil)
@@ -348,6 +345,7 @@ struct JellyPlayerView: View {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(15))
                     guard !Task.isCancelled, state == .playing else { return }
+                    if heavy.movedItself { JellyMPVChoice.set(current.id, usesMPV) }
                     savePlace()
                     report("progress")
                 }
@@ -440,8 +438,9 @@ struct JellyPlayerView: View {
                 if skipMode(segment.kind) == .button { AnyView(skipButton(segment)).transition(.opacity) }
                 else if let pendingSkip, pendingSkip.start == segment.StartTicks { AnyView(autoSkipButton(segment, at: pendingSkip.at)).transition(.opacity) }
             }
-            if let countdown, let next = nextEpisode { AnyView(upNext(next, in: countdown)) }
-            if let next = stillWatching { AnyView(stillWatchingCard(next)).transition(.opacity) }
+            // Locked, they show but take no touches (the lock's own button is under them).
+            if let countdown, let next = nextEpisode { AnyView(upNext(next, in: countdown)).allowsHitTesting(!screenLocked) }
+            if let next = stillWatching { AnyView(stillWatchingCard(next)).allowsHitTesting(!screenLocked).transition(.opacity) }
             if let panel {
                 if panel == .advanced { AnyView(advancedCard).transition(.opacity) }
                 else if panel == .episodes { AnyView(episodesPanel).transition(.opacity) }
@@ -485,7 +484,7 @@ struct JellyPlayerView: View {
             refresh.hold(0)
             OrientationLock.set(.portrait, turnTo: .portrait)
         }
-        .task(id: current.id + (usesMPV ? "|mpv\(mpvRun)" : "")) { await start() }
+        .task(id: current.id + (usesMPV ? "|mpv" : "|") + "\(startRun)") { await start() }
         // mpv's output follows smooth motion and Super Resolution (AVFoundation without them, the
         // GPU with either).
         .onChange(of: mpvOnGPU) { _, _ in moveMPVOutput() }
@@ -500,16 +499,83 @@ struct JellyPlayerView: View {
             }
         }
         .onChange(of: JellyPower.shared.constrained) { _, constrained in easeOff(constrained) }
-        .onChange(of: scenePhase) { _, phase in
-            // mpv's Metal layer can't draw in the background: the picture goes off there (the sound plays on).
-            guard usesMPV else { return }
-            if phase == .background { mpv.showVideo(false) } else if phase == .active { mpv.showVideo(true) }
+        .onChange(of: scenePhase) { _, phase in sceneChanged(phase) }
+    }
+    /// Leaving the app and coming back to it.
+    private func sceneChanged(_ phase: ScenePhase) {
+        if phase != .active, !heavy.dimmedAway, let brightnessAtOpen {
+            // Your own brightness back while you're away: iOS keeps what an app sets until the phone locks, and
+            // takes no change once the app is in the background (so as it leaves, not after).
+            heavy.dimmedAway = true
+            JellyScreen.brightness = brightnessAtOpen
         }
+        switch phase {
+        case .background:
+            // mpv's Metal layer can't draw in the background: the picture goes off there (the sound plays on).
+            if usesMPV { mpv.showVideo(false) }
+        case .active:
+            if heavy.dimmedAway {
+                heavy.dimmedAway = false
+                let now = JellyScreen.brightness
+                if let brightnessAtOpen, abs(now - brightnessAtOpen) < 0.02 {
+                    JellyScreen.brightness = CGFloat(brightnessLevel)
+                } else {
+                    // Changed meanwhile (in Control Center): yours stays.
+                    brightnessAtOpen = nil
+                    brightnessLevel = Double(now)
+                }
+            }
+            if usesMPV { mpv.showVideo(true) } else { restoreVideo() }
+        default:
+            break
+        }
+    }
+    /// AetherEngine lets go of a video left paused in the background (fifteen seconds on, so nothing of it
+    /// crosses a suspension) and has to open it again before it can play: until then Play did nothing. Opened
+    /// where it was, still paused, as Sodalite does; a play pressed meanwhile counts (the engine keeps it).
+    private func restoreVideo(playing: Bool = false) {
+        guard !usesMPV, let engine, engine.needsForegroundVideoRestore, !heavy.restoring else { return }
+        heavy.restoring = true
+        Task {
+            // A failure is said by the engine's own state (see engineState).
+            _ = try? await engine.reloadAtCurrentPosition { $0.autoplay = playing }
+            heavy.restoring = false
+        }
+    }
+    /// AetherEngine's state as the player shows it. A seek on its way keeps the play or pause it was in, as
+    /// Sodalite has it (the button turned to Play during every seek); a failure mid-video says why.
+    private func engineState(_ now: PlaybackState) {
+        guard now != .seeking else { return }
+        took(now)
+        if now == .playing { pip.rebuildIfNeeded() }
+        if case .error(let reason) = now, heavy.loading == 0, openedID == current.id { stopped(reason) }
+    }
+    /// AetherEngine gave up mid-video (it stayed on its last picture, with a Play that did nothing): its reason,
+    /// unless the server turns out to be gone, or the file.
+    private func stopped(_ reason: String) {
+        failure = "The video stopped: " + reason
+        let id = current.id, run = startRun, url = current.url
+        Task {
+            let served = await Self.served(url)
+            guard current.id == id, startRun == run, failure != nil else { return }
+            if served == .unreachable { failure = Self.lostConnection }
+            if served == .missing { failure = Self.missingFile }
+        }
+    }
+    static let lostConnection = "The connection to your server was lost."
+    static let missingFile = "This file isn’t available on the server right now. Its drive may be unplugged."
+    /// The engine playing is in another state. A sleep timer that ran out while it was paused is over (it
+    /// paused the video again eight seconds after you played it).
+    private func took(_ now: PlaybackState) {
+        if state == .paused, now == .playing, let sleepAt, sleepAt <= .now, !fadingOut { setSleep(nil) }
+        // It plays after all (a failure another decoder got past).
+        if now == .playing, failure != nil { failure = nil }
+        state = now
     }
 
     @ViewBuilder private func picture(_ engine: AetherEngine) -> some View {
         let surface = AetherPlayerSurface(engine: engine)
-            .onReceive(engine.$state) { state = $0; if $0 == .playing { pip.rebuildIfNeeded() } }
+            .onReceive(engine.$state) { engineState($0) }
             .onReceive(engine.clock.$currentTime) { seconds in tick(seconds) }
             // The subtitles' clock only while some show (it redrew them ten times a second for nothing).
             .onReceive(engine.clock.$sourceTime) { seconds in if activeSubtitle != nil { subtitleClock.time = seconds } }
@@ -539,7 +605,7 @@ struct JellyPlayerView: View {
             .onReceive(engine.clock.$bufferedPosition) { value in
                 if abs(value - barClock.buffered) >= 0.5 || value < barClock.buffered { barClock.buffered = value }
             }
-            .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
+            .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeChanged($0) }
         if fill == .original, videoSize.width > 0, videoSize.height > 0 {
             // Its own pixel size: one video pixel per screen pixel, cropped if it's bigger than the screen.
             surface.frame(width: videoSize.width / displayScale, height: videoSize.height / displayScale)
@@ -553,24 +619,24 @@ struct JellyPlayerView: View {
     /// draws the subtitles itself, so none come through for the player's own).
     private var mpvPicture: some View {
         JellyMPVSurface(player: mpv, smooth: activeSmooth, gpu: mpvOnGPU, fill: fill)
-            .id(mpvRun)
-            .onReceive(mpv.$state) { state = $0 }
+            .id(startRun)
+            .onReceive(mpv.$state) { took($0) }
             // mpv draws its own subtitles (and the app's, translated or filled, follow its line), so the
             // player's subtitle clock isn't needed here.
             .onReceive(mpv.$time) { seconds in tick(seconds) }
             .onReceive(mpv.$duration) { seconds in duration = seconds; updateSystem(duration: seconds) }
-            .onReceive(mpv.$buffering) { buffering = $0 }
+            .onReceive(mpv.$buffering) { buffering = $0; updateSystem(stalled: $0) }
             .onReceive(mpv.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(mpv.$subtitleTracks) { tracks in subtitleTracks = tracks; pickDefaultSubtitle(tracks) }
             .onReceive(mpv.$audioID) { activeAudio = $0 }
             .onReceive(mpv.$subtitleID) { activeSubtitle = $0 }
             .onReceive(mpv.$subtitleText) { text in
-                mpvLine = JellySubtitleCanvas.plain(text)
+                mpvLine = JellyPlainLines.plain(text)
                 if translator.wanted { translator.want([mpvLine]) }
             }
             .onReceive(mpv.$videoSize) { size in if size.width > 0, size.height > 0 { videoSize = size } }
-            .onReceive(mpv.$failure) { reason in if let reason { failure = reason } }
-            .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeLevel = $0 }
+            .onReceive(mpv.$failure) { reason in if let reason { mpvFailed(reason) } }
+            .onReceive(AVAudioSession.sharedInstance().publisher(for: \.outputVolume).receive(on: DispatchQueue.main)) { volumeChanged($0) }
             .ignoresSafeArea()
     }
 
@@ -613,13 +679,17 @@ struct JellyPlayerView: View {
         let from = subtitleClock.time - subtitleDelay - 1
         let texts = cues.filter { $0.endTime >= from }.sorted { $0.startTime < $1.startTime }.prefix(40).compactMap { cue -> String? in
             if case .image = cue.body { return nil }
-            return cue.text.map(JellySubtitleCanvas.plain)
+            return cue.text.map(JellyPlainLines.plain)
         }
         translator.want(texts)
     }
 
     // The engine playing now: AetherEngine, or mpv.
-    private func enginePlay() { if usesMPV { mpv.play() } else { engine?.play() } }
+    private func enginePlay() {
+        if usesMPV { mpv.play() }
+        else if engine?.needsForegroundVideoRestore == true { restoreVideo(playing: true) }
+        else { engine?.play() }
+    }
     private func enginePause() { if usesMPV { mpv.pause() } else { engine?.pause() } }
     private func engineRate(_ rate: Float) {
         guard usesMPV else { engine?.setRate(rate); return }
@@ -627,10 +697,11 @@ struct JellyPlayerView: View {
         updateSystem(rate: rate)
     }
     /// mpv's lock-screen card (AetherEngine keeps its own), as it plays, pauses, moves or changes speed.
-    private func updateSystem(position: Double? = nil, duration length: Double? = nil, rate: Float? = nil) {
+    private func updateSystem(position: Double? = nil, duration length: Double? = nil, rate: Float? = nil, stalled: Bool? = nil) {
         guard usesMPV else { return }
+        // Waiting for the network, the card's time stands still too.
         heavy.system.update(playing: state == .playing, position: position ?? exactTime, duration: length ?? duration,
-                            rate: Double(rate ?? (holding ? 2 : speed)))
+                            rate: (stalled ?? buffering) ? 0 : Double(rate ?? (holding ? 2 : speed)))
     }
     private func engineVolume(_ value: Float) { if usesMPV { mpv.setVolume(value) } else { engine?.volume = value } }
     private func engineAudio(_ id: Int) { if usesMPV { mpv.selectAudio(id) } else { engine?.selectAudioTrack(index: id) } }
@@ -643,6 +714,7 @@ struct JellyPlayerView: View {
     /// Double tap: 15 seconds back or on, with three arrows running that way on that side (each tap
     /// runs them again; they go a moment after the last).
     private func skip(_ seconds: Double) {
+        guard canSkip else { touched(); return }
         jump(seconds)
         skipTaps += 1
         let tap = skipTaps
@@ -705,14 +777,19 @@ struct JellyPlayerView: View {
                 let value = min(1, max(0, start - Double(move.y / max(1, swipeArea.height * 0.85))))
                 if kind == .brightness { JellyScreen.brightness = CGFloat(value); brightnessLevel = value } else { volume.set(Float(value)) }
                 levelTask?.cancel()
-                level = (kind == .brightness ? "sun.max.fill" : value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill", value)
+                level = (kind == .brightness ? "sun.max.fill" : Self.speaker(value), value)
             }
-        case .ended:
-            if swipeKind == .seek, let target = scrub {
-                Task { await seek(target); scrub = nil; scheduleHide() }
+        case .ended, .cancelled:
+            if swipeKind == .seek {
+                if case .cancelled = phase {
+                    // iOS took the touch (a swipe home, a call's banner): the video stays where it was.
+                    scrub = nil
+                    scheduleHide()
+                } else if let target = scrub {
+                    Task { await seek(target); if scrub == target { scrub = nil }; scheduleHide() }
+                }
             } else if swipeKind != nil {
-                levelTask?.cancel()
-                levelTask = Task { try? await Task.sleep(for: .milliseconds(900)); if !Task.isCancelled { withAnimation { level = nil } } }
+                hideLevel()
             }
             withAnimation(.easeOut(duration: 0.2)) { swipeKind = nil }
             swipeStart = nil
@@ -741,6 +818,22 @@ struct JellyPlayerView: View {
         guard seconds.isFinite, seconds >= 0 else { return "00:00" }
         let whole = Int(seconds.rounded())
         return whole >= 3600 ? String(format: "%d:%02d:%02d", whole / 3600, (whole / 60) % 60, whole % 60) : String(format: "%02d:%02d", whole / 60, whole % 60)
+    }
+    /// The level goes a moment after its last change.
+    private func hideLevel() {
+        levelTask?.cancel()
+        levelTask = Task { try? await Task.sleep(for: .milliseconds(900)); if !Task.isCancelled { withAnimation { level = nil } } }
+    }
+    private static func speaker(_ level: Double) -> String { level == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill" }
+    /// The phone's volume buttons: the bar at the right, as a swipe's (the player's hidden volume view keeps
+    /// the system's own away, so pressing them showed nothing).
+    private func volumeChanged(_ value: Float) {
+        let before = heavy.volumeSeen
+        heavy.volumeSeen = value
+        // Not as the video opens (the phone says its volume again as the sound starts), nor a swipe's own.
+        guard let before, abs(before - value) > 0.001, swipeKind != .volume, openedID == current.id, state == .playing || state == .paused else { return }
+        level = (Self.speaker(Double(value)), Double(value))
+        hideLevel()
     }
     /// The level as a standing bar at the middle of its side: brightness on the left, volume on the
     /// right (the side the swipe is on), the icon above it.
@@ -828,7 +921,8 @@ struct JellyPlayerView: View {
         brightnessLevel = level
         JellyScreen.brightness = CGFloat(level)
         touched()
-        hideTask?.cancel()
+        // Four seconds from the last move (a drag iOS takes away has no end to start them).
+        scheduleHide()
     }
     private func pillButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -885,7 +979,7 @@ struct JellyPlayerView: View {
         // chapters, thumbnails, the next episode and the file's details): only the engine changes.
         let handingOver = switchAt != nil && loadedInfo?.id == current.id
         failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
-        quality = nil; barClock.buffered = 0
+        quality = nil; barClock.buffered = 0; heavy.seekTarget = nil
         if !handingOver {
             // Only a video's own start: a switch of engine in its last tenth logged it as watched again.
             finished = false
@@ -925,7 +1019,9 @@ struct JellyPlayerView: View {
         if let seasonID = current.item.SeasonId, season.first?.SeasonId != seasonID {
             Task { season = ((try? await client.children(of: seasonID, user: user)) ?? []).filter { $0.kind == "Episode" } }
         }
-        let stretches: Task<[JellyfinClient.Segment]?, Never>? = handingOver ? nil : Task { try? await client.segments(id) }
+        // (Read already for a video only changing engine, unless it changed before they had all come.)
+        let stretches: Task<[JellyfinClient.Segment]?, Never>? = handingOver && heavy.detailsFor == id ? nil
+            : Task { try? await client.segments(id) }
         // The subtitle delay you last set in this show (Settings → Subtitles → Timing).
         if Self.remembersDelay, let show = current.item.SeriesId {
             subtitleDelay = UserDefaults.standard.double(forKey: Self.delayKey(show))
@@ -959,8 +1055,8 @@ struct JellyPlayerView: View {
             var settings = JellyMPV.fillSettings(fill)
                 + subtitleLook.mpvSettings
             settings += [("speed", String(speed)), ("audio-delay", String(audioDelay)), ("sub-delay", String(subtitleDelay)), ("sid", "no")]
-            // The next episodes played on mpv open on it too.
-            JellyMPVChoice.set(current.id, true)
+            // The next episodes played on mpv open on it too (one AetherEngine couldn't open: once it plays).
+            if !heavy.movedItself { JellyMPVChoice.set(current.id, true) }
             let resume = startAt.flatMap { $0 > (handedOver ? 1 : 30) ? $0 : nil }
             mpv.open(current.url, start: resume, subtitles: options.externalSubtitles, settings: settings)
             openedID = current.id
@@ -976,9 +1072,10 @@ struct JellyPlayerView: View {
                 Task { try? await Task.sleep(for: .seconds(6)); withAnimation { resumedAt = nil } }
             }
             report("start")
-            watchMPVStart(run: mpvRun, from: resume)
+            watchMPVStart(run: startRun, from: resume)
         } else {
-            guard let engine else { return }
+            // Closed, or moved on, while its details came: nothing opens (as on mpv above).
+            guard let engine, !Task.isCancelled else { return }
             // An anime's MKV carries its subtitle fonts as attachments, tens of megabytes read before the
             // first frame. The fonts come from Jellyfin instead (JellyASSFonts, fetched alongside and
             // kept), so the file opens without them: a quicker start and less memory (as Swiftly does).
@@ -1030,6 +1127,8 @@ struct JellyPlayerView: View {
             engine.ownsVideoNowPlayingCommands = true
             engine.remoteSkipInterval = Double(skipSeconds)
             engine.setNowPlayingInfo(nowPlayingInfo(nil))
+            let load = heavy.beganLoad()
+            defer { heavy.endedLoad(load) }
             do {
                 if let startAt, startAt > (handedOver ? 1 : 30) {
                     try await engine.load(url: current.url, startPosition: startAt, options: options)
@@ -1038,6 +1137,8 @@ struct JellyPlayerView: View {
                 } else {
                     try await engine.load(url: current.url, options: options)
                 }
+                heavy.endedLoad(load)
+                guard !Task.isCancelled else { return }
                 openedID = current.id
                 engine.play()
                 report("start")
@@ -1045,35 +1146,91 @@ struct JellyPlayerView: View {
                 if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
                 if subtitleDelay != 0 { engine.setSoftwareSubtitleDelay(subtitleDelay) }
             } catch {
-                guard !Task.isCancelled else { return }
-                failure = await Self.unavailable(current.url) ? "This file isn’t available on the server right now. Its drive may be unplugged."
-                    : error.localizedDescription
+                let reason = error.localizedDescription
+                await couldNotOpen(reason, onMPV: false)
                 return
             }
         }
         if let stretches {
-            segments = Self.merged((await stretches.value) ?? [])
-            if segments.isEmpty, introDB { segments = Self.merged(await introDBSegments(client: client, user: user)) }
+            // Each only for the video it was asked for: Next pressed meanwhile brings its own.
+            let read = Self.merged((await stretches.value) ?? [])
+            guard !Task.isCancelled else { return }
+            segments = read
             chapters = (extras?.Chapters ?? []).sorted { $0.StartPositionTicks < $1.StartPositionTicks }
             if let entry = extras?.Trickplay?.first {
                 let sorted = entry.value.values.sorted { $0.Width < $1.Width }
                 if let pick = sorted.first(where: { $0.Width >= 240 }) ?? sorted.last { trickplay = (pick, entry.key) }
             }
-            if current.item.kind == "Episode", let series = current.item.SeriesId {
-                following = try? await client.episode(after: id, series: series, user: user)
+            if segments.isEmpty, introDB {
+                let found = Self.merged(await introDBSegments(client: client, user: user))
+                guard !Task.isCancelled else { return }
+                segments = found
             }
+            if current.item.kind == "Episode", let series = current.item.SeriesId {
+                let next = try? await client.episode(after: id, series: series, user: user)
+                guard !Task.isCancelled else { return }
+                following = next
+            }
+            heavy.detailsFor = id
         }
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
             if usesMPV { heavy.system.show(nowPlayingInfo(art)) } else { engine?.setNowPlayingInfo(nowPlayingInfo(art)) }
         }
     }
 
-    /// True when Jellyfin answers "not found" for the file itself (a missing or unplugged drive).
-    static func unavailable(_ url: URL) async -> Bool {
+    /// What the server says of the file itself, for a video that didn't open: it's there, it's missing (a
+    /// drive unplugged), it isn't given out, or the server can't be reached. Only the answer's head is read.
+    enum Served { case here, missing, refused, unreachable }
+    static func served(_ url: URL) async -> Served {
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.setValue("bytes=0-1", forHTTPHeaderField: "Range")
-        guard let answer = try? await URLSession.shared.data(for: request) else { return false }
-        return (answer.1 as? HTTPURLResponse)?.statusCode == 404
+        guard let (body, answer) = try? await URLSession.shared.bytes(for: request) else { return .unreachable }
+        body.task.cancel()
+        return served((answer as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+    static func served(_ status: Int) -> Served {
+        switch status {
+        case 200..<300: .here
+        case 404: .missing
+        default: .refused
+        }
+    }
+    /// The engine couldn't open this video. Where the server has the file and gives it out, it's the engine
+    /// that can't play it, and the other one tries (mpv and AetherEngine each play files the other doesn't).
+    private func couldNotOpen(_ reason: String, onMPV: Bool) async {
+        guard !Task.isCancelled else { return }
+        let id = current.id, run = startRun
+        let served = await Self.served(current.url)
+        guard !Task.isCancelled, current.id == id, startRun == run, usesMPV == onMPV, !onMPV || mpv.failure != nil else { return }
+        switch served {
+        case .missing: failure = Self.missingFile
+        case .unreachable: failure = "Your Jellyfin server can’t be reached right now."
+        case .refused: failure = reason
+        case .here: if !moveOver(toMPV: !onMPV, because: reason) { failure = reason }
+        }
+    }
+    /// mpv says it failed. A connection it lost isn't a file it can't open.
+    private func mpvFailed(_ reason: String) {
+        guard mpv.cannotOpen else { failure = reason; return }
+        Task { await couldNotOpen(reason, onMPV: true) }
+    }
+    /// The other engine takes this video by itself, once for each. Kept for it only once it has played
+    /// there for a while (see the place saved as it plays).
+    private func moveOver(toMPV: Bool, because reason: String) -> Bool {
+        guard heavy.movedFor != current.id else { return false }
+        heavy.movedFor = current.id
+        heavy.movedItself = true
+        handOver()
+        if toMPV {
+            JellyMPV.log.notice("AetherEngine couldn't open a video, so mpv takes it: \(reason, privacy: .private)")
+            engine?.stop()
+        } else {
+            mpv.stop()
+            decodePath = JellyDecoder.preferred.path
+        }
+        usesMPV = toMPV
+        show(toMPV ? "AetherEngine couldn't open this video, so it's on mpv now" : "mpv couldn't play this video, so it's on AetherEngine now: " + reason, for: 8)
+        return true
     }
     /// Overlapping stretches of one kind (two plugins timing the same intro) as one.
     static func merged(_ segments: [JellyfinClient.Segment]) -> [JellyfinClient.Segment] {
@@ -1308,9 +1465,7 @@ struct JellyPlayerView: View {
         // Just switched engine: the language that was playing.
         if let carried = carriedTracks?.audio {
             carriedTracks?.audio = nil
-            if let track = tracks.first(where: { JellySubtitlePick.same($0.language, carried) && !$0.isCommentary }), track.id != activeAudio {
-                engineAudio(track.id)
-            }
+            if let track = Self.audio(in: carried, of: tracks), track.id != activeAudio { engineAudio(track.id) }
             return
         }
         // What you picked (in this show, or anywhere), then your default languages (Preferences),
@@ -1319,10 +1474,14 @@ struct JellyPlayerView: View {
         if rememberTracks, let language = remembered("audioLanguage") { wanted.append(language) }
         wanted += JellyPreferences.audioLanguages
         for language in wanted {
-            guard let track = tracks.first(where: { JellySubtitlePick.same($0.language, language) && !$0.isCommentary }) else { continue }
+            guard let track = Self.audio(in: language, of: tracks) else { continue }
             if track.id != activeAudio { engineAudio(track.id) }
             return
         }
+    }
+    /// The film's own sound in a language: never its commentary or its audio description.
+    static func audio(in language: String, of tracks: [TrackInfo]) -> TrackInfo? {
+        tracks.first { JellySubtitlePick.same($0.language, language) && !$0.isCommentary && !$0.isVisualImpaired }
     }
 
     /// The next episode on its own (after the countdown, or past the credits): first "Are you still
@@ -1377,8 +1536,8 @@ struct JellyPlayerView: View {
         // The last video stops while the next one's details load.
         enginePause()
         // On the engine that episode was set (or moved) to; else the one playing now, unless this video
-        // was only there because mpv couldn't play it: then your default again.
-        let onMPV = JellyMPVChoice.own(item.Id) ?? (heavy.movedOffMPV ? JellyDecoder.preferred == .mpv : usesMPV)
+        // was only there because its own couldn't play it: then your default again.
+        let onMPV = JellyMPVChoice.own(item.Id) ?? (heavy.movedItself ? JellyDecoder.preferred == .mpv : usesMPV)
         if onMPV != usesMPV {
             if usesMPV { mpv.stop() } else { engine?.stop() }
             // The old engine's tracks go (a number of theirs could pass for one of the new engine's).
@@ -1386,7 +1545,7 @@ struct JellyPlayerView: View {
             if !onMPV { decodePath = JellyDecoder.preferred.path }
             usesMPV = onMPV
         }
-        heavy.movedOffMPV = false
+        heavy.movedItself = false
         current = next
     }
 
@@ -1394,7 +1553,11 @@ struct JellyPlayerView: View {
         prefetchNext()
         countdown = countdownSeconds
         countdownTask?.cancel()
+        // With the phone locked the sound has just stopped, and iOS would put the app to sleep before the
+        // next episode starts: it's asked for the time (and a few seconds for the opening).
+        let hold = JellyBackgroundTime("JellySpace Up Next")
         countdownTask = Task {
+            defer { Task { try? await Task.sleep(for: .seconds(8)); hold.end() } }
             while let left = countdown, left > 0 {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, countdown != nil else { return }
@@ -1550,11 +1713,18 @@ struct JellyPlayerView: View {
     // MARK: Controls
 
     private var playingNow: Bool { state == .playing }
+    /// Nothing to control yet: it's opening, or it failed and what to do about it is being worked out.
+    private var waiting: Bool {
+        switch state {
+        case .loading, .idle, .error: true
+        default: false
+        }
+    }
 
     /// Netflix's arrangement: the title at the top left (Jellyfin's mark, the episode or film, and under
-    /// it the show, or the film's year and quality); Picture in Picture, the lock and close at the top
+    /// it the show, or the film's year and quality); Picture in Picture, AirPlay, Cast, the lock and close at the top
     /// right; back, play and on in the middle; the red bar with the time left; then More, Speed,
-    /// Episodes, Audio & Subtitles and Next Episode, each with its name (just the symbols upright,
+    /// Episodes (a film's Chapters), Audio & Subtitles and Next Episode, each with its name (just the symbols upright,
     /// where the names don't fit).
     private var controls: some View {
         let compact = verticalSizeClass == .compact
@@ -1575,6 +1745,11 @@ struct JellyPlayerView: View {
                 if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
                 }
+                // Sideways (upright there's no room), and for a picture AVPlayer plays: nothing else can go to a TV.
+                if compact, !usesMPV, engine?.nativePlayerLayer != nil {
+                    JellyAirPlayButton().frame(width: 44, height: 44)
+                        .accessibilityIdentifier("jellyspace-airplay")
+                }
                 JellyCastButton().frame(width: 44, height: 44).accessibilityIdentifier("jellyspace-cast")
                 topIcon("lock.open", label: "Lock screen") { lockScreen() }.accessibilityIdentifier("jellyspace-lock-screen")
                 topIcon("xmark", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
@@ -1591,8 +1766,9 @@ struct JellyPlayerView: View {
             // length instead).
             HStack(spacing: 14) {
                 JellyScrubber(clock: barClock, duration: duration, marks: chapterMarks, stretches: coloredStretches,
-                              tint: Self.red, knob: Self.red, scrub: $scrub) { target in
-                    Task { await seek(target); scrub = nil; scheduleHide() }
+                              tint: Self.red, knob: Self.red, scrub: $scrub, released: { scheduleHide() }) { target in
+                    // Only its own: a drag begun before this one landed keeps the bar.
+                    Task { await seek(target); if scrub == target { scrub = nil }; scheduleHide() }
                 }
                 .overlay(alignment: .topLeading) { AnyView(scrubPreview) }
                 .disabled(duration <= 0)
@@ -1635,6 +1811,11 @@ struct JellyPlayerView: View {
                 barButton("rectangle.stack", title: "Episodes", labelled: labelled) { openEpisodes() }
                     .accessibilityIdentifier("jellyspace-episodes")
             }
+            // An episode's row is full: its chapters are in More.
+            if current.item.kind != "Episode", chapters.count > 1 {
+                barButton("list.bullet", title: "Chapters", labelled: labelled) { openPanel(.chapters) }
+                    .accessibilityIdentifier("jellyspace-chapters")
+            }
             JellyTracksMenu(state: menus, actions: actions, labelled: labelled).equatable()
             if let next = nextEpisode {
                 barButton("forward.end", title: "Next Episode", labelled: labelled) { play(next) }.accessibilityIdentifier("jellyspace-next")
@@ -1658,9 +1839,8 @@ struct JellyPlayerView: View {
     private var centerControls: some View {
         Group {
             if let failure {
-                Text(failure).font(.system(size: 14)).foregroundStyle(.white).multilineTextAlignment(.center)
-                    .padding(14).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 14)).padding(.horizontal, 24)
-            } else if state == .loading || state == .idle {
+                failureCard(failure)
+            } else if waiting {
                 ProgressView().controlSize(.large).tint(.white)
             } else {
                 // The skip length in the arrows where there's a symbol for it (5, 10, 15, 30, 45, 60, 75, 90).
@@ -1669,7 +1849,7 @@ struct JellyPlayerView: View {
                     transport(numbered ? "gobackward.\(skipSeconds)" : "gobackward", label: "Back \(skipSeconds) seconds") { jump(Double(-skipSeconds)) }
                     Button {
                         touched()
-                        if state == .ended { Task { await start() } }
+                        if state == .ended { replay() }
                         else if playingNow { enginePause() } else { enginePlay() }
                         scheduleHide()
                     } label: {
@@ -1691,6 +1871,32 @@ struct JellyPlayerView: View {
         .ignoresSafeArea()
     }
 
+    /// What went wrong, and what to do about it: the video tried again where it was, or on the other decoder.
+    private func failureCard(_ text: String) -> some View {
+        VStack(spacing: 14) {
+            Text(text).font(.system(size: 14)).foregroundStyle(.white).multilineTextAlignment(.center)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { failureButtons }
+                VStack(spacing: 10) { failureButtons }
+            }
+        }
+        .padding(18).frame(maxWidth: 520).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 18)).padding(.horizontal, 24)
+    }
+    @ViewBuilder private var failureButtons: some View {
+        Button { touched(); retry() } label: {
+            Label("Try again", systemImage: "arrow.clockwise").font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+                .fixedSize().padding(.horizontal, 20).frame(height: 44).background(.white, in: Capsule()).contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-try-again")
+        Button { touched(); setDecoder(otherDecoder) } label: {
+            Text(usesMPV ? "Play on AetherEngine" : "Play on mpv").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                .fixedSize().padding(.horizontal, 20).frame(height: 44).background(.white.opacity(0.18), in: Capsule()).contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-other-decoder")
+    }
+    /// The decoder to try instead: mpv, or AetherEngine as it's set by default.
+    private var otherDecoder: JellyDecoder { usesMPV ? (JellyDecoder.preferred == .app ? .app : .auto) : .mpv }
+    /// The video again in this player: where it was, or (it never opened) as it opens by itself.
+    private func retry() { reopen(at: openedID == current.id ? exactTime : nil) }
+
     // MARK: Menus
 
     /// What the menus show now (they redraw only when this changes, not on every tick of playback).
@@ -1701,6 +1907,7 @@ struct JellyPlayerView: View {
                        upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
                        fill: fill, pictures: pictureChoices, rotationLocked: rotationLocked, info: showsInfo,
+                       chapters: current.item.kind == "Episode" && chapters.count > 1,
                        decoder: usesMPV ? .mpv : (decodePath == .software ? .app : .auto), mpv: usesMPV, smooth: smoothRate,
                        superResolution: superResolution)
     }
@@ -1719,6 +1926,7 @@ struct JellyPlayerView: View {
             subtitle: { id in me.view.pickSubtitle(id) },
             audio: { id in me.view.pickAudio(id) },
             download: { me.view.openPanel(.subtitleSearch) },
+            chapters: { me.view.openPanel(.chapters) },
             advanced: { me.view.openPanel(.advanced) },
             dialogue: { level in
                 me.view.menuUsed(); me.view.dialogueBoost = level
@@ -1880,8 +2088,15 @@ struct JellyPlayerView: View {
         switchAt = now > 1 ? now : nil
         // Subtitles as they're remembered: the language (a track with none, its name) and the name.
         let subtitle = activeSubtitle.flatMap { id in subtitleTracks.first { $0.id == id } }
-        carriedTracks = (audio: audioTracks.first { $0.id == activeAudio }?.language,
-                         subtitle: subtitle.map(Self.subtitleKey) ?? "off", subtitleName: subtitle?.name ?? "")
+        // Not made yet (a video that never opened), it isn't "off": the other player chooses as it would
+        // have, or takes what was carried to this one.
+        let before = carriedTracks
+        let audio: String? = audioTracks.first { $0.id == activeAudio }?.language ?? before?.audio
+        if pickedSubtitle {
+            carriedTracks = (audio: audio, subtitle: subtitle.map(Self.subtitleKey) ?? "off", subtitleName: subtitle?.name ?? "")
+        } else {
+            carriedTracks = (audio: audio, subtitle: before?.subtitle, subtitleName: before?.subtitleName ?? "")
+        }
         // The old player's tracks and choices go: the new one's arrive with the video (left, a track
         // number of the old could pass for the new one's and a switch be skipped).
         audioTracks = []; subtitleTracks = []; activeAudio = nil; activeSubtitle = nil
@@ -1912,41 +2127,39 @@ struct JellyPlayerView: View {
             // network wait (buffering) gets twenty seconds more first. Not after you paused it.
             for wait in [0, 20] {
                 if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-                guard usesMPV, mpvRun == run, current.id == id, mpv.hasLoaded, mpv.failure == nil, failure == nil,
+                guard usesMPV, startRun == run, current.id == id, mpv.hasLoaded, mpv.failure == nil, failure == nil,
                       mpv.state != .paused, mpv.state != .ended, mpv.time < (start ?? 0) + 1 else { break }
                 if mpv.buffering && wait == 0 { continue }
                 JellyMPV.log.error("mpv opened but didn't play in \(20 + wait, privacy: .public) s: \(mpv.diagnosis, privacy: .public)")
-                let reason = mpv.lastMessage.map { ": " + $0 } ?? ""
-                setDecoder(.auto)
-                heavy.movedOffMPV = true
-                show("mpv couldn't play this video, so it's on AetherEngine now" + reason, for: 8)
+                let reason = mpv.lastMessage ?? "nothing played"
+                if !moveOver(toMPV: false, because: reason) { failure = "This video couldn’t be played: " + reason }
                 return
             }
             // mpv's own state: once the player has closed, mpv has stopped (idle), so nothing happens.
-            guard usesMPV, mpvRun == run, current.id == id, !mpv.hasLoaded, mpv.failure == nil, failure == nil, mpv.state == .loading else { return }
+            guard usesMPV, startRun == run, current.id == id, !mpv.hasLoaded, mpv.failure == nil, failure == nil, mpv.state == .loading else { return }
             JellyMPV.log.error("mpv didn't start in 20 s (run \(run, privacy: .public)): \(mpv.diagnosis, privacy: .public)")
             // Once a video: the next episode gets its own try.
             if mpvRetriedFor == id {
-                failure = "The video didn't start. Close it and try again."
+                failure = "The video didn't start."
                 return
             }
             mpvRetriedFor = id
             switchAt = start ?? 0
             mpv.stop()
-            mpvRun += 1
+            startRun += 1
         }
     }
     private func moveMPVOutput() {
         guard usesMPV, mpv.running || state != .idle else { return }
         handOver()
         mpv.stop()
-        mpvRun += 1
+        startRun += 1
     }
 
     /// Auto or the app's own decoder: the video reloads where it is on the new one. mpv: the video
     /// moves to the mpv player where it is (and opens there from then on).
     private func setDecoder(_ choice: JellyDecoder) {
-        heavy.movedOffMPV = false
+        heavy.movedItself = false
         if (choice == .mpv) != usesMPV {
             // The other engine takes over where this one is, and this video opens on it from now on.
             handOver()
@@ -2050,7 +2263,7 @@ struct JellyPlayerView: View {
     private var endsText: String {
         guard duration > 0 else { return "" }
         let left = max(0, duration - (scrub ?? time)) / Double(max(0.1, speed))
-        return " · ends " + Date.now.addingTimeInterval(left).formatted(date: .omitted, time: .shortened)
+        return " · ends " + Date.now.addingTimeInterval(left).diaryTime()
     }
     private var chapterMarks: [Double] {
         chapters.map { Double($0.StartPositionTicks) / 10_000_000 }.filter { $0 > 1 && $0 < duration - 1 }
@@ -2136,10 +2349,13 @@ struct JellyPlayerView: View {
                 case .subtitleSearch: subtitleSearchContent
                 case .advanced: EmptyView()
                 }
-                Button { withAnimation { self.panel = nil } } label: {
-                    Text("Close").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 22).frame(height: 38).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
-                }.buttonStyle(.plain)
+                // Chapters close by their title.
+                if panel != .chapters {
+                    Button { withAnimation { self.panel = nil } } label: {
+                        Text("Close").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 22).frame(height: 38).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+                    }.buttonStyle(.plain)
+                }
             }.padding(.horizontal, 40).padding(.vertical, 20)
         }
     }
@@ -2316,21 +2532,29 @@ struct JellyPlayerView: View {
     /// The chapters as pictures; the one playing outlined, a tap jumps there.
     private var chaptersContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Chapters").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+            HStack {
+                Text("Chapters").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                Spacer(minLength: 12)
+                Button { closePanel() } label: {
+                    Text("Close").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 16).frame(height: 34).background(.white.opacity(0.15), in: Capsule())
+                        .frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("Close chapters")
+            }
             ScrollViewReader { reader in
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(Array(chapters.enumerated()), id: \.offset) { index, chapter in
                             let start = Double(chapter.StartPositionTicks) / 10_000_000
                             let here = index == currentChapter
-                            Button { Task { await seek(start) }; withAnimation { panel = nil } } label: {
+                            Button { touched(); Task { await seek(start) }; closePanel() } label: {
                                 VStack(alignment: .leading, spacing: 5) {
                                     ZStack {
                                         Rectangle().fill(.white.opacity(0.1))
                                         JellyImage(url: chapter.ImageTag.flatMap { JellyfinClient.imageURL(base: current.client.base, item: current.id, type: "Chapter/\(index)", tag: $0, width: 400) })
                                     }
                                     .frame(width: 176, height: 99).clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(here ? theme.accent : .clear, lineWidth: 2.5))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(here ? Self.red : .clear, lineWidth: 2.5))
                                     Text(chapter.Name ?? "Chapter \(index + 1)").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
                                     Text(Self.clock(start)).font(.system(size: 12)).monospacedDigit().foregroundStyle(.white.opacity(0.6))
                                 }.frame(width: 176, alignment: .leading).contentShape(Rectangle())
@@ -2518,6 +2742,7 @@ struct JellyPlayerView: View {
         var text = parts.filter { !$0.isEmpty }.joined(separator: " · ")
         if track.isForced { text += " (Forced)" }
         if track.isCommentary { text += " (Commentary)" }
+        if audio, track.isVisualImpaired { text += " (Audio description)" }
         return text
     }
     private static func channels(_ count: Int) -> String {
@@ -2534,24 +2759,72 @@ struct JellyPlayerView: View {
                 .frame(width: 64, height: 64).contentShape(Rectangle()).shadow(color: .black.opacity(0.35), radius: 8)
         }.buttonStyle(.plain).accessibilityLabel(label)
     }
+    /// Whether there's a video to move in. Not before it has opened: its length isn't known then, and a
+    /// double tap as it loaded went to 0, so the place you were at was lost.
+    private var canSkip: Bool { duration > 0 && openedID == current.id && heavy.loading == 0 && failure == nil }
     private func jump(_ seconds: Double) {
         touched()
-        let target = min(max(0, exactTime + seconds), max(duration, 0))
+        guard canSkip else { return }
+        // From where the last one is going: quick ones add up, though the clock moves only as it lands.
+        let target = min(max(0, (heavy.seekTarget ?? exactTime) + seconds), duration)
         Task { await seek(target) }
         scheduleHide()
     }
     private func seek(_ seconds: Double) async {
+        guard failure == nil else { return }
         let back = duration <= 0 || seconds < duration - 5
         if countdown != nil, back { stopCountdown() }
+        heavy.seeks += 1
+        let mine = heavy.seeks
+        heavy.seekTarget = seconds
         if usesMPV {
             mpv.seek(to: seconds)
             // mpv stays paused after its end: moved back from there, it plays on.
             if state == .ended, back { mpv.play() }
             updateSystem(position: seconds)
+            // Its clock is there a moment later.
+            Task { try? await Task.sleep(for: .milliseconds(400)); if heavy.seeks == mine { heavy.seekTarget = nil } }
             return
         }
+        defer { if heavy.seeks == mine { heavy.seekTarget = nil } }
         guard let engine else { return }
-        _ = await engine.seek(to: seconds)
+        // AetherEngine's end is final (it takes no seek): moved back from there, the video opens again at
+        // that place.
+        if state == .ended {
+            if back { reopen(at: seconds) }
+            return
+        }
+        // Nor to the very end, where it would rest paused with nothing after it, and Play would start over:
+        // the last second plays, and the end comes as it always does.
+        _ = await engine.seek(to: Self.landing(seconds, of: duration))
+    }
+    /// Where a move lands on AetherEngine: never in the last second.
+    static func landing(_ seconds: Double, of duration: Double) -> Double {
+        duration > 2 ? min(seconds, duration - 1) : seconds
+    }
+    /// The video opened again in this player, from here (nil: as it opens by itself): after its end or a
+    /// failure. What was found for it, and the audio and subtitles that were on, stay.
+    private func reopen(at seconds: Double?) {
+        handOver()
+        switchAt = seconds.map { max(0, $0) }
+        if usesMPV { mpv.stop() }
+        startRun += 1
+    }
+    /// From the beginning after the end: another viewing.
+    private func replay() {
+        skipped = []
+        if countdown != nil { stopCountdown() }
+        if usesMPV {
+            mpv.seek(to: 0)
+            mpv.play()
+            updateSystem(position: 0)
+            // A last tick from the end may still come, and would count this one as watched at once.
+            let id = current.id
+            Task { try? await Task.sleep(for: .seconds(1)); if current.id == id { finished = false } }
+        } else {
+            finished = false
+            reopen(at: 0)
+        }
     }
     /// Up Next: the next episode's file details and where you stopped, fetched now.
     private func prefetchNext() {
@@ -2592,6 +2865,12 @@ private struct JellyScrubber: View {
     let tint: Color
     var knob: Color = .white
     @Binding var scrub: Double?
+    /// iOS took the touch before it was let go (a swipe home from the bar).
+    var released: () -> Void = {}
+    /// A finger is on the bar. SwiftUI puts this back however the drag goes away; a cancelled one has no
+    /// end of its own, and the bar stayed where the finger had been, with the controls up for good.
+    @GestureState private var touching = false
+    @State private var committed = false
     let commit: (Double) -> Void
 
     var body: some View {
@@ -2630,12 +2909,25 @@ private struct JellyScrubber: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($touching) { _, touching, _ in touching = true }
                     .onChanged { drag in
                         guard duration > 0 else { return }
                         scrub = min(max(0, drag.location.x / width), 1) * duration
                     }
-                    .onEnded { _ in if let target = scrub { commit(target) } }
+                    .onEnded { drag in
+                        guard duration > 0 else { return }
+                        let target = min(max(0, drag.location.x / width), 1) * duration
+                        committed = true
+                        scrub = target
+                        commit(target)
+                    }
             )
+            .onChange(of: touching) { _, touching in
+                if touching { committed = false; return }
+                guard !committed else { return }
+                scrub = nil
+                released()
+            }
             .animation(.easeOut(duration: 0.15), value: dragging)
         }
         .frame(height: 30)
@@ -2654,6 +2946,7 @@ private enum JellyPan {
     case began(CGPoint, CGPoint, CGSize)
     case changed(CGPoint)
     case ended
+    case cancelled
 }
 
 /// The player's touches, read by UIKit's recognizers (SwiftUI has no two-finger tap, and these sort
@@ -2714,7 +3007,8 @@ private struct JellyGestureLayer: UIViewRepresentable {
                 let now = gesture.location(in: view), moved = gesture.translation(in: view)
                 layer.pan(.began(CGPoint(x: now.x - moved.x, y: now.y - moved.y), gesture.velocity(in: view), view.bounds.size))
             case .changed: layer.pan(.changed(gesture.translation(in: view)))
-            case .ended, .cancelled, .failed: layer.pan(.ended)
+            case .ended: layer.pan(.ended)
+            case .cancelled, .failed: layer.pan(.cancelled)
             default: break
             }
         }
@@ -2837,11 +3131,48 @@ private struct JellyAirPlayButton: UIViewRepresentable {
     var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
     var sheet: (index: Int, image: UIImage)?
     var openMenus: JellyMenuState?
-    /// This video was moved to AetherEngine because mpv couldn't play it (the next one isn't, for that).
-    var movedOffMPV = false
+    /// This video moved to the other engine by itself, because its own couldn't play it (the next one
+    /// isn't, for that).
+    @ObservationIgnored var movedItself = false
+    /// The video that last happened to: once each.
+    @ObservationIgnored var movedFor: String?
+    /// The load AetherEngine is on (0: none): its failure is the load's to say, not the player's.
+    @ObservationIgnored var loading = 0
+    @ObservationIgnored private var loads = 0
+    func beganLoad() -> Int { loads += 1; loading = loads; return loads }
+    func endedLoad(_ load: Int) { if loading == load { loading = 0 } }
+    /// The video whose skip stretches, chapters, thumbnails and next episode have all been read.
+    @ObservationIgnored var detailsFor: String?
+    /// Where a seek on its way is going, and how many there have been.
+    @ObservationIgnored var seekTarget: Double?
+    @ObservationIgnored var seeks = 0
+    /// AetherEngine is opening a video again that it let go of in the background.
+    @ObservationIgnored var restoring = false
+    /// Your own brightness is back while you're out of the app.
+    @ObservationIgnored var dimmedAway = false
+    /// The phone's volume as last heard of.
+    @ObservationIgnored var volumeSeen: Float?
     /// mpv's lock-screen card and buttons, calls, headphones and the screen kept on.
     let system = JellyMPVSystem()
     init(current: JellyPlayback) { self.current = current }
+}
+
+/// Time asked of iOS to finish something with the app away, given back when it's done or iOS wants it.
+@MainActor private final class JellyBackgroundTime {
+    private var id = UIBackgroundTaskIdentifier.invalid
+    init(_ name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.end()
+            }
+        }
+    }
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
 }
 
 /// The next episode's details, fetched ahead during Up Next.
@@ -2911,6 +3242,7 @@ private struct JellySubtitles: View {
     var insets = EdgeInsets()
     var fill = JellyFill.fit
     var videoPixels = CGSize.zero
+    var pixelAspect: CGFloat = 1
     var originalSize = CGSize.zero
     var sheet: JellyASSSheet? = nil
     var lift: CGFloat = 0
@@ -2923,11 +3255,11 @@ private struct JellySubtitles: View {
         var swap: [String: String] = [:]
         if let translated {
             for cue in now {
-                if let text = cue.text.map(JellySubtitleCanvas.plain), let done = translated[text] { swap[text] = done }
+                if let text = cue.text.map(JellyPlainLines.plain), let done = translated[text] { swap[text] = done }
             }
         }
         return JellySubtitleCanvas(now: now, look: look, insets: insets, fill: fill, videoPixels: videoPixels,
-                                   originalSize: originalSize, sheet: translated == nil ? sheet : nil, lift: lift, replace: swap)
+                                   pixelAspect: pixelAspect, originalSize: originalSize, sheet: translated == nil ? sheet : nil, lift: lift, replace: swap)
             .equatable()
     }
 }
@@ -2942,6 +3274,8 @@ private struct JellySubtitleCanvas: View, Equatable {
     var fill = JellyFill.fit
     /// The video's coded size in pixels (what a picture cue's canvas maps onto).
     var videoPixels = CGSize.zero
+    /// How much wider than its pixels the video is shown (a DVD's aren't square).
+    var pixelAspect: CGFloat = 1
     var originalSize = CGSize.zero
     /// Styled (ASS) subtitles' sheet; nil draws them as plain text.
     var sheet: JellyASSSheet? = nil
@@ -2952,7 +3286,7 @@ private struct JellySubtitleCanvas: View, Equatable {
 
     nonisolated static func == (lhs: JellySubtitleCanvas, rhs: JellySubtitleCanvas) -> Bool {
         lhs.now.map(\.id) == rhs.now.map(\.id) && lhs.look == rhs.look && lhs.insets == rhs.insets && lhs.fill == rhs.fill
-            && lhs.videoPixels == rhs.videoPixels && lhs.originalSize == rhs.originalSize && lhs.lift == rhs.lift && lhs.sheet == rhs.sheet
+            && lhs.videoPixels == rhs.videoPixels && lhs.pixelAspect == rhs.pixelAspect && lhs.originalSize == rhs.originalSize && lhs.lift == rhs.lift && lhs.sheet == rhs.sheet
             && lhs.replace == rhs.replace
     }
 
@@ -2976,18 +3310,21 @@ private struct JellySubtitleCanvas: View, Equatable {
                     }
                     if !events.isEmpty {
                         JellyASSLayer(events: events, sheet: sheet, size: proxy.size, safe: safe, fill: fill, originalSize: originalSize,
+                                      video: CGSize(width: videoPixels.width * pixelAspect, height: videoPixels.height),
                                       userScale: look.styledSize ? look.size : 1)
                     }
                 }
-                let lines = sheet != nil ? [] : now.compactMap { cue -> String? in
-                    if case .image = cue.body { return nil }
-                    return cue.text.map(Self.plain)
-                }.filter { !$0.isEmpty }.map { replace[$0] ?? $0 }
-                if !lines.isEmpty {
-                    JellyPlainSubtitle(text: lines.joined(separator: "\n"), look: look, points: max(12, JellySubtitleLook.points(screenHeight: proxy.size.height, size: look.size)))
+                let points = max(12, JellySubtitleLook.points(screenHeight: proxy.size.height, size: look.size))
+                let blocks = sheet != nil ? [] : JellyPlainLines.blocks(JellyPlainLines.lines(now, replace: replace, look: look, points: points))
+                let low: CGFloat = max(proxy.size.height * 0.07, insets.bottom + 12) + up
+                // At the top, clear of the title while the controls show.
+                let high: CGFloat = max(proxy.size.height * 0.07, insets.top + 12) + (look.lift && lift > 0 ? 44 : 0)
+                ForEach(blocks, id: \.alignment) { block in
+                    JellyPlainSubtitle(text: block.text, look: look, points: points, styled: block.styled)
                         .padding(.leading, max(40, insets.leading + 16)).padding(.trailing, max(40, insets.trailing + 16))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, max(proxy.size.height * 0.07, insets.bottom + 12) + up)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: JellyASSLayer.anchor(block.alignment))
+                        .padding(.bottom, block.alignment <= 3 ? low : 0)
+                        .padding(.top, block.alignment >= 7 ? high : 0)
                 }
             }
         }
@@ -3027,16 +3364,6 @@ private struct JellySubtitleCanvas: View, Equatable {
         out.origin.x = min(max(out.minX, safe.minX), safe.maxX - out.width)
         out.origin.y = min(max(out.minY, safe.minY), safe.maxY - out.height)
         return out
-    }
-    /// ASS override tags ({\i1}) out, its line breaks (\N) in.
-    static func plain(_ text: String) -> String {
-        // A styled (ASS) event comes with its fields first: ReadOrder,Layer,Style,Name,MarginL,
-        // MarginR,MarginV,Effect (or a "Dialogue:" line's Layer,Start,End,…); only the text is shown.
-        text.replacingOccurrences(of: #"^\d+,-?\d+,[^,]*,[^,]*,-?\d+,-?\d+,-?\d+,[^,]*,"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"^Dialogue:\s*-?\d+,[^,]*,[^,]*,[^,]*,[^,]*,-?\d+,-?\d+,-?\d+,[^,]*,"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -3167,6 +3494,8 @@ private struct JellyMenuState: Equatable, Sendable {
     var pictures: [JellyFill]
     var rotationLocked: Bool
     var info: Bool
+    /// Chapters in More (an episode's, whose bottom row is full).
+    var chapters: Bool
     var decoder: JellyDecoder
     var mpv: Bool
     var smooth: Int
@@ -3183,6 +3512,7 @@ private struct JellyMenuActions {
     let subtitle: (Int) -> Void
     let audio: (Int) -> Void
     let download: () -> Void
+    let chapters: () -> Void
     let advanced: () -> Void
     let dialogue: (Int) -> Void
     let night: (Bool) -> Void
@@ -3271,6 +3601,9 @@ private struct JellyMoreMenu: View, Equatable {
                 if !state.mpv {
                     Toggle(isOn: Binding(get: { state.info }, set: { actions.info($0) })) { Label("Playback info", systemImage: "info.circle") }
                 }
+                }
+                if state.chapters {
+                    Button { actions.chapters() } label: { Label("Chapters", systemImage: "list.bullet") }
                 }
                 Button { actions.advanced() } label: { Label("Advanced options", systemImage: "slider.horizontal.3") }
             }

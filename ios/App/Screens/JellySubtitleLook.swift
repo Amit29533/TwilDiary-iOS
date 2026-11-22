@@ -179,13 +179,17 @@ struct JellyPlainSubtitle: View {
     let text: String
     let look: JellySubtitleLook
     let points: CGFloat
+    /// The text with its own italics, bold and colours (nil: none of its own).
+    var styled: AttributedString? = nil
 
     var body: some View {
         let width = look.box ? 0 : look.outlineWidth(points)
         let hard = look.shadow == 2
-        let label = Text(text).font(look.swiftFont(points))
+        let label = (styled.map { Text($0) } ?? Text(text)).font(look.swiftFont(points))
+        // The outline is all in its own colour, whatever the letters' are.
+        let edge = (styled.map { Text(Self.uncoloured($0)) } ?? Text(text)).font(look.swiftFont(points))
         label.foregroundStyle(look.textColor)
-            .background { if width > 0.2 { Self.outline(label, color: look.edgeColor, width: width) } }
+            .background { if width > 0.2 { Self.outline(edge, color: look.edgeColor, width: width) } }
             .shadow(color: .black.opacity(look.box || look.shadow == 0 ? 0 : (hard ? 0.75 : 0.6) * look.opacity),
                     radius: hard ? 0 : max(1.5, points * 0.06), x: hard ? max(1, points * 0.06) : 0, y: hard ? max(1, points * 0.06) : 1)
             .multilineTextAlignment(.center)
@@ -195,6 +199,11 @@ struct JellyPlainSubtitle: View {
             }
     }
 
+    private static func uncoloured(_ text: AttributedString) -> AttributedString {
+        var text = text
+        text.foregroundColor = Color?.none
+        return text
+    }
     private static func outline(_ label: Text, color: Color, width: CGFloat) -> some View {
         ZStack {
             ForEach(0..<8, id: \.self) { step in
@@ -202,6 +211,89 @@ struct JellyPlainSubtitle: View {
                 label.foregroundStyle(color).multilineTextAlignment(.center).offset(x: cos(angle) * width, y: sin(angle) * width)
             }
         }
+    }
+}
+
+/// Plain subtitle lines: their text, their own styling, and where the file puts them.
+enum JellyPlainLines {
+    /// ASS override tags ({\i1}) out, its line breaks (\N) in.
+    static func plain(_ text: String) -> String {
+        // A styled (ASS) event comes with its fields first: ReadOrder,Layer,Style,Name,MarginL,
+        // MarginR,MarginV,Effect (or a "Dialogue:" line's Layer,Start,End,…); only the text is shown.
+        text.replacingOccurrences(of: #"^\d+,-?\d+,[^,]*,[^,]*,-?\d+,-?\d+,-?\d+,[^,]*,"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^Dialogue:\s*-?\d+,[^,]*,[^,]*,[^,]*,[^,]*,-?\d+,-?\d+,-?\d+,[^,]*,"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\{[^}]*\}"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A line showing, and where the file asks for it (numpad: 1 to 3 bottom, 4 to 6 middle, 7 to 9 top; left,
+    /// centre, right). Nearly all are at the bottom; SRT's {\an8} puts one at the top, clear of what's
+    /// written on the picture.
+    struct Line {
+        let text: String
+        var alignment = 2
+        /// With its own italics, bold and colours; nil when it has none.
+        var styled: AttributedString? = nil
+    }
+    /// The lines at one place on the screen.
+    struct Block {
+        let alignment: Int
+        let text: String
+        let styled: AttributedString?
+    }
+    /// The lines showing (picture cues left out; translated ones in their translation).
+    static func lines(_ cues: [SubtitleCue], replace: [String: String], look: JellySubtitleLook, points: CGFloat) -> [Line] {
+        cues.compactMap { cue -> Line? in
+            if case .image = cue.body { return nil }
+            guard let text = cue.text.map(plain), !text.isEmpty else { return nil }
+            let place = cue.placement?.alignment ?? 2
+            if let translated = replace[text] { return Line(text: translated, alignment: place) }
+            return Line(text: text, alignment: place, styled: styled(cue, look: look, points: points))
+        }
+    }
+    /// The lines by place.
+    static func blocks(_ lines: [Line]) -> [Block] {
+        let places = Dictionary(grouping: lines) { (1...9).contains($0.alignment) ? $0.alignment : 2 }
+        return places.keys.sorted().map { place in
+            let here = places[place] ?? []
+            var joined: AttributedString?
+            if here.contains(where: { $0.styled != nil }) {
+                var all = AttributedString()
+                for (index, line) in here.enumerated() {
+                    if index > 0 { all += AttributedString("\n") }
+                    all += line.styled ?? AttributedString(line.text)
+                }
+                joined = all
+            }
+            return Block(alignment: place, text: here.map(\.text).joined(separator: "\n"), styled: joined)
+        }
+    }
+    /// A line's own italics, bold, underlines and colours as the file marks them (SRT and WebVTT tags); nil
+    /// when it has none. AetherEngine hands them over with the line, and they were dropped: mpv always
+    /// showed them.
+    static func styled(_ cue: SubtitleCue, look: JellySubtitleLook, points: CGFloat) -> AttributedString? {
+        guard case .richText(let runs) = cue.body else { return nil }
+        var all = AttributedString()
+        for run in runs {
+            var part = AttributedString(run.text.replacingOccurrences(of: "\\N", with: "\n").replacingOccurrences(of: "\\n", with: "\n"))
+            if run.isItalic || run.isBold {
+                var font = look.swiftFont(points)
+                if run.isBold { font = font.bold() }
+                if run.isItalic { font = font.italic() }
+                part.font = font
+            }
+            if run.isUnderlined { part.underlineStyle = Text.LineStyle.single }
+            if run.isStruckThrough { part.strikethroughStyle = Text.LineStyle.single }
+            if let color = run.color {
+                let own = Color(red: Double(color.r) / 255, green: Double(color.g) / 255, blue: Double(color.b) / 255)
+                part.foregroundColor = own.opacity(look.opacity)
+            }
+            all += part
+        }
+        while let last = all.characters.last, last.isWhitespace { all.characters.removeLast() }
+        while let first = all.characters.first, first.isWhitespace { all.characters.removeFirst() }
+        return all.characters.isEmpty ? nil : all
     }
 }
 
@@ -232,9 +324,11 @@ enum JellySubtitlePick {
         }
     }
 
-    /// Subtitles for the hearing-impaired, as files name them.
-    static func isSDH(_ track: TrackInfo) -> Bool {
-        let name = track.name.lowercased()
+    /// Subtitles for the hearing-impaired, as files mark or name them.
+    static func isSDH(_ track: TrackInfo) -> Bool { isSDH(track.name, marked: track.isHearingImpaired) }
+    static func isSDH(_ title: String, marked: Bool) -> Bool {
+        if marked { return true }
+        let name = title.lowercased()
         return name.contains("sdh") || name.contains("hearing") || name.contains("[cc]") || name.contains("(cc)") || name == "cc"
     }
 

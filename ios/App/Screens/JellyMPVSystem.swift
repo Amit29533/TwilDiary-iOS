@@ -42,7 +42,7 @@ import UIKit
         add(center.skipForwardCommand) { system, seconds in system.move(seconds ?? 15) }
         add(center.skipBackwardCommand) { system, seconds in system.move(-(seconds ?? 15)) }
         add(center.changePlaybackPositionCommand) { system, seconds in
-            if let seconds { system.actions?.seek(seconds) }
+            if let seconds { system.go(to: seconds) }
         }
         let notes = NotificationCenter.default
         observers.append(notes.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
@@ -96,8 +96,15 @@ import UIKit
     }
     private func move(_ seconds: Double) {
         guard let actions else { return }
-        let target = max(0, actions.position() + seconds)
-        actions.seek(duration > 0 ? min(target, duration) : target)
+        go(to: actions.position() + seconds)
+    }
+    /// Moved from the lock screen: the card says where it is now (iOS counts on from what it was last told).
+    private func go(to seconds: Double) {
+        guard let actions else { return }
+        let target = duration > 0 ? min(max(0, seconds), duration) : max(0, seconds)
+        actions.seek(target)
+        position = target
+        publish()
     }
     private func add(_ command: MPRemoteCommand, _ act: @escaping @MainActor @Sendable (JellyMPVSystem, Double?) -> Void) {
         let wasEnabled = command.isEnabled

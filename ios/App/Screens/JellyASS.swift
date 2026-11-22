@@ -233,21 +233,24 @@ struct JellyASSLayer: View {
     let safe: CGRect
     let fill: JellyFill
     let originalSize: CGSize
+    /// The video's shape as it is shown (zero: not known yet).
+    let video: CGSize
     let userScale: Double
 
     var body: some View {
         // Drawn again as the video's own fonts arrive.
         let _ = JellyASSFonts.shared.version
         let frame = pictureFrame
-        let scale = frame.height / max(1, sheet.canvas.height)
+        // Sizes go by the picture's height, places across it by its width, as in libass.
+        let scale = frame.height / max(1, sheet.canvas.height), across = frame.width / max(1, sheet.canvas.width)
         let lines = events.flatMap { $0.components(separatedBy: "\n") }.compactMap { sheet.line($0, scale: scale * CGFloat(userScale)) }
         let placed = lines.filter { $0.position != nil }
         let grouped = Dictionary(grouping: lines.filter { $0.position == nil }, by: \.alignment)
         ZStack {
             ForEach(grouped.keys.sorted(), id: \.self) { alignment in
                 if let group = grouped[alignment], let first = group.first {
-                    let anchor = anchorPoint(alignment, first, frame: frame, scale: scale)
-                    let width = max(80, frame.width - (first.marginL + first.marginR) * scale)
+                    let anchor = anchorPoint(alignment, first, frame: frame, scale: scale, across: across)
+                    let width = max(80, frame.width - (first.marginL + first.marginR) * across)
                     VStack(alignment: Self.horizontal(alignment), spacing: 2) {
                         ForEach(group.indices, id: \.self) { index in styled(group[index]) }
                     }
@@ -259,7 +262,7 @@ struct JellyASSLayer: View {
             }
             ForEach(placed.indices, id: \.self) { index in
                 let line = placed[index]
-                let point = CGPoint(x: frame.minX + (line.position?.x ?? 0) * scale, y: frame.minY + (line.position?.y ?? 0) * scale)
+                let point = CGPoint(x: frame.minX + (line.position?.x ?? 0) * across, y: frame.minY + (line.position?.y ?? 0) * scale)
                 styled(line).multilineTextAlignment(Self.textAlignment(line.alignment)).fixedSize()
                     .anchored(at: CGPoint(x: min(max(point.x, safe.minX), safe.maxX), y: min(max(point.y, safe.minY), safe.maxY)),
                               alignment: Self.anchor(line.alignment))
@@ -287,22 +290,25 @@ struct JellyASSLayer: View {
         }
     }
 
-    /// The script's canvas laid over the picture as it is shown.
-    private var pictureFrame: CGRect {
-        let canvas = sheet.canvas
+    private var pictureFrame: CGRect { Self.picture(canvas: sheet.canvas, video: video, in: size, fill: fill, originalSize: originalSize) }
+    /// The script's canvas laid over the picture as it is shown: over all of it, whatever the canvas's own
+    /// shape (a 16:9 script on a film cropped to 2.40:1, a 4:3 one on a wide episode), as libass has it.
+    static func picture(canvas: CGSize, video: CGSize, in size: CGSize, fill: JellyFill, originalSize: CGSize) -> CGRect {
         guard canvas.width > 0, canvas.height > 0 else { return CGRect(origin: .zero, size: size) }
+        let shape = video.width > 0 && video.height > 0 ? video : canvas
+        let fitted = min(size.width / shape.width, size.height / shape.height)
         // Filled, still the fitted picture, as libass places and sizes them on mpv (given the screen's
         // margins): the same size as fitted and as on mpv, and never under the screen's edge.
         let scale: CGFloat = switch fill {
-        case .fit, .fill: min(size.width / canvas.width, size.height / canvas.height)
-        case .original: originalSize.width > 0 ? originalSize.width / canvas.width : min(size.width / canvas.width, size.height / canvas.height)
+        case .fit, .fill: fitted
+        case .original: originalSize.width > 0 ? originalSize.width / shape.width : fitted
         }
-        let shown = CGSize(width: canvas.width * scale, height: canvas.height * scale)
+        let shown = CGSize(width: shape.width * scale, height: shape.height * scale)
         return CGRect(x: (size.width - shown.width) / 2, y: (size.height - shown.height) / 2, width: shown.width, height: shown.height)
     }
     /// Where a block of lines anchors: its margins inside the picture, kept within the safe area.
-    private func anchorPoint(_ alignment: Int, _ line: JellyASSSheet.Line, frame: CGRect, scale: CGFloat) -> CGPoint {
-        let left = max(frame.minX + line.marginL * scale, safe.minX), right = min(frame.maxX - line.marginR * scale, safe.maxX)
+    private func anchorPoint(_ alignment: Int, _ line: JellyASSSheet.Line, frame: CGRect, scale: CGFloat, across: CGFloat) -> CGPoint {
+        let left = max(frame.minX + line.marginL * across, safe.minX), right = min(frame.maxX - line.marginR * across, safe.maxX)
         let x: CGFloat = switch (alignment - 1) % 3 {
         case 0: left
         case 2: right
