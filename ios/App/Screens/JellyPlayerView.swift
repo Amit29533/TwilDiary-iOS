@@ -70,7 +70,7 @@ struct JellyPlayerView: View {
     @State private var translatedTag = false
     /// The cast remote closing the player (see body).
     @State private var castClosing = false
-    /// GPU Enabled Zoom (Preferences → Picture): mpv's Fill on its GPU output, or instant on AVFoundation.
+    /// GPU Enabled Zoom (Settings → JellySpace → Engines): mpv's Fill on its GPU output, or instant on AVFoundation.
     @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
     /// The rating card (Netflix's): the rating and IMDb's warnings, a moment after a video starts.
     private var ratingInfo: JellyRatingInfo? { get { heavy.ratingInfo } nonmutating set { heavy.ratingInfo = newValue } }
@@ -225,9 +225,9 @@ struct JellyPlayerView: View {
     /// Where the other engine was when you switched (the next start begins there).
     @State private var switchAt: Double?
     /// mpv's smooth motion: 0 (off), 60 or 120 Hz, kept for every video.
-    @AppStorage("jellyspace.mpvSmoothRate") private var smoothRate = 0
+    @AppStorage(JellyPrefs.mpvSmoothKey) private var smoothRate = 0
     /// mpv's Super Resolution: "off", "fsr" or "anime" (More → Super resolution), kept for every video.
-    @AppStorage("jellyspace.mpvSuperResolution") private var superResolution = "off"
+    @AppStorage(JellyPrefs.mpvSuperResolutionKey) private var superResolution = "off"
     @State private var refresh = JellyRefreshRate()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -239,6 +239,8 @@ struct JellyPlayerView: View {
     init(playback: JellyPlayback) {
         _heavy = State(initialValue: JellyPlayerStore(current: playback))
         _usesMPV = State(initialValue: JellyMPVChoice.isOn(playback.id))
+        // AetherEngine's own decoder when that's the default engine (Settings → JellySpace → Engines).
+        _decodePath = State(initialValue: JellyDecoder.preferred.path)
         _showFill = State(initialValue: Self.savedFill(playback.item))
     }
 

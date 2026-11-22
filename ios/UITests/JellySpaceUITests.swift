@@ -175,6 +175,93 @@ import XCTest
         XCTAssertLessThan(slowest, 3, "JellySpace opened within 3 s each time")
     }
 
+    /// Settings → JellySpace → Home: hide a row and add it back, tick a group's libraries, and the
+    /// changes kept once you leave the page.
+    func testHomeSettingsPage() throws {
+        try launch()
+        app.tabBars.buttons["Profile"].tap()
+        XCTAssertTrue(scrollTo("settings-jellyspace", swipes: 10), "Settings has JellySpace")
+        app.buttons["settings-jellyspace"].tap()
+        let homePage = app.buttons["jellyspace-settings-home"]
+        XCTAssertTrue(homePage.waitForExistence(timeout: 10), "JellySpace settings has Home")
+        let started = Date()
+        homePage.tap()
+        XCTAssertTrue(app.buttons["jellyspace-home-hide-resume"].waitForExistence(timeout: 10), "Home settings lists Continue Watching")
+        timings.append(String(format: "Home settings open: %.2f s", Date().timeIntervalSince(started)))
+        attach("Home settings")
+        // Hidden, then added back.
+        let tapped = Date()
+        app.buttons["jellyspace-home-hide-resume"].tap()
+        XCTAssertTrue(app.buttons["jellyspace-home-show-resume"].waitForExistence(timeout: 5), "Continue Watching moves to Hidden rows")
+        timings.append(String(format: "hide a row: %.2f s", Date().timeIntervalSince(tapped)))
+        attach("Continue Watching hidden")
+        app.buttons["jellyspace-home-show-resume"].tap()
+        XCTAssertTrue(app.buttons["jellyspace-home-hide-resume"].waitForExistence(timeout: 5), "And back on the home")
+        // Recently added: Shows unticked.
+        let group = app.buttons["jellyspace-home-row-libraries"]
+        XCTAssertTrue(group.exists || scrollTo("jellyspace-home-row-libraries"), "Recently added is one row")
+        group.tap()
+        let shows = app.buttons["jellyspace-home-pick-lib-shows"]
+        XCTAssertTrue(shows.waitForExistence(timeout: 5), "Its libraries are listed")
+        shows.tap()
+        attach("Recently added libraries")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(group.waitForExistence(timeout: 5))
+        XCTAssertTrue(group.label.contains("Films") && !group.label.contains("Shows"), "The row reads the ticked library (\(group.label))")
+        // Genres hidden, then the page left and opened again: it stays hidden.
+        if !app.buttons["jellyspace-home-hide-genres"].exists { _ = scrollTo("jellyspace-home-hide-genres") }
+        app.buttons["jellyspace-home-hide-genres"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(homePage.waitForExistence(timeout: 8))
+        homePage.tap()
+        XCTAssertTrue(app.buttons["jellyspace-home-show-genres"].waitForExistence(timeout: 10) || scrollTo("jellyspace-home-show-genres"), "Genres is still hidden after leaving the page")
+        attach("Home settings again")
+        // Scrolled through: nothing sticks.
+        let scrolled = Date()
+        for _ in 0..<4 { app.swipeUp() }
+        for _ in 0..<4 { app.swipeDown() }
+        timings.append(String(format: "scroll down and up 4 times: %.2f s", Date().timeIntervalSince(scrolled)))
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// Settings → JellySpace → Engines: both engines' options in one place, and mpv as the default
+    /// engine opens a film on mpv (More then has mpv's own Smooth motion).
+    func testEnginesPageAndDefaultEngine() throws {
+        try launch()
+        app.tabBars.buttons["Profile"].tap()
+        XCTAssertTrue(scrollTo("settings-jellyspace", swipes: 10), "Settings has JellySpace")
+        app.buttons["settings-jellyspace"].tap()
+        let engines = app.buttons["jellyspace-settings-engines"]
+        XCTAssertTrue(engines.waitForExistence(timeout: 10), "JellySpace settings has Engines")
+        XCTAssertFalse(app.buttons["jellyspace-settings-sound"].exists, "Sound moved into Engines")
+        engines.tap()
+        for name in ["Upscaling", "Dialogue boost", "Night mode", "Volume boost", "Super resolution", "Smooth motion", "GPU Enabled Zoom", "Subtitles in the picture"] {
+            let row = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+            if !row.exists { app.swipeUp() }
+            XCTAssertTrue(row.waitForExistence(timeout: 3), "Engines has \(name)")
+        }
+        attach("Engines")
+        for _ in 0..<3 { app.swipeDown() }
+        let picker = app.segmentedControls["jellyspace-default-engine"].exists ? app.segmentedControls["jellyspace-default-engine"] : app.segmentedControls.firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "The default engine is a choice of three")
+        picker.buttons["mpv"].tap()
+        attach("Default engine mpv")
+        // A film from JellySpace's home opens on mpv.
+        app.tabBars.buttons["Home"].tap()
+        try enter()
+        XCTAssertTrue(scrollTo("jellyspace-title-m1"), "Quiet Orbit is on the home")
+        app.buttons["jellyspace-title-m1"].firstMatch.tap()
+        let play = app.buttons["jellyspace-detail-play"]
+        XCTAssertTrue(play.waitForExistence(timeout: 15))
+        play.tap()
+        XCTAssertTrue(app.buttons["jellyspace-close"].waitForExistence(timeout: 30), "The player opens")
+        XCTAssertTrue(waitFor(timeout: 40) { ((try? self.position()) ?? 0) > 0 }, "It plays")
+        showControls()
+        app.buttons["jellyspace-settings"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Smooth motion'")).firstMatch.waitForExistence(timeout: 5), "It's playing on mpv")
+        attach("Opened on mpv")
+    }
+
     // MARK: - Helpers
 
     private func launch(extra: [String] = []) throws {

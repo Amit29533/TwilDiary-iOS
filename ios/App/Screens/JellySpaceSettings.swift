@@ -41,6 +41,11 @@ enum JellyPrefs {
     /// mpv's Fill and Original on its GPU output (on: styled subtitles kept, a second of black as it
     /// switches); off, Fill zooms at once on the AVFoundation output and the app draws the subtitles.
     static let gpuZoomKey = "jellyspace.mpv.gpuZoom"
+    /// The engine a video opens on unless you moved it to the other one: "auto", "app" or "mpv".
+    static let engineKey = "jellyspace.engine.default"
+    static let mpvSmoothKey = "jellyspace.mpvSmoothRate"
+    static let mpvSuperResolutionKey = "jellyspace.mpvSuperResolution"
+    static let mpvCompositeKey = "jellyspace.mpv.compositeOSD"
     static let upscaleKey = "jellyspace.upscale"
     static let upscaleModeKey = "jellyspace.upscaleMode"
     static let skipDelayKey = "jellyspace.skip.delay"
@@ -298,7 +303,7 @@ enum JellySecrets {
 
 /// The pages under Settings → JellySpace, each holding one kind of setting.
 enum JellySettingsPage: String, Hashable, CaseIterable {
-    case preferences, home, libraries, playback, skipping, subtitles, sound, gestures, requests, musicDiary
+    case preferences, home, libraries, engines, playback, skipping, subtitles, gestures, requests, musicDiary
     var title: String {
         switch self {
         case .preferences: "Preferences"
@@ -307,7 +312,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
         case .playback: "Playback"
         case .skipping: "Skipping"
         case .subtitles: "Subtitles"
-        case .sound: "Sound"
+        case .engines: "Engines"
         case .gestures: "Gestures"
         case .requests: "Requests"
         case .musicDiary: "Music and diary"
@@ -321,7 +326,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
         case .playback: "play.rectangle.fill"
         case .skipping: "forward.end.fill"
         case .subtitles: "captions.bubble.fill"
-        case .sound: "speaker.wave.2.fill"
+        case .engines: "cpu.fill"
         case .gestures: "hand.draw.fill"
         case .requests: "tray.and.arrow.down.fill"
         case .musicDiary: "music.note"
@@ -335,7 +340,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
         case .playback: .red
         case .skipping: .orange
         case .subtitles: .yellow
-        case .sound: .pink
+        case .engines: .mint
         case .gestures: .teal
         case .requests: .purple
         case .musicDiary: .green
@@ -358,6 +363,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
 struct JellySpaceSettingsView: View {
     @AppStorage(JellyPrefs.hiddenKey) private var hiddenRaw = "{}"
     @AppStorage(JellyPrefs.seerrAddressKey) private var seerrAddress = ""
+    @AppStorage(JellyPrefs.engineKey) private var engine = JellyDecoder.auto.rawValue
     @State private var libraries: [JellyfinLibrary] = JellySettingsLibraries.cached
     @State private var profiles: [JellyfinClient.Profile] = []
     @State private var watchingAs: String?
@@ -382,13 +388,13 @@ struct JellySpaceSettingsView: View {
                 SettingsGroup(label: "Player") {
                     JellyPreferencesLink()
                     SettingsDivider()
+                    JellySettingsLink(page: .engines, value: JellyEnginesGroups.names[engine] ?? "Auto")
+                    SettingsDivider()
                     JellySettingsLink(page: .playback)
                     SettingsDivider()
                     JellySettingsLink(page: .skipping)
                     SettingsDivider()
                     JellySettingsLink(page: .subtitles)
-                    SettingsDivider()
-                    JellySettingsLink(page: .sound)
                     SettingsDivider()
                     JellySettingsLink(page: .gestures)
                 }
@@ -461,21 +467,33 @@ struct JellySettingsPageView: View {
     var body: some View {
         let hiddenItems = JellyHidden.decode(hiddenRaw)
         let shown = libraries.filter { hiddenItems[$0.id] == nil }
+        Group {
+            // Home: a native list of its own (rows dragged into order; see JellyHomeSettingsPage).
+            if page == .home {
+                JellyHomeSettingsPage(libraries: shown)
+            } else {
+                pageScroll(hiddenItems)
+            }
+        }
+        .task {
+            guard page == .home || page == .libraries else { return }
+            let found = await JellySettingsLibraries.load()
+            if found != libraries { libraries = found }
+        }
+    }
+    private func pageScroll(_ hiddenItems: [String: String]) -> some View {
         EdgeToEdgeScroll {
             LazyVStack(alignment: .leading, spacing: 22) {
                 switch page {
                 case .home:
-                    JellyHomeRowsGroup(shown: shown)
-                    JellyDynamicGroup()
-                    JellyMyMediaGroup(shown: shown)
-                    JellyPostersGroup()
+                    EmptyView()
                 case .libraries:
                     JellyLibrariesGroup(libraries: libraries, hiddenItems: hiddenItems, hiddenRaw: $hiddenRaw)
                 case .preferences: JellyPreferencesGroups()
                 case .playback: JellyPlaybackGroups()
                 case .skipping: JellySkippingGroups()
                 case .subtitles: JellySubtitlesGroups()
-                case .sound: JellySoundGroup()
+                case .engines: JellyEnginesGroups()
                 case .gestures: JellyGesturesGroup()
                 case .requests: JellyRequestsGroup()
                 case .musicDiary: JellyMusicDiaryGroups()
@@ -483,11 +501,6 @@ struct JellySettingsPageView: View {
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
         }
         .diaryScreenBackground().diaryPageNavigation(page.title)
-        .task {
-            guard page == .home || page == .libraries else { return }
-            let found = await JellySettingsLibraries.load()
-            if found != libraries { libraries = found }
-        }
     }
 }
 
@@ -515,12 +528,6 @@ struct JellySettingsPageView: View {
             Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(accent)
                 .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
         }.buttonStyle(.plain)
-    }
-    static func move(_ symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
-                .frame(width: 34, height: 34).background(Color.primary.opacity(0.07), in: Circle())
-        }.buttonStyle(.plain).disabled(disabled).opacity(disabled ? 0.35 : 1).accessibilityLabel(label)
     }
 }
 
@@ -567,110 +574,7 @@ private struct JellyAccountGroup: View {
     }
 }
 
-// MARK: Home rows, My Media and what's hidden
-
-/// Dynamic recommendations: how many themed rows the home shows ("Recommendations for Rain",
-/// "Random picks for Dance", "Must watch Parks"), from the words and tags across your server.
-private struct JellyDynamicGroup: View {
-    @AppStorage(JellyPrefs.themeCountKey) private var count = 3
-    private static let counts = (1...5).map { ($0 == 1 ? "1 row" : "\($0) rows", $0) }
-    var body: some View {
-        SettingsGroup(label: "Dynamic recommendations") {
-            JellySettingsRows.choice("Rows on the home", $count, Self.counts)
-        }
-        JellyDecoderNote(text: "Rows from words and tags your titles share: Recommendations for, Random picks for, Must watch. They change every day.")
-    }
-}
-
-private struct JellyHomeRowsGroup: View {
-    let shown: [JellyfinLibrary]
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(JellyPrefs.rowsKey) private var rowsRaw = ""
-    @AppStorage(JellyPrefs.hiddenRowsKey) private var hiddenRowsRaw = ""
-
-    var body: some View {
-        let order = JellyHomeRow.sections(rowsRaw, libraries: shown)
-        let off = JellyHomeRow.hiddenSections(hiddenRowsRaw, libraries: shown)
-        SettingsGroup(label: "Home") {
-            ForEach([JellyHomeRow.hero, .media]) { row in
-                if row == .media { SettingsDivider() }
-                JellySettingsRows.toggle(row.title, Binding(get: { !off.contains(row.rawValue) }, set: { on in
-                    setHidden(row.rawValue, hidden: !on, in: off)
-                }), accent: theme.accent)
-            }
-            ForEach(Array(order.enumerated()), id: \.element.id) { position, section in
-                SettingsDivider()
-                HStack(spacing: 10) {
-                    Text(section.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
-                    Spacer(minLength: 8)
-                    JellySettingsRows.move("chevron.up", label: "Move \(section.title) up", disabled: position == 0) { move(section, by: -1, in: order) }
-                    JellySettingsRows.move("chevron.down", label: "Move \(section.title) down", disabled: position == order.count - 1) { move(section, by: 1, in: order) }
-                    Toggle("", isOn: Binding(get: { !off.contains(section.id) }, set: { on in
-                        setHidden(section.id, hidden: !on, in: off)
-                    })).labelsHidden().tint(theme.accent).accessibilityLabel(section.title)
-                }.padding(.horizontal, 16).frame(minHeight: 50)
-            }
-        }
-    }
-    private func setHidden(_ id: String, hidden: Bool, in off: Set<String>) {
-        var next = off
-        if hidden { next.insert(id) } else { next.remove(id) }
-        hiddenRowsRaw = next.sorted().joined(separator: ",")
-    }
-    private func move(_ section: JellyHomeSection, by step: Int, in order: [JellyHomeSection]) {
-        guard let at = order.firstIndex(of: section), order.indices.contains(at + step) else { return }
-        var next = order
-        next.swapAt(at, at + step)
-        rowsRaw = next.map(\.id).joined(separator: ",")
-    }
-}
-
-/// My Media: the libraries shown on the home, in the order of their pills, each moved with ▲ ▼.
-private struct JellyMyMediaGroup: View {
-    let shown: [JellyfinLibrary]
-    @AppStorage(JellyPrefs.mediaOrderKey) private var mediaOrderRaw = ""
-    @AppStorage(JellyRecommendOff.key) private var offRaw = ""
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-
-    var body: some View {
-        let order = JellyMediaOrder.sorted(shown, mediaOrderRaw)
-        if !order.isEmpty {
-            SettingsGroup(label: "My Media") {
-                ForEach(Array(order.enumerated()), id: \.element.id) { position, library in
-                    if position > 0 { SettingsDivider() }
-                    HStack(spacing: 10) {
-                        Label(library.name, systemImage: JellySpace.symbol(library.type))
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                        Spacer(minLength: 8)
-                        // In recommendations: off keeps it out of More like this, the dynamic rows and the rest.
-                        Toggle("", isOn: recommends(library)).labelsHidden().tint(theme.accent)
-                            .accessibilityLabel("Recommend from \(library.name)")
-                            .accessibilityIdentifier("jellyspace-recommend-" + library.id)
-                        JellySettingsRows.move("chevron.up", label: "Move \(library.name) up", disabled: position == 0) { moveLibrary(library, by: -1, in: order) }
-                        JellySettingsRows.move("chevron.down", label: "Move \(library.name) down", disabled: position == order.count - 1) { moveLibrary(library, by: 1, in: order) }
-                    }.padding(.horizontal, 16).frame(minHeight: 50).accessibilityIdentifier("jellyspace-media-order-" + library.id)
-                }
-            }
-            JellyDecoderNote(text: "The switch beside each: off keeps a library out of recommendations (More like this, Dynamic recommendations, the top poster, For you, Top 10, Hidden gems, the random rows). It stays in My Media and you can still browse it.")
-        }
-    }
-    /// On: the library's titles can be recommended; off: they never are.
-    private func recommends(_ library: JellyfinLibrary) -> Binding<Bool> {
-        Binding(get: { !JellyRecommendOff.ids(offRaw).contains(library.id) }, set: { on in
-            var off = JellyRecommendOff.ids(offRaw)
-            if on { off.remove(library.id) } else { off.insert(library.id) }
-            offRaw = off.sorted().joined(separator: ",")
-        })
-    }
-    private func moveLibrary(_ library: JellyfinLibrary, by step: Int, in order: [JellyfinLibrary]) {
-        guard let at = order.firstIndex(where: { $0.id == library.id }), order.indices.contains(at + step) else { return }
-        var next = order
-        next.swapAt(at, at + step)
-        // Hidden libraries keep their places for when they're shown again.
-        let kept = mediaOrderRaw.split(separator: ",").map(String.init).filter { id in !next.contains { $0.id == id } }
-        mediaOrderRaw = (next.map(\.id) + kept).joined(separator: ",")
-    }
-}
+// MARK: What's hidden (Home's rows and My Media: JellyHomeSettings.swift)
 
 /// Every library with its switch, then anything else you hid (a folder, a show) to show again.
 private struct JellyLibrariesGroup: View {
@@ -706,26 +610,6 @@ private struct JellyLibrariesGroup: View {
     }
 }
 
-// MARK: Posters
-
-private struct JellyPostersGroup: View {
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(JellyPrefs.countsKey) private var counts = true
-    @AppStorage(JellyPrefs.ticksKey) private var ticks = true
-    @AppStorage(JellyPrefs.captionsKey) private var captions = true
-
-    var body: some View {
-        SettingsGroup(label: "Posters") {
-            JellySettingsRows.toggle("Unwatched counts", $counts, accent: theme.accent)
-            SettingsDivider()
-            JellySettingsRows.toggle("Watched ticks", $ticks, accent: theme.accent)
-            SettingsDivider()
-            JellySettingsRows.toggle("Titles", $captions, accent: theme.accent)
-        }
-        JellyDecoderNote(text: "Titles off: no names under posters, and the rows close up as Netflix's do: bigger posters, close together, with small corners; Continue Watching shows just the picture.")
-    }
-}
-
 // MARK: Playback
 
 /// Playback: the next episode, watching, and the picture.
@@ -738,9 +622,6 @@ private struct JellyPlaybackGroups: View {
     @AppStorage(JellyPrefs.ratingCardKey) private var ratingCard = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.batteryKey) private var battery = true
-    @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
-
-    private static let upscales = JellyUpscale.allCases.map { ($0.title, $0) }
 
     var body: some View {
         let accent = theme.accent
@@ -763,11 +644,6 @@ private struct JellyPlaybackGroups: View {
                 SettingsDivider()
                 JellySettingsRows.toggle("Battery", $battery, accent: accent)
             }
-            // Upscaling is AetherEngine's; mpv has its own (More → Super resolution while it plays).
-            SettingsGroup(label: "Default decoder") {
-                JellySettingsRows.choice("Upscaling", $upscale, Self.upscales)
-            }
-            JellyDecoderNote(text: "Auto and App only. On mpv: More → Super resolution and Smooth motion while it plays.")
         }
     }
 }
@@ -876,17 +752,12 @@ private struct JellyPrivacyGroup: View {
 
 private struct JellyAspectGroup: View {
     @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
-    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     private static let fills = JellyFill.allCases.map { ($0.rawValue, $0.rawValue) }
 
     var body: some View {
         SettingsGroup(label: "Picture") {
             JellySettingsRows.choice("Default aspect ratio", $fill, Self.fills)
-            SettingsDivider()
-            JellySettingsRows.toggle("GPU Enabled Zoom", $gpuZoom, accent: theme.accent)
         }
-        JellyDecoderNote(text: "mpv only. On: Fill and Original use mpv's GPU output, with styled subtitles kept as made, but the picture goes black for a second as you switch. Off: Fill is instant on the cooler output, and the subtitles are drawn by the app (styled ones as plain text while filled). Original always uses the GPU.")
     }
 }
 
@@ -1155,23 +1026,70 @@ private struct JellySubtitleTimingGroup: View {
     }
 }
 
-// MARK: Sound
+// MARK: Engines
 
-private struct JellySoundGroup: View {
+/// Engines: the one a video opens on, AetherEngine's upscaling and sound, and mpv's picture options.
+struct JellyEnginesGroups: View {
+    static let names = ["auto": "Auto", "app": "AetherEngine", "mpv": "mpv"]
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @AppStorage(JellyPrefs.engineKey) private var engine = JellyDecoder.auto.rawValue
+    @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
     @AppStorage(JellyPrefs.dialogueKey) private var dialogue = 0
     @AppStorage(JellyPrefs.nightKey) private var night = false
     @AppStorage(JellyPrefs.boostKey) private var boost = 0
+    @AppStorage(JellyPrefs.mpvSuperResolutionKey) private var superResolution = "off"
+    @AppStorage(JellyPrefs.mpvSmoothKey) private var smooth = 0
+    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
+    @AppStorage(JellyPrefs.mpvCompositeKey) private var composite = JellyMPV.compositesByDefault
+    @State private var moved = JellyMPVChoice.count
+    private static let upscales = JellyUpscale.allCases.map { ($0.title, $0) }
+    private static let smoothRates: [(String, Int)] = [("Off", 0), ("60 Hz", 60), ("120 Hz", 120)]
 
     var body: some View {
-        SettingsGroup(label: "Sound") {
-            JellySettingsRows.choice("Dialogue boost", $dialogue, JellySound.dialogue)
-            SettingsDivider()
-            JellySettingsRows.toggle("Night mode", $night, accent: theme.accent)
-            SettingsDivider()
-            JellySettingsRows.choice("Volume boost", $boost, JellySound.boost)
+        let accent = theme.accent
+        Group {
+            SettingsGroup(label: "Default engine") {
+                Picker("Default engine", selection: $engine) {
+                    Text("Auto").tag(JellyDecoder.auto.rawValue)
+                    Text("AetherEngine").tag(JellyDecoder.app.rawValue)
+                    Text("mpv").tag(JellyDecoder.mpv.rawValue)
+                }
+                .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 12)
+                .accessibilityIdentifier("jellyspace-default-engine")
+            }
+            JellyDecoderNote(text: "Auto: AetherEngine with the phone's hardware decoder where it can. AetherEngine: its own decoder for everything. A video you moved to the other engine in the player stays on it.")
+            SettingsGroup(label: "AetherEngine") {
+                JellySettingsRows.choice("Upscaling", $upscale, Self.upscales)
+                SettingsDivider()
+                JellySettingsRows.choice("Dialogue boost", $dialogue, JellySound.dialogue)
+                SettingsDivider()
+                JellySettingsRows.toggle("Night mode", $night, accent: accent)
+                SettingsDivider()
+                JellySettingsRows.choice("Volume boost", $boost, JellySound.boost)
+            }
+            JellyDecoderNote(text: "Upscaling uses Apple's super resolution and MetalFX on video below 1080p. mpv plays the sound as the file has it.")
+            SettingsGroup(label: "mpv") {
+                JellySettingsRows.choice("Super resolution", $superResolution, JellyPlayerView.superResolutions)
+                SettingsDivider()
+                JellySettingsRows.choice("Smooth motion", $smooth, Self.smoothRates)
+                SettingsDivider()
+                JellySettingsRows.toggle("GPU Enabled Zoom", $gpuZoom, accent: accent)
+                SettingsDivider()
+                JellySettingsRows.toggle("Subtitles in the picture", $composite, accent: accent)
+            }
+            JellyDecoderNote(text: "Super resolution and smooth motion pause while the phone is hot or in Low Power Mode. GPU Enabled Zoom: Fill and Original keep styled subtitles as made, with a second of black as you switch; off, Fill is instant. Subtitles in the picture: they show in Picture in Picture too; off, they're drawn over it.")
+            SettingsGroup(label: "Videos") {
+                Button(role: .destructive) {
+                    JellyMPVChoice.forgetAll()
+                    moved = 0
+                } label: {
+                    Text(moved == 0 ? "No videos set to an engine of their own" : "Forget videos set to an engine (\(moved))")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(moved == 0 ? HomeStyle.secondary : Color.red)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).frame(minHeight: 50).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).disabled(moved == 0).accessibilityIdentifier("jellyspace-forget-engines")
+            }
         }
-        JellyDecoderNote(text: "Auto and App only: mpv plays the sound as the file has it.")
     }
 }
 

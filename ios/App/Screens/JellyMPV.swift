@@ -8,13 +8,37 @@ import MPVKitAV
 
 // MARK: Which engine a video plays on
 
-/// Videos you've moved to mpv (More → Decoder → mpv) open on it from then on.
+/// The engine each video opens on: the default (Settings → JellySpace → Engines), unless you moved
+/// that video to the other one (More → Decoder), which it then keeps. Only videos that differ from
+/// the default are listed.
 enum JellyMPVChoice {
-    private static let key = "jellyspace.mpvItems"
-    static func isOn(_ id: String) -> Bool { (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(id) }
+    private static let mpvKey = "jellyspace.mpvItems"
+    private static let appKey = "jellyspace.appItems"
+    static func isOn(_ id: String) -> Bool {
+        let defaults = UserDefaults.standard
+        if (defaults.stringArray(forKey: mpvKey) ?? []).contains(id) { return true }
+        if (defaults.stringArray(forKey: appKey) ?? []).contains(id) { return false }
+        return JellyDecoder.preferred == .mpv
+    }
     static func set(_ id: String, _ on: Bool) {
+        let byDefault = JellyDecoder.preferred == .mpv
+        update(mpvKey) { ids in if on && !byDefault { ids.insert(id) } else { ids.remove(id) } }
+        update(appKey) { ids in if !on && byDefault { ids.insert(id) } else { ids.remove(id) } }
+    }
+    /// How many videos keep an engine of their own.
+    static var count: Int {
+        let defaults = UserDefaults.standard
+        return (defaults.stringArray(forKey: mpvKey) ?? []).count + (defaults.stringArray(forKey: appKey) ?? []).count
+    }
+    static func forgetAll() {
+        UserDefaults.standard.removeObject(forKey: mpvKey)
+        UserDefaults.standard.removeObject(forKey: appKey)
+    }
+    private static func update(_ key: String, _ change: (inout Set<String>) -> Void) {
         var ids = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-        if on { ids.insert(id) } else { ids.remove(id) }
+        let before = ids
+        change(&ids)
+        guard ids != before else { return }
         UserDefaults.standard.set(Array(ids).sorted(), forKey: key)
     }
 }
@@ -30,6 +54,8 @@ enum JellyDecoder: String, CaseIterable, Sendable {
         }
     }
     var path: DecodePath { self == .app ? .software : .automatic }
+    /// The default engine (Settings → JellySpace → Engines).
+    static var preferred: JellyDecoder { JellyDecoder(rawValue: UserDefaults.standard.string(forKey: JellyPrefs.engineKey) ?? "") ?? .auto }
 }
 
 // MARK: mpv
@@ -91,6 +117,13 @@ private struct JellyMPVHandle: @unchecked Sendable {
     private var pendingSubtitles: [ExternalSubtitleTrack] = []
 
     var running: Bool { handle != nil }
+    /// Subtitles composited into the frames unless set otherwise (Engines → Subtitles in the picture):
+    /// on a phone; the Simulator has no VideoToolbox for it.
+    #if targetEnvironment(simulator)
+    nonisolated static let compositesByDefault = false
+    #else
+    nonisolated static let compositesByDefault = true
+    #endif
     /// The file has opened (its first frame or its length came).
     var hasLoaded: Bool { loaded }
     /// Where mpv is, for the log when it doesn't start.
@@ -150,13 +183,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
         // Picture too; the player keeps this output to fitted pictures, so they aren't cropped). The
         // Simulator has no VideoToolbox for that, so an overlay there. `jellyspace.mpv.compositeOSD`
         // overrides it (the performance run compares both).
-        #if targetEnvironment(simulator)
-        let compositeByDefault = false
-        #else
-        let compositeByDefault = true
-        #endif
         let defaults = UserDefaults.standard
-        let composite = defaults.object(forKey: "jellyspace.mpv.compositeOSD") != nil ? defaults.bool(forKey: "jellyspace.mpv.compositeOSD") : compositeByDefault
+        let composite = defaults.object(forKey: JellyPrefs.mpvCompositeKey) != nil ? defaults.bool(forKey: JellyPrefs.mpvCompositeKey) : Self.compositesByDefault
         let output: [(String, String)] = sample != nil
             ? [("vo", "avfoundation"), ("avfoundation-composite-osd", composite ? "yes" : "no"), ("hwdec", "videotoolbox")]
             : [("vo", "gpu-next"), ("gpu-api", "vulkan"), ("gpu-context", "moltenvk"), ("hwdec", "videotoolbox")]
