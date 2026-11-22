@@ -415,7 +415,9 @@ struct JellyfinClient: Sendable {
     static func posterURL(base: URL, item: String, tag: String?) -> URL? {
         guard let tag else { return nil }
         var components = URLComponents(url: base.appending(path: "Items/\(item)/Images/Primary"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "fillHeight", value: "450"), URLQueryItem(name: "quality", value: "90"), URLQueryItem(name: "tag", value: tag)]
+        // WebP: a quarter to a third smaller than JPEG (the server converts once and keeps it).
+        components?.queryItems = [URLQueryItem(name: "fillHeight", value: "450"), URLQueryItem(name: "quality", value: "90"),
+                                  URLQueryItem(name: "format", value: "Webp"), URLQueryItem(name: "tag", value: tag)]
         return components?.url
     }
     /// A view of the signed-in user's (a library they can see).
@@ -727,6 +729,13 @@ struct JellyfinClient: Sendable {
         let page: Page = try await get("Shows/\(series)/Seasons", user.map { [URLQueryItem(name: "userId", value: $0)] } ?? [])
         return page.Items
     }
+    /// A show's first episodes across its seasons (specials first, as Jellyfin lists them).
+    func firstEpisodes(of series: String, user: String?, limit: Int) async throws -> [Item] {
+        var query = [URLQueryItem(name: "Limit", value: String(limit)), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
+        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
+        let page: Page = try await get("Shows/\(series)/Episodes", query)
+        return page.Items
+    }
     func episodes(of series: String, season: String, user: String?) async throws -> [Item] {
         var query = [URLQueryItem(name: "seasonId", value: season), URLQueryItem(name: "Fields", value: "ProviderIds,Overview,PrimaryImageAspectRatio")]
         if let user { query.append(URLQueryItem(name: "userId", value: user)) }
@@ -753,7 +762,8 @@ struct JellyfinClient: Sendable {
     /// Any of an item's pictures (Primary, Backdrop, Logo, Thumb), sized for the phone.
     static func imageURL(base: URL, item: String, type: String, tag: String?, width: Int = 600) -> URL? {
         var components = URLComponents(url: base.appending(path: "Items/\(item)/Images/\(type)"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "maxWidth", value: String(width)), URLQueryItem(name: "quality", value: "90")]
+        components?.queryItems = [URLQueryItem(name: "maxWidth", value: String(width)), URLQueryItem(name: "quality", value: "90"),
+                                  URLQueryItem(name: "format", value: "Webp")]
             + (tag.map { [URLQueryItem(name: "tag", value: $0)] } ?? [])
         return components?.url
     }

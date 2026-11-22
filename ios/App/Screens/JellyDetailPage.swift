@@ -517,6 +517,11 @@ struct JellyDetailPage: View {
             deleteFailure = error.localizedDescription
         }
     }
+    /// The show's first episode outside the specials (season 0).
+    nonisolated private static func openingEpisode(_ client: JellyfinClient, series: String, user: String?) async -> JellyfinClient.Item? {
+        guard let episodes = try? await client.firstEpisodes(of: series, user: user, limit: 40) else { return nil }
+        return episodes.first { ($0.ParentIndexNumber ?? 1) >= 1 }
+    }
     /// "Version: 4K" when a film is stored in more than one quality.
     private func versionMenu(_ sources: [JellyfinClient.Detail.Source]) -> some View {
         let chosen = sources.first { $0.Id == version } ?? sources[0]
@@ -727,12 +732,18 @@ struct JellyDetailPage: View {
         if series {
             async let seasonList = try? client.seasons(of: id, user: user)
             async let next = Self.nextUp(client, series: id, user: user)
+            // The show's first episode alongside (it waited for the seasons): used when there's no next up.
+            async let firstOfShow = Self.openingEpisode(client, series: id, user: user)
             seasons = (await seasonList) ?? []
             nextEpisode = await next
             // Specials (season 0) come first in Jellyfin's list: the show starts at its first real season.
             let opening = seasons.first { ($0.IndexNumber ?? 0) >= 1 } ?? seasons.first
             if nextEpisode == nil, let opening {
-                firstEpisode = (try? await client.episodes(of: route.id, season: opening.Id, user: user))?.first
+                if let first = await firstOfShow, first.SeasonId == opening.Id {
+                    firstEpisode = first
+                } else {
+                    firstEpisode = (try? await client.episodes(of: route.id, season: opening.Id, user: user))?.first
+                }
             }
             if season == nil { season = nextEpisode?.SeasonId ?? opening?.Id }
         } else {

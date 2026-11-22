@@ -111,6 +111,8 @@ struct JellyPlayerView: View {
     @State private var notice: String?
     @State private var noticeID = 0
     @State private var userID: String?
+    /// The next episode's file details and resume point, fetched during Up Next so it opens at once.
+    @State private var prefetch: JellyPrefetch?
     @State private var pickedSubtitle = false
     /// The file's own subtitles (or your languages) already put on while waiting for the one you
     /// picked last time, which may be a separate file mpv adds after the video opens.
@@ -858,23 +860,32 @@ struct JellyPlayerView: View {
         // The user Jellyfin keeps your places for (the administrator, else the first), found once.
         let user = await JellyfinUser.id(client)
         userID = user
-        if let seasonID = current.item.SeasonId, season.first?.SeasonId != seasonID {
-            season = ((try? await client.children(of: seasonID, user: user)) ?? []).filter { $0.kind == "Episode" }
-        }
+        // Asked together (they went one after another): the file's details and where you stopped,
+        // unless Up Next fetched them ahead. The season's episodes come after (only Next Episode and the
+        // episode list need them).
+        let ready = prefetch?.id == id ? prefetch : nil
+        prefetch = nil
+        let keptInfo = handingOver ? loadedInfo : nil
+        let askInfo = keptInfo == nil && ready == nil, askPlace = switchAt == nil && resumeOn && ready == nil
+        async let infoAsked = Self.fileInfo(client, id: id, user: user, wanted: askInfo)
+        async let placeAsked = Self.savedSeconds(client, id: id, user: user, wanted: askPlace)
         var startAt: Double?
         var handedOver = false
         if let switchAt {
             self.switchAt = nil
             startAt = switchAt; handedOver = true
-        } else if resumeOn, let user, let data = try? await client.userData(current.id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 {
-            startAt = Double(ticks) / 10_000_000
+        } else if resumeOn {
+            if let ready { startAt = ready.seconds } else { startAt = await placeAsked }
         }
         // Chapters, scrubbing thumbnails and separate subtitle files first (the files load with the
         // video); the intro and credits stretches while it loads.
         let extras: JellyfinClient.PlayerInfo?
-        if handingOver, let kept = loadedInfo { extras = kept.info } else {
-            extras = try? await client.playerInfo(id, user: user)
+        if let keptInfo { extras = keptInfo.info } else {
+            if let ready { extras = ready.info } else { extras = await infoAsked }
             loadedInfo = (id, extras)
+        }
+        if let seasonID = current.item.SeasonId, season.first?.SeasonId != seasonID {
+            Task { season = ((try? await client.children(of: seasonID, user: user)) ?? []).filter { $0.kind == "Episode" } }
         }
         let stretches: Task<[JellyfinClient.Segment]?, Never>? = handingOver ? nil : Task { try? await client.segments(id) }
         // The subtitle delay you last set in this show (Settings → Subtitles → Timing).
@@ -1307,6 +1318,7 @@ struct JellyPlayerView: View {
     }
 
     private func startCountdown() {
+        prefetchNext()
         countdown = countdownSeconds
         countdownTask?.cancel()
         countdownTask = Task {
@@ -2415,6 +2427,25 @@ struct JellyPlayerView: View {
         guard let engine else { return }
         _ = await engine.seek(to: seconds)
     }
+    /// Up Next: the next episode's file details and where you stopped, fetched now.
+    private func prefetchNext() {
+        guard let next = nextEpisode, prefetch?.id != next.Id else { return }
+        let client = current.client, user = userID, id = next.Id, resume = resumeOn
+        Task {
+            async let info = Self.fileInfo(client, id: id, user: user, wanted: true)
+            async let place = Self.savedSeconds(client, id: id, user: user, wanted: resume)
+            let fetched = JellyPrefetch(id: id, info: await info, seconds: await place)
+            prefetch = fetched
+        }
+    }
+    nonisolated private static func fileInfo(_ client: JellyfinClient, id: String, user: String?, wanted: Bool) async -> JellyfinClient.PlayerInfo? {
+        guard wanted else { return nil }
+        return try? await client.playerInfo(id, user: user)
+    }
+    nonisolated private static func savedSeconds(_ client: JellyfinClient, id: String, user: String?, wanted: Bool) async -> Double? {
+        guard wanted, let user, let data = try? await client.userData(id, user: user), let ticks = data.PlaybackPositionTicks, ticks > 0 else { return nil }
+        return Double(ticks) / 10_000_000
+    }
     static func clock(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds >= 0 else { return "--:--" }
         let whole = Int(seconds)
@@ -2659,6 +2690,13 @@ private struct JellyAirPlayButton: UIViewRepresentable {
 /// redraw only the subtitles.
 @MainActor @Observable final class JellySubtitleClock {
     var time: Double = 0
+}
+
+/// The next episode's details, fetched ahead during Up Next.
+private struct JellyPrefetch {
+    let id: String
+    let info: JellyfinClient.PlayerInfo?
+    let seconds: Double?
 }
 
 /// The progress bar's clock (see the player's tick).
