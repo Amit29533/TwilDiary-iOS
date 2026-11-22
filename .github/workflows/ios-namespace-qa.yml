@@ -71,10 +71,10 @@ jobs:
           set -o pipefail
           xcrun simctl boot "$SIMULATOR_ID" || true
           bash ios/scripts/xcodegen.sh
-          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release \
+          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Release \
             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa" \
-            ENABLE_TESTABILITY=YES -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
+            -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
           status=$?; tail -3 ios/.artifacts/logs/qa-build.log
           [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/qa-build.log | head -30; exit $status; }
           # The phone's main-thread stack (1 MB), so a stack overflow crashes here as it does on the phone.
@@ -84,7 +84,7 @@ jobs:
           TEST_RUNNER_JELLY_QA_VIDEO: http://127.0.0.1:8765/qa.mkv
         run: |
           set -o pipefail
-          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release \
+          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Release \
             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa" \
             -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 400 -maximum-test-execution-time-allowance 480 \
@@ -155,7 +155,7 @@ jobs:
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b || true
           bash ios/scripts/xcodegen.sh
-          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             ENABLE_TESTABILITY=YES -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
+          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Release             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
           status=$?; tail -3 ios/.artifacts/logs/qa-build.log
           [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/qa-build.log | head -30; exit $status; }
           python3 ios/tools/qa/stack_size.py ios/.derived/qa/Build/Products/Release-iphonesimulator/TwilDiary.app 1024
@@ -172,7 +172,7 @@ jobs:
           TEST_RUNNER_JELLY_QA_SERVER: http://127.0.0.1:8766
         run: |
           set -o pipefail
-          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Release             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 400 -maximum-test-execution-time-allowance 480             -only-testing:TwilDiaryUITests/JellySpaceUITests -resultBundlePath ios/.artifacts/qa/JellySpaceUI.xcresult             2>&1 | tee ios/.artifacts/logs/jellyspace-ui.log | grep -E "Test Case|error:|JELLY-QA" || true
+          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Release             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 400 -maximum-test-execution-time-allowance 480             -only-testing:TwilDiaryUITests/JellySpaceUITests -resultBundlePath ios/.artifacts/qa/JellySpaceUI.xcresult             2>&1 | tee ios/.artifacts/logs/jellyspace-ui.log | grep -E "Test Case|error:|JELLY-QA" || true
       - name: Requests to the server
         if: always()
         run: |
