@@ -28,11 +28,19 @@ import TwilDiaryCore
         return url
     }
     static var apiKey: String? {
+        if let uiTestKey { return uiTestKey }
         var q = query; q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
+    /// UI tests only (`--ui-testing --ui-jellyfin-key <key>`): the QA run's stand-in server's key,
+    /// given at launch instead of the Keychain (ios/tools/qa/fake_jellyfin.py).
+    private static let uiTestKey: String? = {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--ui-testing"), let at = arguments.firstIndex(of: "--ui-jellyfin-key"), arguments.indices.contains(at + 1) else { return nil }
+        return arguments[at + 1]
+    }()
     static func save(address: URL, apiKey: String?) throws {
         JellySpace.resetKey()
         UserDefaults.standard.set(address.absoluteString, forKey: addressKey)

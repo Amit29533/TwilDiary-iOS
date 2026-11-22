@@ -11,10 +11,14 @@ import XCTest
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    override func setUp() async throws {
+        try await super.setUp()
         XCUIDevice.shared.orientation = .portrait
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         if let app {
             attach("End")
             if !timings.isEmpty {
@@ -24,7 +28,7 @@ import XCTest
             app.terminate()
         }
         XCUIDevice.shared.orientation = .portrait
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - The tests (each on AetherEngine and on mpv)
