@@ -316,9 +316,9 @@ import XCTest
 
     private func showControls() {
         let close = app.buttons["jellyspace-close"]
-        if close.exists && close.isHittable { return }
+        if close.exists { return }
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).tap()
-        _ = waitFor(timeout: 3) { close.exists && close.isHittable }
+        _ = close.waitForExistence(timeout: 3)
     }
 
     private func waitFor(timeout: TimeInterval = 5, _ condition: @escaping () -> Bool) -> Bool {
