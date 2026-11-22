@@ -70,6 +70,8 @@ struct JellyPlayerView: View {
     @State private var translatedTag = false
     /// The cast remote closing the player (see body).
     @State private var castClosing = false
+    /// GPU Enabled Zoom (Preferences → Picture): mpv's Fill on its GPU output, or instant on AVFoundation.
+    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
     /// The rating card (Netflix's): the rating and IMDb's warnings, a moment after a video starts.
     @State private var ratingInfo: JellyRatingInfo?
     @State private var showsRating = false
@@ -268,13 +270,13 @@ struct JellyPlayerView: View {
             .onChange(of: activeSubtitle) { _, id in translator.reset(language: subtitleTracks.first { $0.id == id }?.language) }
             .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
             .onChange(of: translator.translating) { _, on in translationChanged(on) }
+            .onChange(of: appDrawsMPVSubtitles, initial: true) { _, drawn in mpv.setTextHidden(drawn, look: subtitleLook) }
             .onChange(of: translator.problem) { _, text in if let text { show(text) } }
             // mpv reads its lines out as text only while a translation language is chosen.
-            .onChange(of: translator.target, initial: true) { _, target in mpv.watchesText = !target.isEmpty }
+            .onChange(of: wantsMPVText, initial: true) { _, wanted in mpv.watchesText = wanted }
     }
     /// Translating started or stopped: mpv's own text hidden or back, and the tag for a moment.
     private func translationChanged(_ on: Bool) {
-        mpv.setTextHidden(on, look: subtitleLook)
         withAnimation { translatedTag = on }
         if on { Task { try? await Task.sleep(for: .seconds(3)); withAnimation { translatedTag = false } } }
     }
@@ -290,8 +292,9 @@ struct JellyPlayerView: View {
                                sheet: subtitleLook.styled == "mine" ? nil : assSheet, lift: lift,
                                translated: translator.translating ? translator.lines : nil)
                 // mpv's line, translated (mpv draws its own see-through meanwhile).
-                if usesMPV, translator.translating, !mpvLine.isEmpty {
-                    JellyTranslatedLine(text: translator.lines[mpvLine] ?? mpvLine, look: subtitleLook, insets: safe.safeAreaInsets, lift: lift)
+                if appDrawsMPVSubtitles, !mpvLine.isEmpty {
+                    JellyTranslatedLine(text: translator.translating ? (translator.lines[mpvLine] ?? mpvLine) : mpvLine,
+                                        look: subtitleLook, insets: safe.safeAreaInsets, lift: lift)
                 }
                 if translatedTag { translatedLabel(bottom: safe.safeAreaInsets.bottom) }
             }
@@ -795,18 +798,24 @@ struct JellyPlayerView: View {
         ZStack {
             Color.clear.contentShape(Rectangle()).ignoresSafeArea().onTapGesture { flashUnlock() }
             if unlockShown {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { screenLocked = false; unlockShown = false; showsControls = true }
-                    scheduleHide()
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: "lock.fill").font(.system(size: 22, weight: .semibold))
-                        Text("Tap to unlock").font(.system(size: 12, weight: .semibold))
+                // A tap shows the closed lock where the lock button always is (top right, left of
+                // the close button's place), at its size; tapping it unlocks.
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { screenLocked = false; unlockShown = false; showsControls = true }
+                        scheduleHide()
+                    } label: {
+                        Image(systemName: "lock.fill").font(.system(size: 20, weight: .medium)).foregroundStyle(.white)
+                            .frame(width: 44, height: 44).contentShape(Rectangle())
                     }
-                    .foregroundStyle(.white).padding(.horizontal, 16).padding(.vertical, 12)
-                    .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 18)).contentShape(Rectangle())
+                    .buttonStyle(.plain).accessibilityLabel("Unlock screen").accessibilityIdentifier("jellyspace-unlock")
+                    Color.clear.frame(width: 44, height: 44)
                 }
-                .buttonStyle(.plain).accessibilityIdentifier("jellyspace-unlock").transition(.opacity)
+                .shadow(color: .black.opacity(0.45), radius: 6)
+                .padding(.horizontal, verticalSizeClass == .compact ? 28 : 16).padding(.top, 10)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .transition(.opacity)
             }
         }
     }
@@ -1828,7 +1837,15 @@ struct JellyPlayerView: View {
     /// or at its own size. Through AVFoundation the subtitles are composited into the frames, which
     /// Fill would crop (and the layer has no pixel-for-pixel size); on the GPU they're placed on what's
     /// shown. So AVFoundation, the coolest way, plays fitted pictures.
-    private var mpvOnGPU: Bool { activeSmooth > 0 || activeSuperResolution != "off" || fill != .fit }
+    private var mpvOnGPU: Bool {
+        activeSmooth > 0 || activeSuperResolution != "off" || fill == .original || (fill == .fill && gpuZoom)
+    }
+    /// The app draws mpv's subtitle line (mpv's own drawn see-through): while translating, or filled on
+    /// AVFoundation (GPU Enabled Zoom off), where mpv's, in the frames, would be cropped with them.
+    private var appDrawsMPVSubtitles: Bool { usesMPV && (translator.translating || (fill == .fill && !mpvOnGPU)) }
+    /// mpv reads its lines out as text: for translating (from the language being chosen) or for the
+    /// app to draw them.
+    private var wantsMPVText: Bool { !translator.target.isEmpty || appDrawsMPVSubtitles }
     /// Whether this video is upscaled: by the setting, but on Auto not while the phone is hot or in
     /// Low Power Mode (Always means always).
     private var upscaleWanted: Bool { upscaleAllowed(upscaleMode) }

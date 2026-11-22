@@ -34,6 +34,9 @@ enum JellyPrefs {
     static let holdKey = "jellyspace.gesture.hold"
     static let seerrAddressKey = "jellyspace.seerr.address"
     static let fillKey = "jellyspace.fill"
+    /// mpv's Fill and Original on its GPU output (on: styled subtitles kept, a second of black as it
+    /// switches); off, Fill zooms at once on the AVFoundation output and the app draws the subtitles.
+    static let gpuZoomKey = "jellyspace.mpv.gpuZoom"
     static let upscaleKey = "jellyspace.upscale"
     static let upscaleModeKey = "jellyspace.upscaleMode"
     static let skipDelayKey = "jellyspace.skip.delay"
@@ -844,12 +847,17 @@ private struct JellyAudioLanguageGroup: View {
 
 private struct JellyAspectGroup: View {
     @AppStorage(JellyPrefs.fillKey) private var fill = JellyFill.fit.rawValue
+    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
+    @AppStorage("theme") private var theme = DiaryTheme.twilight
     private static let fills = JellyFill.allCases.map { ($0.rawValue, $0.rawValue) }
 
     var body: some View {
         SettingsGroup(label: "Picture") {
             JellySettingsRows.choice("Default aspect ratio", $fill, Self.fills)
+            SettingsDivider()
+            JellySettingsRows.toggle("GPU Enabled Zoom", $gpuZoom, accent: theme.accent)
         }
+        JellyDecoderNote(text: "mpv only. On: Fill and Original use mpv's GPU output, with styled subtitles kept as made, but the picture goes black for a second as you switch. Off: Fill is instant on the cooler output, and the subtitles are drawn by the app (styled ones as plain text while filled). Original always uses the GPU.")
     }
 }
 
