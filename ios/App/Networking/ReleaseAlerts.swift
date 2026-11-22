@@ -141,13 +141,15 @@ import TwilDiaryCore
             told += 1
             let content = UNMutableNotificationContent()
             content.title = "Release date"; content.body = release.heads; content.threadIdentifier = release.titleId
+            content.userInfo = [AlertOpening.key: release.titleId]
             let finished = await NotificationArtwork.finish(content, from: titles[release.titleId]?.name ?? "TwilDiary", conversation: release.titleId, poster: titles[release.titleId]?.poster)
             try? await center.add(UNNotificationRequest(identifier: release.id + "|heads", content: finished, trigger: nil))
         }
         let live = Set(releases.map(\.id))
         UserDefaults.standard.set(Array(seen.intersection(live)), forKey: seenKey)
         let ids = await center.pendingNotificationRequests().map(\.identifier)
-        center.removePendingNotificationRequests(withIdentifiers: ids.filter { $0.hasPrefix(prefix) && !$0.hasSuffix("|heads") })
+        // Set again first; those no longer wanted go after (see EpisodeNotifications.place).
+        var kept = Set<String>()
         // A show's new-episode alert that day already says it.
         let episodeDays = Set(ids.filter { $0.hasPrefix("episode|") })
         let calendar = DiaryDate.calendar()
@@ -159,9 +161,12 @@ import TwilDiaryCore
             if let date = calendar.date(from: when), date <= .now { continue }
             let content = UNMutableNotificationContent()
             content.title = release.heading; content.body = release.body; content.sound = .default; content.threadIdentifier = release.titleId
+            content.userInfo = [AlertOpening.key: release.titleId]
+            kept.insert(release.id)
             let finished = await NotificationArtwork.finish(content, from: titles[release.titleId]?.name ?? "TwilDiary", conversation: release.titleId, poster: titles[release.titleId]?.poster)
             try? await center.add(UNNotificationRequest(identifier: release.id, content: finished, trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
         }
+        center.removePendingNotificationRequests(withIdentifiers: ids.filter { $0.hasPrefix(prefix) && !$0.hasSuffix("|heads") && !kept.contains($0) })
     }
 
     static func clear() async {

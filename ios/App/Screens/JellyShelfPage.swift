@@ -33,6 +33,7 @@ struct JellyShelfPage: View {
         }
         .diaryScreenBackground()
         .jellyFaceLock()
+        .jellyPage()
         .navigationTitle(route.title).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task(id: hiddenRaw) { await load() }

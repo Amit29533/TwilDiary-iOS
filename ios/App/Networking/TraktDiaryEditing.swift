@@ -87,17 +87,22 @@ extension DiaryStore {
 
     /// Queues an edit for the connected mirrors, never the service the diary comes from.
     func mirror(_ mutation: OptimisticMutation, to providers: Set<SyncProviderKind> = [.trakt, .mdblist, .wetrakr]) {
+        mirrorAll([mutation], to: providers)
+    }
+    /// Several together (a season, a show's whole history), queued and saved once rather than once each.
+    func mirrorAll(_ mutations: [OptimisticMutation], to providers: Set<SyncProviderKind> = [.trakt, .mdblist, .wetrakr]) {
+        guard !mutations.isEmpty else { return }
         // Simkl: its own sync places each edit in Simkl's numbering and sends it (never the main tracker).
-        SimklMirror.shared.capture(mutation, store: self)
+        SimklMirror.shared.capture(mutations, store: self)
         // AniList: its own sync works out the title's entries from the diary and saves them.
-        AniListSync.shared.capture(mutation, store: self)
+        AniListSync.shared.capture(mutations, store: self)
         var skip: Set<SyncProviderKind> = [.cloudflare]
         if let diaryService { skip.insert(providerKind(diaryService)) }
         // The service holding the diary gets your edits directly (one writer, one pace), also
         // while the old server copy is on screen; never a second copy through the mirrors.
         let targets = providers.subtracting(skip).intersection(providerSettings.activeDirectLoggingProviders)
         guard !targets.isEmpty, !isPreview else { return }
-        recordDirectProviderMutation(mutation, providers: targets)
+        recordDirectProviderMutations(mutations.map { ($0, UUID().uuidString) }, providers: targets)
     }
 
     // MARK: Watches
@@ -108,10 +113,12 @@ extension DiaryStore {
         var item = try serviceRef(title)
         let when = stamp(date)
         let path = service == .mdblist ? "/sync/watched" : service == .wetrakr ? "/sync/tracking" : "/sync/history"
-        // What the diary already had watched: those are rewatches (Cinopsys's is_rewatch).
+        // What the diary already had watched: those are rewatches (Cinopsys's is_rewatch). (The show's
+        // episodes are gone through once: for a long show, once per watch held up the screen.)
+        let places = Dictionary(workspace.episodes.filter { $0.titleId == title.id }.map { ($0.id, "\($0.season)|\($0.number)") }, uniquingKeysWith: { first, _ in first })
         let watchedBefore = Set(workspace.activeEvents.filter { $0.titleId == title.id }.compactMap { event -> String? in
             guard let id = event.episodeId else { return "movie" }
-            return workspace.episodes.first { $0.id == id }.map { "\($0.season)|\($0.number)" }
+            return places[id]
         })
         // WeTrakr: status "watched" with tracked_at; only a rewatch may log another play.
         func shaped(_ watch: [String: Any], rewatch: Bool) -> [String: Any] { service == .wetrakr ? WeTrakrWrite.watched(watch, rewatch: rewatch) : watch }
@@ -153,12 +160,12 @@ extension DiaryStore {
         }
         // The mirrors get each watch at the same time (the diary now has the episodes).
         if title.isSeries {
-            for episode in episodes {
-                let id = workspace.episodes.first { $0.titleId == title.id && $0.season == episode.season && $0.number == episode.number }?.id
-                    ?? "\(title.id)|s\(episode.season)e\(episode.number)"
-                mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: id, watchedAt: when, recordedAt: when,
-                                  rewatch: watchedBefore.contains("\(episode.season)|\(episode.number)")))
-            }
+            let ids = Dictionary(workspace.episodes.filter { $0.titleId == title.id }.map { ("\($0.season)|\($0.number)", $0.id) }, uniquingKeysWith: { first, _ in first })
+            mirrorAll(episodes.map { episode -> OptimisticMutation in
+                let place = "\(episode.season)|\(episode.number)"
+                return .markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: ids[place] ?? "\(title.id)|s\(episode.season)e\(episode.number)",
+                                  watchedAt: when, recordedAt: when, rewatch: watchedBefore.contains(place))
+            })
         } else {
             mirror(.markWatch(operationId: UUID().uuidString, titleId: title.id, episodeId: nil, watchedAt: when, recordedAt: when, rewatch: watchedBefore.contains("movie")))
         }
@@ -206,7 +213,8 @@ extension DiaryStore {
             try send(path, try playsBody(events, timed: service == .wetrakr))
         }
         mirrorRemovals(events)
-        updateCopy { library in library.plays.removeAll { ids.contains($0.historyId) } }
+        let going = Set(ids)
+        updateCopy { library in library.plays.removeAll { going.contains($0.historyId) } }
         refreshCopySoon()
     }
     /// The mirrors lose the same plays. Called before the phone's copy changes: the diary is rebuilt
@@ -214,27 +222,42 @@ extension DiaryStore {
     /// look up; each removal carries what the mirrors need itself (`DetachedWatch`).
     private func mirrorRemovals(_ events: [WatchEvent]) {
         let going = Set(events.map(\.id)), when = stamp(now)
-        for event in events {
-            guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { continue }
-            let episode = event.episodeId.flatMap { id in workspace.episodes.first { $0.id == id } }
-            if title.isSeries && episode == nil { continue }
-            let others = workspace.activeEvents.contains { $0.titleId == event.titleId && $0.episodeId == event.episodeId && !going.contains($0.id) }
-            // A show with nothing watched left once these go (an Undo of its first episode, say).
-            let empty = title.isSeries && !workspace.activeEvents.contains { $0.titleId == event.titleId && !going.contains($0.id) }
-            let watch = DetachedWatch(tmdbId: tmdb, movie: !title.isSeries, season: episode?.season, number: episode?.number,
-                                      watchedAt: event.watchedAt, othersRemain: others, titleEmpty: empty ? true : nil)
-            mirror(.revokeWatch(eventId: watch.eventID, titleId: title.id, expectedVersion: 1, revokedAt: when))
+        // The diary gone through once for all of them: each removal went through every watch and every
+        // episode in it, which for a long show's hundreds of watches held up the screen.
+        let episodes = episodesByID(of: events)
+        func place(_ event: WatchEvent) -> String { event.titleId + "|" + (event.episodeId ?? "") }
+        var staying = Set<String>(), stillWatched = Set<String>()
+        for event in workspace.activeEvents where !going.contains(event.id) {
+            staying.insert(place(event))
+            stillWatched.insert(event.titleId)
         }
+        mirrorAll(events.compactMap { event -> OptimisticMutation? in
+            guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { return nil }
+            let episode = event.episodeId.flatMap { episodes[$0] }
+            if title.isSeries && episode == nil { return nil }
+            // A show with nothing watched left once these go (an Undo of its first episode, say).
+            let empty = title.isSeries && !stillWatched.contains(event.titleId)
+            let watch = DetachedWatch(tmdbId: tmdb, movie: !title.isSeries, season: episode?.season, number: episode?.number,
+                                      watchedAt: event.watchedAt, othersRemain: staying.contains(place(event)), titleEmpty: empty ? true : nil)
+            return .revokeWatch(eventId: watch.eventID, titleId: title.id, expectedVersion: 1, revokedAt: when)
+        })
+    }
+    /// The episodes these watches are of.
+    private func episodesByID(of events: [WatchEvent]) -> [String: Episode] {
+        let wanted = Set(events.compactMap(\.episodeId))
+        guard !wanted.isEmpty else { return [:] }
+        return Dictionary(workspace.episodes.filter { wanted.contains($0.id) }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
     /// Watches as the service's body (movies; shows > seasons > episodes), with each play's time
     /// when `timed`. WeTrakr's shape: status "watched" and tracked_at.
     private func playsBody(_ events: [WatchEvent], timed: Bool) throws -> [String: Any] {
         var movies: [[String: Any]] = [], shows: [Int: [Int: [[String: Any]]]] = [:]
+        let episodes = episodesByID(of: events)
         for event in events {
             guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { throw APIError.message("This watch has no TMDB id, so \(service.name) can’t find it.") }
             if timed && event.watchedAt == nil { throw APIError.message("This watch has no time, so \(service.name) can’t tell which play to remove.") }
             if title.isSeries {
-                guard let episode = workspace.episodes.first(where: { $0.id == event.episodeId }) else { throw APIError.message("This watch has no episode to remove.") }
+                guard let episode = event.episodeId.flatMap({ episodes[$0] }) else { throw APIError.message("This watch has no episode to remove.") }
                 var entry: [String: Any] = ["number": episode.number]
                 if timed, let when = event.watchedAt { entry["watched_at"] = when }
                 shows[tmdb, default: [:]][episode.season, default: []].append(entry)
@@ -317,7 +340,10 @@ extension DiaryStore {
         // Changes what you have (never "the first N": that replaced E4's watch with E1's).
         let change = SeasonAdjustment.change(episodes: episodes, watched: watched, count: count)
         if !change.add.isEmpty { try await serviceAddPlays(title, episodes: change.add.map { (season: $0.season, number: $0.number) }, at: watchedAt) }
-        let remove = change.remove.compactMap { latestServiceEvent(titleID: title.id, episodeID: $0.id) }
+        // Each one's latest watch, from one pass over the diary.
+        let latest = Dictionary(grouping: workspace.activeEvents.filter { $0.titleId == title.id }, by: { $0.episodeId ?? "" })
+            .compactMapValues { $0.max { ($0.watchedAt ?? $0.recordedAt) < ($1.watchedAt ?? $1.recordedAt) } }
+        let remove = change.remove.compactMap { latest[$0.id] }
         if !remove.isEmpty { try await serviceRemoveWatches(remove) }
     }
 

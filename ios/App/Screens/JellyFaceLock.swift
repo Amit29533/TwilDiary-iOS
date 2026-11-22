@@ -40,6 +40,34 @@ import LocalAuthentication
     /// Left JellySpace: the next time in, Face ID first.
     func relock() { if enabled { unlocked = false } }
 
+    // JellySpace's home locks again as you leave it. Its pages and its player open from the diary too
+    // (a title's page has Play and Open in JellySpace), and leaving those left it unlocked.
+
+    /// Where JellySpace's pages begin in each tab's stack.
+    @ObservationIgnored private var roots: [AppTab: Int] = [:]
+    @ObservationIgnored private var depths: [AppTab: Int] = [:]
+    @ObservationIgnored private var check: Task<Void, Never>?
+
+    /// A JellySpace page has opened in this tab, at this depth.
+    func opened(_ tab: AppTab, depth: Int) { roots[tab] = min(roots[tab] ?? depth, depth) }
+    /// A tab's stack has changed. Looked at once the page going has gone: locked sooner, it would ask
+    /// for your face on its way out.
+    func stacksChanged(_ counts: [AppTab: Int]) {
+        guard !roots.isEmpty else { return }
+        depths = counts
+        check?.cancel()
+        check = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            let open = roots.filter { (depths[$0.key] ?? 0) >= $0.value }
+            guard open.count < roots.count else { return }
+            roots = open
+            if open.isEmpty { relock() }
+        }
+    }
+    /// A video opened from a diary page has closed.
+    func leftPlayer() { if roots.isEmpty { relock() } }
+
     /// The app's coming and going (from the root view).
     func phase(_ phase: ScenePhase) {
         if phase == .active {
@@ -85,7 +113,23 @@ private struct JellyFaceLockCover: ViewModifier {
     }
 }
 
+/// Notes where a JellySpace page is in its tab's stack (see JellyFaceLock.opened).
+private struct JellyPagePlace: ViewModifier {
+    @Environment(AppRouter.self) private var router
+    @State private var noted = false
+
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard !noted else { return }
+            noted = true
+            JellyFaceLock.shared.opened(router.selectedTab, depth: router.paths[router.selectedTab]?.count ?? 0)
+        }
+    }
+}
+
 extension View {
     /// Covered by JellySpace's Face ID lock while it's locked.
     func jellyFaceLock() -> some View { modifier(JellyFaceLockCover()) }
+    /// A page of JellySpace: leaving the last of them locks it again.
+    func jellyPage() -> some View { modifier(JellyPagePlace()) }
 }

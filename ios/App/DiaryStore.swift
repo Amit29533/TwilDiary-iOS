@@ -173,7 +173,7 @@ import TwilDiaryCore
     var undoLabel: String? { didSet { undoNoticeID = UUID() } }
     private var undoAction: (() async throws -> Void)? { didSet { undoTitles = nil } }
     /// Titles an Undo changes, so it refreshes just those; nil means a complete diary read.
-    private var undoTitles: Set<String>?
+    private(set) var undoTitles: Set<String>?
     /// The notice has something to take back (a watch just logged).
     var canUndo: Bool { undoAction != nil }
     /// A server sign-in kept from when the diary lived on the server (moved to the phone at launch).
@@ -744,15 +744,25 @@ import TwilDiaryCore
     /// Records a watch or title mutation for any enabled direct providers (`trakt`, `mdblist`, `wetrakr`)
     /// and flushes pending direct provider batches in the background.
     func recordDirectProviderMutation(_ mutation: OptimisticMutation, operationId: String = UUID().uuidString, providers: Set<SyncProviderKind>? = nil) {
-        let isSeries = title(mutation.titleId)?.isSeries ?? true
-        let activeProviders = providerSettings.activeDirectLoggingProviders.intersection(providers ?? providerSettings.activeDirectLoggingProviders)
-            .filter { ProviderDeliveryPlanner.carries(mutation, provider: $0, isSeries: isSeries) }
-        guard !activeProviders.isEmpty else { return }
+        recordDirectProviderMutations([(mutation, operationId)], providers: providers)
+    }
+    /// Several at once: the queue, which is written whole, is saved once for all of them.
+    func recordDirectProviderMutations(_ mutations: [(mutation: OptimisticMutation, operationId: String)], providers: Set<SyncProviderKind>? = nil) {
         guard let scope = outboxScope else { return }
-        if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
-           status == nil, score == nil, !clearScore, favorite == nil, queued == nil { return }
-        var next = outbox
-        _ = next.enqueue(SyncOutboxEntry(operationId: operationId, createdAt: now.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true)), mutation: mutation, pendingProviders: activeProviders))
+        let connected = providerSettings.activeDirectLoggingProviders
+        let wanted = connected.intersection(providers ?? connected)
+        guard !wanted.isEmpty else { return }
+        var next = outbox, queued = false
+        for (mutation, operationId) in mutations {
+            let isSeries = title(mutation.titleId)?.isSeries ?? true
+            let carrying = wanted.filter { ProviderDeliveryPlanner.carries(mutation, provider: $0, isSeries: isSeries) }
+            guard !carrying.isEmpty else { continue }
+            if case .patchTitle(_, _, let status, let score, let clearScore, let favorite, let queued, _, _) = mutation,
+               status == nil, score == nil, !clearScore, favorite == nil, queued == nil { continue }
+            _ = next.enqueue(SyncOutboxEntry(operationId: operationId, createdAt: now.ISO8601Format(Date.ISO8601FormatStyle(includingFractionalSeconds: true)), mutation: mutation, pendingProviders: carrying))
+            queued = true
+        }
+        guard queued else { return }
         do { try outboxStore.save(next, scope: scope); outbox = next }
         catch { self.error = "Provider delivery could not be saved: " + error.localizedDescription; return }
         Task { await flushDirectProviders() }

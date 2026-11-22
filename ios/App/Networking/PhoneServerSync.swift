@@ -92,7 +92,7 @@ enum ExtrasStorage {
                     problem = "Your server has extras from a newer TwilDiary. Update the app to sync them."
                     return false
                 }
-                result = extras.merge(remote)
+                result = extras.merge(remote, first: !extras.hasMerged(.server))
             } else if extras.driveCopy.entries.isEmpty, extras.driveCopy.locations.isEmpty,
                       FavouritesStore.shared.items.isEmpty, PhoneTrash.shared.titles.isEmpty {
                 lastSynced = .now; problem = nil
@@ -102,6 +102,7 @@ enum ExtrasStorage {
                 let body = String(decoding: try JSONEncoder().encode(extras.driveCopy), as: UTF8.self)
                 _ = try await request("/api/phone-extras", method: "PUT", body: try JSONSerialization.data(withJSONObject: ["body": body]))
             }
+            extras.setMerged(.server)
             lastSynced = .now; problem = nil
             return result.local
         } catch {

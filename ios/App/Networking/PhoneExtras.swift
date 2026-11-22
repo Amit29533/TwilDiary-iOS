@@ -59,7 +59,19 @@ import TwilDiaryCore
     private init() {
         let saved = (try? Data(contentsOf: Self.file)).flatMap { try? JSONDecoder().decode(Saved.self, from: $0) }
         entries = saved?.entries ?? [:]; locations = saved?.locations ?? []; changed = saved?.changed ?? [:]
+        // Decided once: a phone already in step with a copy counts as merged with it, a fresh install not.
+        let defaults = UserDefaults.standard
+        for (copy, inUse) in [(Copy.drive, GoogleDrive.connected), (Copy.server, ExtrasStorage.server)] where defaults.object(forKey: copy.key) == nil {
+            defaults.set(saved != nil && inUse, forKey: copy.key)
+        }
     }
+    /// Where a copy of these is kept, and whether this install has merged with it yet (see merge).
+    enum Copy: String {
+        case drive, server
+        fileprivate var key: String { "extras.merged." + rawValue }
+    }
+    func hasMerged(_ copy: Copy) -> Bool { UserDefaults.standard.bool(forKey: copy.key) }
+    func setMerged(_ copy: Copy) { UserDefaults.standard.set(true, forKey: copy.key) }
     private func save(push: Bool = true) {
         BackgroundFiles.save(Saved(entries: entries, locations: locations, changed: changed), to: Self.file)
         if push { scheduleSync() }
@@ -124,7 +136,10 @@ import TwilDiaryCore
         changed[Part.locations.rawValue] = .now
         save()
     }
-    func forget() { entries = [:]; locations = []; changed = [:]; BackgroundFiles.cancel(Self.file); try? FileManager.default.removeItem(at: Self.file) }
+    func forget() {
+        entries = [:]; locations = []; changed = [:]; BackgroundFiles.cancel(Self.file); try? FileManager.default.removeItem(at: Self.file)
+        for copy in [Copy.drive, .server] { UserDefaults.standard.set(false, forKey: copy.key) }
+    }
 
     var backup: Backup {
         Backup(entries: entries, locations: locations, favourites: FavouritesStore.shared.items, trash: PhoneTrash.shared.titles)
@@ -200,7 +215,10 @@ extension PhoneExtras {
     /// Merges Drive's copy into the phone's: each title's extras by the newer change, and each
     /// whole list (Jellyfin folders, favourite people, Trash) by when it last changed. Returns
     /// whether the phone's copy changed, and whether Drive's is missing the phone's newer changes.
-    func merge(_ remote: DriveCopy) -> (local: Bool, remote: Bool) {
+    /// `first`: this install hasn't merged with that copy before. Favourite people and Trash then join
+    /// one by one: by the newer list, a single favourite added before the copy had come back after a
+    /// reinstall replaced everything kept there.
+    func merge(_ remote: DriveCopy, first: Bool = false) -> (local: Bool, remote: Bool) {
         var localChanged = false, remoteBehind = false
         var merged = entries
         for key in Set(entries.keys).union(remote.entries.keys) {
@@ -216,11 +234,28 @@ extension PhoneExtras {
             return theirs > mine ? true : mine > theirs ? false : nil
         }
         switch newer(.locations) { case true?: locations = remote.locations; localChanged = true; case false?: remoteBehind = true; case nil: break }
-        switch newer(.favourites) { case true?: FavouritesStore.shared.replace(remote.favourites); localChanged = true; case false?: remoteBehind = true; case nil: break }
-        switch newer(.trash) { case true?: PhoneTrash.shared.replace(remote.trash); localChanged = true; case false?: remoteBehind = true; case nil: break }
+        if first {
+            let people = Self.joined(FavouritesStore.shared.items, remote.favourites, key: \.id).sorted { $0.savedAt > $1.savedAt }
+            if people.count > FavouritesStore.shared.items.count { FavouritesStore.shared.replace(people); localChanged = true }
+            let trash = Self.joined(PhoneTrash.shared.titles, remote.trash, key: Self.key)
+            if trash.count > PhoneTrash.shared.titles.count { PhoneTrash.shared.replace(trash); localChanged = true }
+            // What the copy lacks goes to it, as the newest, so other phones take the joined list too.
+            for (part, missing) in [(Part.favourites, people.count > remote.favourites.count), (.trash, trash.count > remote.trash.count)] where missing {
+                changed[part.rawValue] = .now
+                remoteBehind = true
+            }
+        } else {
+            switch newer(.favourites) { case true?: FavouritesStore.shared.replace(remote.favourites); localChanged = true; case false?: remoteBehind = true; case nil: break }
+            switch newer(.trash) { case true?: PhoneTrash.shared.replace(remote.trash); localChanged = true; case false?: remoteBehind = true; case nil: break }
+        }
         for (part, date) in remote.changed where date > (changed[part] ?? .distantPast) { changed[part] = date }
-        if localChanged { save(push: false) }
+        if localChanged || first { save(push: false) }
         return (localChanged, remoteBehind)
+    }
+    /// The phone's own, then what only the copy has.
+    nonisolated static func joined<Item>(_ mine: [Item], _ theirs: [Item], key: (Item) -> String) -> [Item] {
+        var seen = Set(mine.map(key))
+        return mine + theirs.filter { seen.insert(key($0)).inserted }
     }
 }
 
@@ -255,7 +290,7 @@ extension PhoneExtras {
             let data = try await GoogleDrive.get(file)
             // A copy this app can't read (a newer version's) is left alone, not overwritten.
             guard let remote = try? JSONDecoder().decode(PhoneExtras.DriveCopy.self, from: data) else { return false }
-            result = extras.merge(remote)
+            result = extras.merge(remote, first: !extras.hasMerged(.drive))
         } else if extras.driveCopy.entries.isEmpty, extras.driveCopy.locations.isEmpty,
                   FavouritesStore.shared.items.isEmpty, PhoneTrash.shared.titles.isEmpty {
             synced = true
@@ -264,6 +299,7 @@ extension PhoneExtras {
         if result.remote {
             try await GoogleDrive.put(try JSONEncoder().encode(extras.driveCopy), name: PhoneExtras.driveName, file: file)
         }
+        extras.setMerged(.drive)
         synced = true
         return result.local
     }

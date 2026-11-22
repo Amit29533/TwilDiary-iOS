@@ -14,11 +14,13 @@ import MPVKitAV
 enum JellyMPVChoice {
     private static let mpvKey = "jellyspace.mpvItems"
     private static let appKey = "jellyspace.appItems"
-    static func isOn(_ id: String) -> Bool {
+    static func isOn(_ id: String) -> Bool { own(id) ?? (JellyDecoder.preferred == .mpv) }
+    /// The engine set for this very video (true: mpv), nil when it follows the default.
+    static func own(_ id: String) -> Bool? {
         let defaults = UserDefaults.standard
         if (defaults.stringArray(forKey: mpvKey) ?? []).contains(id) { return true }
         if (defaults.stringArray(forKey: appKey) ?? []).contains(id) { return false }
-        return JellyDecoder.preferred == .mpv
+        return nil
     }
     static func set(_ id: String, _ on: Bool) {
         let byDefault = JellyDecoder.preferred == .mpv
@@ -68,6 +70,8 @@ private enum JellyMPVChange: Sendable {
     case subtitleText(String)
     case loaded
     case log(String), failed(String)
+    /// The file's connection was given up on (see JellyMPVFeed).
+    case lost
 }
 
 /// mpv's handle, for the event thread (its client API may be called from any thread).
@@ -76,6 +80,19 @@ private struct JellyMPVHandle: @unchecked Sendable {
     /// The layer mpv draws into, held until mpv has shut down: vo_avfoundation doesn't retain it, and
     /// the view can go before mpv's last frame does.
     let layer: CALayer?
+    /// How reading the file goes. mpv's protocol handler has it unretained, so it lives as long as mpv.
+    let feed: JellyMPVFeed
+}
+
+/// Whether the file's connection was given up on. mpv takes a read that fails for the end of the file,
+/// so its "end" is checked against this: a dropped connection isn't the end of the episode.
+final class JellyMPVFeed: @unchecked Sendable {
+    private let lock = NSLock()
+    private var gaveUp = false
+    var lost: Bool {
+        get { lock.withLock { gaveUp } }
+        set { lock.withLock { gaveUp = newValue } }
+    }
 }
 
 /// libmpv as the player's second engine: the file, its clock, its tracks (as AetherEngine's
@@ -231,8 +248,9 @@ private struct JellyMPVHandle: @unchecked Sendable {
         ]
         for (name, format) in observed { mpv_observe_property(raw, 0, name, format) }
         if watchesText { mpv_observe_property(raw, Self.textWatch, "sub-text", MPV_FORMAT_STRING) }
-        Self.addJellyfinProtocol(raw)
-        let handle = JellyMPVHandle(raw: raw, layer: layer)
+        let feed = JellyMPVFeed()
+        Self.addJellyfinProtocol(raw, feed: feed)
+        let handle = JellyMPVHandle(raw: raw, layer: layer, feed: feed)
         self.handle = handle
         Self.readEvents(handle) { [weak self] change in self?.apply(change) }
         if let pending {
@@ -254,6 +272,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     private func load(_ url: URL, start: Double?, subtitles: [ExternalSubtitleTrack], settings: [(String, String)]) {
         loaded = false; ended = false; paused = false; failure = nil; log = []
+        handle?.feed.lost = false
         decoderResets = 0
         // The last file's deinterlacing off first: the filter and decoder mode outlive a loadfile, and
         // the filter can't take the next file's zero-copy frames (mpv would drop it with errors).
@@ -484,7 +503,9 @@ private struct JellyMPVHandle: @unchecked Sendable {
         Self.calls.async {
             var cargs: [UnsafePointer<CChar>?] = args.map { UnsafePointer(strdup($0)) } + [nil]
             defer { for pointer in cargs { free(UnsafeMutablePointer(mutating: pointer)) } }
-            mpv_command(handle.raw, &cargs)
+            let result = mpv_command(handle.raw, &cargs)
+            // Only which command it was: its arguments hold the file's address and key.
+            if result < 0 { Self.log.error("\(args.first ?? "", privacy: .public) failed: \(String(cString: mpv_error_string(result)), privacy: .public)") }
         }
     }
 
@@ -522,6 +543,9 @@ private struct JellyMPVHandle: @unchecked Sendable {
             Self.log.notice("mpv: \(line, privacy: .public)")
         case .failed(let reason):
             failure = ([reason] + log.suffix(1)).joined(separator: "\n")
+        case .lost:
+            Self.log.error("the connection was given up on at \(self.time, privacy: .public) s")
+            failure = "The connection to your server was lost. Close the player and open the video again to carry on from here."
         case .loaded:
             loaded = true; buffering = false
             updateState()
@@ -535,12 +559,13 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     /// jellyfin://<address>: mpv reads the file through JellyMPVStream (the FFmpeg mpv runs on in this
     /// app is AetherEngine's, which has no network of its own).
-    nonisolated private static func addJellyfinProtocol(_ raw: OpaquePointer) {
-        mpv_stream_cb_add_ro(raw, "jellyfin", nil) { _, uri, info in
-            guard let uri, let info else { return MPV_ERROR_LOADING_FAILED.rawValue }
+    nonisolated private static func addJellyfinProtocol(_ raw: OpaquePointer, feed: JellyMPVFeed) {
+        mpv_stream_cb_add_ro(raw, "jellyfin", Unmanaged.passUnretained(feed).toOpaque()) { user, uri, info in
+            guard let user, let uri, let info else { return MPV_ERROR_LOADING_FAILED.rawValue }
             let text = String(cString: uri)
             guard text.hasPrefix(JellyMPVStream.scheme), let url = URL(string: String(text.dropFirst(JellyMPVStream.scheme.count))),
-                  let stream = JellyMPVStream(url: url) else { return MPV_ERROR_LOADING_FAILED.rawValue }
+                  let stream = JellyMPVStream(url: url, feed: Unmanaged<JellyMPVFeed>.fromOpaque(user).takeUnretainedValue())
+            else { return MPV_ERROR_LOADING_FAILED.rawValue }
             info.pointee.cookie = Unmanaged.passRetained(stream).toOpaque()
             info.pointee.read_fn = { cookie, buffer, count in
                 guard let cookie, let buffer else { return -1 }
@@ -605,7 +630,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
                     case "duration": if let number { change = .duration(number) }
                     case "pause": if let flag { change = .paused(flag) }
                     case "paused-for-cache": if let flag { change = .buffering(flag) }
-                    case "eof-reached": change = .ended(flag ?? false)
+                    // The end, unless reading the file was given up on (which mpv takes for the end).
+                    case "eof-reached": change = flag == true && handle.feed.lost ? JellyMPVChange.lost : JellyMPVChange.ended(flag ?? false)
                     case "width": if let integer { change = .width(integer) }
                     case "height": if let integer { change = .height(integer) }
                     case "track-list", "aid", "sid": change = Self.tracks(handle.raw)
@@ -661,8 +687,8 @@ private struct JellyMPVHandle: @unchecked Sendable {
 }
 
 /// A file on the server as mpv reads it: ranges of it fetched over HTTP as mpv asks (4 MB at a
-/// time; mpv's own cache reads ahead of the picture). mpv calls read, seek and size from one thread,
-/// and cancel from any.
+/// time; mpv's own cache reads ahead of the picture). A separate subtitle file comes whole. mpv calls
+/// read, seek and size from one thread, and cancel from any.
 final class JellyMPVStream: @unchecked Sendable {
     static let scheme = "jellyfin://"
     private static let chunk: Int64 = 4 << 20
@@ -687,11 +713,24 @@ final class JellyMPVStream: @unchecked Sendable {
     private let lock = NSLock()
     private var task: URLSessionDataTask?
     private var cancelled = false
+    private var isCancelled: Bool { lock.withLock { cancelled } }
+    /// Wakes a wait between two tries (see fetch) when mpv cancels.
+    private let wake = DispatchSemaphore(value: 0)
+    private let feed: JellyMPVFeed?
+    /// A separate subtitle file: Jellyfin converts it and sends it whole (its subtitle route takes no
+    /// ranges and answers 200), so asking for a range of it never worked and none loaded on mpv.
+    private let whole: Bool
+    static func servedWhole(_ url: URL) -> Bool { url.path(percentEncoded: false).contains("/Subtitles/") }
+    /// How long a dropped connection is tried again for: as long as mpv's own network streams wait
+    /// (its network-timeout). mpv plays what it has read ahead, then shows it's loading.
+    private static let patience: TimeInterval = 60
 
     /// Opens it with its first piece (which also gives its length); nil when the server won't serve it.
-    init?(url: URL) {
+    init?(url: URL, feed: JellyMPVFeed? = nil) {
         self.url = url
-        guard let first = fetch(from: 0) else { return nil }
+        self.feed = feed
+        whole = Self.servedWhole(url)
+        guard let first = fetch(from: 0, patient: false) else { return nil }
         if !first.isEmpty { pieces = [(0, first)] }
     }
 
@@ -701,7 +740,12 @@ final class JellyMPVStream: @unchecked Sendable {
         if let at = pieces.firstIndex(where: { position >= $0.start && position < $0.start + Int64($0.data.count) }) {
             piece = pieces.remove(at: at)
         } else {
-            guard let data = fetch(from: position) else { return -1 }
+            guard let data = fetch(from: position, patient: true) else {
+                // Given up on, not asked to stop: mpv would take it for the end of the file.
+                if !whole, !isCancelled { feed?.lost = true }
+                return -1
+            }
+            if !whole { feed?.lost = false }
             if data.isEmpty { return 0 }
             piece = (position, data)
         }
@@ -728,36 +772,61 @@ final class JellyMPVStream: @unchecked Sendable {
         let running = task
         lock.unlock()
         running?.cancel()
+        wake.signal()
     }
 
-    /// The piece starting here (empty past the end); nil when it couldn't be had.
-    private func fetch(from start: Int64) -> Data? {
-        lock.lock()
-        let stop = cancelled
-        lock.unlock()
-        if stop { return nil }
+    /// The piece starting here (empty past the end); nil when it couldn't be had. While it plays
+    /// (`patient`) a dropped connection, or a server busy or restarting, is tried again, a little longer
+    /// apart each time.
+    private func fetch(from start: Int64, patient: Bool) -> Data? {
+        let until = Date.now.addingTimeInterval(Self.patience)
+        var pause = 1.0
+        while true {
+            switch ask(from: start) {
+            case .piece(let data): return data
+            case .refused: return nil
+            case .dropped:
+                guard patient, !isCancelled, Date.now < until else { return nil }
+                _ = wake.wait(timeout: .now() + pause)
+                pause = min(pause * 2, 8)
+            }
+        }
+    }
+    private enum Answer { case piece(Data), refused, dropped }
+    /// Asks the server once.
+    private func ask(from start: Int64) -> Answer {
+        if isCancelled { return .refused }
         var request = URLRequest(url: url)
-        request.setValue("bytes=\(start)-\(start + Self.chunk - 1)", forHTTPHeaderField: "Range")
+        if !whole { request.setValue("bytes=\(start)-\(start + Self.chunk - 1)", forHTTPHeaderField: "Range") }
         let done = DispatchSemaphore(value: 0)
         let result = JellyMPVFetch()
-        let task = Self.session.dataTask(with: request) { data, response, _ in
+        let task = Self.session.dataTask(with: request) { data, response, error in
             result.data = data
             result.response = response as? HTTPURLResponse
+            result.failed = error != nil
             done.signal()
         }
         lock.lock(); self.task = task; lock.unlock()
         task.resume()
         done.wait()
         lock.lock(); self.task = nil; lock.unlock()
+        guard let response = result.response, !result.failed else { return .dropped }
+        // Busy, or restarting behind a proxy: worth asking again.
+        if [408, 429, 502, 503, 504].contains(response.statusCode) { return .dropped }
+        if whole {
+            guard (200..<300).contains(response.statusCode), let data = result.data else { return .refused }
+            length = Int64(data.count)
+            // All of it is the first piece; nothing follows it.
+            return .piece(start == 0 ? data : Data())
+        }
         // Only a range answer: a server sending the whole file at once would fill the memory.
-        guard let response = result.response, response.statusCode == 206, let data = result.data else {
-            if let response = result.response, response.statusCode == 416 { return Data() }
-            return nil
+        guard response.statusCode == 206, let data = result.data else {
+            return response.statusCode == 416 ? .piece(Data()) : .refused
         }
         if let range = response.value(forHTTPHeaderField: "Content-Range"), let total = range.split(separator: "/").last.flatMap({ Int64($0) }) {
             length = total
         }
-        return data
+        return .piece(data)
     }
 }
 
@@ -765,6 +834,7 @@ final class JellyMPVStream: @unchecked Sendable {
 private final class JellyMPVFetch: @unchecked Sendable {
     var data: Data?
     var response: HTTPURLResponse?
+    var failed = false
 }
 
 /// Holds the screen at a refresh rate while smooth motion is on (a display link asking for it; the

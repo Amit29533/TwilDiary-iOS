@@ -313,12 +313,15 @@ struct AniListSyncAPI: Sendable {
     // MARK: Taking edits
 
     /// A diary edit (from `DiaryStore.mirror`): its title waits to be sent.
-    func capture(_ mutation: OptimisticMutation, store: DiaryStore) {
+    func capture(_ mutations: [OptimisticMutation], store: DiaryStore) {
         guard !store.isPreview, AniListSyncAccount.shared.canSend else { return }
         self.store = store
-        let id = mutation.titleId
-        guard let title = store.title(id) ?? PhoneCatalog.shared.titles[id], Self.counts(title), let key = Self.key(title) else { return }
-        mark([key])
+        let keys = Set(mutations.map(\.titleId)).compactMap { id -> String? in
+            guard let title = store.title(id) ?? PhoneCatalog.shared.titles[id], Self.counts(title) else { return nil }
+            return Self.key(title)
+        }
+        guard !keys.isEmpty else { return }
+        mark(keys)
         // A moment's wait: adding a title rebuilds the diary in the background.
         Task { try? await Task.sleep(for: .seconds(2)); await resume() }
     }

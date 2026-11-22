@@ -138,6 +138,22 @@ import TwilDiaryTestSupport
     #expect(alerts[0].title == "Frieren" && alerts[0].body == "S2 E3–E4 are out today." && alerts[0].id == "episode|frieren|2026-11-12")
     #expect(alerts[1].title == "Planned" && alerts[1].body == "S1 E1 is out today.")
     #expect(alerts[2].body == "S2 E5 is out today.")
+    #expect(alerts[0].season == 2 && alerts[0].number == 3, "the first of the day's episodes, whose air time it waits for")
+}
+
+/// An alert never comes before its episode: TMDB's day is the network's, and an American evening
+/// episode is out the next morning in India.
+@Test func anEpisodeAlertWaitsForItsAirTime() throws {
+    var india = Calendar(identifier: .gregorian)
+    india.timeZone = try #require(TimeZone(identifier: "Asia/Kolkata"))
+    func at(_ text: String) -> Date? { try? Date(text, strategy: .iso8601) }
+    func moment(_ airs: String?) -> Date? { EpisodeAlerts.moment(day: "2026-11-15", airs: airs.flatMap(at), calendar: india) }
+    #expect(moment(nil) == at("2026-11-15T03:30:00Z"), "air time unknown: 9 am on its day, as before")
+    #expect(moment("2026-11-16T02:00:00Z") == at("2026-11-16T03:30:00Z"), "Sunday 9 pm in New York is Monday 7:30 am here: 9 am Monday")
+    #expect(moment("2026-11-15T16:00:00Z") == at("2026-11-15T16:00:00Z"), "9:30 pm here: as it airs")
+    #expect(moment("2026-11-14T20:00:00Z") == at("2026-11-15T03:30:00Z"), "1:30 am here: 9 am that morning")
+    #expect(moment("2026-11-25T16:00:00Z") == at("2026-11-15T03:30:00Z"), "nowhere near its day: some other episode's time")
+    #expect(EpisodeAlerts.moment(day: "soon", airs: nil, calendar: india) == nil)
 }
 
 /// MDBList's own replies (spare account, 2026-11-16): taking Up off a watchlist it isn't on says

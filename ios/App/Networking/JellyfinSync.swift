@@ -346,6 +346,8 @@ struct JellyfinClient: Sendable {
         // JellySpace: an episode's show and number, the show's poster, folders, length and your progress.
         let SeriesName: String?
         let IndexNumber: Int?
+        /// The last episode in a file that holds several ("S01E01-E02").
+        let IndexNumberEnd: Int?
         let SeriesPrimaryImageTag: String?
         let IsFolder: Bool?
         let RunTimeTicks: Int64?
@@ -382,7 +384,7 @@ struct JellyfinClient: Sendable {
         }
         enum CodingKeys: String, CodingKey {
             case Id, kind = "Type", Path, ProviderIds, SeriesId, ParentIndexNumber, Name, ProductionYear, ImageTags, Genres
-            case SeriesName, IndexNumber, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
+            case SeriesName, IndexNumber, IndexNumberEnd, SeriesPrimaryImageTag, IsFolder, RunTimeTicks, UserData, SeasonId, Overview
             case BackdropImageTags, ParentBackdropItemId, ParentBackdropImageTags, CommunityRating, Width, Height
             case Album, AlbumId, AlbumArtist, Artists, AlbumPrimaryImageTag, PremiereDate, Tags, Studios, DateCreated
             case PrimaryImageAspectRatio

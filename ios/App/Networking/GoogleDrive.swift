@@ -74,6 +74,7 @@ import TwilDiaryCore
             for name in [fileName, PhoneExtras.driveName] {
                 if let file = try? await latest(name) { _ = try? await call("DELETE", "https://www.googleapis.com/drive/v3/files/" + file.id) }
             }
+            for copy in (try? await copies()) ?? [] { _ = try? await call("DELETE", "https://www.googleapis.com/drive/v3/files/" + copy.file.id) }
         }
         if let refresh = try? KeychainProviderSecretStore().readSecret(for: refreshAccount) {
             var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/revoke")!)
@@ -153,6 +154,8 @@ import TwilDiaryCore
         // An automatic backup never replaces one more than twice its size: after a reinstall (or a
         // read that came back short) the diary on the phone may not be all there yet.
         if automatic, let size = file?.size, packed.count * 2 < size { return 0 }
+        // The one it replaces is kept beside it (a failure there never holds up the backup itself).
+        if let file { try? await keepCopy(of: file) }
         try await put(packed, name: fileName, file: file)
         UserDefaults.standard.set(Date.now.timeIntervalSince1970, forKey: lastKey)
         return packed.count
@@ -174,6 +177,33 @@ import TwilDiaryCore
             add("\r\n--\(boundary)--\r\n")
             _ = try await call("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", body: multipart, type: "multipart/related; boundary=\(boundary)")
         }
+    }
+    // Each backup replaced the only one there was: one made from a diary gone wrong left nothing to go
+    // back to. The ones replaced are kept now, one a day, the latest three.
+    private static let copiesKept = 3
+    private static let copyStart = "twildiary_backup_v1.", copyEnd = ".json.zlib"
+    nonisolated static func copyName(_ day: String) -> String { "twildiary_backup_v1." + day + ".json.zlib" }
+    struct Copy: Sendable { let name: String; let file: File }
+    /// The older copies, newest first.
+    static func copies() async throws -> [Copy] {
+        var list = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
+        list.queryItems = [URLQueryItem(name: "spaces", value: "appDataFolder"), URLQueryItem(name: "pageSize", value: "100"),
+                           URLQueryItem(name: "fields", value: "files(id,name,modifiedTime,size)")]
+        let data = try await call("GET", list.url!.absoluteString)
+        let files = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["files"] as? [[String: Any]] ?? []
+        return files.compactMap { file -> Copy? in
+            guard let name = file["name"] as? String, let id = file["id"] as? String,
+                  name != fileName, name.hasPrefix(copyStart), name.hasSuffix(copyEnd) else { return nil }
+            return Copy(name: name, file: File(id: id, modified: (file["modifiedTime"] as? String).flatMap { try? Date($0, strategy: .iso8601) },
+                                               size: (file["size"] as? String).flatMap(Int.init)))
+        }.sorted { $0.name > $1.name }
+    }
+    /// Keeps the backup about to be replaced, under its own day (the first replaced that day).
+    private static func keepCopy(of file: File) async throws {
+        let name = copyName(DiaryDate.day(file.modified ?? .now)), kept = try await copies()
+        guard !kept.contains(where: { $0.name == name }) else { return }
+        try await put(try await get(file), name: name)
+        for old in kept.dropFirst(copiesKept - 1) { _ = try await call("DELETE", "https://www.googleapis.com/drive/v3/files/" + old.file.id) }
     }
     /// A file's contents.
     static func get(_ file: File) async throws -> Data {

@@ -56,6 +56,7 @@ import TwilDiaryCore
         BackgroundSyncCoordinator.shared.registerBackgroundTasksIfNeeded(store: diaryStore)
         diaryStore.observeConnectivity()
         EpisodeNotifications.showWhileOpen()
+        JellyCast.shared.store = diaryStore
     }
     var body: some Scene {
         // No app-wide glass button style: it turned every text link, toolbar item and
@@ -64,7 +65,7 @@ import TwilDiaryCore
         WindowGroup {
             // The performance run's player (only with --jellyspace-perf; see JellyPerfHarness), inside
             // the store and router so the player it opens has them.
-            RootView().modifier(JellyPerfHarness()).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
+            RootView().modifier(JellyPerfHarness()).modifier(AlertOpens()).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance)).tint(theme.accent).buttonBorderShape(.capsule).environment(\.locale, .diary(use24Hour: use24Hour))
                 // The theme's whole palette (surfaces, text, chips), not just its accent: screens redraw in place.
                 .onChange(of: theme, initial: true) { _, chosen in
                     ThemeStore.shared.apply(chosen)
@@ -120,7 +121,7 @@ struct SavedTitleRoute: Hashable {
 @MainActor @Observable final class AppRouter {
     var selectedTab = AppTab.launch
     var randomPick: RandomPickScope?
-    var paths: [AppTab: NavigationPath] = [:]
+    var paths: [AppTab: NavigationPath] = [:] { didSet { JellyFaceLock.shared.stacksChanged(paths.mapValues(\.count)) } }
     var libraryShortcut: String?
     var libraryGenreShortcut = ""
     var libraryDiskShortcut = ""

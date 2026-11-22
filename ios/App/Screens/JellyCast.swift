@@ -32,6 +32,9 @@ import GoogleCast
 
     @ObservationIgnored private var channel: JellyCastChannel?
     @ObservationIgnored private var server: [String: Any]?
+    /// The diary (set as the app starts), and the video marked watched in it last.
+    @ObservationIgnored weak var store: DiaryStore?
+    @ObservationIgnored private var marked: String?
 
     /// Set up as the app starts (before any Cast button is made).
     static func setUp() {
@@ -152,12 +155,26 @@ import GoogleCast
                 if let ticks = (play["PositionTicks"] as? NSNumber)?.doubleValue { reported = ticks / 10_000_000; reportedAt = .now }
                 if let isPaused = play["IsPaused"] as? Bool { paused = isPaused }
             }
+            markFinished(at: reported)
         case "playbackstop":
+            markFinished(at: position())
             itemID = nil; paused = false
         case "playbackerror", "connectionerror":
             problem = (message["data"] as? String).map { "The TV couldn't play this: " + $0 } ?? "The TV couldn't play this"
         default:
             break
+        }
+    }
+    /// At 90% on the TV: watched in the diary, once, as the phone's own player marks it (Jellyfin hears
+    /// it from the TV itself).
+    private func markFinished(at seconds: Double) {
+        guard let id = itemID, marked != id, duration > 60, seconds >= duration * 0.9,
+              UserDefaults.standard.object(forKey: JellyPrefs.diaryKey) as? Bool ?? true,
+              let store, let client = JellySpace.client else { return }
+        marked = id
+        Task {
+            guard let item = try? await client.item(id), ["Movie", "Episode"].contains(item.kind) else { return }
+            _ = await JellyDiary.mark(item, client: client, store: store)
         }
     }
 }

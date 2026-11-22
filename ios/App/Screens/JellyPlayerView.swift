@@ -355,7 +355,9 @@ struct JellyPlayerView: View {
             .onChange(of: state) { _, now in
                 if now == .playing { scheduleHide() }
                 if now == .paused || now == .playing { report("progress") }
-                if now == .ended, autoplay, nextEpisode != nil, countdown == nil { startCountdown() }
+                updateSystem()
+                // Not while the sleep timer is ending this episode.
+                if now == .ended, autoplay, !fadingOut, !sleepAtEnd, nextEpisode != nil, countdown == nil { startCountdown() }
             }
     }
     private var playerLayers: some View {
@@ -476,6 +478,7 @@ struct JellyPlayerView: View {
             JellyCast.shared.handoff = (current.id, exactTime)
             engine?.stop()
             mpv.stop()
+            heavy.system.end()
             // The sound let go, so music that was playing before carries on (not while JellySpace's
             // own music plays).
             if !JellyMusic.shared.playing { JellyAudioSession.release() }
@@ -555,7 +558,7 @@ struct JellyPlayerView: View {
             // mpv draws its own subtitles (and the app's, translated or filled, follow its line), so the
             // player's subtitle clock isn't needed here.
             .onReceive(mpv.$time) { seconds in tick(seconds) }
-            .onReceive(mpv.$duration) { duration = $0 }
+            .onReceive(mpv.$duration) { seconds in duration = seconds; updateSystem(duration: seconds) }
             .onReceive(mpv.$buffering) { buffering = $0 }
             .onReceive(mpv.$audioTracks) { tracks in audioTracks = tracks; pickRememberedAudio(tracks) }
             .onReceive(mpv.$subtitleTracks) { tracks in subtitleTracks = tracks; pickDefaultSubtitle(tracks) }
@@ -618,7 +621,17 @@ struct JellyPlayerView: View {
     // The engine playing now: AetherEngine, or mpv.
     private func enginePlay() { if usesMPV { mpv.play() } else { engine?.play() } }
     private func enginePause() { if usesMPV { mpv.pause() } else { engine?.pause() } }
-    private func engineRate(_ rate: Float) { if usesMPV { mpv.setRate(rate) } else { engine?.setRate(rate) } }
+    private func engineRate(_ rate: Float) {
+        guard usesMPV else { engine?.setRate(rate); return }
+        mpv.setRate(rate)
+        updateSystem(rate: rate)
+    }
+    /// mpv's lock-screen card (AetherEngine keeps its own), as it plays, pauses, moves or changes speed.
+    private func updateSystem(position: Double? = nil, duration length: Double? = nil, rate: Float? = nil) {
+        guard usesMPV else { return }
+        heavy.system.update(playing: state == .playing, position: position ?? exactTime, duration: length ?? duration,
+                            rate: Double(rate ?? (holding ? 2 : speed)))
+    }
     private func engineVolume(_ value: Float) { if usesMPV { mpv.setVolume(value) } else { engine?.volume = value } }
     private func engineAudio(_ id: Int) { if usesMPV { mpv.selectAudio(id) } else { engine?.selectAudioTrack(index: id) } }
     private func engineSubtitle(_ id: Int?) {
@@ -865,14 +878,17 @@ struct JellyPlayerView: View {
     private func start() async {
         if !usesMPV, engine == nil { engine = try? AetherEngine() }
         if !usesMPV, engine == nil { failure = "The player couldn’t start."; return }
-        JellyMusic.shared.pause()
+        // A paused song's engine would answer the lock screen's buttons together with mpv.
+        if usesMPV { JellyMusic.shared.stepAside() } else { JellyMusic.shared.pause(); heavy.system.end() }
         pip.engine = engine
         // The same video moving to the other engine keeps what was found for it (the skip stretches,
         // chapters, thumbnails, the next episode and the file's details): only the engine changes.
         let handingOver = switchAt != nil && loadedInfo?.id == current.id
-        finished = false; failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
+        failure = nil; resumedAt = nil; countdown = nil; pickedSubtitle = false; pickedAudio = false
         quality = nil; barClock.buffered = 0
         if !handingOver {
+            // Only a video's own start: a switch of engine in its last tenth logged it as watched again.
+            finished = false
             openedID = nil; duration = 0
             showFill = Self.savedFill(current.item)
             skipped = []; time = 0; barClock.time = 0
@@ -948,6 +964,10 @@ struct JellyPlayerView: View {
             let resume = startAt.flatMap { $0 > (handedOver ? 1 : 30) ? $0 : nil }
             mpv.open(current.url, start: resume, subtitles: options.externalSubtitles, settings: settings)
             openedID = current.id
+            let mpvPlayer = mpv
+            heavy.system.begin(nowPlayingInfo(nil), skip: Double(skipSeconds),
+                               actions: .init(play: { mpvPlayer.play() }, pause: { mpvPlayer.pause() },
+                                              seek: { mpvPlayer.seek(to: $0) }, position: { mpvPlayer.time }))
             // Now the frame rate is known: blend only where the refresh isn't a multiple of it.
             mpv.setSmooth(activeSmooth, fps: frameRate)
             mpv.setSuperResolution(activeSuperResolution)
@@ -1044,7 +1064,7 @@ struct JellyPlayerView: View {
             }
         }
         if let url = JellySpace.poster(current.item, base: client.base), let art = await JellyfinPosterCache.shared.image(url), !Task.isCancelled {
-            if !usesMPV { engine?.setNowPlayingInfo(nowPlayingInfo(art)) }
+            if usesMPV { heavy.system.show(nowPlayingInfo(art)) } else { engine?.setNowPlayingInfo(nowPlayingInfo(art)) }
         }
     }
 
@@ -1155,7 +1175,8 @@ struct JellyPlayerView: View {
     }
     /// Automatic: past the stretch as it starts (the credits go to the next episode when that's on).
     private func autoSkip() {
-        guard scrub == nil, state == .playing, let segment = activeSegment, skipMode(segment.kind) == .auto,
+        // Not while the sleep timer fades out: skipping the credits went on to the next episode first.
+        guard scrub == nil, state == .playing, !fadingOut, let segment = activeSegment, skipMode(segment.kind) == .auto,
               !skipped.contains(segment.StartTicks) else {
             if pendingSkip != nil, activeSegment?.StartTicks != pendingSkip?.start { pendingSkip = nil }
             return
@@ -1355,6 +1376,17 @@ struct JellyPlayerView: View {
         guard let next = JellySpace.playback(item, client: current.client) else { return }
         // The last video stops while the next one's details load.
         enginePause()
+        // On the engine that episode was set (or moved) to; else the one playing now, unless this video
+        // was only there because mpv couldn't play it: then your default again.
+        let onMPV = JellyMPVChoice.own(item.Id) ?? (heavy.movedOffMPV ? JellyDecoder.preferred == .mpv : usesMPV)
+        if onMPV != usesMPV {
+            if usesMPV { mpv.stop() } else { engine?.stop() }
+            // The old engine's tracks go (a number of theirs could pass for one of the new engine's).
+            audioTracks = []; subtitleTracks = []; activeAudio = nil; activeSubtitle = nil
+            if !onMPV { decodePath = JellyDecoder.preferred.path }
+            usesMPV = onMPV
+        }
+        heavy.movedOffMPV = false
         current = next
     }
 
@@ -1370,6 +1402,11 @@ struct JellyPlayerView: View {
             }
             if countdown == 0, let next = nextEpisode { autoAdvance(next) }
         }
+    }
+    /// Moved back from the end (as Streamyfin does it): Up Next goes, and comes again at the end.
+    private func stopCountdown() {
+        countdownTask?.cancel()
+        withAnimation { countdown = nil }
     }
 
     // MARK: Sleep timer
@@ -1881,6 +1918,7 @@ struct JellyPlayerView: View {
                 JellyMPV.log.error("mpv opened but didn't play in \(20 + wait, privacy: .public) s: \(mpv.diagnosis, privacy: .public)")
                 let reason = mpv.lastMessage.map { ": " + $0 } ?? ""
                 setDecoder(.auto)
+                heavy.movedOffMPV = true
                 show("mpv couldn't play this video, so it's on AetherEngine now" + reason, for: 8)
                 return
             }
@@ -1908,6 +1946,7 @@ struct JellyPlayerView: View {
     /// Auto or the app's own decoder: the video reloads where it is on the new one. mpv: the video
     /// moves to the mpv player where it is (and opens there from then on).
     private func setDecoder(_ choice: JellyDecoder) {
+        heavy.movedOffMPV = false
         if (choice == .mpv) != usesMPV {
             // The other engine takes over where this one is, and this video opens on it from now on.
             handOver()
@@ -2502,7 +2541,15 @@ struct JellyPlayerView: View {
         scheduleHide()
     }
     private func seek(_ seconds: Double) async {
-        if usesMPV { mpv.seek(to: seconds); return }
+        let back = duration <= 0 || seconds < duration - 5
+        if countdown != nil, back { stopCountdown() }
+        if usesMPV {
+            mpv.seek(to: seconds)
+            // mpv stays paused after its end: moved back from there, it plays on.
+            if state == .ended, back { mpv.play() }
+            updateSystem(position: seconds)
+            return
+        }
         guard let engine else { return }
         _ = await engine.seek(to: seconds)
     }
@@ -2790,6 +2837,10 @@ private struct JellyAirPlayButton: UIViewRepresentable {
     var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
     var sheet: (index: Int, image: UIImage)?
     var openMenus: JellyMenuState?
+    /// This video was moved to AetherEngine because mpv couldn't play it (the next one isn't, for that).
+    var movedOffMPV = false
+    /// mpv's lock-screen card and buttons, calls, headphones and the screen kept on.
+    let system = JellyMPVSystem()
     init(current: JellyPlayback) { self.current = current }
 }
 

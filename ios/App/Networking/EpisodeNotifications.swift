@@ -4,11 +4,17 @@ import Intents
 import TwilDiaryCore
 
 /// New-episode alerts, scheduled on this iPhone (no server): the next two weeks of episodes for
-/// the shows on your calendar, at 9 am on the day each airs. Rescheduled when the diary loads or
-/// changes, whenever the app opens, and in the background refresh.
+/// the shows on your calendar, at 9 am on the day each airs (never before it has, when its air time
+/// is known). Rescheduled when the diary loads or changes, whenever the app opens, and in the
+/// background refresh.
 @MainActor enum EpisodeNotifications {
     static let enabledKey = "episodeAlerts", askedKey = "episodeAlerts.asked"
+    /// When each alert was set to go off, by its id.
+    private static let timesKey = "episodeAlerts.times"
+    /// The ids alone, as older builds kept them.
     private static let scheduledKey = "episodeAlerts.scheduled"
+    private static var work: Task<Void, Never>?
+    private static var waiting = false
     /// iOS lets TwilDiary's alerts through.
     static func allowed() async -> Bool {
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
@@ -35,38 +41,92 @@ import TwilDiaryCore
         let ids = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("episode|") }
         center.removePendingNotificationRequests(withIdentifiers: ids)
     }
-    /// Replaces the scheduled alerts with the current next two weeks.
+    /// Brings the scheduled alerts up to the current next two weeks. One at a time: asked while it's at
+    /// it, it goes again after (once, however many ask).
     static func reschedule(store: DiaryStore) async {
         guard enabled, !store.isPreview, store.hasLoadedWorkspace else { return }
-        let center = UNUserNotificationCenter.current()
+        if work != nil {
+            guard !waiting else { return }
+            waiting = true
+            while let running = work { await running.value }
+            waiting = false
+        }
+        let task = Task {
+            defer { work = nil }
+            await place(store: store)
+        }
+        work = task
+        // Background time up: what's under way stops too, so the app can say it's done in time.
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+    }
+    /// Each alert is added (or replaced, by its id), and only then do those no longer wanted go. They
+    /// were all cleared first, so one interrupted (the app put away, its background time up) lost the
+    /// rest until the next time the app opened.
+    private static func place(store: DiaryStore) async {
         guard await allowed() else { return }
-        let today = DiaryDate.day(store.now)
-        // Alerts already set (kept until their day passes): one whose 9 am has passed went off then,
-        // so opening the app later that day doesn't send it again.
-        var scheduled = Set(UserDefaults.standard.stringArray(forKey: scheduledKey) ?? []).filter { ($0.split(separator: "|").last.map(String.init) ?? "") >= today }
-        await clear()
-        let calendar = DiaryDate.calendar()
-        for alert in EpisodeAlerts.upcoming(store.workspace, today: today) {
-            let parts = alert.day.split(separator: "-").compactMap { Int($0) }
-            guard parts.count == 3 else { continue }
-            var when = DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 9)
-            when.calendar = calendar; when.timeZone = calendar.timeZone
-            // Today after 9 am: in a minute instead.
-            if let date = calendar.date(from: when), date <= .now {
-                guard calendar.isDateInToday(date), !scheduled.contains(alert.id) else { continue }
-                when = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: .now.addingTimeInterval(60))
-            }
+        let center = UNUserNotificationCenter.current(), calendar = DiaryDate.calendar()
+        // From yesterday: an episode of the network's yesterday can be out here today.
+        let from = DiaryDate.day(calendar.date(byAdding: .day, value: -1, to: store.now) ?? store.now)
+        let alerts = EpisodeAlerts.upcoming(store.workspace, today: from, days: 15, limit: 60)
+        var times = savedTimes(calendar).filter { ($0.key.split(separator: "|").last.map(String.init) ?? "") >= from }
+        func wanted() -> [(alert: EpisodeAlerts.Alert, at: Date)] {
+            let now = Date.now
+            return alerts.compactMap { alert -> (alert: EpisodeAlerts.Alert, at: Date)? in
+                let airs = EpisodeAirTimes.shared.time(tmdb: store.title(alert.titleId)?.tmdbId, season: alert.season, number: alert.number, day: alert.day)
+                guard let at = EpisodeAlerts.moment(day: alert.day, airs: airs, calendar: calendar) else { return nil }
+                // Set before, and its moment has passed: it went off then.
+                if let set = times[alert.id], set <= now { return nil }
+                if at > now { return (alert, at) }
+                // Out already today and never set: in a minute instead.
+                return calendar.isDateInToday(at) ? (alert, now.addingTimeInterval(60)) : nil
+            }.sorted { $0.at < $1.at }.prefix(40).map { $0 }
+        }
+        func set(_ entry: (alert: EpisodeAlerts.Alert, at: Date)) async {
+            let alert = entry.alert
             let content = UNMutableNotificationContent()
             content.title = alert.title; content.body = alert.body; content.sound = .default
             content.threadIdentifier = alert.titleId
+            content.userInfo = [AlertOpening.key: alert.titleId]
             let finished = await NotificationArtwork.finish(content, from: alert.title, conversation: alert.titleId, poster: store.title(alert.titleId)?.poster)
-            do {
-                try await center.add(UNNotificationRequest(identifier: alert.id, content: finished,
-                                                           trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))
-                scheduled.insert(alert.id)
-            } catch { continue }
+            var when = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: entry.at)
+            when.calendar = calendar; when.timeZone = calendar.timeZone
+            guard (try? await center.add(UNNotificationRequest(identifier: alert.id, content: finished,
+                                                               trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))) != nil else { return }
+            times[alert.id] = entry.at
         }
-        UserDefaults.standard.set(Array(scheduled), forKey: scheduledKey)
+        let first = wanted()
+        for entry in first { await set(entry) }
+        UserDefaults.standard.set(times, forKey: timesKey)
+        guard !Task.isCancelled else { return }
+        // Air times not known yet, for the next few days: the alerts they move are set again.
+        await learnAirTimes(alerts, store: store, calendar: calendar)
+        let current = wanted()
+        let before = Dictionary(first.map { ($0.alert.id, $0.at) }, uniquingKeysWith: { one, _ in one })
+        for entry in current where before[entry.alert.id].map({ abs($0.timeIntervalSince(entry.at)) > 120 }) ?? true { await set(entry) }
+        let keep = Set(current.map(\.alert.id))
+        let stale = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("episode|") && !keep.contains($0) }
+        center.removePendingNotificationRequests(withIdentifiers: stale)
+        UserDefaults.standard.set(times, forKey: timesKey)
+    }
+    /// When each alert was set to go off. From an older build, which kept only which were set: 9 am on
+    /// their day, as that build set them.
+    private static func savedTimes(_ calendar: Calendar) -> [String: Date] {
+        let defaults = UserDefaults.standard
+        if let times = defaults.dictionary(forKey: timesKey) as? [String: Date] { return times }
+        var times: [String: Date] = [:]
+        for id in defaults.stringArray(forKey: scheduledKey) ?? [] {
+            times[id] = id.split(separator: "|").last.flatMap { EpisodeAlerts.moment(day: String($0), airs: nil, calendar: calendar) }
+        }
+        defaults.removeObject(forKey: scheduledKey)
+        return times
+    }
+    /// The air times of the next few days' episodes (Trakt's calendar, else TVmaze), kept once found.
+    private static func learnAirTimes(_ alerts: [EpisodeAlerts.Alert], store: DiaryStore, calendar: Calendar) async {
+        await TraktAirTimes.shared.refresh(store: store)
+        let soon = DiaryDate.day(calendar.date(byAdding: .day, value: 4, to: .now) ?? .now)
+        for alert in alerts.filter({ $0.day <= soon }).prefix(12) {
+            await EpisodeAirTimes.shared.load(tmdb: store.title(alert.titleId)?.tmdbId, season: alert.season, number: alert.number, day: alert.day, store: store)
+        }
     }
     /// One line for Settings: whether iOS lets alerts through, and the next one set.
     static func summary() async -> String {
@@ -129,11 +189,55 @@ import TwilDiaryCore
     }
 }
 
-/// Shows an alert as a banner while TwilDiary is open; without it iOS drops it silently.
+/// The title of an alert you tapped, until its page has opened (on a cold launch, once the diary is
+/// there).
+@MainActor @Observable final class AlertOpening {
+    static let shared = AlertOpening()
+    nonisolated static let key = "titleId"
+    var titleID: String?
+    /// The title an alert is about. One an older build set has it only in its id ("episode|<title>|<day>").
+    nonisolated static func titleID(_ info: [AnyHashable: Any], identifier: String) -> String? {
+        if let id = info[key] as? String { return id }
+        let parts = identifier.split(separator: "|")
+        guard parts.count >= 3, parts[0] == "episode" else { return nil }
+        return parts.dropFirst().dropLast().joined(separator: "|")
+    }
+}
+
+/// A tapped alert opens its title's page, in the tab you're on (it only opened the app before).
+struct AlertOpens: ViewModifier {
+    @Environment(DiaryStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    func body(content: Content) -> some View {
+        content.task(id: AlertOpening.shared.titleID) {
+            guard let id = AlertOpening.shared.titleID else { return }
+            for _ in 0..<40 where store.title(id) == nil {
+                try? await Task.sleep(for: .milliseconds(250))
+                if Task.isCancelled { return }
+            }
+            AlertOpening.shared.titleID = nil
+            guard store.title(id) != nil else { return }
+            router.randomPick = nil
+            router.openTitle(id, tab: router.selectedTab)
+        }
+    }
+}
+
+/// Shows an alert as a banner while TwilDiary is open; without it iOS drops it silently. Tapped, it
+/// opens its title.
 final class AlertPresenter: NSObject, UNUserNotificationCenterDelegate, Sendable {
     static let shared = AlertPresenter()
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        let request = response.notification.request
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let id = AlertOpening.titleID(request.content.userInfo, identifier: request.identifier) {
+            Task { @MainActor in AlertOpening.shared.titleID = id }
+        }
+        completionHandler()
     }
 }
 

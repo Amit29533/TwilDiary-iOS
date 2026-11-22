@@ -121,6 +121,7 @@ struct JellyDetailPage: View {
         }
         .diaryScreenBackground()
         .jellyFaceLock()
+        .jellyPage()
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -367,13 +368,13 @@ struct JellyDetailPage: View {
                 guard let user else { return }
                 played.toggle()
                 let now = played
-                let film = now && diaryOn && item?.kind == "Movie" ? item : nil
+                let film = diaryOn && item?.kind == "Movie" ? item : nil
                 Task {
                     do {
                         try await client.setPlayed(route.id, user: user, now)
                         // A film marked watched goes in the diary too (as the long-press menu does), once
-                        // Jellyfin has it.
-                        if let film { _ = await JellyDiary.mark(film, client: client, store: store) }
+                        // Jellyfin has it; un-marked, the watch that logged is taken back.
+                        if let film { JellyDiary.follow(now, film, client: client, store: store) }
                     } catch {
                         played = !now
                     }

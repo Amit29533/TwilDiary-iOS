@@ -62,6 +62,49 @@ extension DiaryStore {
         }
     }
 
+    /// Waits for a change being saved or read back to finish. False when the diary isn't ready within
+    /// half a minute (or isn't kept on a service at all).
+    func readyToRecord() async -> Bool {
+        guard !isPreview, !needsSignIn else { return false }
+        for _ in 0..<60 {
+            if hasLoadedWorkspace, !needsSignIn, !busy, canMutate { return diaryFromService }
+            try? await Task.sleep(for: .milliseconds(500))
+            if Task.isCancelled { return false }
+        }
+        return false
+    }
+    /// A watch from JellySpace (a video finished there, or marked): logged once the diary is free, rather
+    /// than lost when it happened to be saving something. Its time, which takes it back (undoViewing);
+    /// nil when it couldn't be logged.
+    func logViewing(_ title: MediaTitle, episodes: [Episode], watchedAt: Date) async -> String? {
+        for _ in 0..<3 {
+            guard await readyToRecord() else { return nil }
+            var asked = false, logged: String?
+            let done = await perform(refreshing: [title.id]) {
+                asked = true
+                let when = try await self.serviceAddPlays(title, episodes: episodes.map { (season: $0.season, number: $0.number) }, at: watchedAt)
+                self.offerServiceUndo(title, at: when)
+                logged = when
+            }
+            // Not asked: another change got in first, so it waits its turn again.
+            if done || asked { return logged }
+        }
+        return nil
+    }
+    /// Takes back the watch logViewing logged, on every service it went to.
+    @discardableResult func undoViewing(titleID: String, at when: String) async -> Bool {
+        guard await readyToRecord() else { return false }
+        // It may still be on its way onto the screen's diary, which is rebuilt in the background.
+        for _ in 0..<20 where undoablePlays(titleID: titleID, at: when).isEmpty {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard !undoablePlays(titleID: titleID, at: when).isEmpty else { return false }
+        let done = await perform(refreshing: [titleID]) { try await self.serviceUndoPlays(titleID: titleID, at: when) }
+        // The notice's own Undo is for that watch: it has nothing left to undo.
+        if done, undoTitles == [titleID] { dismissUndo() }
+        return done
+    }
+
     @discardableResult func unwatchEpisode(_ episode: Episode) async -> Bool {
         guard diaryFromService else { return false }
         return await perform(refreshing: [episode.titleId]) {

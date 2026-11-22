@@ -23,6 +23,10 @@ import TwilDiaryCore
     @ObservationIgnored private var original: [JellyfinClient.Item] = []
     /// The song last reported to Jellyfin as playing.
     @ObservationIgnored private var reported: String?
+    /// Where a song was when a video on mpv took the lock screen (see stepAside).
+    @ObservationIgnored private var parked: Double?
+    /// Songs in a row that wouldn't play.
+    @ObservationIgnored private var failures = 0
 
     var current: JellyfinClient.Item? { queue.indices.contains(index) ? queue[index] : nil }
     var playing: Bool { state == .playing }
@@ -35,9 +39,19 @@ import TwilDiaryCore
     }
     func toggle() {
         guard let engine else { return }
+        if let parked, current != nil { Task { await load(from: parked) }; return }
         if playing { engine.pause() } else { engine.play() }
     }
     func pause() { if playing { engine?.pause() } }
+    /// A video opens on mpv: the song stops where it is and lets go of the lock screen's buttons, which
+    /// its engine would otherwise answer together with the video. Play goes on from there.
+    func stepAside() {
+        guard let engine, current != nil, parked == nil, state == .playing || state == .paused else { return }
+        if let reported { report("stop", reported) }
+        reported = nil
+        parked = time
+        engine.stop()
+    }
     func next() {
         if index + 1 < queue.count { index += 1 }
         else if repeatMode == .all, !queue.isEmpty { index = 0 }
@@ -92,16 +106,21 @@ import TwilDiaryCore
         index -= 1
         Task { await load() }
     }
-    func seek(_ seconds: Double) async { _ = await engine?.seek(to: seconds) }
+    func seek(_ seconds: Double) async {
+        if parked != nil { parked = seconds; time = seconds; return }
+        _ = await engine?.seek(to: seconds)
+    }
     func stop() {
         if let reported { report("stop", reported) }
         reported = nil
         engine?.stop()
+        parked = nil; failures = 0
         queue = []; index = 0; state = .idle; time = 0; duration = 0
     }
 
-    private func load() async {
+    private func load(from place: Double = 0) async {
         guard let client = JellySpace.client, let track = current, let url = client.audioURL(track.Id) else { return }
+        parked = nil
         if engine == nil { start() }
         guard let engine else { return }
         engine.ownsAudioNowPlaying = true
@@ -111,11 +130,24 @@ import TwilDiaryCore
         reported = nil
         time = 0; duration = 0
         do {
-            try await engine.load(url: url)
+            if place > 1 { try await engine.load(url: url, startPosition: place) } else { try await engine.load(url: url) }
+            // Another song was picked (or a video took over) while this one opened.
+            guard current?.Id == track.Id, parked == nil else { return }
             engine.play()
+            failures = 0
             reported = track.Id
             report("start", track.Id)
         } catch {
+            guard current?.Id == track.Id, parked == nil else { return }
+            // A song that won't play (its file gone, say): on to the next, rather than silence. Three in
+            // a row is the server, not the songs: it stops there.
+            failures += 1
+            if failures < 3, index + 1 < queue.count {
+                index += 1
+                await load()
+                return
+            }
+            failures = 0
             state = .idle
             return
         }

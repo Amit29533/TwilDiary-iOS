@@ -11,6 +11,20 @@ public enum EpisodeAlerts {
         public let title: String
         public let day: String
         public let body: String
+        /// The first of the day's episodes (whose air time the alert waits for).
+        public let season: Int
+        public let number: Int
+    }
+    /// When an alert goes off: 9 am on its day; with the air time known, 9 am on the day that falls on
+    /// here, or the air time itself when that's later. TMDB's day is the network's: an American evening
+    /// episode is out the next morning in India, and the alert came almost a day before it.
+    public static func moment(day: String, airs: Date?, calendar: Calendar = DiaryDate.calendar()) -> Date? {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3, let nine = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 9)) else { return nil }
+        // A time nowhere near the day is some other episode's.
+        guard let airs, abs(airs.timeIntervalSince(nine)) < 48 * 3_600 else { return nine }
+        let nineThere = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: airs) ?? nine
+        return max(nineThere, airs)
     }
     public static func upcoming(_ workspace: Workspace, today: String, days: Int = 14, limit: Int = 40, calendar: Calendar = DiaryDate.calendar()) -> [Alert] {
         let parts = today.split(separator: "-").compactMap { Int($0) }
@@ -33,7 +47,8 @@ public enum EpisodeAlerts {
             let day = String(key.split(separator: "|").last ?? "")
             let span = first.season == last.season && first.number != last.number ? "S\(first.season) E\(first.number)–E\(last.number)" : "S\(first.season) E\(first.number)"
             return Alert(id: "episode|" + key, titleId: show.id, title: show.name, day: day,
-                         body: sorted.count > 1 ? "\(span) are out today." : "\(span) is out today.")
+                         body: sorted.count > 1 ? "\(span) are out today." : "\(span) is out today.",
+                         season: first.season, number: first.number)
         }.sorted { ($0.day, $0.title) < ($1.day, $1.title) }.prefix(limit).map { $0 }
     }
 }

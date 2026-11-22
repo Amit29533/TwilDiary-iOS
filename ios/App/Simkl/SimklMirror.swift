@@ -171,12 +171,12 @@ struct SimklQueue: Codable, Equatable, Sendable {
 
     /// An edit made in TwilDiary (from `DiaryStore.mirror`): turned into jobs while the diary
     /// still has everything they need, then sent in the background.
-    func capture(_ mutation: OptimisticMutation, store: DiaryStore) {
+    func capture(_ mutations: [OptimisticMutation], store: DiaryStore) {
         guard !store.isPreview else { return }
         SimklAccount.shared.adopt(store)
         guard SimklAccount.shared.canSend else { return }
         self.store = store
-        for job in Self.jobs(for: mutation, store: store) { queue.add(job) }
+        for mutation in mutations { for job in Self.jobs(for: mutation, store: store) { queue.add(job) } }
         save()
         Task { await resume() }
     }
@@ -245,7 +245,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
     }
     private static func episode(_ id: String?, of title: MediaTitle, store: DiaryStore) -> (season: Int, number: Int, airedOn: String?)? {
         guard let id else { return nil }
-        if let episode = store.workspace.episodes.first(where: { $0.id == id }) { return (episode.season, episode.number, episode.airedOn) }
+        if let episode = store.titleEpisodes(title.id).first(where: { $0.id == id }) { return (episode.season, episode.number, episode.airedOn) }
         // "<title>|s2e5", for an episode the diary names before its details are read.
         guard let range = id.range(of: "|s", options: .backwards) else { return nil }
         let parts = id[range.upperBound...].split(separator: "e").compactMap { Int($0) }

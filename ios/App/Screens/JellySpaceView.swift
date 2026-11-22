@@ -84,6 +84,7 @@ struct JellySpaceView: View {
     var body: some View {
         home
             .jellyFaceLock()
+            .jellyPage()
             // Face ID lock: leaving JellySpace (back out of it) locks it, so tapping into it again
             // scans your face before anything shows. Going deeper (a title, the player) doesn't.
             .onAppear { if entry == nil { entry = (router.selectedTab, router.paths[router.selectedTab]?.count ?? 0) } }
@@ -715,6 +716,8 @@ struct JellySpaceView: View {
     /// Every row asked at once (they took turns: Recently added waited for Because you watched, the
     /// slowest), shown as each arrives in the page's order, Because you watched last. With
     /// `listLibraries` the library list is asked again too, beside the rows that don't need it.
+    /// A row whose request fails (the server off, or away from home) keeps what it had: no answer isn't
+    /// an empty one, and the empty rows replaced the good ones, on screen and in what's kept.
     private func loadRows(listLibraries: Bool = false) async {
         guard let client = JellySpace.client, let user = await JellyfinUser.id(client) else { return }
         JellyIndexStore.warm(client: client, user: user)
@@ -728,7 +731,7 @@ struct JellySpaceView: View {
                 let found = try await client.libraries()
                 if found != libraries { libraries = found }
             } catch {
-                if !Task.isCancelled, libraries.isEmpty { failure = error.localizedDescription }
+                if !Task.isCancelled { failure = error.localizedDescription }
             }
         }
         // Only the film libraries shown on the home (a hidden library's titles mustn't turn up here).
@@ -736,14 +739,26 @@ struct JellySpaceView: View {
         async let newest = Self.newest(client: client, user: user, libraries: libraries.map(\.id))
         async let picks = JellyForYou.load(client: client, user: user, libraries: filmLibraries)
         // Each row as it comes, faded in when it's new (in place when it was there: no jump).
-        let nowResume = (try? await started) ?? [], nowNext = (try? await following) ?? []
-        withAnimation(.smooth(duration: 0.25)) { resume = nowResume; nextUp = nowNext }
+        let nowResume = try? await started, nowNext = try? await following
+        withAnimation(.smooth(duration: 0.25)) {
+            if let nowResume { resume = nowResume }
+            if let nowNext { nextUp = nowNext }
+        }
+        // It answers again: an earlier notice that it couldn't be reached goes.
+        if nowResume != nil, !listLibraries { failure = nil }
         let nowLatest = await newest
-        withAnimation(.smooth(duration: 0.25)) { latest = nowLatest }
-        let nowFavourites = (try? await liked) ?? [], nowSets = (try? await sets) ?? []
-        withAnimation(.smooth(duration: 0.25)) { favourites = nowFavourites; collections = nowSets }
+        let listed = Set(libraries.map(\.id))
+        withAnimation(.smooth(duration: 0.25)) { latest = latest.filter { listed.contains($0.key) }.merging(nowLatest) { $1 } }
+        let nowFavourites = try? await liked, nowSets = try? await sets
+        withAnimation(.smooth(duration: 0.25)) {
+            if let nowFavourites { favourites = nowFavourites }
+            if let nowSets { collections = nowSets }
+        }
         let nowPicks = await picks
-        withAnimation(.smooth(duration: 0.25)) { forYou = nowPicks }
+        // No picks while the server answers is an answer; while it doesn't, the row stays.
+        if nowPicks != nil || nowResume != nil { withAnimation(.smooth(duration: 0.25)) { forYou = nowPicks } }
+        // Nothing read: nothing new to keep, and the next time here asks again.
+        guard nowResume != nil || !nowLatest.isEmpty else { await loadThemes(); return }
         JellyNewEpisodes.note(latest.values.flatMap { $0 } + favourites)
         JellyHomeCache.server = client.base.absoluteString + "|" + user; JellyHomeCache.at = .now
         JellyHomeCache.libraries = libraries; JellyHomeCache.resume = resume; JellyHomeCache.favourites = favourites
@@ -754,14 +769,14 @@ struct JellySpaceView: View {
                                               favourites: favourites, collections: collections, latest: latest, forYou: forYou), name: "home")
         await loadThemes()
     }
-    /// Each library's Recently added, all at once.
+    /// Each library's Recently added, all at once (a library that couldn't be read is left out).
     nonisolated private static func newest(client: JellyfinClient, user: String, libraries: [String]) async -> [String: [JellyfinClient.Item]] {
-        await withTaskGroup(of: (String, [JellyfinClient.Item]).self) { group in
+        await withTaskGroup(of: (String, [JellyfinClient.Item]?).self) { group in
             for id in libraries {
-                group.addTask { (id, (try? await client.latest(in: id, user: user)) ?? []) }
+                group.addTask { (id, try? await client.latest(in: id, user: user)) }
             }
             var newest: [String: [JellyfinClient.Item]] = [:]
-            for await (id, items) in group { newest[id] = items }
+            for await (id, items) in group { if let items { newest[id] = items } }
             return newest
         }
     }
@@ -1254,6 +1269,7 @@ struct JellyFolderPage: View {
         }
         .diaryScreenBackground()
         .jellyFaceLock()
+        .jellyPage()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .toolbar {
             if sortable {
@@ -1713,15 +1729,13 @@ struct JellyEpisodeRow: View {
     private func toggleWatched() {
         let now = !watched
         withAnimation(.snappy(duration: 0.2)) { played = now }
-        let id = item.Id
+        let episode = item, toDiary = diaryOn
         Task {
             guard let user = await JellyfinUser.id(client) else { return }
-            do { try await client.setPlayed(id, user: user, now) } catch { played = !now }
-        }
-        // Watched: in the diary too, as the long-press menu and finishing it in the player do.
-        if now, diaryOn {
-            let episode = item
-            Task { _ = await JellyDiary.mark(episode, client: client, store: store) }
+            do { try await client.setPlayed(episode.Id, user: user, now) } catch { played = !now; return }
+            // Watched: in the diary too, once Jellyfin has it, as the long-press menu and finishing it in
+            // the player do; un-marked, the watch that logged is taken back.
+            if toDiary { JellyDiary.follow(now, episode, client: client, store: store) }
         }
     }
     private var still: some View {
@@ -1880,10 +1894,11 @@ struct JellyItemMenu: ViewModifier {
                 Button(isPlayed ? "Mark as unwatched" : "Mark as watched", systemImage: isPlayed ? "eye.slash" : "checkmark.circle") {
                     played = !isPlayed
                     let id = item.Id, now = !isPlayed, watched = item
-                    let toDiary = now && diaryOn && ["Movie", "Episode"].contains(item.kind)
+                    let toDiary = diaryOn && ["Movie", "Episode"].contains(item.kind)
                     send({ client, user in try await client.setPlayed(id, user: user, now) }, done: {
-                        // Watched: in the diary too (as finishing it in the player does), once Jellyfin has it.
-                        if toDiary, let client = JellySpace.client { Task { _ = await JellyDiary.mark(watched, client: client, store: store) } }
+                        // Watched: in the diary too (as finishing it in the player does), once Jellyfin has it;
+                        // un-marked, the watch that logged is taken back.
+                        if toDiary, let client = JellySpace.client { JellyDiary.follow(now, watched, client: client, store: store) }
                     }, undo: { played = isPlayed })
                 }
                 if let remove { Button("Remove from Continue Watching", systemImage: "minus.circle", action: remove) }
