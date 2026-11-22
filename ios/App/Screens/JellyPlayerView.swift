@@ -964,6 +964,24 @@ struct JellyPlayerView: View {
             // The scrub bar's pictures come from Jellyfin's trickplay: AetherEngine's own (a second
             // reader downloading and decoding frames in the background) went unused.
             options.generatesBackgroundScrubPreviews = false
+            // As Sodalite (AetherEngine's own Jellyfin app) opens a file on the server: the first read
+            // capped at 16 MB and 10 seconds (the engine reads up to 50 MB and 60 s, slow where a file
+            // ends in sparse picture subtitles or cover art); not for a link to elsewhere (.strm).
+            if current.item.Path?.hasPrefix("http") != true {
+                options.probesize = 16 * 1024 * 1024
+                options.maxAnalyzeDuration = 10 * 1_000_000
+            }
+            // Closing the player keeps what this video fetched, so Resume plays it from the phone
+            // (Sodalite; AetherEngine deletes it on any other load, or after an hour).
+            options.retainsSessionCacheAfterStop = true
+            // Subtitles in Picture in Picture, AirPlay and on a screen by cable, where the player's own
+            // can't draw: the engine serves them as a track iOS draws, chosen while the video is away
+            // (JellyPiP). As Sodalite: eager readers, the default track in your subtitle language.
+            options.prepareNativeSubtitles = true
+            options.eagerNativeSubtitleReaders = true
+            if let language = UserDefaults.standard.string(forKey: JellySubtitlePrefs.languageKey), !language.isEmpty {
+                options.nativeSubtitlePreferredLanguages = JellySubtitlePick.forms(language)
+            }
             // Audio in your language from the first frame, chosen as mpv's is (carried over from the
             // other player, else what you picked in this show or anywhere, then Preferences). Picked
             // after the load instead, AetherEngine reloads the video to switch (a re-buffer at the start).
@@ -3036,11 +3054,19 @@ private struct JellyVolumeView: UIViewRepresentable {
     }
     func start() { controller?.startPictureInPicture() }
 
+    // In the window, iOS draws the subtitles (the engine's own track); back in the app, the player's
+    // own again, so they're never drawn twice (as Sodalite switches them).
     nonisolated func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        MainActor.assumeIsolated { engine?.pictureInPictureActive = true }
+        MainActor.assumeIsolated {
+            engine?.pictureInPictureActive = true
+            engine?.setNativeSubtitleRendering(true)
+        }
     }
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        MainActor.assumeIsolated { engine?.pictureInPictureActive = false }
+        MainActor.assumeIsolated {
+            engine?.pictureInPictureActive = false
+            engine?.setNativeSubtitleRendering(false)
+        }
     }
 }
 

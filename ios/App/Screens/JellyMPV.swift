@@ -191,12 +191,13 @@ private struct JellyMPVHandle: @unchecked Sendable {
         let options: [(String, String)] = output + [
             ("hwdec-codecs", Self.hardwareCodecs), ("keep-open", "yes"), ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"),
             ("sub-auto", "no"), ("subs-fallback", "yes"), ("audio-display", "no"),
-            // 150 MB ahead (20 seconds of most files, a 4K remux's few); 25 MB behind, not mpv's 50: a
-            // few seconds back stays instant, and less memory is held (as Yattee keeps it).
-            ("cache", "yes"), ("demuxer-max-bytes", "150MiB"), ("demuxer-max-back-bytes", "25MiB"),
-            // In bursts: a minute ahead, then nothing read until 20 seconds are left, so the Wi-Fi radio
-            // can rest between (it trickled all the time). The 150 MB cap still bounds a large file.
-            ("demuxer-readahead-secs", "60"), ("demuxer-hysteresis-secs", "20"),
+            // Arabic and Hebrew lines in styled subtitles in the order their authors' tools showed them
+            // (Streamyfin sets it).
+            ("sub-vsfilter-bidi-compat", "yes"),
+            // Streamyfin's defaults: 10 seconds ahead, within 150 MB ahead and 50 MB behind. The cache
+            // stays on outright, as before: Streamyfin's "auto" means on for network streams, and ours
+            // comes through the app's own reader, not mpv's network code.
+            ("cache", "yes"), ("cache-secs", "10"), ("demuxer-max-bytes", "150MiB"), ("demuxer-max-back-bytes", "50MiB"),
             // Behind, frames are dropped at the decoder first (lighter), then at the output.
             ("framedrop", "decoder+vo"),
             // On the GPU (smooth motion), lighter drawing than mpv's defaults, which are made for a
