@@ -68,6 +68,8 @@ struct JellyPlayerView: View {
     @State private var mpvLine = ""
     /// "Translated from Korean", for a moment as translating starts.
     @State private var translatedTag = false
+    /// The cast remote closing the player (see body).
+    @State private var castClosing = false
     /// The rating card (Netflix's): the rating and IMDb's warnings, a moment after a video starts.
     @State private var ratingInfo: JellyRatingInfo?
     @State private var showsRating = false
@@ -249,6 +251,16 @@ struct JellyPlayerView: View {
     /// The player, with live translation and the rating card added on (kept apart from the player's
     /// own long body, which the compiler checks in one go).
     var body: some View {
+        // Casting to a Chromecast: the player is a remote for the TV (the phone plays nothing).
+        // (Kept while the remote closes: the TV lets go a moment later, and the phone mustn't start
+        // playing meanwhile.)
+        if JellyCast.shared.connected || castClosing {
+            JellyCastRemote(playback: current) { castClosing = true; dismiss() }
+        } else {
+            localPlayer
+        }
+    }
+    private var localPlayer: some View {
         player
             // The rating card, once per video (not again on a decoder switch or a seek).
             .task(id: current.id) { await showRatingCard() }
@@ -414,6 +426,8 @@ struct JellyPlayerView: View {
             countdownTask?.cancel()
             report("stop")
             savePlace()
+            // Where it was, so a Chromecast taking over starts there.
+            JellyCast.shared.handoff = (current.id, exactTime)
             engine?.stop()
             mpv.stop()
             // The sound let go, so music that was playing before carries on (not while JellySpace's
@@ -1453,6 +1467,7 @@ struct JellyPlayerView: View {
                 if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
                 }
+                JellyCastButton().frame(width: 44, height: 44).accessibilityIdentifier("jellyspace-cast")
                 topIcon("lock.open", label: "Lock screen") { lockScreen() }.accessibilityIdentifier("jellyspace-lock-screen")
                 topIcon("xmark", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
             }
@@ -2581,6 +2596,11 @@ private struct JellyBattery: View {
                 }
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
                 .accessibilityElement(children: .ignore).accessibilityLabel("Battery \(Int((level * 100).rounded())) percent")
+            } else {
+                // Until monitoring is on, iOS reports the level as unknown (-1). Something has to be
+                // here for onAppear to run and turn it on: with nothing, it never appeared, never
+                // turned monitoring on, and the battery never showed.
+                Color.clear.frame(width: 1, height: 1)
             }
         }
         .onAppear { UIDevice.current.isBatteryMonitoringEnabled = true; read() }

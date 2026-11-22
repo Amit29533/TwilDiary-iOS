@@ -22,6 +22,10 @@ packages:
   # (GPL), pinned by checksum in the local package.
   MPVKitAV:
     path: Packages/MPVKitAV
+  # Chromecast (JellySpace's Cast button): Google's own Cast SDK package.
+  GoogleCast:
+    url: https://github.com/googlecast/google-cast-ios-sdk
+    from: 4.8.6
 targets:
   TwilDiary:
     type: application
@@ -43,6 +47,8 @@ targets:
         product: AetherEngine
       - package: MPVKitAV
         product: MPVKitAV
+      - package: GoogleCast
+        product: GoogleCastDynamic
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary
@@ -67,7 +73,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/Info.plist
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: TwilDiary reads your Jellyfin server on your home network to find where your movies and shows are stored.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: TwilDiary reads your Jellyfin server on your home network to find where your movies and shows are stored, and finds the Chromecasts you can cast them to.
         # A person's photo viewer: Download saves the picture to Photos.
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: TwilDiary saves the photos you download to your photo library.
         INFOPLIST_KEY_CFBundleDisplayName: TwilDiary

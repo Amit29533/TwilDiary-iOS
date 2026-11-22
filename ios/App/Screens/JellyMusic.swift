@@ -199,7 +199,14 @@ struct JellyTrackList: View {
 /// opens Now Playing.
 struct JellyMiniPlayer: View {
     @State private var open = false
+    /// The casting bar (while a Chromecast plays), then the song playing.
     var body: some View {
+        VStack(spacing: 8) {
+            JellyCastBar()
+            musicBar
+        }
+    }
+    @ViewBuilder private var musicBar: some View {
         let music = JellyMusic.shared
         if let track = music.current, let client = JellySpace.client {
             HStack(spacing: 12) {

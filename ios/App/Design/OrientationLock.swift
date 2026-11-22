@@ -30,6 +30,11 @@ import UIKit
 
 /// Only answers which orientations the app allows right now (OrientationLock).
 final class TwilDiaryAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Chromecast, ready before any Cast button is drawn.
+        JellyCast.setUp()
+        return true
+    }
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         OrientationLock.mask
     }

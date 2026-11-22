@@ -390,6 +390,8 @@ struct JellyfinClient: Sendable {
     }
     struct Page: Decodable { let Items: [Item]; let TotalRecordCount: Int }
     struct Server: Decodable { let ServerName: String?; let Version: String? }
+    /// The server's id, version and own address on the network (no sign-in needed): for Chromecast.
+    struct PublicInfo: Decodable, Sendable { let Id: String?; let Version: String?; let LocalAddress: String? }
 
     func get<T: Decodable & Sendable>(_ path: String, _ query: [URLQueryItem] = []) async throws -> T {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
@@ -407,6 +409,7 @@ struct JellyfinClient: Sendable {
         catch { throw APIError.message("That address doesn’t look like a Jellyfin server.") }
     }
     func server() async throws -> Server { try await get("System/Info") }
+    func publicInfo() async throws -> PublicInfo { try await get("System/Info/Public") }
     /// The item's poster from Jellyfin itself (image requests need no key, so none is put in the URL).
     func poster(_ item: Item) -> URL? { Self.posterURL(base: base, item: item.Id, tag: item.ImageTags?["Primary"]) }
     static func posterURL(base: URL, item: String, tag: String?) -> URL? {

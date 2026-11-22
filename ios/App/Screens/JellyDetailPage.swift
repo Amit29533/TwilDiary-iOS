@@ -127,6 +127,10 @@ struct JellyDetailPage: View {
                     detail?.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: route.id, type: "Primary", tag: $0, width: 200) }
                 }, state: headerState, pageWidth: pageWidth)
             }
+            // Cast: to a Chromecast on your Wi-Fi (then Play plays on the TV).
+            ToolbarItem(placement: .topBarTrailing) {
+                JellyCastButton(tint: UIColor(HomeStyle.primary)).frame(width: 30, height: 30).accessibilityIdentifier("jellyspace-detail-cast")
+            }
             if let detail, let client = JellySpace.client, hasMore(detail, client: client) {
                 ToolbarItem(placement: .topBarTrailing) { moreMenu(detail, client: client) }
             }
