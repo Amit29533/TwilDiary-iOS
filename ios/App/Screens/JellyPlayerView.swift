@@ -71,7 +71,9 @@ struct JellyPlayerView: View {
     /// The cast remote closing the player (see body).
     @State private var castClosing = false
     /// GPU Enabled Zoom (Settings → JellySpace → Engines): mpv's Fill on its GPU output, or instant on AVFoundation.
-    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
+    /// Off unless turned on, as Streamyfin fills: the GPU output drew in part of the screen when the
+    /// phone turned as it started (fixed in JellyMPV.fitGPUOutput, kept off as the safer default).
+    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = false
     /// The rating card (Netflix's): the rating and IMDb's warnings, a moment after a video starts.
     private var ratingInfo: JellyRatingInfo? { get { heavy.ratingInfo } nonmutating set { heavy.ratingInfo = newValue } }
     @State private var showsRating = false

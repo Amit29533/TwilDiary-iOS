@@ -1039,7 +1039,7 @@ struct JellyEnginesGroups: View {
     @AppStorage(JellyPrefs.boostKey) private var boost = 0
     @AppStorage(JellyPrefs.mpvSuperResolutionKey) private var superResolution = "off"
     @AppStorage(JellyPrefs.mpvSmoothKey) private var smooth = 0
-    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = true
+    @AppStorage(JellyPrefs.gpuZoomKey) private var gpuZoom = false
     @AppStorage(JellyPrefs.mpvCompositeKey) private var composite = JellyMPV.compositesByDefault
     @State private var moved = JellyMPVChoice.count
     private static let upscales = JellyUpscale.allCases.map { ($0.title, $0) }
@@ -1077,7 +1077,7 @@ struct JellyEnginesGroups: View {
                 SettingsDivider()
                 JellySettingsRows.toggle("Subtitles in the picture", $composite, accent: accent)
             }
-            JellyDecoderNote(text: "Super resolution and smooth motion pause while the phone is hot or in Low Power Mode. GPU Enabled Zoom: Fill and Original keep styled subtitles as made, with a second of black as you switch; off, Fill is instant. Subtitles in the picture: they show in Picture in Picture too; off, they're drawn over it.")
+            JellyDecoderNote(text: "Super resolution and smooth motion pause while the phone is hot or in Low Power Mode. GPU Enabled Zoom: Fill keeps styled subtitles as made, with a second of black as you switch; off (as it starts), Fill is instant and cooler. Original always uses the GPU. Subtitles in the picture: they show in Picture in Picture too; off, they're drawn over it.")
             SettingsGroup(label: "Videos") {
                 Button(role: .destructive) {
                     JellyMPVChoice.forgetAll()

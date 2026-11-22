@@ -287,6 +287,21 @@ private struct JellyMPVHandle: @unchecked Sendable {
 
     func play() { set("pause", "no") }
 
+    /// mpv's GPU output sets its own drawing size as it starts. Turned sideways before that, the
+    /// layout had already passed and it stayed at the upright size: the picture drew only the left
+    /// part of the screen (now and then; fine after a restart). Once the video's size is known (mpv's
+    /// output is up), the drawable is checked against the layer again, then twice more as it settles.
+    private func fitGPUOutput() {
+        guard handle?.layer is CAMetalLayer else { return }
+        Task { @MainActor [weak self] in
+            for delay in [0, 500, 1500] {
+                if delay > 0 { try? await Task.sleep(for: .milliseconds(delay)) }
+                guard let layer = self?.handle?.layer as? CAMetalLayer else { return }
+                JellyMPVSurfaceView.fit(layer)
+            }
+        }
+    }
+
     /// The video layer failed (the picture goes black): iOS ends VideoToolbox sessions when the app
     /// goes to the background or memory runs short, and a codec the phone can't decode in hardware
     /// fails it at once. The decoder goes to software and back to VideoToolbox, which builds a new
@@ -481,6 +496,7 @@ private struct JellyMPVHandle: @unchecked Sendable {
         case .height(let value):
             if videoSize.height != CGFloat(value) { videoSize.height = CGFloat(value) }
             updateDeinterlace(height: value)
+            fitGPUOutput()
         case .tracks(let audio, let subtitles, let aid, let sid):
             if audio.map(\.id) != audioTracks.map(\.id) { audioTracks = audio }
             if subtitles.map(\.id) != subtitleTracks.map(\.id) { subtitleTracks = subtitles }
@@ -765,8 +781,11 @@ final class JellyMPVSurfaceView: UIView {
     /// a corner. A new size here makes mpv build its output again at that size.
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard let layer = layer as? CAMetalLayer else { return }
-        let size = CGSize(width: (bounds.width * layer.contentsScale).rounded(), height: (bounds.height * layer.contentsScale).rounded())
+        if let layer = layer as? CAMetalLayer { Self.fit(layer) }
+    }
+    /// The drawable at the layer's size in pixels (a no-op when it already is).
+    static func fit(_ layer: CAMetalLayer) {
+        let size = CGSize(width: (layer.bounds.width * layer.contentsScale).rounded(), height: (layer.bounds.height * layer.contentsScale).rounded())
         if size.width > 1, size.height > 1, size != layer.drawableSize { layer.drawableSize = size }
     }
 }
