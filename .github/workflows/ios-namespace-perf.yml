@@ -89,8 +89,8 @@ jobs:
           {
             echo "### JellySpace playback, controls hidden (Simulator, 45 s)"
             echo
-            echo "| Build | CPU used (avg) | CPU sampled (median) | CPU peak | Memory peak |"
-            echo "|---|---|---|---|---|"
+            echo "| Build | CPU used (avg) | CPU sampled (median) | CPU peak | GPU (app) | GPU busy (Mac) | Energy impact | Memory peak | Disk writes |"
+            echo "|---|---|---|---|---|---|---|---|---|"
           } > ios/.artifacts/perf/results.md
           # The list on its own file handle (3), so nothing in the loop reads it from standard input.
           # Each line: a commit, its name, and (optional) "features" to measure the upscalers and smooth
@@ -114,7 +114,7 @@ jobs:
             tail -3 "ios/.artifacts/logs/build-$short.log"
             if [ $status -ne 0 ]; then
               grep -E "error:" "ios/.artifacts/logs/build-$short.log" | head -20
-              echo "| $short | build failed | | | |" >> ios/.artifacts/perf/results.md
+              echo "| $short | build failed | | | | | | | |" >> ios/.artifacts/perf/results.md
               continue
             fi
             xcrun simctl install "$SIMULATOR_ID" "$PWD/ios/.derived/perf-$short/Build/Products/Release-iphonesimulator/TwilDiary.app"

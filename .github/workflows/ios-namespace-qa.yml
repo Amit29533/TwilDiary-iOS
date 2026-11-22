@@ -1,7 +1,7 @@
-# JellySpace QA on the Namespace Apple Silicon runner, in the Simulator: the player's UI tests on both
-# decoders with an iPhone's 1 MB main-thread stack, the crash on opening a video checked on the old
-# and new builds, the player under Address and Thread Sanitizer, and memory leaks, memory use and
-# where the CPU time goes while a video plays. Start it by pushing a tag (`namespace-qa-<short sha>`).
+# JellySpace measurements on the Namespace Apple Silicon runner, in the Simulator: the crash on opening
+# a video checked on the old and new builds with an iPhone's 1 MB main-thread stack, and memory
+# leaks, memory by kind, disk writes and where the CPU time goes while each decoder plays (CPU, GPU,
+# energy and memory per build and setting: ios-namespace-perf.yml). No UI tests, by the owner's call. Start it by pushing a tag (`namespace-qa-<short sha>`).
 # Read-only: no signing, no release, no deploy. Results are in each job's summary and artifacts.
 name: iOS JellySpace QA (Namespace)
 run-name: namespace qa ${{ github.ref_name }}
@@ -23,10 +23,10 @@ env:
   BUNDLE: com.amit29533.TwilDiary
 
 jobs:
-  player-ui:
-    name: Player UI tests (1 MB stack)
+  stack-check:
+    name: Crash on opening a video (old and new, phone stack)
     runs-on: namespace-profile-mac
-    timeout-minutes: 120
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -34,6 +34,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - &xcode
         name: Choose Xcode 26.6 and an iPhone simulator
         run: |
@@ -66,135 +67,6 @@ jobs:
       - &video
         name: Make and serve the test video
         run: bash ios/tools/qa/make_video.sh "$RUNNER_TEMP/qa"
-      - name: Build the app and UI tests (Release, as the IPA)
-        run: |
-          set -o pipefail
-          xcrun simctl boot "$SIMULATOR_ID" || true
-          bash ios/scripts/xcodegen.sh
-          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Release \
-            -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa" \
-            -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
-          status=$?; tail -3 ios/.artifacts/logs/qa-build.log
-          [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/qa-build.log | head -30; exit $status; }
-          # The phone's main-thread stack (1 MB), so a stack overflow crashes here as it does on the phone.
-          python3 ios/tools/qa/stack_size.py ios/.derived/qa/Build/Products/Release-iphonesimulator/TwilDiary.app 1024
-      - name: Player UI tests
-        env:
-          TEST_RUNNER_JELLY_QA_VIDEO: http://127.0.0.1:8765/qa.mkv
-        run: |
-          set -o pipefail
-          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Release \
-            -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa" \
-            -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 400 -maximum-test-execution-time-allowance 480 \
-            -only-testing:TwilDiaryUITests/JellyPlayerUITests -resultBundlePath ios/.artifacts/qa/PlayerUI.xcresult \
-            2>&1 | tee ios/.artifacts/logs/player-ui.log | grep -E "Test Case|error:|JELLY-QA" || true
-      - &report
-        name: Report
-        if: always()
-        run: |
-          shopt -s nullglob
-          cp ~/Library/Logs/DiagnosticReports/TwilDiary* ios/.artifacts/qa/crashes/ 2>/dev/null || true
-          xcrun simctl spawn "$SIMULATOR_ID" log show --last 3h --style compact --predicate 'subsystem == "com.amit29533.TwilDiary.mpv"' > ios/.artifacts/qa/mpv-log.txt 2>&1 || true
-          if grep -q "didn't start" ios/.artifacts/qa/mpv-log.txt; then echo "mpv didn't start at least once (see mpv-log.txt):"; grep "didn't start" ios/.artifacts/qa/mpv-log.txt | head -5; fi | tee -a "$GITHUB_STEP_SUMMARY"
-          {
-            for result in ios/.artifacts/qa/*.xcresult; do python3 ios/tools/qa/test_results.py "$result" "$(basename "$result" .xcresult)"; done
-            if ls ios/.artifacts/qa/crashes/* >/dev/null 2>&1; then
-              echo "### Crash reports"; echo
-              for crash in ios/.artifacts/qa/crashes/*; do
-                echo "- $(basename "$crash"): $(grep -ohE '"(type|signal|message)" *: *"[^"]+"' "$crash" | head -3 | tr '\n' ' ')"
-              done; echo
-            fi
-            if grep -q "JELLY-QA-TIMINGS" ios/.artifacts/logs/*.log 2>/dev/null; then
-              echo "### Timings"; echo; echo '```'
-              grep -h -A40 "JELLY-QA-TIMINGS" ios/.artifacts/logs/*.log | grep -E "JELLY-QA-TIMINGS|: [0-9.]+ s$" | head -150
-              echo '```'
-            fi
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-      - &upload
-        name: Upload results
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: TwilDiary-qa-${{ github.job }}-${{ strategy.job-index }}
-          path: |
-            ios/.artifacts/qa
-            ios/.artifacts/logs
-          include-hidden-files: true
-          retention-days: 7
-
-  jellyspace-ui:
-    name: JellySpace pages against a stand-in server
-    runs-on: namespace-profile-mac
-    timeout-minutes: 100
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - *xcode
-      - *spm
-      - *video
-      - name: Start the stand-in Jellyfin server
-        run: |
-          set -euo pipefail
-          ffmpeg -hide_banner -loglevel error -y -f lavfi -i "gradients=size=400x600:seed=7" -frames:v 1 "$RUNNER_TEMP/qa/poster.jpg"
-          ffmpeg -hide_banner -loglevel error -y -f lavfi -i "gradients=size=1280x720:seed=11" -frames:v 1 "$RUNNER_TEMP/qa/backdrop.jpg"
-          cp ios/tools/qa/fake_jellyfin.py "$RUNNER_TEMP/fake_jellyfin.py"
-          : > "$RUNNER_TEMP/jellyfin-requests.log"
-          nohup python3 "$RUNNER_TEMP/fake_jellyfin.py" "$RUNNER_TEMP/qa" 8766 "$RUNNER_TEMP/jellyfin-requests.log" > "$RUNNER_TEMP/fake-jellyfin.out" 2>&1 &
-          sleep 1
-          curl -sf http://127.0.0.1:8766/System/Info/Public; echo
-          curl -sf "http://127.0.0.1:8766/Items?IncludeItemTypes=Movie&Recursive=true" | head -c 300; echo
-      - name: Build the app and UI tests in Debug (the app's test mode is Debug-only)
-        run: |
-          set -o pipefail
-          xcrun simctl boot "$SIMULATOR_ID" || true
-          xcrun simctl bootstatus "$SIMULATOR_ID" -b || true
-          bash ios/scripts/xcodegen.sh
-          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Debug             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             -only-testing:TwilDiaryUITests > ios/.artifacts/logs/qa-build.log 2>&1
-          status=$?; tail -3 ios/.artifacts/logs/qa-build.log
-          [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/qa-build.log | head -30; exit $status; }
-      - name: Face ID in the Simulator
-        run: |
-          # Enrolled, and a helper that answers the next Face ID check with a match whenever a test asks
-          # (it writes /tmp/qa-faceid-match).
-          xcrun simctl spawn "$SIMULATOR_ID" notifyutil -s com.apple.BiometricKit.enrollmentChanged 1
-          xcrun simctl spawn "$SIMULATOR_ID" notifyutil -p com.apple.BiometricKit.enrollmentChanged
-          rm -f /tmp/qa-faceid-match
-          nohup bash -c 'while true; do if [ -f /tmp/qa-faceid-match ]; then sleep 1; xcrun simctl spawn "$0" notifyutil -p com.apple.BiometricKit_Sim.pearl.match; rm -f /tmp/qa-faceid-match; fi; sleep 0.5; done' "$SIMULATOR_ID" > /dev/null 2>&1 &
-      - name: JellySpace UI tests
-        env:
-          TEST_RUNNER_JELLY_QA_SERVER: http://127.0.0.1:8766
-        run: |
-          set -o pipefail
-          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiaryUITestsOnly -configuration Debug             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/qa"             -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 400 -maximum-test-execution-time-allowance 480             -only-testing:TwilDiaryUITests/JellySpaceUITests -resultBundlePath ios/.artifacts/qa/JellySpaceUI.xcresult             2>&1 | tee ios/.artifacts/logs/jellyspace-ui.log | grep -E "Test Case|error:|JELLY-QA" || true
-      - name: Requests to the server
-        if: always()
-        run: |
-          cp "$RUNNER_TEMP/jellyfin-requests.log" ios/.artifacts/qa/ 2>/dev/null || true
-          python3 ios/tools/qa/requests_summary.py "$RUNNER_TEMP/jellyfin-requests.log" | tee -a "$GITHUB_STEP_SUMMARY"
-      - *report
-      - *upload
-
-  stack-check:
-    name: Crash on opening a video (old and new, phone stack)
-    runs-on: namespace-profile-mac
-    timeout-minutes: 90
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - *xcode
-      - *spm
-      - *video
       - name: Open a video on the old and new builds with the phone's stack
         run: |
           set +e
@@ -251,89 +123,17 @@ jobs:
           done
           git checkout --force -q "$here"
           cat "$out/stack.md" >> "$GITHUB_STEP_SUMMARY"
-      - *upload
-
-  sanitizers:
-    name: Player under ${{ matrix.sanitizer }} Sanitizer
-    runs-on: namespace-profile-mac
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        sanitizer: [Address, Thread]
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - *xcode
-      - *spm
-      - *video
-      - name: Build with the sanitizer
-        run: |
-          set -o pipefail
-          xcrun simctl boot "$SIMULATOR_ID" || true
-          bash ios/scripts/xcodegen.sh
-          xcodebuild build-for-testing -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Debug \
-            -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
-            -enable${{ matrix.sanitizer }}Sanitizer YES 'OTHER_LDFLAGS=$(inherited) -Wl,-no_compact_unwind' \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/san" \
-            -only-testing:TwilDiaryUITests > ios/.artifacts/logs/san-build.log 2>&1
-          status=$?; tail -3 ios/.artifacts/logs/san-build.log
-          [ $status -eq 0 ] || { grep -E "error:" ios/.artifacts/logs/san-build.log | head -30; exit $status; }
-      - name: Player UI tests under the sanitizer
-        env:
-          TEST_RUNNER_JELLY_QA_VIDEO: http://127.0.0.1:8765/qa.mkv
-          TEST_RUNNER_JELLY_QA_APP_ASAN_OPTIONS: log_path=/tmp/qa-san/asan:halt_on_error=0
-          TEST_RUNNER_JELLY_QA_APP_TSAN_OPTIONS: log_path=/tmp/qa-san/tsan:halt_on_error=0:history_size=3
-        run: |
-          set -o pipefail
-          mkdir -p /tmp/qa-san
-          tests=(testAetherPlaysWithControlsUp testMPVPlaysWithControlsUp testAetherMenusWorkWhilePlaying testMPVMenusWorkWhilePlaying
-                 testAetherAdvancedTranslateAndDownloads testSwitchDecoderWhilePlaying testSwitchDecoderBackWhilePlaying
-                 testAetherRotationAndBackground testMPVCloses testAetherCloses)
-          only=(); for t in "${tests[@]}"; do only+=("-only-testing:TwilDiaryUITests/JellyPlayerUITests/$t"); done
-          xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary -configuration Debug \
-            -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO \
-            -enable${{ matrix.sanitizer }}Sanitizer YES \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" -derivedDataPath "$PWD/ios/.derived/san" \
-            -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 700 \
-            "${only[@]}" -resultBundlePath ios/.artifacts/qa/${{ matrix.sanitizer }}Sanitizer.xcresult \
-            2>&1 | tee ios/.artifacts/logs/sanitizer-ui.log | grep -E "Test Case|error:" || true
-      - name: Sanitizer reports
+      - &upload
+        name: Upload results
         if: always()
-        run: |
-          mkdir -p ios/.artifacts/qa/sanitizer
-          cp /tmp/qa-san/* ios/.artifacts/qa/sanitizer/ 2>/dev/null || true
-          python3 - ios/.artifacts/qa/sanitizer "${{ matrix.sanitizer }}" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
-          import collections, os, re, sys
-          folder, kind = sys.argv[1], sys.argv[2]
-          reports = collections.Counter(); examples = {}
-          for name in sorted(os.listdir(folder)):
-              text = open(os.path.join(folder, name), errors='replace').read()
-              for block in re.split(r'\n(?==+\n(?:WARNING|ERROR))|\n(?===\d+==ERROR)', text):
-                  head = re.search(r'(WARNING: ThreadSanitizer: [^\n(]+|ERROR: AddressSanitizer: [^\n]+)', block)
-                  if not head: continue
-                  frames = re.findall(r'#\d+ 0x[0-9a-f]+ in (\S+) (\S*TwilDiary[^\s:]*|[^\s]*/ios/App/[^\s:]+)', block)
-                  ours = re.findall(r'#\d+ 0x[0-9a-f]+ in ([^\n]+?) (?:\(|/)[^\n]*(?:ios/App/|TwilDiary\.debug)', block)
-                  where = ours[0][:140] if ours else (frames[0][0][:140] if frames else 'outside the app')
-                  key = head.group(1).strip()[:90] + ' — ' + where
-                  reports[key] += 1
-                  examples.setdefault(key, block[:6000])
-          print(f'### {kind} Sanitizer\n')
-          if not reports:
-              print('No reports.\n')
-          else:
-              print('| Report (first app frame) | Times |\n|---|---|')
-              for key, count in reports.most_common(40): print(f'| {key} | {count} |')
-              print()
-              with open(os.path.join(folder, 'summary.txt'), 'w') as f:
-                  for key, block in examples.items(): f.write('=' * 100 + '\n' + key + '\n' + block + '\n')
-          PY
-      - *report
-      - *upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-qa-${{ github.job }}-${{ strategy.job-index }}
+          path: |
+            ios/.artifacts/qa
+            ios/.artifacts/logs
+          include-hidden-files: true
+          retention-days: 7
 
   profile:
     name: Leaks, memory and CPU while playing
