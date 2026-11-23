@@ -4,7 +4,7 @@ import TwilDiaryCore
 /// A list across the libraries: a person's films and shows, a genre or studio, your favourites, or
 /// collections. A genre or studio opened from a library's Genres or Studios keeps to that library.
 struct JellyListRoute: Hashable {
-    enum Kind: String, Hashable { case person, genre, favourites, collections, artist, studio }
+    enum Kind: String, Hashable { case person, genre, favourites, collections, artist, studio, tag }
     let kind: Kind
     var id: String? = nil
     let name: String
@@ -120,11 +120,18 @@ struct JellyListPage: View {
             filters.append("IsFavorite")
         case .collections: extra = [URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")]
         case .artist: extra = [URLQueryItem(name: "IncludeItemTypes", value: "MusicAlbum"), URLQueryItem(name: "AlbumArtistIds", value: route.id)]
+        // A tag: its films, shows and videos (as the Tags row counts them).
+        case .tag: extra = [URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"), URLQueryItem(name: "Tags", value: route.name)]
         }
         // From a library's Genres or Studios: that library only.
         if let library = route.library { extra.append(URLQueryItem(name: "ParentId", value: library)) }
         do {
             let hidden = JellyHidden.decode(hiddenRaw)
+            // A tag's titles come from every library: those in a library you hid are left out, as in the row.
+            var inHiddenLibraries = Set<String>()
+            if route.kind == .tag, let index = await JellyIndexStore.index(client: client, user: user) {
+                inHiddenLibraries = Set(index.entries.filter { hidden[$0.library] != nil }.map(\.item.Id))
+            }
             // A page at a time: only the first 300 showed, so a big genre's or a long list's other titles
             // couldn't be reached. (A random order is one page: every request shuffles again.)
             var found: [JellyfinClient.Item] = [], seen = Set<String>(), start = 0
@@ -133,7 +140,7 @@ struct JellyListPage: View {
                                                       ascending: options.isAscending, start: start)
                 guard !Task.isCancelled else { return }
                 start += page.Items.count
-                found += page.Items.filter { hidden[$0.Id] == nil && seen.insert($0.Id).inserted }
+                found += page.Items.filter { hidden[$0.Id] == nil && !inHiddenLibraries.contains($0.Id) && seen.insert($0.Id).inserted }
                 let last = page.Items.isEmpty || start >= page.TotalRecordCount || options.sort == .random
                 if fresh || last { items = found }
                 if last { return }

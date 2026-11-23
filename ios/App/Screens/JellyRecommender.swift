@@ -276,6 +276,45 @@ enum JellyRecommender {
 // MARK: Rows across the whole server
 
 /// A themed row on the home: "Recommendations for Rain", "Random picks for Dance", "Must watch Parks".
+/// One of your Jellyfin tags for JellySpace's Tags row: its name as you wrote it, how many titles have
+/// it, and the one added most recently, whose poster is its picture.
+struct JellyTagCircle: Identifiable, Sendable {
+    /// The name in lower case (one tag however it's written).
+    let id: String
+    let name: String
+    let count: Int
+    let cover: JellyfinClient.Item
+
+    /// The tags on titles outside what you hid (a library, a title), the most used first (the first
+    /// `limit`). A tag written two ways is one, under the way it's written most.
+    static func circles(in index: JellyLibraryIndex, hidden: Set<String>, limit: Int = 20) -> [JellyTagCircle] {
+        struct Gathered { var names: [String: Int]; var count: Int; var cover: JellyfinClient.Item; var added: String }
+        var gathered: [String: Gathered] = [:]
+        for entry in index.entries where !hidden.contains(entry.library) && !hidden.contains(entry.item.Id) {
+            let added = entry.item.DateCreated ?? ""
+            var seen = Set<String>()
+            for written in entry.item.Tags ?? [] {
+                let name = written.trimmingCharacters(in: .whitespacesAndNewlines)
+                let key = name.lowercased()
+                guard !name.isEmpty, seen.insert(key).inserted else { continue }
+                if var group = gathered[key] {
+                    group.names[name, default: 0] += 1
+                    group.count += 1
+                    if added > group.added { group.cover = entry.item; group.added = added }
+                    gathered[key] = group
+                } else {
+                    gathered[key] = Gathered(names: [name: 1], count: 1, cover: entry.item, added: added)
+                }
+            }
+        }
+        let circles = gathered.map { key, group in
+            let name = group.names.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.first?.key ?? key
+            return JellyTagCircle(id: key, name: name, count: group.count, cover: group.cover)
+        }
+        return Array(circles.sorted { $0.count != $1.count ? $0.count > $1.count : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }.prefix(limit))
+    }
+}
+
 struct JellyTheme: Identifiable, Sendable {
     let id: String
     let title: String

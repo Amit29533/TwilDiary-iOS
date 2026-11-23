@@ -556,6 +556,8 @@ struct CatalogDetailView: View {
                             TitleHero(name: details.details.name, poster: CatalogTools.image(details.details.posterPath), backdrop: CatalogTools.image(details.details.backdropPath, size: "w780"), genres: details.details.genres, year: details.details.year, category: details.details.suggestedCategory == "anime-movie" ? "Anime movie" : details.details.suggestedCategory.capitalized, runtime: details.details.runtimeMinutes, series: route.kind == .tv, summary: details.details.overview, expanded: $showOverview, extras: extras, ratingsBelow: true, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top), onNameScrolled: { headerState.update($0) }) {
                                 RatingBoxes(scores: criticScores, tmdbFallback: details.details.communityScore)
                             }
+                            // On your Jellyfin: play it here, as from a Library title's page (hidden otherwise).
+                            JellyPlayButton(route: route, titleID: details.libraryTitle?.id)
                             if details.libraryTitle?.trashed == true, let trashed = store.phoneTrashed(route) {
                                 // In the phone's Trash (opened from Trash, say): restored here, with its rating.
                                 Button { Task { if await store.restore(trashed) { await store.waitForTitle(trashed.id); await load() } } } label: {

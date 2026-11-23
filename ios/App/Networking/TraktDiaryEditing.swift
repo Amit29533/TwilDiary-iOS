@@ -196,7 +196,24 @@ extension DiaryStore {
     func serviceUndoPlays(titleID: String, at when: String) async throws {
         let found = undoablePlays(titleID: titleID, at: when)
         guard !found.isEmpty else { throw APIError.message("That watch isn’t in your diary any more.") }
+        // Planned before this watch: Trakt takes a show or film off the watchlist as soon as anything
+        // of it is watched, so taking the watch back left it out of Planned too. It goes back on.
+        let replan = takePlannedBefore(titleID, at: when) ? title(titleID) : nil
         try await serviceRemoveWatches(found)
+        if let replan { try await servicePatch(replan, values: ["status": "planned"], keepPlays: true) }
+    }
+    /// Whether the watch at `when` was logged on this title while it was Planned (and forgets it).
+    func takePlannedBefore(_ titleID: String, at when: String) -> Bool {
+        guard var times = plannedBeforeWatch[titleID], let index = times.firstIndex(where: { Self.sameWatchTime($0, when) }) else { return false }
+        times.remove(at: index)
+        plannedBeforeWatch[titleID] = times.isEmpty ? nil : times
+        return true
+    }
+    /// The same moment, within a second (a refreshed copy writes the time its own way).
+    nonisolated static func sameWatchTime(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        guard let first = DiaryDate.parse(a), let second = DiaryDate.parse(b) else { return false }
+        return abs(first.timeIntervalSince(second)) < 1
     }
     func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
         guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
@@ -370,7 +387,8 @@ extension DiaryStore {
 
     /// Rating, Planned and dropped go to the service, and favourites to Trakt; everything else
     /// (notes, tags, Queue, and what the service can't keep) stays on the phone (PhoneExtras).
-    func servicePatch(_ title: MediaTitle, values: [String: Any]) async throws {
+    /// `keepPlays`: back to Planned without a movie's plays coming off (Undo has taken off its own).
+    func servicePatch(_ title: MediaTitle, values: [String: Any], keepPlays: Bool = false) async throws {
         let item = try serviceRef(title)
         let slot = title.isSeries ? "shows" : "movies"
         if let score = values["score"] as? Double {
@@ -384,7 +402,7 @@ extension DiaryStore {
         // A watched movie set back to Planned (a watch logged by accident): its plays come off the
         // service too, each by its own id, or the service would keep counting it as watched.
         // Shows keep their history; resetting a season is its own action.
-        if status == "planned", !title.isSeries { try await removeAllPlays(title) }
+        if status == "planned", !title.isSeries, !keepPlays { try await removeAllPlays(title) }
         if let status {
             let wasPlanned = title.status == "planned", wasDropped = (title.isSeries || service == .wetrakr) && title.status == "dropped"
             switch service {

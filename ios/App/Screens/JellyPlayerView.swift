@@ -1745,12 +1745,8 @@ struct JellyPlayerView: View {
                 if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
                 }
-                // Sideways (upright there's no room), and for a picture AVPlayer plays: nothing else can go to a TV.
-                if compact, !usesMPV, engine?.nativePlayerLayer != nil {
-                    JellyAirPlayButton().frame(width: 44, height: 44)
-                        .accessibilityIdentifier("jellyspace-airplay")
-                }
-                JellyCastButton().frame(width: 44, height: 44).accessibilityIdentifier("jellyspace-cast")
+                // AirPlay sideways (upright there's no room), and for a picture AVPlayer plays: nothing else can go to a TV.
+                JellyTVButtons(airPlay: compact && !usesMPV && engine?.nativePlayerLayer != nil)
                 topIcon("lock.open", label: "Lock screen") { lockScreen() }.accessibilityIdentifier("jellyspace-lock-screen")
                 topIcon("xmark", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
             }
@@ -3095,6 +3091,24 @@ private struct JellyBattery: View {
 }
 
 /// The system's AirPlay button.
+/// AirPlay and Cast at the top of the player, each unless turned off (Settings → JellySpace → Playback).
+/// A view of their own, so the settings don't add to the player view's size.
+private struct JellyTVButtons: View {
+    /// AirPlay can take this picture now.
+    let airPlay: Bool
+    @AppStorage(JellyPrefs.castButtonKey) private var castButton = true
+    @AppStorage(JellyPrefs.airPlayButtonKey) private var airPlayButton = true
+
+    var body: some View {
+        if airPlay, airPlayButton {
+            JellyAirPlayButton().frame(width: 44, height: 44).accessibilityIdentifier("jellyspace-airplay")
+        }
+        if castButton {
+            JellyCastButton().frame(width: 44, height: 44).accessibilityIdentifier("jellyspace-cast")
+        }
+    }
+}
+
 private struct JellyAirPlayButton: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()

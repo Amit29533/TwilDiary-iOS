@@ -70,6 +70,8 @@ enum JellyDevice {
     }()
     /// The Authorization header's start, before any token.
     static var header: String { "MediaBrowser Client=\"TwilDiary\", Device=\"iPhone\", DeviceId=\"\(id)\", Version=\"2.0\"" }
+    /// The TV's sign-in (see JellyCast): a device of its own, so signing it in never signs this phone out.
+    static var tvHeader: String { "MediaBrowser Client=\"TwilDiary\", Device=\"Chromecast\", DeviceId=\"\(id)-tv\", Version=\"2.0\"" }
 }
 
 /// A Jellyfin library. Only Movies and Shows are read; the rest (photos, home videos, music)

@@ -15,6 +15,8 @@ import Foundation
     nonisolated private static let notSettings = [
         "jellyspace.account.", "jellyspace.userID", "jellyspace.userServer", "jellyspace.deviceID", "jellyspace.seenUnwatched",
         "jellyspace.discover.turn", "jellyspace.posterHasTitle", "jellyspace.seerr.on",
+        // Which server and user the TV's sign-in is for (the sign-in itself is in the Keychain).
+        "jellyspace.cast.",
     ]
     nonisolated static func carries(_ key: String) -> Bool {
         if names.contains(key) { return true }

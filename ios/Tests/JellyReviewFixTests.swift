@@ -75,10 +75,11 @@ import TwilDiaryCore
 
     /// Settings go in a backup; who's signed in and this install's own records don't.
     func testABackupCarriesSettingsOnly() {
-        for key in ["jellyspace.home.rows", "jellyspace.subtitle.font", "jellyspace.hidden", "customise.tabs", "library.savedFilters", "theme", "use24HourTime"] {
+        for key in ["jellyspace.home.rows", "jellyspace.subtitle.font", "jellyspace.hidden", "customise.tabs", "library.savedFilters", "theme", "use24HourTime",
+                    "jellyspace.button.cast", "jellyspace.button.airplay"] {
             XCTAssertTrue(SettingsBackup.carries(key), key)
         }
-        for key in ["jellyspace.account.user", "jellyspace.deviceID", "jellyspace.userID", "jellyspace.seenUnwatched", "trakt.pendingWrites",
+        for key in ["jellyspace.account.user", "jellyspace.deviceID", "jellyspace.userID", "jellyspace.seenUnwatched", "jellyspace.cast.tvSignInFor", "trakt.pendingWrites",
                     "googleDrive.connected", "jellyfinAddress", "phoneOnlyDiary"] {
             XCTAssertFalse(SettingsBackup.carries(key), key)
         }
@@ -178,6 +179,44 @@ import TwilDiaryCore
     func testTheGPUOutputsSizeIsComparedPastRounding() {
         XCTAssertTrue(JellyMPV.same(CGSize(width: 2556, height: 1179), CGSize(width: 2556, height: 1180)))
         XCTAssertFalse(JellyMPV.same(CGSize(width: 1179, height: 2556), CGSize(width: 2556, height: 1179)), "still the upright size")
+    }
+
+    /// What the TV says went wrong comes through in words (its reason was read from the wrong field).
+    func testTheTVsProblemIsPutInWords() {
+        XCTAssertEqual(JellyCast.problem(type: "connectionerror", detail: ""), "The TV couldn't reach your server")
+        XCTAssertEqual(JellyCast.problem(type: "playbackerror", detail: "NotAllowed"), "Your Jellyfin user isn't allowed to play this")
+        XCTAssertEqual(JellyCast.problem(type: "playbackerror", detail: "Odd"), "The TV couldn't play this (Odd)")
+        XCTAssertEqual(JellyCast.problem(type: "playbackerror", detail: nil), "The TV couldn't play this")
+        XCTAssertNil(JellyCast.problem(type: "playbackprogress", detail: nil))
+    }
+
+    /// A watch is found again by its time when the copy writes it another way (Undo putting a title
+    /// back in Planned depends on it).
+    func testAWatchIsKnownByItsTimeWrittenEitherWay() {
+        XCTAssertTrue(DiaryStore.sameWatchTime("2026-11-23T06:10:05.000Z", "2026-11-23T06:10:05Z"))
+        XCTAssertTrue(DiaryStore.sameWatchTime("2026-11-23T06:10:05Z", "2026-11-23T06:10:05Z"))
+        XCTAssertFalse(DiaryStore.sameWatchTime("2026-11-23T06:10:05Z", "2026-11-23T06:10:09Z"))
+        XCTAssertFalse(DiaryStore.sameWatchTime("not a time", "2026-11-23T06:10:05Z"))
+    }
+
+    /// JellySpace's Tags row: one tag however it's written, once a title, the newest title's poster,
+    /// the most used first, and nothing from a library or title you hid.
+    func testJellySpaceTagsAreCountedWithoutWhatsHidden() throws {
+        func items(_ json: String) throws -> [JellyfinClient.Item] { try JSONDecoder().decode([JellyfinClient.Item].self, from: Data(json.utf8)) }
+        let shown = try items("""
+        [{"Id":"a","Type":"Movie","Name":"A","Tags":["Comfy","Kids"],"DateCreated":"2026-01-01T00:00:00Z"},
+         {"Id":"b","Type":"Series","Name":"B","Tags":["comfy"," Comfy "],"DateCreated":"2026-03-01T00:00:00Z"},
+         {"Id":"c","Type":"Movie","Name":"C","Tags":["Kids"],"DateCreated":"2026-02-01T00:00:00Z"},
+         {"Id":"d","Type":"Movie","Name":"D","Tags":["Comfy"],"DateCreated":"2026-04-01T00:00:00Z"}]
+        """)
+        let away = try items(#"[{"Id":"e","Type":"Movie","Name":"E","Tags":["Secret"]}]"#)
+        let index = JellyLibraryIndex.build([(library: "films", items: shown), (library: "private", items: away)])
+        let circles = JellyTagCircle.circles(in: index, hidden: ["private", "d"])
+        XCTAssertEqual(circles.map(\.name), ["Comfy", "Kids"])
+        XCTAssertEqual(circles.map(\.count), [2, 2])
+        XCTAssertEqual(circles.first?.cover.Id, "b", "the newest title with the tag")
+        XCTAssertFalse(circles.contains { $0.id == "secret" }, "a hidden library's tags stay out")
+        XCTAssertEqual(JellyTagCircle.circles(in: index, hidden: [], limit: 1).map(\.id), ["comfy"])
     }
 
     // MARK: Elsewhere

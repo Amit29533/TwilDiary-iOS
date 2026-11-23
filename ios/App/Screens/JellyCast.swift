@@ -7,6 +7,8 @@ import GoogleCast
 /// your place. Messages go both ways as JSON on the receiver's channel (jellyfin-web's
 /// chromecastPlayer: PlayNow, Seek, Pause, Unpause, Stop, NextTrack, SetAudioStreamIndex,
 /// SetSubtitleStreamIndex; back come playbackstart, playbackprogress, playbackstop and errors).
+/// The receiver asks the server for everything as the signed-in user, which the server's API key
+/// isn't: the TV is given a sign-in as you (see tvSignIn).
 @MainActor @Observable final class JellyCast: NSObject {
     static let shared = JellyCast()
     /// Jellyfin's receiver on the Chromecast (the server's default for every user).
@@ -31,7 +33,14 @@ import GoogleCast
     @ObservationIgnored var handoff: (id: String, seconds: Double)?
 
     @ObservationIgnored private var channel: JellyCastChannel?
-    @ObservationIgnored private var server: [String: Any]?
+    @ObservationIgnored private var server: TVFields?
+    /// The fields being made (the sign-in may take a moment): a second ask waits for the same one.
+    @ObservationIgnored private var making: Task<TVFields?, Never>?
+    /// What every message carries: the server (an address the TV can reach), the sign-in, this device.
+    private struct TVFields: Sendable {
+        let user: String, token: String, address: String, serverID: String, version: String
+    }
+    private static let tvTokenKey = "tv-token", tvForKey = "jellyspace.cast.tvSignInFor"
     /// The diary (set as the app starts), and the video marked watched in it last.
     @ObservationIgnored weak var store: DiaryStore?
     @ObservationIgnored private var marked: String?
@@ -57,7 +66,7 @@ import GoogleCast
     /// Episode and autoplay work there).
     func play(_ item: JellyfinClient.Item, from seconds: Double, queue: [JellyfinClient.Item] = []) async {
         guard connected, let client = JellySpace.client, let base = await serverFields(client) else { return }
-        let serverID = base["serverId"] as? String ?? ""
+        let serverID = base.serverID
         let stubs = ([item] + queue.filter { $0.Id != item.Id }).map { entry -> [String: Any] in
             ["Id": entry.Id, "ServerId": serverID, "Name": entry.Name ?? "", "Type": entry.kind, "MediaType": "Video", "IsFolder": false]
         }
@@ -91,8 +100,9 @@ import GoogleCast
         guard connected, let base = server else { return }
         send(name, options: options, base: base)
     }
-    private func send(_ name: String, options: [String: Any], base: [String: Any]) {
-        var message = base
+    private func send(_ name: String, options: [String: Any], base: TVFields) {
+        var message: [String: Any] = ["userId": base.user, "deviceId": JellyDevice.id, "accessToken": base.token, "serverAddress": base.address,
+                                      "serverId": base.serverID, "serverVersion": base.version]
         message["command"] = name
         message["options"] = options
         message["receiverName"] = deviceName ?? ""
@@ -100,11 +110,29 @@ import GoogleCast
         channel?.sendTextMessage(text, error: nil)
     }
 
-    /// What every message carries: the server (an address the TV can reach), your sign-in, this
-    /// device. Read once a session.
-    private func serverFields(_ client: JellyfinClient) async -> [String: Any]? {
+    /// What every message carries. Made once a session.
+    private func serverFields(_ client: JellyfinClient) async -> TVFields? {
         if let server { return server }
+        if let making { return await making.value }
+        let task = Task { await self.makeFields(client) }
+        making = task
+        let fields = await task.value
+        making = nil
+        return fields
+    }
+    private func makeFields(_ client: JellyfinClient) async -> TVFields? {
         guard let user = await JellyfinUser.id(client) else { return nil }
+        guard let token = await tvSignIn(client, user: user) else {
+            // Quick Connect off on a server that answers: only your own sign-in can go to the TV. Otherwise
+            // the server didn't answer, or refused.
+            let answers = (try? await client.publicInfo()) != nil
+            if answers, !(await JellyAuth.quickConnectEnabled(client.base)) {
+                problem = "To cast, sign in to Jellyfin as yourself in Settings → JellySpace"
+            } else {
+                problem = "The TV couldn't be signed in to your server"
+            }
+            return nil
+        }
         let info = try? await client.publicInfo()
         var address = client.base.absoluteString
         // A localhost address means nothing to the TV: the server's own address on the network instead.
@@ -112,10 +140,25 @@ import GoogleCast
             address = local
         }
         if address.hasSuffix("/") { address.removeLast() }
-        let fields: [String: Any] = ["userId": user, "deviceId": JellyDevice.id, "accessToken": client.key, "serverAddress": address,
-                                     "serverId": info?.Id ?? "", "serverVersion": info?.Version ?? ""]
+        let fields = TVFields(user: user, token: token, address: address, serverID: info?.Id ?? "", version: info?.Version ?? "")
         server = fields
         return fields
+    }
+    /// The sign-in the TV uses. Jellyfin's receiver asks for the video as the signed-in user, and the
+    /// server's API key is no user: the server refused, the receiver said nothing, and the TV stayed on
+    /// its pictures. Signed in as you in JellySpace, that sign-in; with the API key, one of the TV's own
+    /// as the user JellySpace watches as (made once with Quick Connect, kept, made again if it's removed).
+    private func tvSignIn(_ client: JellyfinClient, user: String) async -> String? {
+        if JellyAccount.token != nil { return client.key }
+        let owner = client.base.absoluteString + "|" + user
+        if UserDefaults.standard.string(forKey: Self.tvForKey) == owner, let saved = JellySecrets.read(Self.tvTokenKey),
+           await JellyAuth.tvSignInWorks(client.base, token: saved) != false {
+            return saved
+        }
+        guard let session = try? await JellyAuth.signInForTV(client.base, apiKey: client.key, user: user) else { return nil }
+        JellySecrets.write(Self.tvTokenKey, session.AccessToken)
+        UserDefaults.standard.set(owner, forKey: Self.tvForKey)
+        return session.AccessToken
     }
 
     // MARK: The TV's side
@@ -126,7 +169,7 @@ import GoogleCast
         let channel = JellyCastChannel(namespace: Self.namespace)
         session.add(channel)
         self.channel = channel
-        server = nil
+        server = nil; making = nil
         problem = nil
         // Introduces this sender, as Jellyfin's web app does.
         Task { @MainActor [self] in
@@ -136,7 +179,7 @@ import GoogleCast
     }
     fileprivate func detach() {
         deviceName = nil; itemID = nil; title = ""; seriesName = nil; duration = 0; paused = false; reported = 0
-        channel = nil; server = nil
+        channel = nil; server = nil; making = nil
     }
     /// A message from the TV: what it's playing, where, paused or not; or what went wrong.
     fileprivate func receive(_ text: String) {
@@ -145,6 +188,7 @@ import GoogleCast
         switch type {
         case "playbackstart", "playbackprogress":
             guard let state = message["data"] as? [String: Any] else { return }
+            if type == "playbackstart" { problem = nil }
             if let item = state["NowPlayingItem"] as? [String: Any] {
                 if let id = item["Id"] as? String { itemID = id }
                 if let name = item["Name"] as? String { title = name }
@@ -160,9 +204,26 @@ import GoogleCast
             markFinished(at: position())
             itemID = nil; paused = false
         case "playbackerror", "connectionerror":
-            problem = (message["data"] as? String).map { "The TV couldn't play this: " + $0 } ?? "The TV couldn't play this"
+            // The receiver's reason is in "message" (a code from the server, or nothing).
+            problem = Self.problem(type: type, detail: message["message"] as? String ?? message["data"] as? String)
         default:
             break
+        }
+    }
+    /// What went wrong on the TV, in words.
+    nonisolated static func problem(type: String, detail: String?) -> String? {
+        let code = detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch type {
+        case "connectionerror": return "The TV couldn't reach your server"
+        case "playbackerror":
+            switch code {
+            case "NoCompatibleStream": return "The TV can't play this file, and your server couldn't convert it for the TV"
+            case "NotAllowed": return "Your Jellyfin user isn't allowed to play this"
+            case "RateLimitExceeded": return "Your server is busy. Try again in a moment"
+            case "": return "The TV couldn't play this"
+            default: return "The TV couldn't play this (\(code))"
+            }
+        default: return nil
         }
     }
     /// At 90% on the TV: watched in the diary, once, as the phone's own player marks it (Jellyfin hears
@@ -271,17 +332,20 @@ struct JellyCastRemote: View {
                     Button { cast.seek(to: cast.position() + 15) } label: { Image(systemName: "goforward.15") }.accessibilityLabel("On 15 seconds")
                 }
                 .font(.system(size: 30, weight: .medium)).foregroundStyle(.white).buttonStyle(.plain)
-                HStack(spacing: 10) {
+                // Round buttons with their names under them, sharing the width: three pills side by side
+                // were wider than the screen (cut off at both edges, and the bar's times pushed off it).
+                HStack(alignment: .top, spacing: 8) {
                     if !audio.isEmpty || !subtitles.isEmpty {
                         JellyCastTracksMenu(audio: audio, subtitles: subtitles, audioIndex: audioIndex, subtitleIndex: subtitleIndex) { kind, index in
                             if kind == "Audio" { audioIndex = index; JellyCast.shared.setAudio(index) } else { subtitleIndex = index; JellyCast.shared.setSubtitle(index) }
                         }
                         .equatable()
+                        .frame(maxWidth: .infinity)
                     }
                     if hasNext {
-                        pill("Next Episode", symbol: "forward.end") { cast.next() }
+                        roundButton("Next Episode", symbol: "forward.end") { cast.next() }
                     }
-                    pill("Stop casting", symbol: "xmark.circle", tint: .red) {
+                    roundButton("Stop casting", symbol: "xmark.circle", tint: .red) {
                         cast.stopCasting()
                         close()
                     }
@@ -295,11 +359,9 @@ struct JellyCastRemote: View {
         .onChange(of: cast.connected) { _, connected in if !connected { close() } }
     }
 
-    private func pill(_ title: String, symbol: String, tint: Color = .white, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(tint)
-                .padding(.horizontal, 14).frame(height: 38).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
-        }.buttonStyle(.plain)
+    private func roundButton(_ title: String, symbol: String, tint: Color = .white, action: @escaping () -> Void) -> some View {
+        Button(action: action) { JellyCastRound(title: title, symbol: symbol, tint: tint) }
+            .buttonStyle(.plain).frame(maxWidth: .infinity)
     }
 
     /// Sends the video to the TV unless it's playing it already: from where the phone's player was,
@@ -385,9 +447,24 @@ private struct JellyCastTracksMenu: View, Equatable {
                 }
             }
         } label: {
-            Label("Audio & Subtitles", systemImage: "captions.bubble").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                .padding(.horizontal, 14).frame(height: 38).background(.white.opacity(0.15), in: Capsule()).contentShape(Capsule())
+            JellyCastRound(title: "Audio & Subtitles", symbol: "captions.bubble")
         }
+    }
+}
+
+/// One of the remote's bottom buttons: a round icon with its name under it.
+private struct JellyCastRound: View {
+    let title: String
+    let symbol: String
+    var tint: Color = .white
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 19, weight: .semibold))
+                .frame(width: 48, height: 48).background(.white.opacity(0.15), in: Circle())
+            Text(title).font(.system(size: 12, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2)
+        }
+        .foregroundStyle(tint).frame(maxWidth: .infinity).contentShape(Rectangle())
     }
 }
 

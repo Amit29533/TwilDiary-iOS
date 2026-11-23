@@ -176,6 +176,9 @@ import TwilDiaryCore
     private(set) var undoTitles: Set<String>?
     /// The notice has something to take back (a watch just logged).
     var canUndo: Bool { undoAction != nil }
+    /// Watches logged while their title was Planned (title id: the watches' times). The service takes
+    /// a watched title off its watchlist, so taking the watch back puts it on again (serviceUndoPlays).
+    @ObservationIgnored var plannedBeforeWatch: [String: [String]] = [:]
     /// A server sign-in kept from when the diary lived on the server (moved to the phone at launch).
     private let sessionStorage: any SessionStoring
     private let outboxStore: any SyncOutboxStoring
@@ -1222,6 +1225,8 @@ import TwilDiaryCore
         // Undo takes off exactly the plays just logged, the way "Undo last watch" (the − button)
         // takes one off: on the diary's service and on every service kept in sync.
         let titleID = title.id
+        // `title` is as it was before the watch went in.
+        if title.status == "planned" { plannedBeforeWatch[titleID, default: []].append(when) }
         undoAction = { [weak self] in try await self?.serviceUndoPlays(titleID: titleID, at: when) }
         undoTitles = [titleID]
         undoLabel = "Watch marked"
@@ -1248,7 +1253,10 @@ import TwilDiaryCore
             let event = expected.flatMap { previous in self.workspace.activeEvents.first { $0.id == previous.id } }
                 ?? self.latestServiceEvent(titleID: title.id, any: true)
             guard let event else { throw APIError.message("There’s no watch to remove.") }
+            // The watch just logged on a Planned title: Planned again, as its Undo leaves it.
+            let replan = self.takePlannedBefore(title.id, at: event.watchedAt) ? self.title(title.id) : nil
             try await self.serviceRemoveWatches([event])
+            if let replan { try await self.servicePatch(replan, values: ["status": "planned"], keepPlays: true) }
         }
     }
     @discardableResult func patch(_ title: MediaTitle, values: [String: Any], expectedVersion: Int? = nil) async -> Bool {

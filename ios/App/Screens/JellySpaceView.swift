@@ -59,6 +59,8 @@ struct JellySpaceView: View {
     @State private var forYou: JellyForYou?
     /// "Recommendations for Rain", "Random picks for Dance", "Must watch Parks" (JellyRecommender.themes).
     @State private var themes: [JellyTheme] = []
+    /// Your Jellyfin tags (JellyTagCircle), for the Tags row.
+    @State private var tagCircles: [JellyTagCircle] = []
     /// How many of them (Settings → JellySpace → Home → Dynamic recommendations).
     @AppStorage(JellyPrefs.themeCountKey) private var themeCount = 3
     /// Discover: genres, the Top 10, hidden gems, tonight's genre, and every library's random shelf.
@@ -94,6 +96,8 @@ struct JellySpaceView: View {
             .task(id: discoverID) { await loadDiscover() }
             // A library switched on or off for recommending: For you and the dynamic rows again.
             .onChange(of: recommendOffRaw) { _, _ in Task { await loadRows() } }
+            // A library or title hidden or shown again: the tags without it, or with it.
+            .onChange(of: hiddenRaw) { _, _ in Task { await loadTags() } }
     }
     /// What Discover's rows depend on: what's hidden and what's switched off for recommending.
     private var discoverID: String { [hiddenRaw, hiddenRowsRaw, recommendOffRaw].joined(separator: "|") }
@@ -264,6 +268,8 @@ struct JellySpaceView: View {
             }
         case .genres:
             if let genres = discover?.genres, !genres.isEmpty { genreChips(genres) }
+        case .tags:
+            if !tagCircles.isEmpty { tagsRow(tagCircles, client: client) }
         case .top10:
             if let top = discover?.top, !shown(top.items).isEmpty { topTenRow(top, client: client) }
         case .gems:
@@ -537,6 +543,32 @@ struct JellySpaceView: View {
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
     }
+    /// Your Jellyfin tags as circles, the most used first: the newest title with each one inside, its name
+    /// and how many titles have it. Each opens its titles.
+    private func tagsRow(_ tags: [JellyTagCircle], client: JellyfinClient) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            heading("Tags")
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(tags) { tag in
+                        NavigationLink(value: JellyListRoute(kind: .tag, id: tag.id, name: tag.name)) {
+                            VStack(spacing: 6) {
+                                JellyPosterImage(item: tag.cover, client: client)
+                                    .frame(width: 64, height: 64).clipShape(Circle())
+                                    .padding(3).overlay(Circle().strokeBorder(ThemeStore.accent, lineWidth: 2))
+                                Text(tag.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text("\(tag.count)").font(.system(size: 11)).foregroundStyle(HomeStyle.secondary)
+                            }
+                            .frame(width: 78).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.springPress)
+                        .accessibilityLabel(tag.name + ", \(tag.count) " + (tag.count == 1 ? "title" : "titles"))
+                        .accessibilityIdentifier("jellyspace-tag-" + tag.id)
+                    }
+                }
+            }.scrollIndicators(.hidden).scrollClipDisabled()
+        }
+    }
     /// "Top 10 in Movies": the posters with their place in big numbers behind them.
     private func topTenRow(_ shelf: JellyShelf, client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -703,7 +735,12 @@ struct JellySpaceView: View {
             libraries = saved.libraries; resume = saved.resume; nextUp = saved.nextUp; favourites = saved.favourites
             collections = saved.collections; latest = saved.latest; forYou = saved.forYou; loaded = true
         }
-        if JellyHomeCache.server == server, let at = JellyHomeCache.at, Date.now.timeIntervalSince(at) < 60, !libraries.isEmpty { return }
+        if JellyHomeCache.server == server, let at = JellyHomeCache.at, Date.now.timeIntervalSince(at) < 60, !libraries.isEmpty {
+            // The rows from the index aren't kept with the rest: back within the minute, the Dynamic
+            // recommendations and Tags rows were missing (the index itself is kept, so they're quick).
+            if themes.isEmpty { await loadThemes() } else if tagCircles.isEmpty { await loadTags() }
+            return
+        }
         await loadHome()
     }
     private func loadHome() async {
@@ -788,6 +825,18 @@ struct JellySpaceView: View {
         let count = min(5, max(1, themeCount)), excluded = JellyRecommendOff.ids(recommendOffRaw)
         let found = await Task.detached(priority: .utility) { JellyRecommender.themes(in: index, count: count, excluded: excluded) }.value
         withAnimation(.smooth) { themes = found }
+        await loadTags()
+    }
+    /// The Tags row from the same index (read once and kept), without what you hid.
+    private func loadTags() async {
+        guard let client = JellySpace.client, let user = await JellyfinUser.id(client),
+              let index = await JellyIndexStore.index(client: client, user: user) else { return }
+        let hiddenIDs = Set(hidden.keys)
+        let found = await Task.detached(priority: .utility) { JellyTagCircle.circles(in: index, hidden: hiddenIDs) }.value
+        func shape(_ circles: [JellyTagCircle]) -> [String] { circles.map { $0.id + "|\($0.count)|" + $0.cover.Id } }
+        // Unchanged (the home opened again): the row isn't drawn again.
+        guard shape(found) != shape(tagCircles) else { return }
+        withAnimation(.smooth) { tagCircles = found }
     }
 }
 

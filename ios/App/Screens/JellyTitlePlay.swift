@@ -1,11 +1,15 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// On a diary title page, when the title is on your Jellyfin: Play (a show's next episode by your
-/// diary, a film from where you stopped) straight into JellySpace's player, and a button to its
-/// JellySpace page.
+/// On a title page, when the title is on your Jellyfin: Play (a show's next episode by your diary, a
+/// film from where you stopped) straight into JellySpace's player, and a button to its JellySpace
+/// page. A title outside your Library has it too, with Jellyfin's own next up for a show.
 struct JellyPlayButton: View {
-    let title: MediaTitle
+    /// The title by its TMDB id and kind, as the Jellyfin list knows it.
+    let tmdb: Int?
+    let movie: Bool
+    /// The diary's title, when it's in your Library (for the next episode by your diary).
+    let titleID: String?
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @State private var target: JellyfinClient.Item?
@@ -15,10 +19,18 @@ struct JellyPlayButton: View {
     @State private var problem: String?
     @State private var playing: JellyPlayback?
 
+    init(title: MediaTitle) {
+        tmdb = title.tmdbId; movie = !title.isSeries; titleID = title.id
+    }
+    /// A title page outside the Library (`titleID`: the diary's copy, when it has one after all).
+    init(route: CatalogRoute, titleID: String? = nil) {
+        tmdb = route.id; movie = route.kind == .movie; self.titleID = titleID
+    }
+
     /// The title in the Jellyfin list this iPhone keeps (matched by TMDB id and type).
     private var entry: JellyfinEntry? {
-        guard let tmdb = title.tmdbId else { return nil }
-        return JellyfinShelf.shared.entries.first { $0.tmdb == tmdb && $0.movie == !title.isSeries }
+        guard let tmdb else { return nil }
+        return JellyfinShelf.shared.entries.first { $0.tmdb == tmdb && $0.movie == movie }
     }
 
     var body: some View {
@@ -46,7 +58,7 @@ struct JellyPlayButton: View {
             }
             .padding(.top, -8)
             // Again when the diary's progress changes, and after watching.
-            .task(id: store.watchedEpisodeIDs(title.id).count) { await find(entry) }
+            .task(id: titleID.map { store.watchedEpisodeIDs($0).count } ?? 0) { await find(entry) }
             .fullScreenCover(item: $playing, onDismiss: {
                 JellyFaceLock.shared.leftPlayer()
                 Task { await find(entry) }
@@ -74,9 +86,10 @@ struct JellyPlayButton: View {
         let numbered = episodes.filter { ($0.ParentIndexNumber ?? 0) > 0 }
             .sorted { (($0.ParentIndexNumber ?? 0), ($0.IndexNumber ?? 0)) < (($1.ParentIndexNumber ?? 0), ($1.IndexNumber ?? 0)) }
         var pick: JellyfinClient.Item?
-        // The diary's next unwatched episode, by season and number, else by its place in the show.
-        let watched = store.watchedEpisodeIDs(title.id)
-        let diary = store.titleEpisodes(title.id).filter { $0.season > 0 }.sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+        // The diary's next unwatched episode, by season and number, else by its place in the show (a
+        // show outside your Library has no diary to go by: Jellyfin's next up).
+        let watched = titleID.map { store.watchedEpisodeIDs($0) } ?? []
+        let diary = (titleID.map { store.titleEpisodes($0) } ?? []).filter { $0.season > 0 }.sorted { ($0.season, $0.number) < ($1.season, $1.number) }
         if let next = diary.firstIndex(where: { !watched.contains($0.id) }) {
             let wanted = diary[next]
             // By season and number; by place only when both count the show alike (Jellyfin splitting an

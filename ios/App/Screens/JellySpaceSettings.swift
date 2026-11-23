@@ -52,6 +52,9 @@ enum JellyPrefs {
     static let upscaleModeKey = "jellyspace.upscaleMode"
     static let skipDelayKey = "jellyspace.skip.delay"
     static let batteryKey = "jellyspace.battery"
+    /// The Cast and AirPlay buttons at the top of the player (both shown unless turned off).
+    static let castButtonKey = "jellyspace.button.cast"
+    static let airPlayButtonKey = "jellyspace.button.airplay"
     static let timeModeKey = "jellyspace.timeMode"
     static let subtitleLanguageKey = "jellyspace.subtitleSearchLanguage"
     static let lrclibKey = "jellyspace.lrclib"
@@ -82,7 +85,7 @@ enum JellySound {
 
 /// The home's rows, in the order you set; any you turned off are left out.
 enum JellyHomeRow: String, CaseIterable, Identifiable {
-    case hero, resume, media, genres, top10, libraries, gems, tonight, forYou, themes, random, favourites, collections
+    case hero, resume, media, genres, tags, top10, libraries, gems, tonight, forYou, themes, random, favourites, collections
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -92,6 +95,7 @@ enum JellyHomeRow: String, CaseIterable, Identifiable {
         case .favourites: "Favourites"
         case .libraries: "Library rows"
         case .genres: "Genres"
+        case .tags: "Tags"
         case .top10: "Top 10"
         case .gems: "Hidden gems"
         case .tonight: "Tonight's genre"
@@ -632,6 +636,8 @@ private struct JellyPlaybackGroups: View {
     @AppStorage(JellyPrefs.ratingCardKey) private var ratingCard = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.batteryKey) private var battery = true
+    @AppStorage(JellyPrefs.castButtonKey) private var castButton = true
+    @AppStorage(JellyPrefs.airPlayButtonKey) private var airPlayButton = true
 
     var body: some View {
         let accent = theme.accent
@@ -653,6 +659,11 @@ private struct JellyPlaybackGroups: View {
                 JellySettingsRows.choice("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
                 SettingsDivider()
                 JellySettingsRows.toggle("Battery", $battery, accent: accent)
+            }
+            SettingsGroup(label: "Buttons") {
+                JellySettingsRows.toggle("Cast", $castButton, accent: accent)
+                SettingsDivider()
+                JellySettingsRows.toggle("AirPlay", $airPlayButton, accent: accent)
             }
         }
     }

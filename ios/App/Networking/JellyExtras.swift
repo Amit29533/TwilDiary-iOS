@@ -39,14 +39,31 @@ enum JellyAuth {
     static func finishQuickConnect(_ base: URL, secret: String) async throws -> Session {
         try await send(base, "Users/AuthenticateWithQuickConnect", body: ["Secret": secret])
     }
+    /// A sign-in as this user for the TV, made with the server's API key: an API key may approve a
+    /// Quick Connect code for any user, so no password is asked. Under the TV's own device.
+    static func signInForTV(_ base: URL, apiKey: String, user: String) async throws -> Session {
+        let code: QuickCode = try await send(base, "QuickConnect/Initiate", method: "POST", header: JellyDevice.tvHeader)
+        let _: Bool = try await send(base, "QuickConnect/Authorize", query: [URLQueryItem(name: "code", value: code.Code), URLQueryItem(name: "userId", value: user)],
+                                     method: "POST", header: JellyDevice.header + ", Token=\"\(apiKey)\"")
+        return try await send(base, "Users/AuthenticateWithQuickConnect", body: ["Secret": code.Secret], header: JellyDevice.tvHeader)
+    }
+    /// Whether the TV's sign-in still works (removed on the server, it doesn't); nil when the server
+    /// couldn't be asked.
+    static func tvSignInWorks(_ base: URL, token: String) async -> Bool? {
+        var request = URLRequest(url: base.appending(path: "Users/Me"), timeoutInterval: 15)
+        request.setValue(JellyDevice.tvHeader + ", Token=\"\(token)\"", forHTTPHeaderField: "Authorization")
+        guard let (_, response) = try? await URLSession.shared.data(for: request), let status = (response as? HTTPURLResponse)?.statusCode else { return nil }
+        if (200..<300).contains(status) { return true }
+        return status == 401 || status == 403 ? false : nil
+    }
 
     private static func send<T: Decodable & Sendable>(_ base: URL, _ path: String, query: [URLQueryItem] = [], body: [String: String]? = nil,
-                                                     method: String = "POST") async throws -> T {
+                                                     method: String = "POST", header: String = JellyDevice.header) async throws -> T {
         var components = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
         request.httpMethod = method
-        request.setValue(JellyDevice.header, forHTTPHeaderField: "Authorization")
+        request.setValue(header, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
