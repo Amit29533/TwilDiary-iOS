@@ -276,7 +276,8 @@ struct StatsView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack { Text(bucket.description).font(.app(size: 15, weight: .bold)); Spacer(); Button("Close") { selectedBucket = nil }.font(.app(size: 13)) }
             if ids.isEmpty { caption("No watches logged in this period.") }
-            ScrollView(.horizontal) { HStack(alignment: .top, spacing: 12) { ForEach(ids, id: \.self) { id in if let title = store.title(id) {
+            // Lazy: a year's titles can be hundreds, all made at once as the period was tapped.
+            ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 12) { ForEach(ids, id: \.self) { id in if let title = store.title(id) {
                 VStack(alignment: .leading, spacing: 6) { NavigationLink(value: id) { PosterCard(title: title) }.buttonStyle(.plain); caption("\(grouped[id]?.count ?? 0) \(grouped[id]?.count == 1 ? "watch" : "watches")", size: 12) }.frame(width: 112)
             } } } }.scrollIndicators(.hidden)
         }
@@ -432,7 +433,8 @@ struct StatsView: View {
     /// The genre shares for All (from the stats) or for movies or shows only (counted here).
     private func genreMix(_ value: StatsOverview.Genres) -> (total: Int, items: [(genre: String, count: Int, share: Double)], otherCount: Int, otherShare: Double) {
         if genreKind == 0 { return (value.total, value.items.map { ($0.genre, $0.count, $0.share) }, value.otherCount, value.otherShare) }
-        let watched = Set(store.activeEvents.map(\.titleId))
+        // The watched titles once until the diary changes (every watch and title were gone through on each draw).
+        let watched = store.memoized("stats.watchedTitles") { Set(store.activeEvents.map(\.titleId)) }
         let titles = store.activeTitles.filter { watched.contains($0.id) && $0.isSeries == (genreKind == 2) }
         var counts: [String: Int] = [:]
         for title in titles { for genre in Set(title.genres) { counts[genre, default: 0] += 1 } }

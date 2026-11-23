@@ -240,7 +240,7 @@ struct StandardPoster: View {
     let subtitle: String
     var score: Double? = nil
     var subtitleTint: Color = .secondary
-    @AppStorage(PosterSize.captionKey) private var showsCaption = true
+    private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: artwork, title: name, initialsOnly: false)

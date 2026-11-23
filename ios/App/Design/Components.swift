@@ -514,7 +514,7 @@ struct Artwork: View {
     /// Full-width profiles can use the original public TMDB portrait before downsampling.
     var prefersOriginal = false
     @Environment(\.displayScale) private var displayScale
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
     @State private var loadedArtwork: PublicArtworkBitmap?
     @State private var loadedRequest: PublicArtworkRequest?
     var body: some View {
@@ -618,8 +618,8 @@ struct PosterCard: View {
     var personalRating = false
     var archived = false
     @Environment(DiaryStore.self) private var store
-    @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var ratingSource: PublicRatingSource { TilePrefs.shared.ratingSource }
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Artwork(path: title.poster, title: title.name, initialsOnly: !personalRating).posterAspect()
@@ -794,7 +794,7 @@ private struct CardCircle: ViewModifier {
 
 
 struct ProgressCard: View {
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
     let title: MediaTitle
     var compact = false
     var grid = false

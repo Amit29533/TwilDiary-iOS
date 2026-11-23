@@ -311,6 +311,8 @@ struct RootView: View {
             .onChange(of: readyToShow) { _, _ in liftSplash() }
             .task { try? await Task.sleep(for: .seconds(2.5)); splashWaited = true; liftSplash() }
             .task { JellyLiveActivity.endLeftovers() }
+            // JellySpace's top poster ready in memory (once launch is done), so its first open isn't black.
+            .task { try? await Task.sleep(for: .seconds(3)); await JellyHeroWarmup.warm() }
             // JellySpace's Face ID lock: covered while the app is away, locked again after a while.
             .onChange(of: scenePhase) { _, phase in JellyFaceLock.shared.phase(phase) }
             .task(id: scenePhase) {

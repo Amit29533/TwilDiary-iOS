@@ -352,14 +352,17 @@ struct TitleDetailView: View {
                         .background(HomeStyle.chip, in: Capsule())
                 }.buttonStyle(.plain).disabled(store.writesBlocked).accessibilityIdentifier("title-watch-status")
                 Spacer(minLength: 0)
-                Text(title.isSeries ? remaining(title).map { "\(DiaryDate.duration($0)) left" } ?? "Time unknown" : movieViewings.isEmpty ? title.runtimeMinutes.map { "\(DiaryDate.duration($0)) left" } ?? "Movie" : "Movie")
+                Text(title.isSeries ? seriesTimeLeft(title) : movieViewings.isEmpty ? title.runtimeMinutes.map { "\(DiaryDate.duration($0)) left" } ?? "Movie" : "Movie")
                     .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.trailing)
             }.padding(.bottom, 22)
             // A cached card paints on the first frame instead of a 290 pt placeholder swap.
             if let card = card ?? store.cachedCard(title, season: title.isSeries ? season : nil) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(title.isSeries ? "Episode \(displayedWatched)" : "\(movieViewings.count)").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                    Text(title.isSeries ? "of \(card.progress.total)" : movieViewings.count == 1 ? "view logged" : "views logged").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                    // Before the first episode: "Not started · 10 episodes" ("Episode 0 of 10" read oddly).
+                    let notStarted = title.isSeries && displayedWatched == 0
+                    Text(!title.isSeries ? "\(movieViewings.count)" : notStarted ? "Not started" : "Episode \(displayedWatched)").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    Text(!title.isSeries ? (movieViewings.count == 1 ? "view logged" : "views logged")
+                         : notStarted ? "· \(card.progress.total) " + (card.progress.total == 1 ? "episode" : "episodes") : "of \(card.progress.total)").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
                     Spacer(minLength: 0); Text("\(displayedPercent)%").foregroundStyle(.tint).font(.app(size: 22, weight: .bold))
                 }.frame(minHeight: 29).padding(.bottom, 14)
                 if title.isSeries {
@@ -723,6 +726,18 @@ struct TitleDetailView: View {
     private var locations: [FileLocation] { scope.locations.filter { $0.titleId == id } }
     private var serverLabel: String { ServerAvailability.label(locations) }
     private var percent: Int { guard let card, card.progress.total > 0 else { return 0 }; return Int((Double(card.progress.watched) / Double(card.progress.total) * 100).rounded()) }
+    /// A show's time left. Without it (no episode length in the diary, or the season's episode list not
+    /// all in), the show's episode length times the episodes left, marked "~" as a guess ("Time unknown"
+    /// showed while the page said "Latest ep 55 min").
+    private func seriesTimeLeft(_ title: MediaTitle) -> String {
+        if let minutes = remaining(title) { return "\(DiaryDate.duration(minutes)) left" }
+        let progress = store.seasonProgress(title, season: season)
+        let left = progress.total - progress.watched
+        if left > 0, let each = [title.runtimeMinutes, extras?.latestEpisodeMinutes].compactMap({ $0 }).first(where: { $0 > 0 }) {
+            return "~\(DiaryDate.duration(each * left)) left"
+        }
+        return "Time unknown"
+    }
     private func remaining(_ title: MediaTitle) -> Int? { title.isSeries ? store.seasonProgress(title, season: season).remainingMinutes : title.runtimeMinutes.map { card?.progress.watched == 1 ? 0 : $0 } }
     private func loadCard(_ title: MediaTitle) async {
         let request = UUID(), requestedSeason = season

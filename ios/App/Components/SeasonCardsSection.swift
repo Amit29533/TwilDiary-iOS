@@ -107,7 +107,8 @@ struct SeasonCardsSection: View {
                     if posters[row.number] == nil {
                         ZStack {
                             Color.black.opacity(0.5)
-                            Text(row.number == 0 ? "SP" : "S\(row.number)").font(.app(size: 34, weight: .heavy)).foregroundStyle(.white.opacity(0.92))
+                            // Specials: just the dimmed cover (its name is under it; "SP" over it read as clutter).
+                            if row.number > 0 { Text("S\(row.number)").font(.app(size: 34, weight: .heavy)).foregroundStyle(.white.opacity(0.92)) }
                         }.accessibilityHidden(true)
                     }
                 }
@@ -162,7 +163,8 @@ struct SeasonCardsSection: View {
         var rows: [Row] = []
         switch source {
         case .diary(let title):
-            let episodes: [Episode] = store.workspace.episodes.filter { $0.titleId == title.id && $0.skipped != true }
+            // The show's own episodes from the index (it went through every episode in the diary on each draw).
+            let episodes: [Episode] = store.titleEpisodes(title.id).filter { $0.skipped != true }
             let watched: Set<String> = store.watchedEpisodeIDs(title.id)
             let seasons: [Season] = title.seasons ?? []
             var numbers = Set<Int>()
@@ -217,8 +219,8 @@ struct SeasonCardsSection: View {
         guard case .diary(let title) = source else { return 0 }
         let today = DiaryDate.day(store.now)
         let watched = store.watchedEpisodeIDs(title.id)
-        let left = store.workspace.episodes.filter {
-            $0.titleId == title.id && $0.season > 0 && $0.skipped != true && !watched.contains($0.id) && ($0.airedOn.map { String($0.prefix(10)) <= today } ?? false)
+        let left = store.titleEpisodes(title.id).filter {
+            $0.season > 0 && $0.skipped != true && !watched.contains($0.id) && ($0.airedOn.map { String($0.prefix(10)) <= today } ?? false)
         }.count
         return left * max(1, title.runtimeMinutes ?? (title.category.hasPrefix("anime") ? 24 : 45))
     }

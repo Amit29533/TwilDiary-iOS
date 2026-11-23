@@ -712,10 +712,20 @@ import TwilDiaryCore
         guard !needsSignIn, cardRevisions[title.id] != nil else { return nil }
         return localCard(title, season: season)
     }
-    /// A title's card, worked out from the diary on the phone.
+    /// A title's card, worked out from the diary on the phone: once per diary change and day, then
+    /// kept. Glance's and Home's cards read it many times a draw, and each read went through every
+    /// watch and episode in the diary: cards scrolling in stuttered the scroll.
     func localCard(_ title: MediaTitle, season: Int? = nil) -> WatchCard {
-        WatchCard.calculate(title: title, in: workspace, day: DiaryDate.day(now), season: season)
+        let revision = homeWorkspaceRevision, day = DiaryDate.day(now)
+        if localCards.revision != revision || localCards.day != day { localCards = (revision, day, [:]) }
+        let key = title.id + "|" + (season.map(String.init) ?? "")
+        // The same title as worked out (a page may pass a copy with newer season details).
+        if let kept = localCards.cards[key], kept.title == title { return kept.card }
+        let card = WatchCard.calculate(title: title, in: workspace, day: day, season: season)
+        localCards.cards[key] = (title, card)
+        return card
     }
+    @ObservationIgnored private var localCards: (revision: UUID, day: String, cards: [String: (title: MediaTitle, card: WatchCard)]) = (UUID(), "", [:])
     /// Simkl support was removed (owner's choice, 2026-11-13). Once: the provider settings are saved
     /// again (they're read without Simkl's entry, so its sign-in leaves the Keychain), along with the
     /// older per-field Keychain items; it's no longer the main tracker, the phone-only service or the

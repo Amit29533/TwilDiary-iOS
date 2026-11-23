@@ -176,7 +176,7 @@ struct HomePoster<Badge: View>: View {
     var score: Double? = nil
     @ViewBuilder var badge: Badge
     @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
-    @AppStorage(PosterSize.captionKey) private var showsCaption = true
+    private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
     var body: some View {
         let width = posterSize.homeWidth
         VStack(alignment: .leading, spacing: 0) {

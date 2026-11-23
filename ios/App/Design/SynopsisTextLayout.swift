@@ -28,9 +28,9 @@ import UIKit
     /// How many UTF-16 units of `text` fit in `lines` lines of `width`.
     private static func fitting(_ text: String, width: CGFloat, lines: Int) -> Int {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 3
+        paragraph.lineSpacing = 4
         paragraph.lineBreakMode = .byWordWrapping
-        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: 17), .paragraphStyle: paragraph])
+        let storage = NSTextStorage(string: text, attributes: [.font: UIFont.systemFont(ofSize: 15 * TextScale.current), .paragraphStyle: paragraph])
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0

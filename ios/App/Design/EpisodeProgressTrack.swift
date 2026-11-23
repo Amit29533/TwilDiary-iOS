@@ -4,7 +4,7 @@ import TwilDiaryCore
 struct EpisodeProgressTrack: View {
     let segments: [EpisodeSegment]
     let season: Int
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
 
     var body: some View {
         ZStack {

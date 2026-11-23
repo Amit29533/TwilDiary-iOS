@@ -26,6 +26,12 @@ import GoogleCast
     private(set) var seriesID: String?
     private(set) var duration: Double = 0
     private(set) var paused = false
+    /// The audio and subtitle tracks the TV plays now (Jellyfin's stream indexes; subtitles -1 for off),
+    /// from its reports, or as just chosen.
+    private(set) var audioTrack: Int?
+    private(set) var subtitleTrack: Int?
+    /// What was sent to the TV: the video and the episodes after it (for sending it again, see restart).
+    @ObservationIgnored private var sent: [JellyfinClient.Item] = []
     /// The last position the TV reported, and when (the time between is counted on the phone).
     private(set) var reported: Double = 0
     @ObservationIgnored private var reportedAt = Date.now
@@ -77,6 +83,8 @@ import GoogleCast
         title = item.kind == "Episode" ? (item.Name ?? "") : (item.Name ?? "")
         seriesName = item.SeriesName
         seriesID = item.SeriesId
+        sent = [item] + queue.filter { $0.Id != item.Id }
+        audioTrack = nil; subtitleTrack = nil
         duration = item.RunTimeTicks.map { Double($0) / 10_000_000 } ?? 0
         reported = seconds; reportedAt = .now; paused = false
     }
@@ -111,8 +119,48 @@ import GoogleCast
     }
     func next() { command("NextTrack") }
     /// A Jellyfin stream index (its MediaStreams' Index); -1 turns subtitles off.
-    func setAudio(_ index: Int) { command("SetAudioStreamIndex", options: ["index": index]) }
-    func setSubtitle(_ index: Int) { command("SetSubtitleStreamIndex", options: ["index": index]) }
+    /// Another audio track: the video sent again from where it is, with it (see restart).
+    func setAudio(_ index: Int) {
+        audioTrack = index
+        Task { await restart() }
+    }
+    /// Another subtitle track (-1 off). A text one the TV lays over the picture as it plays; a picture one
+    /// (PGS, DVD) the server burns into the video, so that goes the way of an audio change (`restarting`).
+    func setSubtitle(_ index: Int, restarting: Bool) {
+        subtitleTrack = index
+        if restarting { Task { await restart() } } else { command("SetSubtitleStreamIndex", options: ["index": index]) }
+    }
+    /// The video sent to the TV again from where it is, with the chosen tracks, as a new cast starts it.
+    /// Asked to change the stream in place (SetAudioStreamIndex), Jellyfin's receiver stopped the picture,
+    /// and once the server had the new stream ready its idle pictures stayed over the video while the new
+    /// sound played behind them. Sent afresh it shows the video as it does for any cast. The server still
+    /// makes the new stream first (another audio track can't be played straight from the file), so it
+    /// takes a moment.
+    func restart() async {
+        guard connected, let id = itemID, let client = JellySpace.client, let base = await serverFields(client) else { return }
+        var items = sent
+        if let at = items.firstIndex(where: { $0.Id == id }) {
+            items = Array(items[at...])
+        } else {
+            // Opened again (the app restarted): the video, and the episodes after it in its season.
+            guard let item = try? await client.item(id) else { return }
+            items = [item]
+            if item.kind == "Episode", let series = item.SeriesId, let season = item.SeasonId,
+               let episodes = try? await client.episodes(of: series, season: season, user: await JellyfinUser.id(client)),
+               let at = episodes.firstIndex(where: { $0.Id == id }) {
+                items += episodes[(at + 1)...].prefix(20)
+            }
+        }
+        let stubs = items.map { entry -> [String: Any] in
+            ["Id": entry.Id, "ServerId": base.serverID, "Name": entry.Name ?? "", "Type": entry.kind, "MediaType": "Video", "IsFolder": false]
+        }
+        let at = position()
+        var options: [String: Any] = ["items": stubs, "startPositionTicks": Int64(at * 10_000_000), "startIndex": 0]
+        if let audioTrack { options["audioStreamIndex"] = audioTrack }
+        if let subtitleTrack { options["subtitleStreamIndex"] = subtitleTrack }
+        send("PlayNow", options: options, base: base)
+        reported = at; reportedAt = .now
+    }
     /// Stops the video on the TV and leaves the Chromecast.
     func stopCasting() {
         command("Stop")
@@ -210,6 +258,7 @@ import GoogleCast
     fileprivate func detach() {
         deviceName = nil; itemID = nil; title = ""; seriesName = nil; seriesID = nil; duration = 0; paused = false; reported = 0
         channel = nil; server = nil; making = nil
+        audioTrack = nil; subtitleTrack = nil; sent = []
     }
     /// A message from the TV: what it's playing, where, paused or not; or what went wrong.
     fileprivate func receive(_ text: String) {
@@ -227,6 +276,8 @@ import GoogleCast
                 if let ticks = (item["RunTimeTicks"] as? NSNumber)?.doubleValue, ticks > 0 { duration = ticks / 10_000_000 }
             }
             if let play = state["PlayState"] as? [String: Any] {
+                if let audio = (play["AudioStreamIndex"] as? NSNumber)?.intValue { audioTrack = audio }
+                if let subtitle = (play["SubtitleStreamIndex"] as? NSNumber)?.intValue { subtitleTrack = subtitle }
                 if let ticks = (play["PositionTicks"] as? NSNumber)?.doubleValue { reported = ticks / 10_000_000; reportedAt = .now }
                 if let isPaused = play["IsPaused"] as? Bool { paused = isPaused }
             }
@@ -316,12 +367,17 @@ struct JellyCastRemote: View {
     let close: () -> Void
     @State private var audio: [Track] = []
     @State private var subtitles: [Track] = []
-    @State private var audioIndex: Int?
-    @State private var subtitleIndex: Int?
     @State private var scrub: Double?
     @State private var hasNext = false
 
-    struct Track: Identifiable, Hashable { let id: Int; let name: String }
+    struct Track: Identifiable, Hashable {
+        let id: Int
+        let name: String
+        /// A picture subtitle (PGS, DVD, DVB): burned into the video by the server.
+        var picture = false
+    }
+    /// Subtitle formats that are pictures, not text.
+    static let pictureSubtitles: Set<String> = ["pgssub", "hdmv_pgs_subtitle", "pgs", "dvdsub", "dvd_subtitle", "vobsub", "dvbsub", "dvb_subtitle", "xsub"]
 
     var body: some View {
         let cast = JellyCast.shared
@@ -371,8 +427,14 @@ struct JellyCastRemote: View {
                 // were wider than the screen (cut off at both edges, and the bar's times pushed off it).
                 HStack(alignment: .top, spacing: 8) {
                     if !audio.isEmpty || !subtitles.isEmpty {
-                        JellyCastTracksMenu(audio: audio, subtitles: subtitles, audioIndex: audioIndex, subtitleIndex: subtitleIndex) { kind, index in
-                            if kind == "Audio" { audioIndex = index; JellyCast.shared.setAudio(index) } else { subtitleIndex = index; JellyCast.shared.setSubtitle(index) }
+                        JellyCastTracksMenu(audio: audio, subtitles: subtitles, audioIndex: cast.audioTrack, subtitleIndex: cast.subtitleTrack) { kind, index in
+                            if kind == "Audio" {
+                                JellyCast.shared.setAudio(index)
+                            } else {
+                                // From or to a picture subtitle, the video is sent again (the server burns it in).
+                                let picture = { (id: Int?) in subtitles.first { $0.id == id }?.picture ?? false }
+                                JellyCast.shared.setSubtitle(index, restarting: picture(index) || picture(cast.subtitleTrack))
+                            }
                         }
                         .equatable()
                         .frame(maxWidth: .infinity)
@@ -437,7 +499,9 @@ struct JellyCastRemote: View {
         let user = await JellyfinUser.id(client)
         guard let info = try? await client.playerInfo(id, user: user), let streams = info.MediaSources?.first?.MediaStreams else { return }
         audio = streams.filter { $0.kind == "Audio" }.map { Track(id: $0.Index, name: $0.DisplayTitle ?? $0.Language ?? "Audio \($0.Index)") }
-        subtitles = streams.filter { $0.kind == "Subtitle" }.map { Track(id: $0.Index, name: $0.DisplayTitle ?? $0.Language ?? "Subtitles \($0.Index)") }
+        subtitles = streams.filter { $0.kind == "Subtitle" }.map {
+            Track(id: $0.Index, name: $0.DisplayTitle ?? $0.Language ?? "Subtitles \($0.Index)", picture: Self.pictureSubtitles.contains(($0.Codec ?? "").lowercased()))
+        }
     }
 }
 

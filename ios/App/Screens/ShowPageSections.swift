@@ -539,6 +539,9 @@ struct ListCollageCard: View {
                     }
                 }
             }.frame(width: width - 28, height: (width - 28) * 0.62 * 1.5, alignment: .leading).clipped()
+                // Three shadowed posters flattened into one picture (drawn again only when one changes),
+                // not three shadows worked out on every frame of a scroll.
+                .drawingGroup()
             // Two lines' room whatever the name, so every card (and the stand-in while loading) is one height.
             Text(list.name).font(.app(size: 15.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
             Text(list.itemCount.counted("item", "items")).font(.app(size: 13)).foregroundStyle(.secondary)

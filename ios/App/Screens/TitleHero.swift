@@ -72,10 +72,10 @@ struct TitleHero<Ratings: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 if expanded && !synopsisParts.continuation.isEmpty {
                     Text(synopsisText.trimmingCharacters(in: .whitespacesAndNewlines))
-                        .font(.app(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
+                        .font(.app(size: 15)).lineSpacing(4).foregroundStyle(Color(themed: "#C4C4CC"))
                         .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("title-synopsis-text")
-                    Button("Less") { setExpanded(false) }.font(.app(size: 17, weight: .semibold)).frame(minHeight: 44)
+                    Button("Less") { setExpanded(false) }.font(.app(size: 15, weight: .semibold)).frame(minHeight: 44)
                         .accessibilityIdentifier("title-synopsis-expanded")
                 } else {
                     synopsisLead
@@ -91,12 +91,12 @@ struct TitleHero<Ratings: View>: View {
     private var synopsisLead: some View {
         let hasOverflow = !synopsisParts.continuation.isEmpty
         return Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
-            .font(.app(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
+            .font(.app(size: 15)).lineSpacing(4).foregroundStyle(Color(themed: "#C4C4CC"))
             .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("title-synopsis-text")
             .overlay(alignment: .bottomTrailing) {
                 if !expanded && hasOverflow {
-                    Button("More") { setExpanded(true) }.font(.app(size: 17, weight: .semibold))
+                    Button("More") { setExpanded(true) }.font(.app(size: 15, weight: .semibold))
                         .frame(width: 52, height: 44).offset(y: 10)
                 }
             }
@@ -134,6 +134,8 @@ struct TitleArtworkBackdrop: View {
     /// The page's ground: the original near-black, or pitch black in Native (no artwork tint: owner's
     /// note, it didn't follow the theme).
     private var ground: Color { ThemeStore.current.native ? .black : Color(themed: "#0a0a0e") }
+    /// How much smaller the wash is drawn than it shows (see cover).
+    private static let washScale: CGFloat = 8
     private func cover(width: CGFloat) -> some View {
         let artwork = TitleCover.artworkHeight(width: width)
         // Owner's reference: the cover stays crisp; below it a strong, very smooth wash of its own
@@ -141,9 +143,15 @@ struct TitleArtworkBackdrop: View {
         return ZStack(alignment: .top) {
             // The wash: the cover mirrored (its top row is the cover's bottom row) and blurred so far
             // that no shapes remain, only colour. Wider than the screen so its blurred sides don't show.
-            art.frame(width: width * 1.3, height: artwork)
+            // Drawn at an eighth of its size, blurred there and flattened into one picture, then scaled up:
+            // the same wash, but the blur works on 1/64 of the pixels and once, not at full size on every
+            // frame as the page scrolls (it moves with the page).
+            art.frame(width: width * 1.3 / Self.washScale, height: artwork / Self.washScale)
                 .scaleEffect(x: 1, y: -1)
-                .blur(radius: 60).saturation(1.2)
+                .blur(radius: 60 / Self.washScale).saturation(1.2)
+                .drawingGroup()
+                .scaleEffect(Self.washScale)
+                .frame(width: width * 1.3, height: artwork)
                 .opacity(0.95)
                 .offset(y: artwork - 50)
                 .frame(width: width)

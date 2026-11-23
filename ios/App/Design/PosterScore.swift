@@ -60,7 +60,7 @@ import TwilDiaryCore
 /// The star and score on a poster's corner, as every poster row shows it.
 struct PosterScoreBadge: View {
     let score: Double
-    @AppStorage(PosterSize.ratingKey) private var showsRating = true
+    private var showsRating: Bool { TilePrefs.shared.posterRatings }
     var body: some View {
         if showsRating { badge }
     }

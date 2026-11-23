@@ -871,9 +871,18 @@ private struct JellyHeroGlow: View {
 
     var body: some View {
         if let item = picks.first(where: { $0.Id == selection.id }) ?? picks.first, let url = JellyHero.cardImage(item, base: client.base) {
-            JellyImage(url: url)
+            // Blurred at an eighth of its size and flattened once, then scaled up: the same glow, with the blur
+            // on 1/64 of the pixels instead of the whole picture again on every frame of a scroll.
+            GeometryReader { proxy in
+                JellyImage(url: url)
+                    .frame(width: proxy.size.width / 8, height: 780 / 8).clipped()
+                    .blur(radius: 60 / 8)
+                    .drawingGroup()
+                    .scaleEffect(8)
+                    .frame(width: proxy.size.width, height: 780)
+            }
                 .frame(maxWidth: .infinity).frame(height: 780).clipped()
-                .blur(radius: 60).opacity(0.55)
+                .opacity(0.55)
                 .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45), .init(color: .clear, location: 1)],
                                      startPoint: .top, endPoint: .bottom))
                 .padding(.top, -topInset)
@@ -927,7 +936,11 @@ private struct JellyHeroCarousel: View {
                 .accessibilityHidden(true)
             }
         }
-        .onAppear { shown = true; if selected == nil { selected = items.first?.Id } }
+        .onAppear {
+            shown = true; if selected == nil { selected = items.first?.Id }
+            JellyHeroWarmup.remember(items.prefix(2), base: client.base)
+        }
+        .onChange(of: items.first?.Id) { _, _ in JellyHeroWarmup.remember(items.prefix(2), base: client.base) }
         .onDisappear { shown = false }
         .onScrollVisibilityChange(threshold: 0.25) { scrolledInto = $0 }
         .task(id: "\(shown && scrolledInto)|\(selected ?? "")") {
@@ -936,6 +949,27 @@ private struct JellyHeroCarousel: View {
             guard !Task.isCancelled else { return }
             let next = items[(current + 1) % items.count].Id
             withAnimation(.smooth(duration: 0.6)) { selected = next }
+        }
+    }
+}
+
+/// The top posters' pictures made ready before JellySpace opens. On the first open after a launch the
+/// card (and the glow behind it) were black as the page slid in and popped in once it had: the pictures
+/// came from the disk cache only then. The carousel notes the first two posters' addresses; soon after
+/// the app starts they're loaded into memory, so the page slides in drawn (as it does on a second open).
+@MainActor enum JellyHeroWarmup {
+    private static let key = "jellyspace.heroPictures"
+    static func remember(_ items: some Collection<JellyfinClient.Item>, base: URL) {
+        let urls = items.flatMap { item in
+            [JellyHero.posterImage(item, base: base), JellyHero.cardImage(item, base: base)].compactMap { $0?.absoluteString }
+        }
+        guard !urls.isEmpty, urls != UserDefaults.standard.stringArray(forKey: key) else { return }
+        UserDefaults.standard.set(urls, forKey: key)
+    }
+    static func warm() async {
+        guard JellySpace.client != nil else { return }
+        for url in (UserDefaults.standard.stringArray(forKey: key) ?? []).compactMap(URL.init(string:)) {
+            _ = await JellyfinPosterCache.shared.image(url)
         }
     }
 }
@@ -1558,16 +1592,23 @@ struct JellyTile: View {
     @State private var played: Bool?
     @State private var favourite: Bool?
     @State private var photo: JellyPhotoSelection?
-    @AppStorage(JellyPrefs.countsKey) private var counts = true
-    @AppStorage(JellyPrefs.ticksKey) private var ticks = true
-    @AppStorage(JellyPrefs.captionsKey) private var captions = true
+    // From the shared copy (TilePrefs), not three settings observers per tile.
+    private var counts: Bool { TilePrefs.shared.jellyCounts }
+    private var ticks: Bool { TilePrefs.shared.jellyTicks }
+    private var captions: Bool { TilePrefs.shared.jellyCaptions }
     private var square: Bool { ["MusicAlbum", "MusicArtist", "Audio", "Playlist"].contains(item.kind) }
     /// Small corners without names (the Netflix look); the app's own otherwise.
     private var corner: CGFloat { captions ? (home ? 16 : 8) : 5 }
     var body: some View {
-        link.modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite,
-                                    play: item.kind == "Movie" ? { playing = JellySpace.playback(item, client: client) } : nil))
-            .fullScreenCover(item: $photo) { _ in JellyPhotoViewer(photos: [item], client: client, start: 0) }
+        let tile = link.modifier(JellyItemMenu(item: item, played: $played, favourite: $favourite,
+                                               play: item.kind == "Movie" ? { playing = JellySpace.playback(item, client: client) } : nil))
+        // Only a photo opens full screen from its tile (a cover on every poster was one more presenter
+        // built per tile as rows scrolled in).
+        if item.kind == "Photo" {
+            tile.fullScreenCover(item: $photo) { _ in JellyPhotoViewer(photos: [item], client: client, start: 0) }
+        } else {
+            tile
+        }
     }
     @ViewBuilder private var link: some View {
         if item.kind == "Audio" {
@@ -1941,7 +1982,8 @@ struct JellyItemMenu: ViewModifier {
     var remove: (() -> Void)? = nil
     @Environment(AppRouter.self) private var router
     @Environment(DiaryStore.self) private var store
-    @AppStorage(JellyPrefs.diaryKey) private var diaryOn = true
+    /// Read when a watch is marked (a settings observer per poster otherwise).
+    private var diaryOn: Bool { UserDefaults.standard.object(forKey: JellyPrefs.diaryKey) as? Bool ?? true }
     @State private var confirmDelete = false
     @State private var deleteFailure: String?
     @ViewBuilder func body(content: Content) -> some View {
@@ -1988,13 +2030,20 @@ struct JellyItemMenu: ViewModifier {
                     Button("Delete from server", systemImage: "trash", role: .destructive) { confirmDelete = true }
                 }
             }
-            .alert("Delete “\(JellySpace.name(item))”?", isPresented: $confirmDelete) {
-                Button("Delete from server", role: .destructive) { delete() }
-                Button("Cancel", role: .cancel) {}
-            } message: { Text(JellyServerEdits.warning(kind: item.kind)) }
-            .alert("Couldn't delete", isPresented: Binding(get: { deleteFailure != nil }, set: { if !$0 { deleteFailure = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: { Text(deleteFailure ?? "") }
+            // The two alerts on a view made only while one is up: on every poster they were two more
+            // presenters built for each tile as rows scrolled in (the stutter of a fast scroll).
+            .background {
+                if confirmDelete || deleteFailure != nil {
+                    Color.clear
+                        .alert("Delete “\(JellySpace.name(item))”?", isPresented: $confirmDelete) {
+                            Button("Delete from server", role: .destructive) { delete() }
+                            Button("Cancel", role: .cancel) {}
+                        } message: { Text(JellyServerEdits.warning(kind: item.kind)) }
+                        .alert("Couldn't delete", isPresented: Binding(get: { deleteFailure != nil }, set: { if !$0 { deleteFailure = nil } })) {
+                            Button("OK", role: .cancel) {}
+                        } message: { Text(deleteFailure ?? "") }
+                }
+            }
         }
     }
     /// View in Diary: the film's or show's page in the diary (an episode's or season's show's).

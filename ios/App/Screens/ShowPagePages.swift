@@ -95,7 +95,7 @@ struct ScoreChip: View {
 struct EpisodeTick: View {
     let watched: Bool
     var next = false
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
     var body: some View {
         ZStack {
             if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : Color(themed: "#3a3a46"), lineWidth: 2) }
@@ -180,7 +180,7 @@ struct EpisodeGridCard: View {
     var showsTick = true
     /// In a grid (the Episodes page) the card takes its column's width; on a shelf it is 232 pt.
     var fills = false
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
     private var watched: Bool { if case .watched = state { return true } else { return false } }
     var body: some View {
         // Design (board 2): a 232 x 130 still in a #17171d card (radius 22, #26262e hairline), a 24 pt

@@ -625,10 +625,10 @@ struct LibraryPosterCard: View {
     /// Select mode puts its check circle where the state icon sits.
     var selecting = false
     @Environment(DiaryStore.self) private var store
-    @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(PosterSize.ratingKey) private var showsRating = true
-    @AppStorage(PosterSize.captionKey) private var showsCaption = true
+    private var ratingSource: PublicRatingSource { TilePrefs.shared.ratingSource }
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
+    private var showsRating: Bool { TilePrefs.shared.posterRatings }
+    private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
@@ -681,7 +681,7 @@ struct LibraryListRow: View {
     let title: MediaTitle
     var selected: Bool?
     @Environment(DiaryStore.self) private var store
-    @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
+    private var ratingSource: PublicRatingSource { TilePrefs.shared.ratingSource }
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         let score = store.publicScore(title, source: ratingSource)

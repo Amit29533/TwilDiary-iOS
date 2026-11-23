@@ -6,7 +6,7 @@ struct LibraryTitleRow: View {
     let title: MediaTitle
     var archived = false
     @Environment(DiaryStore.self) private var store
-    @AppStorage("publicRatingSource") private var ratingSource = PublicRatingSource.tmdb
+    private var ratingSource: PublicRatingSource { TilePrefs.shared.ratingSource }
 
     var body: some View {
         let score = store.publicScore(title, source: ratingSource)

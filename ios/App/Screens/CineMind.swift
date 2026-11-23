@@ -502,7 +502,7 @@ struct CineMindView: View {
     struct Progress { let short: String; let long: String; let rule: String }
     private var progress: Progress? {
         guard title.isSeries else { return nil }
-        let episodes = store.workspace.episodes.filter { $0.titleId == title.id && $0.season > 0 }
+        let episodes = store.titleEpisodes(title.id).filter { $0.season > 0 }
         let watched = store.watchedEpisodeIDs(title.id)
         guard let last = episodes.filter({ watched.contains($0.id) }).max(by: { ($0.season, $0.number) < ($1.season, $1.number) }) else { return nil }
         let total = episodes.count

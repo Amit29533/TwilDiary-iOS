@@ -92,7 +92,7 @@ private struct ActivityStatusBadge: View {
 struct HomeEpisodeCard: View {
     let model: HomeEpisodeCardModel
     let cards: Bool
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
+    private var theme: DiaryTheme { TilePrefs.shared.theme }
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {

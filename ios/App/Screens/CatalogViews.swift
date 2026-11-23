@@ -45,7 +45,7 @@ struct CatalogPoster: View {
     let item: CatalogItem
     var profileTypography = false
     @Environment(DiaryStore.self) private var store
-    @AppStorage(PosterSize.captionKey) private var showsCaption = true
+    private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
     var body: some View {
         let score = PosterScores.score(for: item, store: store)
         VStack(alignment: .leading, spacing: 0) {

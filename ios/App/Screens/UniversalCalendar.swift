@@ -288,7 +288,8 @@ struct UniversalCalendarSection: View {
 
     @ViewBuilder private func list(_ items: [UniversalRelease]) -> some View {
         let days = Dictionary(grouping: items, by: \.day)
-        let inDiary = Set(store.workspace.activeTitles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } })
+        // Worked out once until the diary changes (it went through every title on each draw).
+        let inDiary = store.memoized("calendar.inDiary") { Set(store.workspace.activeTitles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }) }
         // As the other tabs: a heading with its count per day, then plain rows.
         ForEach(days.keys.sorted(), id: \.self) { day in
             let rows = days[day] ?? []
