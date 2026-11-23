@@ -21,7 +21,7 @@ struct APIsView: View {
             // Design (board 10): one line with ⓘ, then each service: its name, its keys in one card.
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 8) {
-                    Text(store.phoneOnly ? "Keys stay on this iPhone." : "Keys are stored encrypted.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    Text(store.phoneOnly ? "Keys stay on this iPhone." : "Keys are stored encrypted.").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                     Spacer(minLength: 0)
                     SettingsInfoButton(text: store.phoneOnly
                         ? "Keys are kept in this iPhone’s Keychain and sent only to their own service. Only their last four characters are ever shown."
@@ -35,14 +35,14 @@ struct APIsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(themed: "#e7ca90")).accessibilityHidden(true)
-                            Text("Keys couldn’t be loaded").font(.system(size: 15, weight: .semibold))
+                            Text("Keys couldn’t be loaded").font(.app(size: 15, weight: .semibold))
                         }
-                        Text(error).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Text(error).font(.app(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button("Try again") { Task { await model.load() } }.buttonStyle(.diaryRowSecondary)
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(theme.field, in: RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08))).accessibilityIdentifier("apis-unavailable")
                 } else if let model, model.loaded {
-                    if let error = model.error { Text(error).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
+                    if let error = model.error { Text(error).font(.app(size: 13)).foregroundStyle(Color(themed: "#ff8a80")) }
                     service(.tmdb, "TMDB", keys: model.keys.filter { $0.service == "tmdb" })
                     tvdbKey
                     service(.trakt, "Trakt", keys: model.keys.filter { $0.service == "trakt" }, note: "A new client ID signs Trakt out.")
@@ -52,7 +52,7 @@ struct APIsView: View {
                         service(nil, "Sign-in apps", icon: "iphone", keys: signIn, note: "App ID for MDBList sign-in.",
                                 info: "TwilDiary’s own app ID for MDBList. Once it’s set, MDBList’s page offers “Sign in” without your own developer keys.")
                     }
-                } else if model?.error == nil { ProgressView().frame(maxWidth: .infinity, minHeight: 160) }
+                } else if model?.error == nil { DiaryLoadingPlaceholder(height: 160, label: "Loading your keys") }
                 if !store.phoneOnly { aiSection(.gemini); aiSection(.groq); aiSection(.requesty) }
                 jellyfin
                 if !store.phoneOnly { server }
@@ -87,7 +87,7 @@ struct APIsView: View {
             }
             if let note {
                 HStack(spacing: 6) {
-                    Text(note).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(note).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     if let info { SettingsInfoButton(text: info) }
                 }.padding(.leading, 4)
             }
@@ -105,19 +105,19 @@ struct APIsView: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 (inline.map { tag in Text("\(name) \(Text(tag).foregroundStyle(HomeStyle.secondary).fontWeight(.regular))") } ?? Text(name))
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                    .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                 if let note, inline == nil { SettingsInfoButton(text: note).padding(.vertical, -10) }
                 Spacer(minLength: 8)
                 sourcePill(key.source)
             }
             if key.service == "mdblist" {
                 // The https return page (it hands the reply to the app), as the sign-in sends it.
-                Text("Redirect: " + ProviderWebSignIn.redirect(for: .mdblist)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                Text("Redirect: " + ProviderWebSignIn.redirect(for: .mdblist)).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             HStack(spacing: 8) {
-                Text(key.hint.map { "••••" + $0 } ?? "No key").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary)
-                if let updated = key.updatedAt.flatMap({ DiaryDate.parse($0) }) { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                Text(key.hint.map { "••••" + $0 } ?? "No key").font(.app(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary)
+                if let updated = key.updatedAt.flatMap({ DiaryDate.parse($0) }) { Text("· replaced " + updated.formatted(date: .abbreviated, time: .omitted)).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 Spacer(minLength: 0)
                 if testing { ProgressView().controlSize(.small) }
                 else if let check { status(check.ok, check.message).accessibilityIdentifier("api-status-" + key.name) }
@@ -146,7 +146,7 @@ struct APIsView: View {
     @ViewBuilder private func healthBadge(_ health: SemanticSearch.Health, keys: Int) -> some View {
         if health.total > 0, health.ready == 0, let back = health.back {
             HStack(spacing: 5) { Circle().fill(Color(themed: "#f5c26b")).frame(width: 6, height: 6); Text("Back " + back.diaryTime() + (health.why.map { " · " + $0 } ?? "")) }
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).lineLimit(1)
+                .font(.app(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).lineLimit(1)
         } else if health.ready < health.total {
             status(true, "\(health.ready) of \(health.total) ready")
         } else {
@@ -155,7 +155,7 @@ struct APIsView: View {
     }
     private func status(_ ok: Bool, _ message: String) -> some View {
         HStack(spacing: 5) { Circle().fill(ok ? Color(themed: "#7fe0b5") : Color(themed: "#ff6b6b")).frame(width: 6, height: 6); Text(message) }
-            .font(.system(size: 12, weight: .semibold)).foregroundStyle(ok ? Color(themed: "#7fe0b5") : Color(themed: "#ff8a80")).lineLimit(1)
+            .font(.app(size: 12, weight: .semibold)).foregroundStyle(ok ? Color(themed: "#7fe0b5") : Color(themed: "#ff8a80")).lineLimit(1)
     }
 
     private var jellyfin: some View {
@@ -164,14 +164,14 @@ struct APIsView: View {
         return section(.jellyfin, "Jellyfin", icon: "") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Server").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text("Server").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 8)
                     SettingsBadge(text: "On this iPhone", tone: .plain)
                 }
                 Text(store.isPreview ? "http://192.168.1.20:8096 · ●●●●a41f" : JellyfinSettings.address.map { $0.absoluteString + (JellyfinSettings.keyHint.map { " · ●●●●" + $0 } ?? " · no key") } ?? "Not set up")
-                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.middle)
+                    .font(.app(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.middle)
                 HStack(spacing: 6) {
-                    Text("Read over your home Wi-Fi.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    Text("Read over your home Wi-Fi.").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                     SettingsInfoButton(text: "Jellyfin is read over your home Wi-Fi to map Movies and Shows folders. The key stays on this iPhone.")
                 }
                 Button(configured ? "Edit" : "Set up") { editingJellyfin = true }.buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("jellyfin-setup")
@@ -183,7 +183,7 @@ struct APIsView: View {
         VStack(alignment: .leading, spacing: 20) {
             section(.tmdb, "TMDB", icon: "film") {
                 HStack(spacing: 8) {
-                    Text(store.providerSettings.customTmdbToken == nil ? "TwilDiary’s key, built in" : "Your own key").font(.system(size: 14)).foregroundStyle(HomeStyle.primary)
+                    Text(store.providerSettings.customTmdbToken == nil ? "TwilDiary’s key, built in" : "Your own key").font(.app(size: 14)).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 0)
                     status(TMDBDirect.token(store) != nil, TMDBDirect.token(store) != nil ? "Ready" : "Missing")
                 }.padding(15)
@@ -223,12 +223,12 @@ struct APIsView: View {
         return section(nil, service.name, icon: service == .gemini ? "sparkles" : service == .groq ? "bolt.fill" : "arrow.triangle.branch") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text(service == .gemini ? "AI search and CineMind" : service == .groq ? "Backup when Gemini can’t answer" : "Last backup, many models").font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(service == .gemini ? "AI search and CineMind" : service == .groq ? "Backup when Gemini can’t answer" : "Last backup, many models").font(.app(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 0)
                     if set { healthBadge(SemanticSearch.health(service), keys: max(1, keys.count)) } else { status(false, "Not set") }
                 }
                 HStack(spacing: 8) {
-                    Text(service == .gemini ? "Lighter model first, then your other keys" : service == .groq ? "Free key, fast open models" : "Free models, 200 requests a day").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(service == .gemini ? "Lighter model first, then your other keys" : service == .groq ? "Free key, fast open models" : "Free models, 200 requests a day").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     SettingsInfoButton(text: service == .gemini
                         ? "Kept in this iPhone’s Keychain. Each request starts with the next key; if one is used up, the next key answers. Keys share a limit when they’re from the same Google project, so make each in a different project."
@@ -237,11 +237,11 @@ struct APIsView: View {
                 }
                 ForEach(keys, id: \.self) { key in
                     HStack(spacing: 10) {
-                        Image(systemName: "key.fill").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
-                        Text(SemanticSearch.masked(key)).font(.system(size: 14, design: .monospaced)).foregroundStyle(HomeStyle.primary)
+                        Image(systemName: "key.fill").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(SemanticSearch.masked(key)).font(.app(size: 14, design: .monospaced)).foregroundStyle(HomeStyle.primary)
                         Spacer(minLength: 0)
                         Button(role: .destructive) { SemanticSearch.removeKey(key, from: service); reloadAIKeys() } label: {
-                            Image(systemName: "trash").font(.system(size: 14)).frame(width: 36, height: 36).contentShape(Rectangle())
+                            Image(systemName: "trash").font(.app(size: 14)).frame(width: 36, height: 36).contentShape(Rectangle())
                         }.buttonStyle(.plain).foregroundStyle(Color(themed: "#ff8a80")).accessibilityLabel("Remove key " + SemanticSearch.masked(key))
                     }.padding(.horizontal, 12).frame(height: 44).background(Color(themed: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
                 }
@@ -255,14 +255,14 @@ struct APIsView: View {
         section(nil, "TwilDiary server", icon: "server.rack") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Text(BackendEndpoint.production.host ?? "").font(.system(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.middle)
+                    Text(BackendEndpoint.production.host ?? "").font(.app(size: 13, design: .monospaced)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
                     // The diary itself proves the connection; a keys error (an older server) doesn't mean it's down.
                     let online = !store.phoneOnly && store.hasLoadedWorkspace && store.error == nil
                     status(online, store.phoneOnly ? "Not signed in" : online ? "Connected" : "Not connected")
                 }
                 HStack(spacing: 6) {
-                    Text("Fixed in the app.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                    Text("Fixed in the app.").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                     SettingsInfoButton(text: "Your sign-in is only ever sent to this address, so it can’t be changed in the app.")
                 }
             }.padding(15)
@@ -274,9 +274,9 @@ struct APIsView: View {
             HStack(spacing: 9) {
                 Group {
                     if let brand { BrandLogo(service: brand, size: 18) }
-                    else { Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.chipText) }
+                    else { Image(systemName: icon).font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.chipText) }
                 }.frame(width: 24, height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true)
-                Text(name).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                Text(name).font(.app(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary)
             }.padding(.leading, 4).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 0, content: content).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
         }
@@ -297,11 +297,11 @@ private struct ReplaceKeySheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Paste the new \(key.label.lowercased()). It’s checked with the service as soon as it’s saved.").font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                SecureField("New key", text: $value).font(.system(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Text("Paste the new \(key.label.lowercased()). It’s checked with the service as soon as it’s saved.").font(.app(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                SecureField("New key", text: $value).font(.app(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .focused($focused).padding(.horizontal, 14).frame(height: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.outline(0.12))).accessibilityIdentifier("api-key-field")
-                if let failure { Text(failure).font(.system(size: 13)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true) }
+                if let failure { Text(failure).font(.app(size: 13)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true) }
                 Button {
                     saving = true
                     Task { failure = await save(value); saving = false; if failure == nil { dismiss() } }
@@ -329,17 +329,17 @@ struct JellyfinSetupSheet: View {
         NavigationStack {
             EdgeToEdgeScroll {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 10) { BrandLogo(service: .jellyfin, size: 30); Text("Connect Jellyfin").font(.system(size: 17, weight: .semibold)) }
+                    HStack(spacing: 10) { BrandLogo(service: .jellyfin, size: 30); Text("Connect Jellyfin").font(.app(size: 17, weight: .semibold)) }
                     Text("Use the address you open Jellyfin with at home, such as 192.168.1.20:8096. Create a key in Jellyfin under Dashboard → API Keys.")
-                        .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     field("Address", text: $address, secure: false).keyboardType(.URL).accessibilityIdentifier("jellyfin-address")
                     field(JellyfinSettings.keyHint.map { "API key (••••\($0) kept if empty)" } ?? "API key", text: $key, secure: true).accessibilityIdentifier("jellyfin-key")
-                    if let message { Text(message).font(.system(size: 13)).foregroundStyle(message.hasPrefix("Connected") ? Color.mint : Color(themed: "#ff8a80")) }
+                    if let message { Text(message).font(.app(size: 13)).foregroundStyle(message.hasPrefix("Connected") ? Color.mint : Color(themed: "#ff8a80")) }
                     Button { Task { await connect() } } label: { Text(checking ? "Checking…" : "Test and save").frame(maxWidth: .infinity) }
                         .buttonStyle(.diaryPrimary).disabled(checking || JellyfinSettings.normalized(address) == nil || (key.isEmpty && JellyfinSettings.apiKey == nil))
                         .accessibilityIdentifier("jellyfin-save")
                     if JellyfinSettings.configured {
-                        Button("Forget Jellyfin on this iPhone", role: .destructive) { JellyfinSettings.forget(); dismiss() }.font(.system(size: 14)).frame(maxWidth: .infinity, minHeight: 44)
+                        Button("Forget Jellyfin on this iPhone", role: .destructive) { JellyfinSettings.forget(); dismiss() }.font(.app(size: 14)).frame(maxWidth: .infinity, minHeight: 44)
                     }
                 }.padding(20)
             }.navigationTitle("Jellyfin").navigationBarTitleDisplayMode(.inline)
@@ -350,7 +350,7 @@ struct JellyfinSetupSheet: View {
     private func field(_ title: String, text: Binding<String>, secure: Bool) -> some View {
         Group {
             if secure { SecureField(title, text: text) } else { TextField(title, text: text) }
-        }.font(.system(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
+        }.font(.app(size: 15, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
             .padding(.horizontal, 14).frame(height: 48).background(theme.field, in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(HomeStyle.outline(0.12)))
     }
@@ -369,7 +369,7 @@ struct JellyfinSetupSheet: View {
             try JellyfinSettings.save(address: url, apiKey: key.isEmpty ? nil : candidate)
             message = "Connected to " + (info.ServerName ?? "Jellyfin")
             try? await Task.sleep(for: .seconds(0.8)); dismiss()
-        } catch { message = error.localizedDescription }
+        } catch { message = FriendlyError.message(error) }
     }
 }
 
@@ -378,7 +378,7 @@ private struct RequestyModelField: View {
     @State private var value = SemanticSearch.requestyModel ?? ""
     var body: some View {
         TextField("Model (optional), e.g. google/gemini-flash", text: $value)
-            .font(.system(size: 14, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
+            .font(.app(size: 14, design: .monospaced)).textInputAutocapitalization(.never).autocorrectionDisabled()
             .padding(.horizontal, 12).frame(height: 44).background(Color(themed: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
             .onChange(of: value) { _, now in SemanticSearch.requestyModel = now }
             .accessibilityIdentifier("apis-requesty-model")

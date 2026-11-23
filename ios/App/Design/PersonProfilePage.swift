@@ -81,7 +81,7 @@ struct PersonProfilePage<Content: View>: View {
                 .overlay(alignment: .bottomTrailing) {
                     if photos.count >= 2 {
                         NavigationLink(value: PersonPhotosRoute(name: name, photos: photos)) {
-                            HStack(spacing: 6) { Image(systemName: "square.on.square").font(.system(size: 13, weight: .semibold)); Text("Photos").font(.system(size: 14, weight: .semibold)) }
+                            HStack(spacing: 6) { Image(systemName: "square.on.square").font(.app(size: 13, weight: .semibold)); Text("Photos").font(.app(size: 14, weight: .semibold)) }
                                 .foregroundStyle(.white).padding(.horizontal, 12).frame(height: 36).background(.black.opacity(0.6), in: Capsule())
                                 .overlay(Capsule().strokeBorder(HomeStyle.outline(0.15)))
                         }.buttonStyle(.springPress).padding(10).accessibilityIdentifier(identifier + "-photos")
@@ -91,25 +91,25 @@ struct PersonProfilePage<Content: View>: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(parts.first ?? name).foregroundStyle(.white)
                     if parts.count > 1 { Text(parts[1]).foregroundStyle(theme.accent) }
-                }.font(.system(size: fit.nameSize, weight: .bold)).tracking(-0.9).lineLimit(3).truncationMode(.tail).minimumScaleFactor(0.8)
+                }.font(.app(size: fit.nameSize, weight: .bold)).tracking(-0.9).lineLimit(3).truncationMode(.tail).minimumScaleFactor(0.8)
                     .shadow(color: .black.opacity(0.55), radius: 10, y: 2)
                     .accessibilityElement(children: .combine).accessibilityIdentifier(identifier + "-name")
                     .onGeometryChange(for: CGFloat.self) { proxy in
                         CompactHeaderTransition.progress(nameBottom: proxy.frame(in: .named("profile-scroll")).maxY - topInset)
                     } action: { header.update($0) }
                 if let native = ProfileText.line(nativeName), native != ProfileText.line(name) {
-                    Text(native).font(.system(size: 14)).foregroundStyle(.white.opacity(0.8)).lineLimit(2).truncationMode(.tail).padding(.top, 4)
+                    Text(native).font(.app(size: 14)).foregroundStyle(.white.opacity(0.8)).lineLimit(2).truncationMode(.tail).padding(.top, 4)
                         .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 }
                 if let role = ProfileText.line(role) {
-                    Text(role).font(.system(size: 17)).foregroundStyle(.white.opacity(0.62)).lineLimit(1).padding(.top, 4)
+                    Text(role).font(.app(size: 17)).foregroundStyle(.white.opacity(0.62)).lineLimit(1).padding(.top, 4)
                         .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 }
                 ForEach(Array(fit.beside.map { heroFacts[$0] }.enumerated()), id: \.element.id) { index, fact in
                     if index > 0 { Rectangle().fill(Color.primary.opacity(0.1)).frame(height: HomeStyle.hairline) }
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) { Image(systemName: fact.icon).font(.system(size: 12)); Text(fact.label) }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
-                        Text(fact.value).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
+                        HStack(spacing: 6) { Image(systemName: fact.icon).font(.app(size: 12)); Text(fact.label) }.font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
+                        Text(fact.value).font(.app(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
                     }.padding(.vertical, 9).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
                 }.padding(.top, heroFacts.isEmpty ? 0 : 8)
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -158,7 +158,7 @@ private struct ProfileCompactName: View {
     var body: some View {
         HStack(spacing: 8) {
             Artwork(path: image, title: name, alignment: .top).frame(width: 28, height: 28).clipShape(Circle())
-            Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+            Text(name).font(.app(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
         }.frame(height: 28)
             .foregroundStyle(.white).opacity(Double(state.progress))
             .accessibilityElement(children: .ignore).accessibilityLabel(name)
@@ -183,7 +183,7 @@ private struct ProfileFavourite: View {
             feedback += 1
         } label: {
             // The bar's own Liquid Glass (same as the back button beside it).
-            Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+            Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.app(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
         }.buttonStyle(.plain).accessibilityLabel(saved ? "Remove from favourites" : "Add to favourites")
             .accessibilityValue(saved ? "Saved" : "Not saved").accessibilityIdentifier(identifier)
             .haptic(.selection, trigger: feedback)

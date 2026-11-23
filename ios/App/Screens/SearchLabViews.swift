@@ -37,8 +37,8 @@ struct SearchLabView: View {
                         }
                         if names.count > 7 {
                             Button { withAnimation(.snappy) { allGenres.toggle() } } label: {
-                                HStack(spacing: 5) { Text(allGenres ? "Fewer" : "\(names.count - 7) more"); Image(systemName: allGenres ? "chevron.up" : "chevron.down").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold)) }
-                                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 15).frame(height: 40)
+                                HStack(spacing: 5) { Text(allGenres ? "Fewer" : "\(names.count - 7) more"); Image(systemName: allGenres ? "chevron.up" : "chevron.down").contentTransition(.symbolEffect(.replace)).font(.app(size: 11, weight: .bold)) }
+                                    .font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 15).frame(height: 40)
                                     .overlay(Capsule().strokeBorder(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
                                     .contentShape(Capsule())
                             }.buttonStyle(.plain).accessibilityIdentifier("search-lab-more-genres")
@@ -65,7 +65,7 @@ struct SearchLabView: View {
                     VStack(spacing: 2) {
                         YearRangeSlider(from: $filters.yearFrom, to: $filters.yearTo, bounds: SearchLabData.lowestYear...SearchLabData.highestYear)
                         HStack { Text(String(SearchLabData.lowestYear)); Spacer(); Text(String(SearchLabData.highestYear)) }
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                            .font(.app(size: 12, weight: .medium)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
                     }
                     InlineFlowLayout {
                         ForEach(Self.decades, id: \.0) { decade in
@@ -102,7 +102,7 @@ struct SearchLabView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { filters = Self.blank; tagQuery = ""; foundTags = []; allGenres = false } label: { Text("Reset").lineLimit(1).fixedSize() }
-                        .font(.system(size: 15, weight: .semibold)).disabled(filters == Self.blank)
+                        .font(.app(size: 15, weight: .semibold)).disabled(filters == Self.blank)
                         .accessibilityIdentifier("search-lab-reset")
                 }
             }
@@ -143,9 +143,9 @@ struct SearchLabView: View {
     private var keywordField: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                Image(systemName: "magnifyingglass").font(.app(size: 16, weight: .medium)).foregroundStyle(HomeStyle.secondary)
                 TextField("Keyword or title (optional)", text: Binding(get: { filters.text ?? "" }, set: { filters.text = $0.isEmpty ? nil : $0 }))
-                    .font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search)
+                    .font(.app(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search)
                     .accessibilityIdentifier("search-lab-keyword")
                 if !(filters.text ?? "").isEmpty {
                     Button { filters.text = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(HomeStyle.secondary) }.buttonStyle(.plain).accessibilityLabel("Clear keyword")
@@ -153,7 +153,7 @@ struct SearchLabView: View {
             }.labField()
             if !filters.searchText.isEmpty {
                 Text("A title search keeps type, genre, rating, year and language. Tags, age rating and status apply without a keyword.")
-                    .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -163,8 +163,8 @@ struct SearchLabView: View {
         let suggested = tagQuery.trimmingCharacters(in: .whitespaces).count >= 2 ? [] : yourTags.top.filter { tag in !chosen.contains { $0.id == tag.id } }
         section("Tags", trailing: chosen.isEmpty ? nil : "\(chosen.count) selected") {
             HStack(spacing: 10) {
-                Text("#").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
-                TextField("Find a tag", text: $tagQuery).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Text("#").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                TextField("Find a tag", text: $tagQuery).font(.app(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityIdentifier("search-lab-tag-field")
             }.labField()
             if !(chosen.isEmpty && found.isEmpty && suggested.isEmpty) {
@@ -177,11 +177,11 @@ struct SearchLabView: View {
             if chosen.count > 1 {
                 HStack(spacing: 10) {
                     Button { filters.matchAllKeywords = !(filters.matchAllKeywords ?? false) } label: {
-                        Text(filters.matchAllKeywords == true ? "Match all" : "Match any").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        Text(filters.matchAllKeywords == true ? "Match all" : "Match any").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
                     }.buttonStyle(.plain).frame(minHeight: 44).contentShape(Rectangle()).accessibilityIdentifier("search-lab-match")
                     Text(filters.matchAllKeywords == true ? "Every tag is required" : "Switch to \u{201C}Match all\u{201D} to require every tag")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                        .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
                 }
             }
         }
@@ -197,10 +197,10 @@ struct SearchLabView: View {
     private func section<Content: View>(_ title: String, trailing: String? = nil, badge: String? = nil, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(title.uppercased()).font(.system(size: 12, weight: .bold)).tracking(1).foregroundStyle(HomeStyle.secondary)
+                Text(title.uppercased()).font(.app(size: 12, weight: .bold)).tracking(1).foregroundStyle(HomeStyle.secondary)
                 Spacer()
-                if let trailing { Text(trailing).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).monospacedDigit().contentTransition(.numericText()) }
-                if let badge { Text(badge).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(themed: "#c5c0cf")).padding(.horizontal, 9).frame(height: 24).background(Color.primary.opacity(0.08), in: Capsule()) }
+                if let trailing { Text(trailing).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).monospacedDigit().contentTransition(.numericText()) }
+                if let badge { Text(badge).font(.app(size: 11, weight: .bold)).foregroundStyle(Color(themed: "#c5c0cf")).padding(.horizontal, 9).frame(height: 24).background(Color.primary.opacity(0.08), in: Capsule()) }
             }
             content()
         }
@@ -246,9 +246,9 @@ struct LabChip: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Text(label).lineLimit(1).truncationMode(.tail)
-                if let count { Text(String(count)).font(.system(size: 12, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit() }
+                if let count { Text(String(count)).font(.app(size: 12, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit() }
             }
-            .font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#e6e1ee"))
+            .font(.app(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 15).frame(maxWidth: wide ? .infinity : nil).frame(height: 40)
             .background(on ? AnyShapeStyle(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
             .overlay(Capsule().strokeBorder(on ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
@@ -267,7 +267,7 @@ struct LabSegments: View {
             ForEach(options, id: \.0) { option in
                 let on = option.0 == selection
                 Button { withAnimation(.snappy(duration: 0.25)) { choose(option.0) } } label: {
-                    Text(option.1).font(.system(size: 14, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
+                    Text(option.1).font(.app(size: 14, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
                         .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .frame(maxWidth: .infinity).frame(height: 40)
                         .background { if on { Capsule().fill(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom)) } }
@@ -325,7 +325,7 @@ struct YearRangeSlider: View {
 /// "Show 48 titles": the full-width gradient pill at the bottom of Search Lab.
 struct LabShowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+        configuration.label.font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.chipText)
             .frame(maxWidth: .infinity).frame(height: 56)
             .background(HomeStyle.chip, in: Capsule())
             .opacity(configuration.isPressed ? 0.85 : 1).scaleEffect(configuration.isPressed ? 0.98 : 1)
@@ -383,13 +383,13 @@ struct SearchLabResultsView: View {
                     InlineFlowLayout { ForEach(chips, id: \.0) { chip in removable(chip.0, chip.1) } }
                 }
                 HStack(spacing: 10) {
-                    Text(countText).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).monospacedDigit().lineLimit(1)
+                    Text(countText).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).monospacedDigit().lineLimit(1)
                     Spacer(minLength: 8)
                     Menu {
                         Picker("Sort", selection: $filters.sort) { ForEach(LabSort.all, id: \.0) { Text($0.1).tag($0.0) } }
                     } label: {
-                        HStack(spacing: 6) { Image(systemName: "arrow.up.arrow.down").font(.system(size: 12, weight: .bold)); Text(LabSort.label(filters.sort)).lineLimit(1) }
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e6e1ee"))
+                        HStack(spacing: 6) { Image(systemName: "arrow.up.arrow.down").font(.app(size: 12, weight: .bold)); Text(LabSort.label(filters.sort)).lineLimit(1) }
+                            .font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e6e1ee"))
                             .padding(.horizontal, 14).frame(height: 34).background(HomeStyle.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1)).frame(minHeight: 44).contentShape(Capsule())
                     }.accessibilityLabel("Sort, " + LabSort.label(filters.sort)).accessibilityIdentifier("search-lab-sort")
@@ -430,7 +430,7 @@ struct SearchLabResultsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "slider.horizontal.3").font(.app(size: 16, weight: .semibold))
                     }.accessibilityLabel("Edit filters").accessibilityIdentifier("search-lab-edit")
                 }
             }
@@ -469,8 +469,8 @@ struct SearchLabResultsView: View {
     }
     private func removable(_ label: String, _ remove: @escaping () -> Void) -> some View {
         Button { withAnimation(.snappy) { remove() } } label: {
-            HStack(spacing: 6) { Text(label).lineLimit(1).truncationMode(.tail); Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).opacity(0.8) }
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 12).frame(height: 32)
+            HStack(spacing: 6) { Text(label).lineLimit(1).truncationMode(.tail); Image(systemName: "xmark").font(.app(size: 10, weight: .bold)).opacity(0.8) }
+                .font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 12).frame(height: 32)
                 .background(HomeStyle.chip, in: Capsule()).frame(minHeight: 40).contentShape(Capsule())
         }.buttonStyle(.plain).accessibilityLabel("Remove " + label)
     }
@@ -495,7 +495,7 @@ struct SearchLabResultsView: View {
             retryPage = next.incomplete == true ? number : nil
             if retryPage != nil { failure = "Some results couldn’t be checked. Retry this page." }
         } catch {
-            if !Task.isCancelled, generation == request, selection == filters { failure = error.localizedDescription }
+            if !Task.isCancelled, generation == request, selection == filters { failure = FriendlyError.message(error) }
         }
     }
 }

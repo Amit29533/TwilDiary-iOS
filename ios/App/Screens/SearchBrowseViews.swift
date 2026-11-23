@@ -278,7 +278,7 @@ struct SearchBrowseArtworkTile: View {
                     } else {
                         LinearGradient(colors: [accent.opacity(0.84), accent.opacity(0.24)], startPoint: .topTrailing, endPoint: .bottomLeading)
                         Image(systemName: symbol)
-                            .font(.system(size: 43, weight: .light)).foregroundStyle(.white.opacity(0.24))
+                            .font(.app(size: 43, weight: .light)).foregroundStyle(.white.opacity(0.24))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(12)
                             .accessibilityHidden(true)
                     }

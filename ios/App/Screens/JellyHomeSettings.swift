@@ -87,7 +87,7 @@ struct JellyHomeSettingsPage: View {
     private func shownRow(_ row: JellyHomeSettingsModel.Row) -> some View {
         HStack(spacing: 12) {
             Button { withAnimation { model.hide(row) } } label: {
-                Image(systemName: "minus.circle.fill").font(.system(size: 21)).symbolRenderingMode(.palette)
+                Image(systemName: "minus.circle.fill").font(.app(size: 21)).symbolRenderingMode(.palette)
                     .foregroundStyle(.white, Color.red)
             }
             .buttonStyle(.plain).accessibilityLabel("Hide " + row.title).accessibilityIdentifier("jellyspace-home-hide-" + row.id)
@@ -96,11 +96,11 @@ struct JellyHomeSettingsPage: View {
                     HStack(spacing: 8) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(row.title).foregroundStyle(HomeStyle.primary)
-                            Text(model.summary(group)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                            Text(model.summary(group)).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 8)
                         Text("\(model.ticked(group).count)").foregroundStyle(HomeStyle.secondary)
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
+                        Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
                     }.contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("jellyspace-home-row-" + row.id)
@@ -114,7 +114,7 @@ struct JellyHomeSettingsPage: View {
     private func hiddenRow(_ row: JellyHomeSettingsModel.Row) -> some View {
         Button { withAnimation { model.show(row) } } label: {
             HStack(spacing: 12) {
-                Image(systemName: "plus.circle.fill").font(.system(size: 21)).symbolRenderingMode(.palette)
+                Image(systemName: "plus.circle.fill").font(.app(size: 21)).symbolRenderingMode(.palette)
                     .foregroundStyle(.white, Color.green)
                 Text(row.title).foregroundStyle(HomeStyle.primary)
                 Spacer(minLength: 0)
@@ -127,11 +127,11 @@ struct JellyHomeSettingsPage: View {
     private func mediaRow(_ library: JellyfinLibrary) -> some View {
         let on = !model.recommendOff.contains(library.id)
         return HStack(spacing: 12) {
-            Image(systemName: JellySpace.symbol(library.type)).font(.system(size: 15, weight: .semibold))
+            Image(systemName: JellySpace.symbol(library.type)).font(.app(size: 15, weight: .semibold))
                 .foregroundStyle(HomeStyle.secondary).frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(library.name).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                Text(on ? "In recommendations" : "Browse only").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                Text(on ? "In recommendations" : "Browse only").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
             }
             Spacer(minLength: 8)
             Toggle("", isOn: Binding(get: { on }, set: { model.setRecommends(library.id, $0) }))
@@ -146,11 +146,11 @@ struct JellyHomeSettingsPage: View {
 
     private var rowBackground: Color { ThemeStore.current.native ? Color(uiColor: .secondarySystemBackground) : HomeStyle.card }
     private func sectionHeader(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
+        Text(text.uppercased()).font(.app(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
             .foregroundStyle(HomeStyle.secondary).textCase(nil).accessibilityAddTraits(.isHeader)
     }
     private func footer(_ text: String) -> some View {
-        Text(text).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+        Text(text).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
     }
 }
 
@@ -169,7 +169,7 @@ private struct JellyHomeLibraryPicker: View {
                         HStack {
                             Text(library.name).foregroundStyle(HomeStyle.primary)
                             Spacer(minLength: 8)
-                            if on { Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.accentColor) }
+                            if on { Image(systemName: "checkmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(Color.accentColor) }
                         }.contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -177,11 +177,11 @@ private struct JellyHomeLibraryPicker: View {
                     .accessibilityIdentifier("jellyspace-home-pick-" + library.id)
                 }
             } header: {
-                Text("ONE ROW FOR EACH LIBRARY TICKED").font(.system(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
+                Text("ONE ROW FOR EACH LIBRARY TICKED").font(.app(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
                     .foregroundStyle(HomeStyle.secondary).textCase(nil)
             } footer: {
                 Text("The ticked rows sit together where \(group.title) is on the home, in My Media's order. None ticked takes it off the home.")
-                    .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
             }
             .listRowBackground(ThemeStore.current.native ? Color(uiColor: .secondarySystemBackground) : HomeStyle.card)
         }

@@ -80,10 +80,10 @@ struct ExplorePill: View {
     var tinted = false
     var body: some View {
         HStack(spacing: 6) {
-            if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
+            if let icon { Image(systemName: icon).font(.app(size: 13, weight: .bold)) }
             Text(label).lineLimit(1)
-            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
-        }.font(.system(size: 15, weight: .semibold)).fixedSize()
+            Image(systemName: "chevron.down").font(.app(size: 11, weight: .bold)).opacity(0.8)
+        }.font(.app(size: 15, weight: .semibold)).fixedSize()
             .foregroundStyle(tinted ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 38)
             .background(tinted ? HomeStyle.chip : HomeStyle.card, in: Capsule())
@@ -235,7 +235,7 @@ private struct ExploreHeading: View {
     var filters: DiscoveryFilters? = nil
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text(section.label).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+            Text(section.label).font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 0)
             SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters),
                             identifier: "explore-more-" + section.id)
@@ -348,7 +348,7 @@ private struct DiscoveryNotice: View {
     let text: String
     var retry: (() -> Void)? = nil
     var body: some View {
-        HStack(spacing: 10) { Text(text).font(.system(size: 13)).foregroundStyle(.secondary).frame(minHeight: 21.5); Spacer(minLength: 0); if let retry { Button("Retry", action: retry).font(.system(size: 13)).frame(minHeight: 44) } }
+        HStack(spacing: 10) { Text(text).font(.app(size: 13)).foregroundStyle(.secondary).frame(minHeight: 21.5); Spacer(minLength: 0); if let retry { Button("Retry", action: retry).font(.app(size: 13)).frame(minHeight: 44) } }
             .padding(.horizontal, 14).padding(.vertical, 12).diarySectionBackground(radius: 11)
     }
 }
@@ -369,9 +369,9 @@ private struct RecommendedDiscoveryView: View {
                 NavigationLink(value: AppDestination.trakt) {
                     HStack(spacing: 10) {
                         BrandLogo(service: .trakt, size: 22)
-                        Text("Connect Trakt for picks made for you").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Text("Connect Trakt for picks made for you").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
                 }.buttonStyle(.springPress).accessibilityIdentifier("explore-connect-trakt")
             }
@@ -493,7 +493,7 @@ private struct DiscoveryBrowser: View {
                     .accessibilityLabel("Explore release year")
                 if filters != filters.resettingFilters(section: section) {
                     Button { withAnimation(.snappy) { filters = filters.resettingFilters(section: section) } } label: {
-                        Text("Reset filters").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1).fixedSize()
+                        Text("Reset filters").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1).fixedSize()
                             .padding(.horizontal, 14).frame(height: 38)
                             .overlay(Capsule().strokeBorder(HomeStyle.chipText.opacity(0.4), lineWidth: 1))
                             .frame(minHeight: 44).contentShape(Capsule())
@@ -518,7 +518,7 @@ private struct DiscoveryBrowser: View {
     }
     @ViewBuilder private var content: some View {
         if let error = filters.error(section: section) { DiscoveryNotice(text: error) }
-        else if promptForGenre && filters.genre.isEmpty { Text("Choose a genre to explore shows and movies.").font(.system(size: 13)).foregroundStyle(.secondary) }
+        else if promptForGenre && filters.genre.isEmpty { Text("Choose a genre to explore shows and movies.").font(.app(size: 13)).foregroundStyle(.secondary) }
         else {
             if !displayed.isEmpty {
                 CatalogGrid(items: displayed, showsLayoutToggle: false)
@@ -532,9 +532,9 @@ private struct DiscoveryBrowser: View {
                         NavigationLink(value: AppDestination.trakt) {
                             HStack(spacing: 10) {
                                 BrandLogo(service: .trakt, size: 22)
-                                Text("Connect Trakt for picks made for you").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text("Connect Trakt for picks made for you").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                                 Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                             }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
                         }.buttonStyle(.springPress)
                     }

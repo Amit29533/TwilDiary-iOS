@@ -37,7 +37,7 @@ struct JellyPlaybackInfo: View {
             row("Buffering", engine.isBuffering ? "Yes" : "No")
             row("Engine", AetherEngine.version)
         }
-        .font(.system(size: 11, weight: .medium, design: .monospaced))
+        .font(.app(size: 11, weight: .medium, design: .monospaced))
         .foregroundStyle(.white)
         .padding(10)
         .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))

@@ -25,15 +25,15 @@ struct AnswerText: View {
                 Group {
                 switch block {
                 case .paragraph(let line):
-                    Text(CineMindView.markdown(line)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(uiColor: .label).opacity(0.85))
+                    Text(CineMindView.markdown(line)).font(.app(size: 16)).lineSpacing(4).foregroundStyle(Color(uiColor: .label).opacity(0.85))
                         .tint(Color(uiColor: .systemBlue)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 case .heading(let line):
-                    Text(CineMindView.markdown(line)).font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(uiColor: .label)).padding(.top, 4)
+                    Text(CineMindView.markdown(line)).font(.app(size: 17, weight: .semibold)).foregroundStyle(Color(uiColor: .label)).padding(.top, 4)
                 case .bullet(let marker, let line):
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        if let marker { Text(marker).font(.system(size: 15, weight: .semibold)).foregroundStyle(accent).monospacedDigit().frame(minWidth: 14, alignment: .trailing) }
+                        if let marker { Text(marker).font(.app(size: 15, weight: .semibold)).foregroundStyle(accent).monospacedDigit().frame(minWidth: 14, alignment: .trailing) }
                         else { Circle().fill(accent.opacity(0.9)).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0[.bottom] }.frame(width: 14) }
-                        Text(CineMindView.markdown(line)).font(.system(size: 16)).lineSpacing(4).foregroundStyle(Color(uiColor: .label).opacity(0.85))
+                        Text(CineMindView.markdown(line)).font(.app(size: 16)).lineSpacing(4).foregroundStyle(Color(uiColor: .label).opacity(0.85))
                             .tint(Color(uiColor: .systemBlue)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -70,7 +70,7 @@ private struct CopyButton: View {
             withAnimation(.snappy(duration: 0.15)) { copied = true }
             Task { try? await Task.sleep(for: .seconds(1.4)); withAnimation(.snappy(duration: 0.15)) { copied = false } }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 13, weight: .semibold)).contentTransition(.symbolEffect(.replace))
+            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.app(size: 13, weight: .semibold)).contentTransition(.symbolEffect(.replace))
                 .frame(width: 32, height: 32).background(Color.primary.opacity(0.06), in: Circle())
         }.buttonStyle(.plain).foregroundStyle(copied ? Color(uiColor: .systemGreen) : Color(uiColor: .secondaryLabel)).accessibilityLabel(copied ? "Copied" : "Copy answer")
             .haptic(.success, trigger: copied) { _, now in now }
@@ -84,7 +84,7 @@ struct CineThinking: View {
     var body: some View {
         HStack(spacing: 10) {
             ThinkingRow()
-            if let label { Text(label).font(.system(size: 14, weight: .medium)).foregroundStyle(Color(uiColor: .secondaryLabel)) }
+            if let label { Text(label).font(.app(size: 14, weight: .medium)).foregroundStyle(Color(uiColor: .secondaryLabel)) }
         }.accessibilityElement(children: .ignore).accessibilityLabel(label ?? "Thinking")
     }
 }
@@ -279,13 +279,13 @@ struct CineMindView: View {
         HStack(spacing: 12) {
             CineMindMark(size: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text("CineMind").font(.system(size: 16, weight: .bold)).foregroundStyle(Color(uiColor: .label))
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(Color(uiColor: .secondaryLabel)).lineLimit(1).truncationMode(.tail)
+                Text("CineMind").font(.app(size: 16, weight: .bold)).foregroundStyle(Color(uiColor: .label))
+                Text(subtitle).font(.app(size: 12)).foregroundStyle(Color(uiColor: .secondaryLabel)).lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 8)
             if progress != nil || !title.isSeries {
                 Button { withAnimation(.snappy(duration: 0.2)) { spoilerSafe.toggle() } } label: {
-                    Image(systemName: spoilerSafe ? "eye.slash.fill" : "eye").contentTransition(.symbolEffect(.replace)).font(.system(size: 15, weight: .semibold))
+                    Image(systemName: spoilerSafe ? "eye.slash.fill" : "eye").contentTransition(.symbolEffect(.replace)).font(.app(size: 15, weight: .semibold))
                         .foregroundStyle(spoilerSafe ? .white : Color(uiColor: .secondaryLabel)).contentTransition(.symbolEffect(.replace))
                         .frame(width: 40, height: 40)
                         .background(spoilerSafe ? Self.accent.opacity(0.85) : Color.primary.opacity(0.06), in: Circle())
@@ -294,7 +294,7 @@ struct CineMindView: View {
                     .accessibilityIdentifier("cinemind-spoiler-safe")
             }
             Button { work?.cancel(); withAnimation(.smooth) { messages = []; thinking = false } } label: {
-                Image(systemName: "square.and.pencil").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
+                Image(systemName: "square.and.pencil").font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
                     .frame(width: 40, height: 40).glassEffect(.regular.interactive(), in: Circle())
             }.buttonStyle(.plain).disabled(messages.isEmpty).opacity(messages.isEmpty ? 0.45 : 1)
                 .accessibilityLabel("New chat").accessibilityIdentifier("cinemind-new")
@@ -313,8 +313,8 @@ struct CineMindView: View {
             ForEach(items, id: \.text) { item in
                 Button { ask(item.text) } label: {
                     HStack(spacing: 7) {
-                        Image(systemName: item.icon).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(CineGlow.linear).frame(width: 17)
-                        Text(item.text).font(.system(size: 14.5, weight: .medium)).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
+                        Image(systemName: item.icon).font(.app(size: 12.5, weight: .semibold)).foregroundStyle(CineGlow.linear).frame(width: 17)
+                        Text(item.text).font(.app(size: 14.5, weight: .medium)).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
                     }.padding(.leading, 12).padding(.trailing, 14).frame(height: 38)
                         .glassEffect(.regular.interactive(), in: Capsule())
                         .cineGlow(Capsule(), active: false, lineWidth: 0.9)
@@ -331,14 +331,14 @@ struct CineMindView: View {
     private var keyCard: some View {
         Button { addingKey = true } label: {
             HStack(spacing: 14) {
-                Image(systemName: "key.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Self.accent)
+                Image(systemName: "key.fill").font(.app(size: 18, weight: .semibold)).foregroundStyle(Self.accent)
                     .frame(width: 44, height: 44).background(Self.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Add your Gemini key").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
-                    Text("Free from Google AI Studio").font(.system(size: 13)).foregroundStyle(Color(uiColor: .secondaryLabel))
+                    Text("Add your Gemini key").font(.app(size: 16, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
+                    Text("Free from Google AI Studio").font(.app(size: 13)).foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(uiColor: .secondaryLabel))
+                Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(uiColor: .secondaryLabel))
             }.padding(14).background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 18))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(uiColor: .separator), lineWidth: HomeStyle.hairline))
         }.buttonStyle(.springPress).padding(.top, 8).accessibilityIdentifier("cinemind-add-key")
@@ -347,18 +347,18 @@ struct CineMindView: View {
         if message.fromYou {
             HStack {
                 Spacer(minLength: 56)
-                Text(message.text).font(.system(size: 16, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 15).padding(.vertical, 10)
+                Text(message.text).font(.app(size: 16, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 15).padding(.vertical, 10)
                     .background(LinearGradient(colors: [Color(uiColor: .systemBlue), Color(uiColor: .systemBlue)], startPoint: .topLeading, endPoint: .bottomTrailing),
                                 in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
             }
         } else if message.failed {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 14)).foregroundStyle(Color(uiColor: .systemRed))
+                Image(systemName: "exclamationmark.triangle.fill").font(.app(size: 14)).foregroundStyle(Color(uiColor: .systemRed))
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(message.text).font(.system(size: 14)).foregroundStyle(Color(uiColor: .systemRed)).fixedSize(horizontal: false, vertical: true)
+                    Text(message.text).font(.app(size: 14)).foregroundStyle(Color(uiColor: .systemRed)).fixedSize(horizontal: false, vertical: true)
                     if message.id == messages.last?.id, let question = messages.last(where: { $0.fromYou })?.text {
                         Button { messages.removeLast(); ask(question, again: true) } label: {
-                            Label("Try again", systemImage: "arrow.clockwise").font(.system(size: 13, weight: .semibold))
+                            Label("Try again", systemImage: "arrow.clockwise").font(.app(size: 13, weight: .semibold))
                         }.buttonStyle(.plain).foregroundStyle(Color(uiColor: .systemBlue))
                     }
                 }
@@ -377,7 +377,7 @@ struct CineMindView: View {
             CopyButton(text: message.text)
             if message.id == messages.last?.id, let question = messages.last(where: { $0.fromYou })?.text {
                 Button { messages.removeLast(); ask(question, again: true) } label: {
-                    Image(systemName: "arrow.clockwise").font(.system(size: 13, weight: .semibold)).frame(width: 32, height: 32)
+                    Image(systemName: "arrow.clockwise").font(.app(size: 13, weight: .semibold)).frame(width: 32, height: 32)
                         .background(Color.primary.opacity(0.06), in: Circle())
                 }.buttonStyle(.plain).foregroundStyle(Color(uiColor: .secondaryLabel)).accessibilityLabel("Ask again")
             }
@@ -393,10 +393,10 @@ struct CineMindView: View {
                             Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false)
                                 .frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HomeStyle.outline(0.08), lineWidth: 0.75))
-                            Text(match.item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
+                            Text(match.item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
                                 .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: 112, alignment: .leading)
                             if let tag = match.why.split(separator: "|").first.map({ String($0).trimmingCharacters(in: .whitespaces) }), !tag.isEmpty {
-                                Text(tag).font(.system(size: 11, weight: .medium)).foregroundStyle(Color(uiColor: .secondaryLabel)).lineLimit(1).frame(width: 112, alignment: .leading)
+                                Text(tag).font(.app(size: 11, weight: .medium)).foregroundStyle(Color(uiColor: .secondaryLabel)).lineLimit(1).frame(width: 112, alignment: .leading)
                             }
                         }.contentShape(Rectangle())
                     }.buttonStyle(.springPress).accessibilityLabel(match.item.name)
@@ -410,8 +410,8 @@ struct CineMindView: View {
                 ForEach(followups.prefix(4), id: \.self) { item in
                     Button { ask(item) } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "sparkle").font(.system(size: 10, weight: .bold)).foregroundStyle(CineGlow.linear)
-                            Text(item).font(.system(size: 14, weight: .medium)).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
+                            Image(systemName: "sparkle").font(.app(size: 10, weight: .bold)).foregroundStyle(CineGlow.linear)
+                            Text(item).font(.app(size: 14, weight: .medium)).foregroundStyle(Color(uiColor: .label)).lineLimit(1)
                         }.padding(.horizontal, 12).frame(height: 32)
                             .glassEffect(.regular.interactive(), in: Capsule())
                             .cineGlow(Capsule(), active: false, lineWidth: 0.8)
@@ -426,7 +426,7 @@ struct CineMindView: View {
         HStack(alignment: .bottom, spacing: 8) {
             if typing {
                 Button { typing = false } label: {
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
+                    Image(systemName: "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
                         .frame(width: 48, height: 48).glassEffect(.regular.interactive(), in: Circle())
                         .glassEffectID("close", in: glassSpace)
                 }.buttonStyle(.plain).accessibilityLabel("Hide keyboard").accessibilityIdentifier("cinemind-hide-keyboard")
@@ -441,11 +441,11 @@ struct CineMindView: View {
     private var inputField: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField(messages.isEmpty ? "Ask about \(title.name)" : "Ask a follow-up", text: $draft, axis: .vertical)
-                .font(.system(size: 16)).lineLimit(1...5).focused($typing).submitLabel(.send).onSubmit { send() }
+                .font(.app(size: 16)).lineLimit(1...5).focused($typing).submitLabel(.send).onSubmit { send() }
                 .padding(.leading, 16).padding(.vertical, 12)
                 .accessibilityIdentifier("cinemind-field")
             Button { send() } label: {
-                Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundStyle(canSend ? .white : Color(uiColor: .secondaryLabel))
+                Image(systemName: "arrow.up").font(.app(size: 15, weight: .bold)).foregroundStyle(canSend ? .white : Color(uiColor: .secondaryLabel))
                     .frame(width: 36, height: 36)
                     .background(canSend ? AnyShapeStyle(AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .degrees(-60))) : AnyShapeStyle(Color.primary.opacity(0.08)), in: Circle())
                     .animation(.snappy(duration: 0.15), value: canSend)
@@ -493,7 +493,7 @@ struct CineMindView: View {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                messages.append(Message(fromYou: false, text: error.localizedDescription, failed: true))
+                messages.append(Message(fromYou: false, text: FriendlyError.message(error), failed: true))
             }
         }
     }

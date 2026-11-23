@@ -1146,7 +1146,7 @@ struct JellyPlayerView: View {
                 if audioDelay != 0 { engine.setAudioDelay(audioDelay) }
                 if subtitleDelay != 0 { engine.setSoftwareSubtitleDelay(subtitleDelay) }
             } catch {
-                let reason = error.localizedDescription
+                let reason = FriendlyError.message(error)
                 await couldNotOpen(reason, onMPV: false)
                 return
             }
@@ -2409,7 +2409,7 @@ struct JellyPlayerView: View {
                 .sorted { ($0.IsHashMatch == true ? 1 : 0, $0.DownloadCount ?? 0) > ($1.IsHashMatch == true ? 1 : 0, $1.DownloadCount ?? 0) }
         } catch {
             foundSubtitles = []
-            if !Task.isCancelled { subtitleNotice = error.localizedDescription }
+            if !Task.isCancelled { subtitleNotice = FriendlyError.message(error) }
         }
     }
     /// Saved on the server, then (once Jellyfin lists it with the video) added here and turned on.
@@ -2420,7 +2420,7 @@ struct JellyPlayerView: View {
         do {
             try await client.downloadSubtitle(id, subtitle: found.Id)
         } catch {
-            subtitleNotice = error.localizedDescription
+            subtitleNotice = FriendlyError.message(error)
             return
         }
         for _ in 0..<8 {

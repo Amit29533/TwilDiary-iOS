@@ -46,10 +46,10 @@ struct JellyRatingCardView: View {
             Rectangle().fill(Color(red: 0.89, green: 0.29, blue: 0.29)).frame(width: 3)
             VStack(alignment: .leading, spacing: 3) {
                 if let rating = info.rating {
-                    Text("RATED " + rating.uppercased()).font(.system(size: 17, weight: .bold)).tracking(0.3)
+                    Text("RATED " + rating.uppercased()).font(.app(size: 17, weight: .bold)).tracking(0.3)
                 }
                 if !info.warnings.isEmpty {
-                    Text(info.warnings.joined(separator: ", ")).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.88))
+                    Text(info.warnings.joined(separator: ", ")).font(.app(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.88))
                 }
             }
         }

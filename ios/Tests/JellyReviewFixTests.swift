@@ -219,6 +219,26 @@ import TwilDiaryCore
         XCTAssertEqual(JellyTagCircle.circles(in: index, hidden: [], limit: 1).map(\.id), ["comfy"])
     }
 
+    /// iOS's own error text is put in words; the app's own messages stay as they are.
+    func testErrorsAreSaidInWords() {
+        XCTAssertEqual(FriendlyError.message(URLError(.timedOut)), "It took too long to answer. Try again.")
+        XCTAssertEqual(FriendlyError.message(URLError(.notConnectedToInternet)), "You’re offline.")
+        XCTAssertEqual(FriendlyError.message(URLError(.cannotConnectToHost)), "The server didn’t answer. Check that it’s on.")
+        XCTAssertEqual(FriendlyError.message(NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)), "It took too long to answer. Try again.")
+        XCTAssertEqual(FriendlyError.message(APIError.message("Choose a show season.")), "Choose a show season.")
+        let broken = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "bad"))
+        XCTAssertEqual(FriendlyError.message(broken), "The answer couldn’t be read. Try again in a moment.")
+    }
+    /// Text follows iPhone's Text Size: exactly as designed at the default, held back at the largest.
+    func testTextFollowsTextSizeFromTheDefault() {
+        XCTAssertEqual(TextScale.scale(.large), 1)
+        XCTAssertLessThan(TextScale.scale(.xSmall), 1)
+        XCTAssertEqual(TextScale.scale(.xxxLarge), 1.22, accuracy: 0.001)
+        XCTAssertEqual(TextScale.scale(.accessibility5), 1.28, accuracy: 0.001)
+        let sizes: [DynamicTypeSize] = [.xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge, .accessibility1]
+        XCTAssertEqual(sizes.map(TextScale.scale), sizes.map(TextScale.scale).sorted(), "never smaller for a bigger setting")
+    }
+
     // MARK: Elsewhere
 
     /// A name alone takes a film of the year it should be, not the first of that name.

@@ -18,8 +18,8 @@ struct StatsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 14) {
             if title != nil || subtitle != nil {
                 VStack(alignment: .leading, spacing: 3) {
-                    if let title { Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink) }
-                    if let subtitle { Text(subtitle).font(.system(size: 14)).foregroundStyle(.secondary) }
+                    if let title { Text(title).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink) }
+                    if let subtitle { Text(subtitle).font(.app(size: 14)).foregroundStyle(.secondary) }
                 }
             }
             content
@@ -35,7 +35,7 @@ struct KindSwitch: View {
         HStack(spacing: 14) {
             Button("Movies") { shows = false }.foregroundStyle(shows ? Color.secondary : theme.accent)
             Button("Shows") { shows = true }.foregroundStyle(shows ? theme.accent : Color.secondary)
-        }.font(.system(size: 15, weight: .semibold)).buttonStyle(.plain)
+        }.font(.app(size: 15, weight: .semibold)).buttonStyle(.plain)
     }
 }
 
@@ -65,10 +65,10 @@ struct StatsJourneyCard: View {
     private var ink: Color { backdrop != nil ? .white : StatsHero.ink }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.system(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? ink.opacity(0.85) : theme.accent.opacity(0.9))
+            HStack(spacing: 8) { DiaryIcon(name: "sparkles", size: 14); Text("YOUR JOURNEY").font(.app(size: 13, weight: .semibold)).tracking(2) }.foregroundStyle(ThemeStore.current.native ? ink.opacity(0.85) : theme.accent.opacity(0.9))
             VStack(alignment: .leading, spacing: 2) {
-                Text(longDuration(insights.totalMinutes)).font(.system(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.6)
-                Text("total watch time").font(.system(size: 16)).foregroundStyle(ink.opacity(0.75))
+                Text(longDuration(insights.totalMinutes)).font(.app(size: 52, weight: .heavy)).tracking(-1.5).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.6)
+                Text("total watch time").font(.app(size: 16)).foregroundStyle(ink.opacity(0.75))
             }
             HStack(spacing: 10) {
                 tile(insights.episodes, "episodes"); tile(insights.shows, "shows"); tile(insights.movies, "movies")
@@ -82,26 +82,26 @@ struct StatsJourneyCard: View {
                     Text("\(coverage.dated.formatted()) watches dated")
                     Spacer(minLength: 6)
                     Text("\(coverage.unknown.formatted()) undated · \(coverage.missingRuntime.formatted()) no runtime")
-                }.font(.system(size: 13)).foregroundStyle(ink.opacity(0.75)).lineLimit(1).minimumScaleFactor(0.8)
+                }.font(.app(size: 13)).foregroundStyle(ink.opacity(0.75)).lineLimit(1).minimumScaleFactor(0.8)
             }
             if coverage.total == 0 {
-                Text("Log a movie or episode to start your stats.").font(.system(size: 14)).foregroundStyle(ink.opacity(0.85))
+                Text("Log a movie or episode to start your stats.").font(.app(size: 14)).foregroundStyle(ink.opacity(0.85))
             } else if coverage.unknown > 0 {
                 // Undated watches stay out of the charts; this opens them in History to give them dates.
                 NavigationLink(value: HistoryRoute(unknown: true)) {
                     HStack(spacing: 8) {
-                        Image(systemName: "calendar.badge.exclamationmark").font(.system(size: 14, weight: .semibold))
-                        Text("Review dates").font(.system(size: 14, weight: .semibold))
+                        Image(systemName: "calendar.badge.exclamationmark").font(.app(size: 14, weight: .semibold))
+                        Text("Review dates").font(.app(size: 14, weight: .semibold))
                         Spacer(minLength: 0)
-                        Text(coverage.unknown.counted("undated watch", "undated watches")).font(.system(size: 13)).foregroundStyle(ink.opacity(0.7))
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(ink.opacity(0.6))
+                        Text(coverage.unknown.counted("undated watch", "undated watches")).font(.app(size: 13)).foregroundStyle(ink.opacity(0.7))
+                        Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(ink.opacity(0.6))
                     }.foregroundStyle(ink).padding(.horizontal, 14).frame(height: 44)
                         .background(ink.opacity(0.08), in: Capsule()).overlay(Capsule().strokeBorder(ink.opacity(0.14))).contentShape(Capsule())
                 }.buttonStyle(.springPress).accessibilityLabel("Review dates").accessibilityIdentifier("stats-review-dates")
             }
             if coverage.future > 0 {
                 Text(coverage.future.counted("future-dated watch waits for its", "future-dated watches wait for their") + " watch day")
-                    .font(.system(size: 12)).foregroundStyle(ink.opacity(0.6))
+                    .font(.app(size: 12)).foregroundStyle(ink.opacity(0.6))
             }
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background {
@@ -125,8 +125,8 @@ struct StatsJourneyCard: View {
     }
     private func tile(_ value: Int, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value.formatted()).font(.system(size: 19, weight: .bold)).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.system(size: 13)).foregroundStyle(ink.opacity(0.7))
+            Text(value.formatted()).font(.app(size: 19, weight: .bold)).foregroundStyle(ink).lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.app(size: 13)).foregroundStyle(ink.opacity(0.7))
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ink.opacity(0.14)))
@@ -147,9 +147,9 @@ struct StatsPeriodTiles: View {
     }
     private func tile(_ label: String, _ minutes: Int, _ plays: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
-            Text(longDuration(minutes)).font(.system(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.7)
-            Text(plays.counted("play", "plays")).font(.system(size: 13)).foregroundStyle(.secondary)
+            Text(label).font(.app(size: 14)).foregroundStyle(.secondary)
+            Text(longDuration(minutes)).font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.7)
+            Text(plays.counted("play", "plays")).font(.app(size: 13)).foregroundStyle(.secondary)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
@@ -189,13 +189,13 @@ struct StatsOverTimeCard: View {
                         .lineStyle(StrokeStyle(lineWidth: 2.5)).foregroundStyle(theme.accent)
                     if item.year == peak?.year || item.year == years.last?.year {
                         PointMark(x: .value("Year", item.year), y: .value("Minutes", item.minutes)).symbolSize(60).foregroundStyle(theme.accent)
-                            .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.ink) }
+                            .annotation(position: .top) { Text(longDuration(item.minutes).components(separatedBy: " ").first ?? "").font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.ink) }
                     }
                 }.chartYAxis(.hidden)
                     // Quantitative years start the axis at 0 by default, which squeezed every year into the
                     // right edge; the axis now spans the first to the last year with a little room.
                     .chartXScale(domain: Double(years.first?.year ?? 0) - 0.6 ... Double(years.last?.year ?? 0) + 0.6)
-                    .chartXAxis { AxisMarks(values: labelled) { value in AxisValueLabel(collisionResolution: .disabled) { Text("'" + String((value.as(Int.self) ?? 0) % 100).leftPadded(2)).font(.system(size: 11)).fixedSize() } } }
+                    .chartXAxis { AxisMarks(values: labelled) { value in AxisValueLabel(collisionResolution: .disabled) { Text("'" + String((value.as(Int.self) ?? 0) % 100).leftPadded(2)).font(.app(size: 11)).fixedSize() } } }
                     .frame(height: 170).accessibilityLabel("Watch time per year")
             }
         }
@@ -217,8 +217,8 @@ struct StatsSplitCard: View {
                     Circle().stroke(Color(themed: "#f2b45a"), lineWidth: 22)
                     Circle().trim(from: 0, to: showShare).stroke(theme.accent, style: StrokeStyle(lineWidth: 22, lineCap: .butt)).rotationEffect(.degrees(-90))
                     VStack(spacing: 2) {
-                        Text("\(Int((max(showShare, 1 - showShare) * 100).rounded()))%").font(.system(size: 34, weight: .bold)).foregroundStyle(HomeStyle.ink)
-                        Text(showShare >= 0.5 ? "Shows" : "Movies").font(.system(size: 15)).foregroundStyle(.secondary)
+                        Text("\(Int((max(showShare, 1 - showShare) * 100).rounded()))%").font(.app(size: 34, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                        Text(showShare >= 0.5 ? "Shows" : "Movies").font(.app(size: 15)).foregroundStyle(.secondary)
                     }
                 }.frame(width: 170, height: 170).frame(maxWidth: .infinity).padding(.vertical, 6).accessibilityHidden(true)
                 row("Shows", theme.accent, showShare, insights.showMinutes)
@@ -229,9 +229,9 @@ struct StatsSplitCard: View {
     private func row(_ label: String, _ color: Color, _ share: Double, _ minutes: Int) -> some View {
         HStack(spacing: 10) {
             Circle().fill(color).frame(width: 10, height: 10)
-            Text(label).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+            Text(label).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
             Spacer()
-            Text("\(Int((share * 100).rounded()))% · \(longDuration(minutes))").font(.system(size: 14)).foregroundStyle(.secondary)
+            Text("\(Int((share * 100).rounded()))% · \(longDuration(minutes))").font(.app(size: 14)).foregroundStyle(.secondary)
         }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14)).accessibilityElement(children: .combine)
     }
 }
@@ -246,21 +246,21 @@ struct StatsWhenCard: View {
         if insights.hours.contains(where: { $0 > 0 }) {
             StatsCard(title: "When you watch") {
                 HStack {
-                    Text("Time of day").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                    Text("Time of day").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
-                    if let hour = insights.peakHour { Text("Peaks around " + hourLabel(hour)).font(.system(size: 14)).foregroundStyle(theme.accent) }
+                    if let hour = insights.peakHour { Text("Peaks around " + hourLabel(hour)).font(.app(size: 14)).foregroundStyle(theme.accent) }
                 }
                 Chart(Array(insights.hours.enumerated()), id: \.offset) { item in
                     AreaMark(x: .value("Hour", item.offset), y: .value("Plays", item.element)).interpolationMethod(.catmullRom)
                         .foregroundStyle(LinearGradient(colors: [theme.accent.opacity(0.35), .clear], startPoint: .top, endPoint: .bottom))
                     LineMark(x: .value("Hour", item.offset), y: .value("Plays", item.element)).interpolationMethod(.catmullRom).foregroundStyle(theme.accent)
                 }.chartYAxis(.hidden)
-                    .chartXAxis { AxisMarks(values: [0, 3, 6, 9, 12, 15, 18, 21]) { value in AxisValueLabel { Text(String(format: "%02d", value.as(Int.self) ?? 0)).font(.system(size: 11)) } } }
+                    .chartXAxis { AxisMarks(values: [0, 3, 6, 9, 12, 15, 18, 21]) { value in AxisValueLabel { Text(String(format: "%02d", value.as(Int.self) ?? 0)).font(.app(size: 11)) } } }
                     .frame(height: 130).accessibilityLabel("Plays by hour of day")
                 HStack {
-                    Text("Day of week").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                    Text("Day of week").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
-                    if let day = insights.peakWeekday { Text(Self.days[day] + "s lead").font(.system(size: 14)).foregroundStyle(theme.accent) }
+                    if let day = insights.peakWeekday { Text(Self.days[day] + "s lead").font(.app(size: 14)).foregroundStyle(theme.accent) }
                 }.padding(.top, 6)
                 let most = max(1, insights.weekdays.max() ?? 1)
                 HStack(alignment: .bottom, spacing: 10) {
@@ -268,7 +268,7 @@ struct StatsWhenCard: View {
                         VStack(spacing: 6) {
                             RoundedRectangle(cornerRadius: 6).fill(index == insights.peakWeekday ? theme.accent : theme.accent.opacity(0.35))
                                 .frame(height: max(8, 90 * CGFloat(insights.weekdays[index]) / CGFloat(most)))
-                            Text(Self.days[index]).font(.system(size: 12, weight: index == insights.peakWeekday ? .bold : .regular)).foregroundStyle(index == insights.peakWeekday ? .white : .secondary)
+                            Text(Self.days[index]).font(.app(size: 12, weight: index == insights.peakWeekday ? .bold : .regular)).foregroundStyle(index == insights.peakWeekday ? .white : .secondary)
                         }.frame(maxWidth: .infinity)
                     }
                 }.frame(height: 116, alignment: .bottom).accessibilityLabel("Plays by day of week")
@@ -295,7 +295,7 @@ struct StatsHallOfFameCard: View {
                     HStack(spacing: 10) {
                         moment(first)
                         VStack(spacing: 6) {
-                            Text(span(first.date, latest.date)).font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent)
+                            Text(span(first.date, latest.date)).font(.app(size: 14, weight: .semibold)).foregroundStyle(theme.accent)
                             HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
                         }.frame(maxWidth: .infinity)
                         moment(latest)
@@ -309,18 +309,18 @@ struct StatsHallOfFameCard: View {
         HStack(spacing: 12) {
             DiaryIcon(name: icon, size: 17).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
-                if let detail { Text(detail).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink) }
+                Text(label).font(.app(size: 14)).foregroundStyle(.secondary)
+                if let detail { Text(detail).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink) }
             }
             Spacer()
-            Text(value).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
+            Text(value).font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
         }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsInsights.Moment) -> some View {
         NavigationLink(value: value.title.id) {
             VStack(spacing: 6) {
                 Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: 54, height: 76).clipShape(RoundedRectangle(cornerRadius: 9))
-                Text(value.date.formatted(.dateTime.day().month(.abbreviated).year())).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(value.date.formatted(.dateTime.day().month(.abbreviated).year())).font(.app(size: 12)).foregroundStyle(.secondary)
             }
         }.buttonStyle(.plain)
     }
@@ -345,13 +345,13 @@ struct StatsMarathonsCard: View {
                         HStack(spacing: 12) {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 46, height: 64).clipShape(RoundedRectangle(cornerRadius: 9))
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(item.title.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2)
-                                Text(item.day.formatted(.dateTime.day().month(.abbreviated).year())).font(.system(size: 13)).foregroundStyle(.secondary)
+                                Text(item.title.name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2)
+                                Text(item.day.formatted(.dateTime.day().month(.abbreviated).year())).font(.app(size: 13)).foregroundStyle(.secondary)
                             }
                             Spacer()
                             VStack(spacing: 0) {
-                                Text("\(item.episodes)").font(.system(size: 24, weight: .bold)).foregroundStyle(theme.accent)
-                                Text("episodes").font(.system(size: 12)).foregroundStyle(.secondary)
+                                Text("\(item.episodes)").font(.app(size: 24, weight: .bold)).foregroundStyle(theme.accent)
+                                Text("episodes").font(.app(size: 12)).foregroundStyle(.secondary)
                             }
                         }.padding(10).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityElement(children: .combine)
@@ -376,7 +376,7 @@ struct StatsPosterRow: View {
     @Binding var shows: Bool
     var body: some View {
         StatsCard {
-            HStack { Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink); Spacer(); KindSwitch(shows: $shows) }
+            HStack { Text(title).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink); Spacer(); KindSwitch(shows: $shows) }
             if items.isEmpty { Text("Nothing here yet.").font(.subheadline).foregroundStyle(.secondary) }
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
@@ -385,8 +385,8 @@ struct StatsPosterRow: View {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 104, height: 150).clipShape(RoundedRectangle(cornerRadius: 14))
                                 .overlay(alignment: .bottomLeading) {
                                     VStack(alignment: .leading, spacing: 0) {
-                                        Text(item.badge).font(.system(size: 13, weight: .bold))
-                                        if let detail = item.detail { Text(detail).font(.system(size: 11)) }
+                                        Text(item.badge).font(.app(size: 13, weight: .bold))
+                                        if let detail = item.detail { Text(detail).font(.app(size: 11)) }
                                     }.foregroundStyle(.white).padding(.horizontal, 7).padding(.vertical, 4).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 8)).padding(6)
                                 }
                         }.buttonStyle(.springPress).accessibilityLabel(item.title.name + ", " + item.badge)
@@ -409,10 +409,10 @@ struct StatsRatingsCard: View {
                     ForEach(0..<10, id: \.self) { index in
                         let count = insights.ratingCounts[index]
                         VStack(spacing: 5) {
-                            if count > 0 { Text("\(count)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white) }
+                            if count > 0 { Text("\(count)").font(.app(size: 11, weight: .semibold)).foregroundStyle(.white) }
                             RoundedRectangle(cornerRadius: 5).fill(index == top ? theme.accent : theme.accent.opacity(count > 0 ? 0.55 : 0.12))
                                 .frame(height: count > 0 ? max(6, 110 * CGFloat(count) / CGFloat(most)) : 3)
-                            Text("\(index + 1)").font(.system(size: 12, weight: index == top ? .bold : .regular)).foregroundStyle(index == top ? .white : .secondary)
+                            Text("\(index + 1)").font(.app(size: 12, weight: index == top ? .bold : .regular)).foregroundStyle(index == top ? .white : .secondary)
                         }.frame(maxWidth: .infinity)
                     }
                 }.frame(height: 150, alignment: .bottom).accessibilityLabel("Your ratings from 1 to 10")
@@ -425,8 +425,8 @@ struct StatsRatingsCard: View {
     }
     private func average(_ label: String, _ value: Double?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.system(size: 14)).foregroundStyle(.secondary)
-            Text(value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").font(.system(size: 22, weight: .bold)).foregroundStyle(theme.accent)
+            Text(label).font(.app(size: 14)).foregroundStyle(.secondary)
+            Text(value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
     }
 }
@@ -441,10 +441,10 @@ struct StatsDecadesCard: View {
                 HStack(alignment: .bottom, spacing: 10) {
                     ForEach(decades.suffix(6)) { item in
                         VStack(spacing: 6) {
-                            Text("\(item.count)").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                            Text("\(item.count)").font(.app(size: 13, weight: .semibold)).foregroundStyle(.white)
                             RoundedRectangle(cornerRadius: 8).fill(item.count == most ? theme.accent : theme.accent.opacity(0.55))
                                 .frame(height: max(6, 110 * CGFloat(item.count) / CGFloat(most)))
-                            Text("\(String(item.decade))s").font(.system(size: 12, weight: item.count == most ? .bold : .regular)).foregroundStyle(item.count == most ? .white : .secondary)
+                            Text("\(String(item.decade))s").font(.app(size: 12, weight: item.count == most ? .bold : .regular)).foregroundStyle(item.count == most ? .white : .secondary)
                         }.frame(maxWidth: .infinity)
                     }
                 }.frame(height: 160, alignment: .bottom).accessibilityLabel("Titles by release decade")
@@ -480,11 +480,11 @@ struct StatsGlanceCard: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(label).font(.system(size: 16)).foregroundStyle(Color(themed: "#c5c0cf"))
-                    if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
+                    Text(label).font(.app(size: 16)).foregroundStyle(Color(themed: "#c5c0cf"))
+                    if let detail { Text(detail).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer()
-                Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
+                Text(value).font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
                 if link { DiaryIcon(name: "chevron-right", size: 12).foregroundStyle(.secondary) }
             }.padding(.vertical, 12).contentShape(Rectangle())
             if !last { Divider().overlay(Color.primary.opacity(0.07)) }

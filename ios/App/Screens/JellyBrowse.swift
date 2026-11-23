@@ -215,7 +215,7 @@ struct JellyNameTile: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-                Text(name).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
+                Text(name).font(.app(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
                     .shadow(color: .black.opacity(0.35), radius: 4).padding(12)
             }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

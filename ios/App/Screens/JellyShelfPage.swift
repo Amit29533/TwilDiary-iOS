@@ -24,7 +24,7 @@ struct JellyShelfPage: View {
                     else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
                     else if items.isEmpty { Text("Nothing here.").font(.subheadline).foregroundStyle(.secondary) }
                     else {
-                        Text(items.count == 1 ? "1 title" : "\(items.count) titles").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(items.count == 1 ? "1 title" : "\(items.count) titles").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                             .padding(.horizontal, 4)
                     }
                     JellyGrid(items: items, client: client, playing: $playing)

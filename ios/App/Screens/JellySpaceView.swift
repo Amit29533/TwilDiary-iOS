@@ -99,8 +99,12 @@ struct JellySpaceView: View {
             // A library or title hidden or shown again: the tags without it, or with it.
             .onChange(of: hiddenRaw) { _, _ in Task { await loadTags() } }
     }
-    /// What Discover's rows depend on: what's hidden and what's switched off for recommending.
-    private var discoverID: String { [hiddenRaw, hiddenRowsRaw, recommendOffRaw].joined(separator: "|") }
+    /// What Discover's rows depend on: what's hidden, what's switched off for recommending, and the user.
+    private var discoverID: String { [hiddenRaw, hiddenRowsRaw, recommendOffRaw, watchingAs, signedInAs].joined(separator: "|") }
+    /// Who you watch as (Settings → JellySpace), or are signed in as: another user draws Discover again
+    /// (it stayed the last user's while JellySpace was open behind Settings).
+    @AppStorage("jellyspace.userID") private var watchingAs = ""
+    @AppStorage("jellyspace.account.user") private var signedInAs = ""
 
     /// Explore's layout: the big poster at the top (the newest films and shows), then the shelves
     /// at Explore's sizes.
@@ -148,10 +152,10 @@ struct JellySpaceView: View {
                 } else {
                     NavigationLink(value: AppDestination.jellyfin) {
                         HStack(spacing: 10) {
-                            Image(systemName: "server.rack").font(.system(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                            Text("Connect Jellyfin").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Image(systemName: "server.rack").font(.app(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            Text("Connect Jellyfin").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                         }.padding(.horizontal, 14).frame(minHeight: 50).diaryPanel(padding: 0, radius: 14).contentShape(Rectangle())
                     }.buttonStyle(.springPress).accessibilityIdentifier("jellyspace-connect").padding(.horizontal, 14).padding(.top, 72)
                 }
@@ -327,9 +331,9 @@ struct JellySpaceView: View {
                     Artwork(path: result.posterPath, title: result.label, initialsOnly: false)
                         .frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(result.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                        Text(result.label).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                         Text([result.year, result.mediaType == "tv" ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))
-                            .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                            .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                     }
                     Spacer(minLength: 8)
                     requestButton(result)
@@ -342,7 +346,7 @@ struct JellySpaceView: View {
         let status = requested.contains(result.id) ? 2 : result.status
         if status >= 2 {
             Text(status == 5 ? "Available" : status == 4 ? "Partly there" : "Requested")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                .font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
         } else {
             Button {
                 guard let seerr = JellySpace.seerr else { return }
@@ -352,11 +356,11 @@ struct JellySpaceView: View {
                         requested.insert(result.id)
                         requestNotice = nil
                     } catch {
-                        requestNotice = error.localizedDescription
+                        requestNotice = FriendlyError.message(error)
                     }
                 }
             } label: {
-                Text("Request").font(.system(size: 13, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
+                Text("Request").font(.app(size: 13, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
                     .padding(.horizontal, 14).frame(height: 32).background(ThemeStore.accent, in: Capsule())
             }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-request-\(result.id)")
         }
@@ -391,7 +395,7 @@ struct JellySpaceView: View {
     }
 
     private func heading(_ text: String) -> some View {
-        Text(text).font(.system(size: 20, weight: .semibold)).tracking(-0.2).foregroundStyle(HomeStyle.primary).lineLimit(1).accessibilityAddTraits(.isHeader)
+        Text(text).font(.app(size: 20, weight: .semibold)).tracking(-0.2).foregroundStyle(HomeStyle.primary).lineLimit(1).accessibilityAddTraits(.isHeader)
     }
 
     /// Your libraries as small pills (each library's newest have a row of their own further down).
@@ -440,7 +444,7 @@ struct JellySpaceView: View {
     /// One of the chips under the title, as Netflix has them: the name on glass with a fine edge
     /// (readable over any picture).
     private func chip(_ label: Text, ink: Color) -> some View {
-        label.font(.system(size: 14, weight: .semibold)).foregroundStyle(ink).lineLimit(1)
+        label.font(.app(size: 14, weight: .semibold)).foregroundStyle(ink).lineLimit(1)
             .padding(.horizontal, 16).frame(height: 36)
             .glassEffect(.regular.interactive(), in: Capsule())
             .overlay { Capsule().strokeBorder(ink.opacity(0.18), lineWidth: 0.5) }
@@ -536,30 +540,41 @@ struct JellySpaceView: View {
             HStack(spacing: 8) {
                 ForEach(genres, id: \.Id) { genre in
                     NavigationLink(value: JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre")) {
-                        Text(genre.Name ?? "").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Text(genre.Name ?? "").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                             .padding(.horizontal, 14).frame(height: 34).background(Color.primary.opacity(0.09), in: Capsule()).contentShape(Capsule())
                     }.buttonStyle(.springPress).accessibilityIdentifier("jellyspace-genre-" + genre.Id)
                 }
             }
         }.scrollIndicators(.hidden).scrollClipDisabled()
     }
-    /// Your Jellyfin tags as circles, the most used first: the newest title with each one inside, its name
-    /// and how many titles have it. Each opens its titles.
+    /// Your Jellyfin tags as wide tiles, the most used first: a title with the tag (its wide picture), and
+    /// over it the tag on up to two lines and how many titles have it. Each opens its titles. (Circles
+    /// cropped the posters and cut long tags like "based on novel or book".)
     private func tagsRow(_ tags: [JellyTagCircle], client: JellyfinClient) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             heading("Tags")
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 12) {
+                LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(tags) { tag in
+                        let shape = RoundedRectangle(cornerRadius: 14)
                         NavigationLink(value: JellyListRoute(kind: .tag, id: tag.id, name: tag.name)) {
-                            VStack(spacing: 6) {
-                                JellyPosterImage(item: tag.cover, client: client)
-                                    .frame(width: 64, height: 64).clipShape(Circle())
-                                    .padding(3).overlay(Circle().strokeBorder(ThemeStore.accent, lineWidth: 2))
-                                Text(tag.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                                Text("\(tag.count)").font(.system(size: 11)).foregroundStyle(HomeStyle.secondary)
+                            ZStack(alignment: .bottomLeading) {
+                                Color.clear.overlay {
+                                    let fallback = Artwork(path: nil, title: tag.name, initialsOnly: false)
+                                    if let url = JellySpace.wideImage(tag.cover, base: client.base) { JellyfinPoster(url: url) { fallback } } else { fallback }
+                                }
+                                LinearGradient(colors: [.black.opacity(0.8), .clear], startPoint: .bottom, endPoint: .center)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(tag.title).font(.app(size: 15, weight: .bold)).foregroundStyle(.white)
+                                        .lineLimit(2).multilineTextAlignment(.leading)
+                                    Text("\(tag.count) " + (tag.count == 1 ? "title" : "titles")).font(.app(size: 11, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.75))
+                                }
+                                .padding(10)
                             }
-                            .frame(width: 78).contentShape(Rectangle())
+                            .frame(width: 168, height: 96).clipShape(shape)
+                            .overlay(shape.strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
+                            .contentShape(shape)
                         }
                         .buttonStyle(.springPress)
                         .accessibilityLabel(tag.name + ", \(tag.count) " + (tag.count == 1 ? "title" : "titles"))
@@ -578,7 +593,7 @@ struct JellySpaceView: View {
                     ForEach(Array(shown(shelf.items).prefix(10).enumerated()), id: \.element.Id) { index, item in
                         NavigationLink(value: JellyDetailRoute(id: item.Id, name: item.Name ?? "")) {
                             HStack(alignment: .bottom, spacing: -20) {
-                                Text("\(index + 1)").font(.system(size: 104, weight: .black)).tracking(-6)
+                                Text("\(index + 1)").font(.app(size: 104, weight: .black)).tracking(-6)
                                     .foregroundStyle(HomeStyle.primary.opacity(0.18)).fixedSize().offset(y: 16)
                                 JellyPosterImage(item: item, client: client)
                                     .frame(width: posterSize.homeWidth, height: posterSize.homeWidth * 1.5)
@@ -599,7 +614,7 @@ struct JellySpaceView: View {
             HStack(alignment: .center, spacing: 10) {
                 heading("Hidden gems")
                 Spacer(minLength: 8)
-                Text("Unwatched · 7.5+").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
+                Text("Unwatched · 7.5+").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
                 SectionMoreLink(label: "View more Hidden gems", value: JellyShelfRoute(title: "Hidden gems", ids: items.map(\.Id)),
                                 identifier: "jellyspace-more-gems")
             }
@@ -636,7 +651,7 @@ struct JellySpaceView: View {
                 heading(shelf.title)
                 Spacer(minLength: 8)
                 Button { reshuffle(shelf) } label: {
-                    Image(systemName: "shuffle").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    Image(systemName: "shuffle").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         .frame(width: 36, height: 36).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Shuffle " + shelf.title).accessibilityIdentifier("jellyspace-shuffle-" + shelf.id)
                 if let library = shelf.library {
@@ -693,7 +708,7 @@ struct JellySpaceView: View {
             JellyHomeCache.discoverKey = key
             return
         }
-        let all = libraries.isEmpty ? ((try? await client.libraries()) ?? []) : libraries
+        let all = libraries.isEmpty ? ((try? await client.libraries(user: user)) ?? []) : libraries
         let hiddenIDs = self.hidden
         let defaults = UserDefaults.standard, turn = defaults.integer(forKey: "jellyspace.discover.turn")
         defaults.set(turn + 1, forKey: "jellyspace.discover.turn")
@@ -721,6 +736,10 @@ struct JellySpaceView: View {
     /// What was loaded last time shows at once; it's fetched again when it's over a minute old.
     private func appear() async {
         guard let client = JellySpace.client else { return }
+        // The rows from the library index (Dynamic recommendations, Tags) alongside the rest, from the index
+        // kept in memory or on disk: waiting for the server's rows first, they came in late and pushed the
+        // rows under them down.
+        if themes.isEmpty || tagCircles.isEmpty { Task { await loadThemes() } }
         // The rows were loaded for a server and a user: another user (or server) loads afresh.
         let server = client.base.absoluteString + "|" + (await JellyfinUser.id(client) ?? "")
         if libraries.isEmpty, JellyHomeCache.server == server, JellyHomeCache.at != nil {
@@ -735,12 +754,7 @@ struct JellySpaceView: View {
             libraries = saved.libraries; resume = saved.resume; nextUp = saved.nextUp; favourites = saved.favourites
             collections = saved.collections; latest = saved.latest; forYou = saved.forYou; loaded = true
         }
-        if JellyHomeCache.server == server, let at = JellyHomeCache.at, Date.now.timeIntervalSince(at) < 60, !libraries.isEmpty {
-            // The rows from the index aren't kept with the rest: back within the minute, the Dynamic
-            // recommendations and Tags rows were missing (the index itself is kept, so they're quick).
-            if themes.isEmpty { await loadThemes() } else if tagCircles.isEmpty { await loadTags() }
-            return
-        }
+        if JellyHomeCache.server == server, let at = JellyHomeCache.at, Date.now.timeIntervalSince(at) < 60, !libraries.isEmpty { return }
         await loadHome()
     }
     private func loadHome() async {
@@ -765,10 +779,10 @@ struct JellySpaceView: View {
         async let sets = client.items([URLQueryItem(name: "IncludeItemTypes", value: "BoxSet")], user: user, limit: 20)
         if listLibraries {
             do {
-                let found = try await client.libraries()
+                let found = try await client.libraries(user: user)
                 if found != libraries { libraries = found }
             } catch {
-                if !Task.isCancelled { failure = error.localizedDescription }
+                if !Task.isCancelled { failure = FriendlyError.message(error) }
             }
         }
         // Only the film libraries shown on the home (a hidden library's titles mustn't turn up here).
@@ -984,7 +998,7 @@ private struct JellyHero: View {
                     Text(String(format: "%.1f", score))
                 }
             }
-            .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+            .font(.app(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
             HStack(spacing: 10) {
                 playButton
                 favouriteButton
@@ -1018,7 +1032,7 @@ private struct JellyHero: View {
                 if starting { ProgressView().controlSize(.small).tint(.black) } else { Image(systemName: "play.fill") }
                 Text(playLabel).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+            .font(.app(size: 15, weight: .bold)).foregroundStyle(.black)
             .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 42)
             .background(.white, in: Capsule()).contentShape(Capsule())
         }
@@ -1033,13 +1047,13 @@ private struct JellyHero: View {
                 Image(systemName: symbol).contentTransition(.symbolEffect(.replace))
                 Text("Favourite").lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            .font(.app(size: 15, weight: .bold)).foregroundStyle(.white)
             .padding(.horizontal, 12).frame(maxWidth: .infinity).frame(height: 42)
             .background(.ultraThinMaterial, in: Capsule())
             .background(.white.opacity(0.12), in: Capsule()).contentShape(Capsule())
         }
         .buttonStyle(.springPress)
-        .sensoryFeedback(.selection, trigger: isFavourite)
+        .haptic(.selection, trigger: isFavourite)
         .accessibilityLabel(favouriteLabel)
         .accessibilityIdentifier("jellyspace-hero-favourite-" + item.Id)
     }
@@ -1064,7 +1078,7 @@ private struct JellyHero: View {
                 .frame(maxWidth: 260, maxHeight: 96).shadow(color: .black.opacity(0.4), radius: 10)
                 .accessibilityElement().accessibilityLabel(item.Name ?? "").accessibilityAddTraits(.isHeader)
         } else {
-            Text(item.Name ?? "").font(.system(size: 30, weight: .bold)).tracking(-0.4).foregroundStyle(.white)
+            Text(item.Name ?? "").font(.app(size: 30, weight: .bold)).tracking(-0.4).foregroundStyle(.white)
                 .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.7).accessibilityAddTraits(.isHeader)
         }
     }
@@ -1112,7 +1126,7 @@ private struct JellySpaceBarTitle: View {
         HStack(spacing: 8) {
             Image("jellyfin-mark").resizable().scaledToFit().frame(width: 24, height: 24)
                 .accessibilityHidden(true)
-            Text("JellySpace").font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            Text("JellySpace").font(.app(size: 19, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
         }
         .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
     }
@@ -1384,7 +1398,7 @@ struct JellyFolderPage: View {
             total = first.TotalRecordCount; fetched = first.Items.count
             items = arrange(first.Items)
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
+            if !Task.isCancelled { failure = FriendlyError.message(error) }
         }
     }
     /// The genres in here, for the Filter menu (the Library view only).
@@ -1441,7 +1455,7 @@ struct JellyGrid: View {
                     VStack(alignment: .leading, spacing: 3) {
                         JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
                         if let note = notes[item.Id], !note.isEmpty {
-                            Text(note).font(.system(size: 11, weight: .medium)).foregroundStyle(ThemeStore.accent).lineLimit(1)
+                            Text(note).font(.app(size: 11, weight: .medium)).foregroundStyle(ThemeStore.accent).lineLimit(1)
                                 .accessibilityLabel("Why: " + note)
                         }
                     }
@@ -1600,7 +1614,7 @@ struct JellyTile: View {
                                 .padding(16)
                         } else {
                             Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : JellyNames.title(item))
-                                .font(.system(size: shape == .full ? 28 : 22, weight: .bold)).tracking(-0.3).foregroundStyle(.white)
+                                .font(.app(size: shape == .full ? 28 : 22, weight: .bold)).tracking(-0.3).foregroundStyle(.white)
                                 .lineLimit(2).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.4), radius: 6).padding(16)
                         }
                     }
@@ -1616,11 +1630,11 @@ struct JellyTile: View {
     /// New episodes, the unwatched count, or the watched tick, on the top corner.
     @ViewBuilder private var cornerBadge: some View {
         if played != true, let fresh = JellyNewEpisodes.count(item) {
-            Text("\(fresh) new").font(.system(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
+            Text("\(fresh) new").font(.app(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
                 .padding(.horizontal, 7).frame(minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
                 .accessibilityLabel("\(fresh) new episodes")
         } else if counts, item.kind == "Series", played != true, let left = item.UserData?.UnplayedItemCount, left > 0 {
-            Text("\(left)").font(.system(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(.white)
+            Text("\(left)").font(.app(size: 12, weight: .bold)).monospacedDigit().foregroundStyle(.white)
                 .padding(.horizontal, 5).frame(minWidth: 22, minHeight: 22).background(ThemeStore.accent, in: Capsule()).padding(5)
         } else if ticks { JellyWatchedMark(item: item, played: played) }
     }
@@ -1633,7 +1647,7 @@ struct JellyTile: View {
                     let fallback = ZStack {
                         Artwork(path: nil, title: item.Name ?? "", initialsOnly: false)
                         if item.IsFolder == true && item.kind != "Series" && item.kind != "Season" {
-                            Image(systemName: "folder.fill").font(.system(size: 30)).foregroundStyle(HomeStyle.chipText)
+                            Image(systemName: "folder.fill").font(.app(size: 30)).foregroundStyle(HomeStyle.chipText)
                         }
                     }
                     // By shape: never cut off (a cover scan's front in a poster, the first landscape
@@ -1648,9 +1662,9 @@ struct JellyTile: View {
                 .overlay { if home { RoundedRectangle(cornerRadius: corner).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline) } }
             if captions {
                 Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
-                    .font(.system(size: home ? 14 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    .font(.app(size: home ? 14 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     .lineLimit(home ? 2 : titleLines, reservesSpace: home).multilineTextAlignment(.leading).padding(.top, home ? 9 : 8)
-                Text(JellySpace.detail(item)).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, home ? 4 : 2)
+                Text(JellySpace.detail(item)).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, home ? 4 : 2)
             }
         }.contentShape(Rectangle())
     }
@@ -1687,8 +1701,8 @@ private struct JellySuggestionRow: View {
                         .overlay(alignment: .bottom) { JellyProgress(item: item, played: played) }
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.Name ?? "").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
-                        Text(line).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Text(item.Name ?? "").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                        Text(line).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 0)
                 }.contentShape(Rectangle())
@@ -1698,7 +1712,7 @@ private struct JellySuggestionRow: View {
                 ZStack {
                     Circle().strokeBorder(HomeStyle.primary, lineWidth: 2)
                     if starting { ProgressView().controlSize(.small) } else {
-                        Image(systemName: "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary).offset(x: 1)
+                        Image(systemName: "play.fill").font(.app(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary).offset(x: 1)
                     }
                 }.frame(width: 38, height: 38).contentShape(Circle())
             }
@@ -1747,9 +1761,9 @@ struct JellyEpisodeRow: View {
                         still
                         VStack(alignment: .leading, spacing: 3) {
                             Text([item.IndexNumber.map { "\($0)." }, item.Name].compactMap { $0 }.joined(separator: " "))
-                                .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 .lineLimit(2).multilineTextAlignment(.leading)
-                            if !meta.isEmpty { Text(meta).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                            if !meta.isEmpty { Text(meta).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                         }
                         Spacer(minLength: 0)
                     }.contentShape(Rectangle())
@@ -1759,17 +1773,17 @@ struct JellyEpisodeRow: View {
                 // Watched: a tap marks it watched or not, in Jellyfin.
                 Button { toggleWatched() } label: {
                     Image(systemName: watched ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 22, weight: .regular))
+                        .font(.app(size: 22, weight: .regular))
                         .foregroundStyle(watched ? Color(themed: "#3fbf6f") : HomeStyle.secondary)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
-                .buttonStyle(.springPress).sensoryFeedback(.selection, trigger: watched)
+                .buttonStyle(.springPress).haptic(.selection, trigger: watched)
                 .accessibilityLabel(watched ? "Mark unwatched" : "Mark watched")
                 .accessibilityIdentifier("jellyspace-episode-watched-" + item.Id)
             }
             if let overview = item.Overview.map(JellySpace.plainText), !overview.isEmpty {
-                Text(overview).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(3)
+                Text(overview).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1796,7 +1810,7 @@ struct JellyEpisodeRow: View {
                 } else { fallback }
             }
             .overlay {
-                Image(systemName: "play.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                Image(systemName: "play.fill").font(.app(size: 13, weight: .bold)).foregroundStyle(.white)
                     .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                     .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
             }
@@ -1857,7 +1871,7 @@ struct JellyWatchedMark: View {
     var played: Bool? = nil
     var body: some View {
         if played ?? (item.UserData?.Played == true), item.IsFolder != true {
-            Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+            Image(systemName: "checkmark").font(.app(size: 11, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 22, height: 22).background(.black.opacity(0.65), in: Circle()).padding(6)
         }
     }
@@ -1891,14 +1905,14 @@ struct JellyWideCard: View {
                     .overlay(alignment: .topTrailing) { JellyWatchedMark(item: item, played: played) }
                     .overlay(alignment: .topLeading) {
                         if nextUp {
-                            Text("NEXT UP").font(.system(size: 10, weight: .bold)).tracking(0.3).foregroundStyle(.white)
+                            Text("NEXT UP").font(.app(size: 10, weight: .bold)).tracking(0.3).foregroundStyle(.white)
                                 .padding(.horizontal, 7).frame(height: 20).background(.black.opacity(0.6), in: Capsule()).padding(large ? 10 : 7)
                         }
                     }
                     .overlay {
                         if large {
                             let circle: CGFloat = pictureOnly ? 40 : 58
-                            Image(systemName: "play.fill").font(.system(size: pictureOnly ? 16 : 22, weight: .bold)).foregroundStyle(.white).offset(x: 2)
+                            Image(systemName: "play.fill").font(.app(size: pictureOnly ? 16 : 22, weight: .bold)).foregroundStyle(.white).offset(x: 2)
                                 .frame(width: circle, height: circle).background(.black.opacity(0.28), in: Circle())
                                 .overlay(Circle().strokeBorder(.white, lineWidth: pictureOnly ? 2 : 3)).shadow(color: .black.opacity(0.3), radius: 8)
                                 .accessibilityHidden(true)
@@ -1907,9 +1921,9 @@ struct JellyWideCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: pictureOnly ? 5 : large ? 16 : 8))
                 if !pictureOnly {
                     Text(item.kind == "Episode" ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? ""))
-                        .font(.system(size: large ? 16 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, large ? 10 : 8)
+                        .font(.app(size: large ? 16 : 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, large ? 10 : 8)
                     Text(large ? JellySpace.cardLine(item) : nextUp || (item.UserData?.PlayedPercentage ?? 0) > 0 ? JellySpace.continueLine(item) : JellySpace.detail(item))
-                        .font(.system(size: large ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, large ? 3 : 2)
+                        .font(.app(size: large ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, large ? 3 : 2)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
@@ -2000,7 +2014,7 @@ struct JellyItemMenu: ViewModifier {
                 try await client.delete(id)
                 withAnimation(.smooth) { _ = JellyServerEdits.shared.deleted.insert(id) }
             } catch {
-                deleteFailure = error.localizedDescription
+                deleteFailure = FriendlyError.message(error)
             }
         }
     }

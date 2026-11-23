@@ -18,7 +18,7 @@ import TwilDiaryCore
                               badge: connected ? (saved.username.map { "@" + $0 } ?? "Connected", .good) : nil) {
             if !connected {
                 Text("Sign in to Trakt in Profile → Connections.")
-                    .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         if connected {
@@ -57,7 +57,7 @@ import TwilDiaryCore
     private func optionLabel(_ title: String) -> some View {
         let native = ThemeStore.current.native
         return VStack(alignment: .leading, spacing: native ? 1 : 2) {
-            Text(title).font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
+            Text(title).font(.app(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -361,7 +361,8 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
     static var cached: [JellyfinLibrary] = []
     static func load() async -> [JellyfinLibrary] {
         guard let client = JellySpace.client else { return cached }
-        if let found = try? await client.libraries() { cached = found }
+        let user = await JellyfinUser.id(client)
+        if let found = try? await client.libraries(user: user) { cached = found }
         return cached
     }
 }
@@ -449,10 +450,10 @@ private struct JellySettingsLink: View {
         NavigationLink(value: page) {
             HStack(spacing: 14) {
                 tile
-                Text(page.title).font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                Text(page.title).font(.app(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
                     .foregroundStyle(HomeStyle.primary).lineLimit(1).layoutPriority(1)
                 Spacer(minLength: 4)
-                if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                if let value { Text(value).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 SettingsChevron()
             }
             .settingsRowFrame().contentShape(Rectangle())
@@ -464,7 +465,7 @@ private struct JellySettingsLink: View {
         if ThemeStore.current.native {
             NativeTile(symbol: page.symbol, size: 30, color: page.tint.system)
         } else {
-            Image(systemName: page.symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+            Image(systemName: page.symbol).font(.app(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
                 .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
         }
     }
@@ -533,13 +534,13 @@ struct JellySettingsPageView: View {
     }
     static func menuLabel(_ text: String) -> some View {
         HStack(spacing: 4) {
-            Text(text).font(.system(size: 15))
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+            Text(text).font(.app(size: 15))
+            Image(systemName: "chevron.up.chevron.down").font(.app(size: 11, weight: .semibold))
         }.foregroundStyle(HomeStyle.secondary)
     }
     static func button(_ title: String, accent: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(accent)
+            Text(title).font(.app(size: 16, weight: .semibold)).foregroundStyle(accent)
                 .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
@@ -563,7 +564,7 @@ private struct JellyAccountGroup: View {
                         JellyAccount.signOut()
                         self.signedIn = nil
                         reload()
-                    }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("jellyspace-sign-out")
+                    }.font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("jellyspace-sign-out")
                 }
             } else {
                 if !profiles.isEmpty {
@@ -617,7 +618,7 @@ private struct JellyLibrariesGroup: View {
                     Button("Show") {
                         JellyHidden.show(entry.key)
                         hiddenRaw = UserDefaults.standard.string(forKey: JellyPrefs.hiddenKey) ?? "{}"
-                    }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
+                    }.font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
                 }
             }
         }
@@ -855,7 +856,7 @@ private struct JellySubtitlePreviewCard: View {
         .aspectRatio(16 / 9, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(alignment: .topLeading) {
-            Text("Preview").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+            Text("Preview").font(.app(size: 11, weight: .semibold)).foregroundStyle(.white)
                 .padding(.horizontal, 8).frame(height: 22).background(.black.opacity(0.45), in: Capsule()).padding(10)
         }
         .animation(.easeOut(duration: 0.15), value: look)
@@ -875,9 +876,9 @@ private struct JellySliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(title).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 Spacer(minLength: 8)
-                Text(shown).font(.system(size: 14)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                Text(shown).font(.app(size: 14)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
             }
             Slider(value: $value, in: range, step: step).tint(accent)
                 .accessibilityLabel(title).accessibilityValue(shown)
@@ -1105,7 +1106,7 @@ struct JellyEnginesGroups: View {
                     moved = 0
                 } label: {
                     Text(moved == 0 ? "No videos set to an engine of their own" : "Forget videos set to an engine (\(moved))")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(moved == 0 ? HomeStyle.secondary : Color.red)
+                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(moved == 0 ? HomeStyle.secondary : Color.red)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).frame(minHeight: 50).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).disabled(moved == 0).accessibilityIdentifier("jellyspace-forget-engines")
@@ -1177,11 +1178,11 @@ private struct JellyRequestsGroup: View {
             SettingsGroup(label: "Requests") {
                 TextField("Jellyseerr address", text: $seerrAddress)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    .font(.system(size: 15)).padding(.horizontal, 16).frame(minHeight: 48).accessibilityIdentifier("jellyspace-seerr-address")
+                    .font(.app(size: 15)).padding(.horizontal, 16).frame(minHeight: 48).accessibilityIdentifier("jellyspace-seerr-address")
                 SettingsDivider()
                 SecureField("API key", text: $seerrKey)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .font(.system(size: 15)).padding(.horizontal, 16).frame(minHeight: 48).accessibilityIdentifier("jellyspace-seerr-key")
+                    .font(.app(size: 15)).padding(.horizontal, 16).frame(minHeight: 48).accessibilityIdentifier("jellyspace-seerr-key")
                 SettingsDivider()
                 JellySettingsRows.button("Save", accent: theme.accent) { Task { await saveSeerr() } }
             }
@@ -1213,7 +1214,7 @@ private struct JellyRequestsGroup: View {
             seerrNotice = "Connected"
         } catch {
             seerrOn = false
-            seerrNotice = error.localizedDescription
+            seerrNotice = FriendlyError.message(error)
         }
     }
 }
@@ -1230,7 +1231,7 @@ private struct JellyStorageGroup: View {
                 Task { await JellyfinPosterCache.shared.removeAll() }
                 notice = "Picture cache cleared"
             } label: {
-                Text("Clear picture cache").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
+                Text("Clear picture cache").font(.app(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
                     .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-clear-cache")
         }
@@ -1260,7 +1261,7 @@ struct JellySignInSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 if mode == .quick {
                     if let code {
-                        Text(code).font(.system(size: 44, weight: .bold, design: .monospaced)).tracking(6)
+                        Text(code).font(.app(size: 44, weight: .bold, design: .monospaced)).tracking(6)
                             .foregroundStyle(HomeStyle.primary).frame(maxWidth: .infinity).accessibilityIdentifier("jellyspace-quick-code")
                         Text("Enter this code under Quick Connect in another Jellyfin app you're signed in to.")
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
@@ -1275,7 +1276,7 @@ struct JellySignInSheet: View {
                         .padding(.horizontal, 14).frame(minHeight: 48).diaryPanel(padding: 0, radius: 12)
                     Button { Task { await signInWithPassword() } } label: {
                         Group { if working { ProgressView().tint(WatchStyle.ink) } else { Text("Sign in") } }
-                            .font(.system(size: 16, weight: .bold)).foregroundStyle(WatchStyle.ink)
+                            .font(.app(size: 16, weight: .bold)).foregroundStyle(WatchStyle.ink)
                             .frame(maxWidth: .infinity, minHeight: 50).background(WatchStyle.fill, in: Capsule())
                     }.buttonStyle(.plain).disabled(name.isEmpty || working).accessibilityIdentifier("jellyspace-sign-in")
                 }
@@ -1298,7 +1299,7 @@ struct JellySignInSheet: View {
             JellyAccount.save(try await JellyAuth.signIn(base, name: name.trimmingCharacters(in: .whitespaces), password: password))
             dismiss()
         } catch {
-            failure = error.localizedDescription
+            failure = FriendlyError.message(error)
         }
     }
     /// Shows the code, then checks every few seconds (for up to five minutes) whether it was approved.
@@ -1320,7 +1321,7 @@ struct JellySignInSheet: View {
             code = nil
         } catch is CancellationError {
         } catch {
-            failure = error.localizedDescription
+            failure = FriendlyError.message(error)
         }
     }
 }

@@ -198,6 +198,8 @@ struct SavedTitleRoute: Hashable {
 struct RootView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
+    /// iPhone's Text Size, which the app's fonts follow (TextScale).
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -224,6 +226,8 @@ struct RootView: View {
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .smooth(duration: 0.45)) { showSplash = false }
     }
     var body: some View {
+        // Before anything inside is drawn (each screen's fonts read it), and again when it changes.
+        let _ = TextScale.set(dynamicTypeSize)
         @Bindable var router = router
         Group {
             if store.needsSignIn {
@@ -452,13 +456,13 @@ private struct RootNoticeBanner: View {
         if let notice = store.mutationRefreshNotice {
             // A small pill above the tab bar, not a banner over the page header.
             HStack(spacing: 10) {
-                Text("Saved · refresh failed" + (store.mutationRefreshReason.map { " (\($0))" } ?? "")).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Text("Saved · refresh failed" + (store.mutationRefreshReason.map { " (\($0))" } ?? "")).font(.app(size: 12, weight: .semibold)).lineLimit(1)
                     .accessibilityLabel(notice).accessibilityIdentifier("confirmed-write-notice")
-                Button("Refresh") { Task { await store.refresh() } }.font(.system(size: 12, weight: .semibold)).frame(minHeight: 40)
+                Button("Refresh") { Task { await store.refresh() } }.font(.app(size: 12, weight: .semibold)).frame(minHeight: 40)
                     .disabled(store.loading).accessibilityIdentifier("confirmed-write-refresh")
             }.padding(.horizontal, 14).frame(height: 40).glassEffect(.regular, in: Capsule()).fixedSize().padding(.bottom, 140)
         } else if let error = store.error {
-            HStack(spacing: 8) { Text(error).font(.system(size: 12)).lineLimit(2); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly).frame(minWidth: 36, minHeight: 40) }
+            HStack(spacing: 8) { Text(error).font(.app(size: 12)).lineLimit(2); Button("Dismiss", systemImage: "xmark") { store.error = nil }.labelStyle(.iconOnly).frame(minWidth: 36, minHeight: 40) }
                 .padding(.leading, 14).padding(.trailing, 4).glassEffect(.regular, in: Capsule()).padding(.horizontal, 24).padding(.bottom, 140)
         }
     }

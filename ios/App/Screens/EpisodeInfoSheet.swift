@@ -90,9 +90,9 @@ struct EpisodeInfoSheet: View {
         // Design (board 3): still, 16, label, 4, name, 8, facts, 12, summary, history, actions.
         VStack(alignment: .leading, spacing: 0) {
             still(item, p)
-            Text("SEASON \(season) · EPISODE \(item.number)").font(.system(size: 12, weight: .bold)).foregroundStyle(theme.accent)
+            Text("SEASON \(season) · EPISODE \(item.number)").font(.app(size: 12, weight: .bold)).foregroundStyle(theme.accent)
                 .padding(.top, 16)
-            Text(p.name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
+            Text(p.name).font(.app(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("episode-sheet-name").padding(.top, 4)
             facts(item, p).padding(.top, 8)
             summaryText(item, p).padding(.top, 12)
@@ -117,10 +117,10 @@ struct EpisodeInfoSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(title.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.horizontal, 64)
+            Text(title.name).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.horizontal, 64)
             HStack {
                 Button(action: onClose) {
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Image(systemName: "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
                 }.buttonStyle(.plain)
                     .accessibilityLabel("Close").accessibilityIdentifier("episode-sheet-close")
@@ -139,14 +139,14 @@ struct EpisodeInfoSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 24))
             .overlay(alignment: .topLeading) {
                 if p.watched {
-                    Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(theme.ink)
+                    Image(systemName: "checkmark").font(.app(size: 15, weight: .bold)).foregroundStyle(theme.ink)
                         .frame(width: 34, height: 34).background(theme.accent, in: Circle()).padding(12)
                         .accessibilityLabel("Watched")
                 }
             }
             .overlay(alignment: .topTrailing) {
                 ShareLink(item: shareText(item, p)) {
-                    Image(systemName: "square.and.arrow.up").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(width: 44, height: 44)
+                    Image(systemName: "square.and.arrow.up").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(width: 44, height: 44)
                         .glassEffect(.regular.interactive(), in: Circle())
                 }.padding(8).accessibilityLabel("Share episode")
             }
@@ -158,20 +158,20 @@ struct EpisodeInfoSheet: View {
         return HStack(spacing: 10) {
             if let traktScore {
                 HStack(spacing: 6) { BrandLogo(service: .trakt, size: 22); Text(traktScore.formatted(.number.precision(.fractionLength(1)))) }
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    .font(.app(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
             } else if let tmdbScore {
                 HStack(spacing: 6) { BrandLogo(service: .tmdb, size: 22); Text(tmdbScore.formatted(.number.precision(.fractionLength(1)))) }
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    .font(.app(size: 14, weight: .bold)).foregroundStyle(HomeStyle.primary)
             }
             let rest = [(p.runtime ?? item.runtimeMinutes).map { "\($0) min" }, item.airedOn.map { String($0.prefix(4)) }].compactMap { $0 }
             ForEach(Array(rest.enumerated()), id: \.offset) { index, part in
-                if index > 0 || (traktScore ?? tmdbScore) != nil { Text("·").font(.system(size: 14)).foregroundStyle(Color(themed: "#5a5a66")) }
-                Text(part).font(.system(size: 14)).foregroundStyle(HomeStyle.dateChipText)
+                if index > 0 || (traktScore ?? tmdbScore) != nil { Text("·").font(.app(size: 14)).foregroundStyle(Color(themed: "#5a5a66")) }
+                Text(part).font(.app(size: 14)).foregroundStyle(HomeStyle.dateChipText)
             }
             if let myRating {
                 Spacer(minLength: 4)
                 HStack(spacing: 3) { Image(systemName: "star.fill").foregroundStyle(.yellow); Text("\(myRating)") }
-                    .font(.system(size: 14, weight: .semibold)).accessibilityLabel("Your rating \(myRating)")
+                    .font(.app(size: 14, weight: .semibold)).accessibilityLabel("Your rating \(myRating)")
             }
         }.lineLimit(1)
     }
@@ -180,12 +180,12 @@ struct EpisodeInfoSheet: View {
         let text = p.hidden ? "Watch it or tap Reveal on the show page to read this summary." : p.summary
         let expanded = expanded.contains(item.id)
         VStack(alignment: .leading, spacing: 2) {
-            Text(text).font(.system(size: 16)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
+            Text(text).font(.app(size: 16)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
                 .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("episode-summary-\(item.number)")
             if !expanded && text.count > 150 {
                 Button("More") { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { _ = self.expanded.insert(item.id) } }
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 32)
+                    .font(.app(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 32)
             }
         }
     }
@@ -206,7 +206,7 @@ struct EpisodeInfoSheet: View {
                 DiaryIcon(name: "history", size: 17)
                 Text([history.latest.map { $0.diaryTime(date: .abbreviated) } ?? "Date unknown", history.plays.counted("play", "plays")].joined(separator: " · "))
                 DiaryIcon(name: "chevron-right", size: 13)
-            }.font(.system(size: 14)).foregroundStyle(HomeStyle.dateChipText).frame(maxWidth: .infinity).frame(minHeight: 44)
+            }.font(.app(size: 14)).foregroundStyle(HomeStyle.dateChipText).frame(maxWidth: .infinity).frame(minHeight: 44)
         }.buttonStyle(.plain).accessibilityIdentifier("episode-sheet-history")
     }
 
@@ -240,7 +240,7 @@ struct EpisodeInfoSheet: View {
                 .frame(width: 64, height: 64)
                 // Liquid Glass, as the Sentiments sheet's buttons (owner); a chosen one is the accent glass.
                 .glassEffect(on ? .regular.tint(theme.accent).interactive() : .regular.interactive(), in: Circle())
-            Text(label).font(.system(size: 13, weight: on ? .semibold : .regular)).foregroundStyle(on ? Color(themed: "#e5dcff") : HomeStyle.soft).lineLimit(1)
+            Text(label).font(.app(size: 13, weight: on ? .semibold : .regular)).foregroundStyle(on ? Color(themed: "#e5dcff") : HomeStyle.soft).lineLimit(1)
         }.contentShape(Rectangle())
     }
 
@@ -251,7 +251,7 @@ struct EpisodeInfoSheet: View {
             Button { go(false) } label: { pagerCircle("chevron.left") }
                 .buttonStyle(.springPress).disabled(index == 0).opacity(index == 0 ? 0.4 : 1).accessibilityLabel("Previous episode")
             VStack(spacing: 6) {
-                Text("Episode \(episode.number) of \(episodes.count)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+                Text("Episode \(episode.number) of \(episodes.count)").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.soft)
                 HStack(spacing: 6) {
                     ForEach(dotRange(index: index), id: \.self) { dot in
                         Capsule().fill(dot == index ? theme.accent : Color(themed: "#4a4a56")).frame(width: dot == index ? 16 : 6, height: 6)
@@ -263,7 +263,7 @@ struct EpisodeInfoSheet: View {
         }
     }
     private func pagerCircle(_ symbol: String) -> some View {
-        Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+        Image(systemName: symbol).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
             .frame(width: 56, height: 56).glassEffect(.regular.interactive(), in: Circle())
     }
     /// Five dots at most, the current one among them.
@@ -282,7 +282,7 @@ struct EpisodeInfoSheet: View {
             do {
                 try await TraktTitleReads.rateEpisode(store: store, show: show, season: season, episode: target.number, episodeID: target.id, rating: value)
                 myRatings[target.id] = .some(value)
-            } catch { if target.id == episode.id { ratingError = error.localizedDescription } }
+            } catch { if target.id == episode.id { ratingError = FriendlyError.message(error) } }
         }
     }
 }

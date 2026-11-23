@@ -75,7 +75,7 @@ import TwilDiaryCore
             feed.items = picks.map(\.item)
             UserDefaults.standard.set(try? JSONEncoder().encode(SavedPicks(day: today, picks: picks)), forKey: storageKey(movies))
         } catch {
-            if feed.items.isEmpty { feed.failure = error.localizedDescription }
+            if feed.items.isEmpty { feed.failure = FriendlyError.message(error) }
         }
         feed.loading = false; feed.loadedFor = today
         set(movies, feed)
@@ -107,7 +107,10 @@ import TwilDiaryCore
 
     func loadTrending(store: DiaryStore) async {
         let today = day(store)
-        guard trending.loadedFor != today, !trending.loading, let token = TMDBDirect.token(store) else { return }
+        guard trending.loadedFor != today, !trending.loading else { return }
+        // No TMDB key: nothing to read (asked again next time). Marked as read meanwhile, or the row's
+        // stand-in waited for ever.
+        guard let token = TMDBDirect.token(store) else { trending.loadedFor = "no TMDB key"; return }
         let planned = store.workspace.activeTitles.filter { $0.status == "planned" && $0.tmdbId != nil }
         guard !planned.isEmpty else { trending.loadedFor = today; return }
         trending.loading = true
@@ -245,8 +248,8 @@ struct StandardPoster: View {
                 .overlay(alignment: .bottomLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             if showsCaption {
-                Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(subtitleTint).lineLimit(1).frame(height: 18).padding(.top, 4)
+                Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+                Text(subtitle).font(.app(size: 12)).foregroundStyle(subtitleTint).lineLimit(1).frame(height: 18).padding(.top, 4)
             }
         }.accessibilityElement(children: .combine)
     }
@@ -263,7 +266,7 @@ private struct FeedHeading<Value: Hashable>: View {
         HStack(alignment: .center, spacing: 10) {
             HStack(spacing: 8) {
                 if ai { AISparkle() }
-                Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(title).font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     .minimumScaleFactor(0.75).truncationMode(.tail)
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
@@ -408,15 +411,15 @@ struct ExploreAIPrompts: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 AISparkle()
-                Text("Ask CineMind").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                Text("Ask CineMind").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(Self.prompts, id: \.label) { prompt in
                         NavigationLink(value: prompt) {
                             HStack(spacing: 6) {
-                                Image(systemName: "sparkles").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent)
-                                Text(prompt.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Image(systemName: "sparkles").font(.app(size: 13, weight: .semibold)).foregroundStyle(theme.accent)
+                                Text(prompt.label).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                             }.padding(.horizontal, 14).frame(height: 40).background(HomeStyle.card, in: Capsule())
                                 .overlay(Capsule().strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)).frame(minHeight: 44)
                         }.buttonStyle(.springPress).accessibilityIdentifier("explore-ai-" + prompt.label)
@@ -457,9 +460,9 @@ struct CineMindRow: View {
                 NavigationLink(value: AppDestination.apis) {
                     HStack(spacing: 10) {
                         CineMindMark(size: 22)
-                        Text("Add a Gemini or Groq key for CineMind's picks").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                        Text("Add a Gemini or Groq key for CineMind's picks").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     }.padding(.horizontal, 14).frame(minHeight: 48).diarySectionBackground(radius: 11).contentShape(Rectangle())
                 }.buttonStyle(.springPress)
             } else if !shown.isEmpty {
@@ -468,9 +471,9 @@ struct CineMindRow: View {
                 FeedPlaceholder()
             } else {
                 HStack(spacing: 10) {
-                    Text(feed.failure ?? "CineMind has no new picks right now.").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text(feed.failure ?? "CineMind has no new picks right now.").font(.app(size: 13)).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
-                    Button("Ask again") { Task { await feeds.loadCineMind(movies: movies, store: store, force: true) } }.font(.system(size: 13)).frame(minHeight: 44)
+                    Button("Ask again") { Task { await feeds.loadCineMind(movies: movies, store: store, force: true) } }.font(.app(size: 13)).frame(minHeight: 44)
                 }
             }
         }.task(id: DiaryDate.day(store.now)) { await feeds.loadCineMind(movies: movies, store: store) }
@@ -494,6 +497,12 @@ struct BecauseYouLovedRow: View {
                                 identifier: "explore-more-loved")
                     FeedTrack(items: feeds.loved.items.prefix(15).map(Keyed.init)) { CatalogTile(item: $0.item) }
                 }
+            } else if feeds.loved.loading || feeds.loved.loadedFor == nil, feeds.loved.failure == nil {
+                // While it reads: its shapes where the row will land (it took no room, then pushed Explore down).
+                VStack(alignment: .leading, spacing: 10) {
+                    FeedHeading(title: feeds.lovedSeed.map { "Because you loved " + $0.name } ?? "Because you loved", value: nil as ShowPageRoute?, identifier: "explore-more-loved")
+                    FeedPlaceholder()
+                }
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
         }.task(id: DiaryDate.day(store.now)) { await feeds.loadLoved(store: store) }
     }
@@ -508,6 +517,11 @@ struct TrendingPlannedRow: View {
                 VStack(alignment: .leading, spacing: 10) {
                     FeedHeading(title: "Trending from your Planned", value: ExploreFeedRoute(kind: .trending), identifier: "explore-more-trending")
                     FeedTrack(items: feeds.trending.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
+                }
+            } else if feeds.trending.loading || feeds.trending.loadedFor == nil, feeds.trending.failure == nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    FeedHeading(title: "Trending from your Planned", value: nil as ExploreFeedRoute?, identifier: "explore-more-trending")
+                    FeedPlaceholder()
                 }
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
         }.task(id: DiaryDate.day(store.now)) { await feeds.loadTrending(store: store) }
@@ -574,7 +588,7 @@ private struct ComingTile: View {
             } label: {
                 Group {
                     if adding { ProgressView().controlSize(.small) }
-                    else { Image(systemName: saved != nil ? "bell.fill" : "bell").font(.system(size: 13, weight: .semibold)) }
+                    else { Image(systemName: saved != nil ? "bell.fill" : "bell").font(.app(size: 13, weight: .semibold)) }
                 }.foregroundStyle(.white).frame(width: 30, height: 30).background(.black.opacity(0.6), in: Circle())
                     .padding(5).frame(minWidth: 44, minHeight: 44)
             }.buttonStyle(.plain).disabled(adding || (saved != nil && !removable))
@@ -621,7 +635,7 @@ struct ComingSoonRow: View {
         let feed = movies ? feeds.comingMovies : feeds.comingShows
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
-                Text("Coming soon").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text("Coming soon").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 Picker("Coming soon", selection: $movies) {
@@ -638,10 +652,10 @@ struct ComingSoonRow: View {
                 FeedPlaceholder()
             } else {
                 HStack(spacing: 10) {
-                    Text(feed.failure ?? "Nothing coming up.").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text(feed.failure ?? "Nothing coming up.").font(.app(size: 13)).foregroundStyle(.secondary)
                     if feed.failure != nil {
                         Button("Try again") { Task { await feeds.loadComing(store: store) } }
-                            .font(.system(size: 13, weight: .semibold)).accessibilityIdentifier("explore-coming-retry")
+                            .font(.app(size: 13, weight: .semibold)).accessibilityIdentifier("explore-coming-retry")
                     }
                 }.frame(minHeight: 44)
             }

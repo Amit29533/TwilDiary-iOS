@@ -48,14 +48,14 @@ struct ImportHistoryView: View {
         switch phase {
         case .choose:
             Text("Bring your watches, ratings and watchlist from another app. They’re added to \(destination); anything already there is left as it is.")
-                .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach(ImportSource.allCases) { option in
                 Button { source = option; picking = true } label: {
                     HStack(alignment: .top, spacing: 14) {
                         BrandLogo(service: option.logo, size: 44)
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(option.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                            Text(option.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.leading)
+                            Text(option.name).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text(option.hint).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
@@ -70,7 +70,7 @@ struct ImportHistoryView: View {
         case .ready(let found, let missed):
             let watches = found.reduce(0) { $0 + $1.plays.count }, rated = found.count { $0.rating != nil }, planned = found.count { $0.planned }
             VStack(alignment: .leading, spacing: 10) {
-                Text("Found in your \(source?.name ?? "") export").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                Text("Found in your \(source?.name ?? "") export").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 line("film.stack", found.count.counted("title", "titles"))
                 line("checkmark.circle", watches.counted("watch", "watches"))
                 line("star", rated.counted("rating", "ratings"))
@@ -85,11 +85,11 @@ struct ImportHistoryView: View {
         case .sending:
             progress("Adding to \(destination)… This can take a few minutes for a big history.", value: nil)
         case .finished(let message):
-            Label(message, systemImage: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(HomeStyle.primary)
+            Label(message, systemImage: "checkmark.circle.fill").font(.app(size: 15)).foregroundStyle(HomeStyle.primary)
                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("import-result")
             Button("Done") { dismiss() }.buttonStyle(SettingsPrimaryButtonStyle())
         case .failed(let message):
-            Text(message).font(.system(size: 15)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true)
+            Text(message).font(.app(size: 15)).foregroundStyle(Color(themed: "#ff8a80")).fixedSize(horizontal: false, vertical: true)
             Button("Try again") { phase = .choose }.buttonStyle(SettingsPrimaryButtonStyle())
         }
     }
@@ -100,12 +100,12 @@ struct ImportHistoryView: View {
     }
     private func progress(_ text: String, value: Double?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(text).font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             if let value { ProgressView(value: value).tint(HomeStyle.chipText) } else { ProgressView().tint(HomeStyle.chipText) }
         }
     }
     private func line(_ icon: String, _ text: String) -> some View {
-        Label(text, systemImage: icon).font(.system(size: 15)).foregroundStyle(HomeStyle.soft).lineLimit(3)
+        Label(text, systemImage: icon).font(.app(size: 15)).foregroundStyle(HomeStyle.soft).lineLimit(3)
     }
 
     private func start(_ source: ImportSource, urls: [URL]) {
@@ -138,7 +138,7 @@ struct ImportHistoryView: View {
                 let message = try await ServerBackups.restore(DiaryExport(workspace: workspace), store: store)
                 phase = .finished(message)
             } catch {
-                phase = .failed(error.localizedDescription)
+                phase = .failed(FriendlyError.message(error))
             }
         }
     }

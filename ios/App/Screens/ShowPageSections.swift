@@ -12,10 +12,10 @@ struct ShowSectionHeading<Value: Hashable>: View {
     var identifier = ""
     var body: some View {
         HStack(spacing: 10) {
-            Text(title).font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+            Text(title).font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             if let count {
                 // Design: 13 pt semibold #d8d4e6 on #17171d, 28 pt tall, #26262e hairline.
-                Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+                Text(count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
                     .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
                     .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             }
@@ -59,10 +59,10 @@ struct ParentalGuideSection: View {
                     VStack(alignment: .leading, spacing: 10) {
                         if let rating {
                             HStack(spacing: 12) {
-                                Text(rating).font(.system(size: 15, weight: .heavy)).foregroundStyle(.black)
+                                Text(rating).font(.app(size: 15, weight: .heavy)).foregroundStyle(.black)
                                     .padding(.horizontal, 12).frame(height: 32).background(.white, in: RoundedRectangle(cornerRadius: 9))
                                 if let age = ParentsGuide.age(for: rating) {
-                                    Label(age, systemImage: "face.smiling").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                    Label(age, systemImage: "face.smiling").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 }
                                 if tmdbRating != nil, let country = extras?.certificationCountry, country != "US" {
                                     Text(Locale.current.localizedString(forRegionCode: country) ?? country).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
@@ -94,15 +94,15 @@ struct ParentalGuideSection: View {
         let style = Self.styles[category.id] ?? Style(name: category.id.capitalized, symbol: "circle", color: "#9a96a8")
         let color = Color(themed: style.color)
         return HStack(spacing: 10) {
-            Image(systemName: style.symbol).font(.system(size: 14, weight: .medium)).foregroundStyle(color).frame(width: 20)
-            Text(style.name).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.7)
+            Image(systemName: style.symbol).font(.app(size: 14, weight: .medium)).foregroundStyle(color).frame(width: 20)
+            Text(style.name).font(.app(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 3) {
                 ForEach(0..<5, id: \.self) { index in
                     Capsule().fill(index < category.bars ? color : color.opacity(0.16)).frame(width: 14, height: 6)
                 }
             }
-            Text(category.levelName).font(.system(size: 13, weight: .medium)).foregroundStyle(category.level == 0 ? HomeStyle.secondary : color)
+            Text(category.levelName).font(.app(size: 13, weight: .medium)).foregroundStyle(category.level == 0 ? HomeStyle.secondary : color)
                 .lineLimit(1).frame(width: 60, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore).accessibilityLabel(style.name + ": " + category.levelName)
@@ -128,7 +128,7 @@ struct MetaChip: View {
     var fact = false
     var body: some View {
         let radius: CGFloat = fact ? 8 : 9
-        Text(text).font(.system(size: 11, weight: fact ? .bold : .semibold)).lineLimit(1)
+        Text(text).font(.app(size: 11, weight: fact ? .bold : .semibold)).lineLimit(1)
             .foregroundStyle(tint)
             .padding(.horizontal, 9).frame(height: 24)
             .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: radius))
@@ -311,9 +311,9 @@ struct RatingBoxes: View {
                         if let service = BrandLogo.service(forRatingSource: box.id) {
                             BrandLogo(service: service, size: 20)
                         } else {
-                            Text(box.label).font(.system(size: 9, weight: .bold)).foregroundStyle(box.color)
+                            Text(box.label).font(.app(size: 9, weight: .bold)).foregroundStyle(box.color)
                         }
-                        Text(box.text).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
+                        Text(box.text).font(.app(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
                     }.frame(maxWidth: .infinity).frame(height: 46)
                         .cardSurface(12)
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
@@ -373,8 +373,8 @@ struct RatingCircles: View {
                 ZStack {
                     Circle().fill(mine.map { Self.color($0).opacity(0.22) } ?? Color.primary.opacity(0.07))
                     Circle().strokeBorder(mine.map { Self.color($0).opacity(0.55) } ?? Color.primary.opacity(0.18), lineWidth: 1.5)
-                    if let mine { Text(mine.formatted(.number.precision(.fractionLength(0...1)))).font(.system(size: 17, weight: .bold)).foregroundStyle(Self.color(mine)) }
-                    else { Image(systemName: "star").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary) }
+                    if let mine { Text(mine.formatted(.number.precision(.fractionLength(0...1)))).font(.app(size: 17, weight: .bold)).foregroundStyle(Self.color(mine)) }
+                    else { Image(systemName: "star").font(.app(size: 17, weight: .semibold)).foregroundStyle(.secondary) }
                 }.frame(width: 50, height: 50)
             }.buttonStyle(.springPress).accessibilityLabel("Your rating").accessibilityValue(mine.map { $0.formatted() } ?? "Not rated")
                 .accessibilityHint("Tap to rate").accessibilityIdentifier("title-personal-rating")
@@ -387,9 +387,9 @@ struct RatingCircles: View {
                     if let community {
                         Circle().trim(from: 0, to: min(1, max(0, community / 10))).stroke(Self.color(community), style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .rotationEffect(.degrees(-90))
-                        Text(community.formatted(.number.precision(.fractionLength(0...1)))).font(.system(size: 15, weight: .bold)).foregroundStyle(Self.color(community))
+                        Text(community.formatted(.number.precision(.fractionLength(0...1)))).font(.app(size: 15, weight: .bold)).foregroundStyle(Self.color(community))
                     } else {
-                        Text("–").font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                        Text("–").font(.app(size: 15, weight: .bold)).foregroundStyle(HomeStyle.secondary)
                     }
                 }.frame(width: 46, height: 46).padding(2)
             }.buttonStyle(.springPress).disabled(onCommunity == nil)
@@ -426,8 +426,8 @@ struct TitleTagsSection: View {
     private func pill(_ keyword: TitleKeyword) -> some View {
         NavigationLink(value: route(keyword)) {
             HStack(spacing: 8) {
-                Text(TagEmoji.symbol(for: keyword.name)).font(.system(size: 17))
-                Text(keyword.name.capitalizedTag).font(.system(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(TagEmoji.symbol(for: keyword.name)).font(.app(size: 17))
+                Text(keyword.name.capitalizedTag).font(.app(size: 14, weight: .medium)).foregroundStyle(HomeStyle.primary).lineLimit(1)
             }.padding(.horizontal, 14).frame(height: 44).fixedSize()
                 .pillSurface(border: Color(themed: "#2a2a33"))
         }.buttonStyle(.springPress).accessibilityIdentifier("title-tag-\(keyword.id)")
@@ -464,7 +464,7 @@ struct CompanyLogo: View {
                 Artwork(path: logo, title: company.name, contentMode: .fit).padding(.horizontal, 18).padding(.vertical, 16)
                     .background(Color(themed: "#f2f1f5"), in: RoundedRectangle(cornerRadius: 16))
             } else {
-                Text(company.name).font(.system(size: 18, weight: .heavy)).foregroundStyle(Self.tint(company.name))
+                Text(company.name).font(.app(size: 18, weight: .heavy)).foregroundStyle(Self.tint(company.name))
                     .lineLimit(2).minimumScaleFactor(0.6).multilineTextAlignment(.center).padding(10)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -506,8 +506,8 @@ struct CompaniesSection: View {
                             NavigationLink(value: CompanyRoutes.explore(company, kind: route.kind)) {
                                 VStack(spacing: 6) {
                                     CompanyLogo(company: company).frame(width: 170, height: 96)
-                                    Text(company.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                                    Text(CompanyRoutes.label(company, animated: animated)).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(company.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
+                                    Text(CompanyRoutes.label(company, animated: animated)).font(.app(size: 12.5)).foregroundStyle(.secondary).lineLimit(1)
                                 }.frame(width: 170)
                             }.buttonStyle(.springPress).accessibilityIdentifier("title-company-\(company.key)")
                         }
@@ -539,8 +539,9 @@ struct ListCollageCard: View {
                     }
                 }
             }.frame(width: width - 28, height: (width - 28) * 0.62 * 1.5, alignment: .leading).clipped()
-            Text(list.name).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).multilineTextAlignment(.leading)
-            Text(list.itemCount.counted("item", "items")).font(.system(size: 13)).foregroundStyle(.secondary)
+            // Two lines' room whatever the name, so every card (and the stand-in while loading) is one height.
+            Text(list.name).font(.app(size: 15.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
+            Text(list.itemCount.counted("item", "items")).font(.app(size: 13)).foregroundStyle(.secondary)
         }.padding(14).frame(width: width, alignment: .topLeading)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.outline(0.08)))
@@ -551,25 +552,54 @@ struct InListsSection: View {
     let route: CatalogRoute
     let title: String
     @Environment(DiaryStore.self) private var store
-    @State private var lists: [CanvasList] = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// nil while loading.
+    @State private var lists: [CanvasList]?
     var body: some View {
         Group {
-            if !lists.isEmpty {
+            if lists?.isEmpty != true {
                 VStack(alignment: .leading, spacing: 12) {
                     ShowSectionHeading(title: "In lists", value: ShowPageRoute.lists(route, title: title), identifier: "title-lists-all")
+                        .allowsHitTesting(lists != nil)
                     ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 12) {
-                            ForEach(lists.prefix(6)) { list in
-                                NavigationLink(value: CanvasListRoute(id: list.id, name: list.name, user: list.user)) { ListCollageCard(list: list) }
-                                    .buttonStyle(.springPress).accessibilityIdentifier("title-list-\(list.id)")
+                            if let lists {
+                                ForEach(lists.prefix(6)) { list in
+                                    NavigationLink(value: CanvasListRoute(id: list.id, name: list.name, user: list.user)) { ListCollageCard(list: list) }
+                                        .buttonStyle(.springPress).accessibilityIdentifier("title-list-\(list.id)")
+                                }
+                            } else {
+                                // While the lists load: cards of the same size where they'll land. The section took no
+                                // room until they came, then appeared at full height and pushed the page down mid-scroll.
+                                ForEach(0..<2, id: \.self) { _ in ListCollageCardPlaceholder() }
                             }
                         }
-                    }.scrollIndicators(.hidden).scrollClipDisabled()
+                    }.scrollIndicators(.hidden).scrollClipDisabled().scrollDisabled(lists == nil)
                 }
             } else {
                 Color.clear.frame(height: 0).accessibilityHidden(true)
             }
-        }.task(id: route) { lists = (try? await TitleListsCache.load(store: store, route: route, sort: "popular")) ?? [] }
+        }
+        // In no list: the room it held closes smoothly rather than at once.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: lists?.isEmpty)
+        .task(id: route) { lists = (try? await TitleListsCache.load(store: store, route: route, sort: "popular")) ?? [] }
+    }
+}
+
+/// ListCollageCard's stand-in while lists load: its exact size, in grey.
+struct ListCollageCardPlaceholder: View {
+    var width: CGFloat = 170
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            RoundedRectangle(cornerRadius: 10).fill(Color(uiColor: .tertiarySystemFill))
+                .frame(width: width - 28, height: (width - 28) * 0.62 * 1.5)
+            Text("A list's name").font(.app(size: 15.5, weight: .semibold)).lineLimit(2, reservesSpace: true)
+            Text("10 items").font(.app(size: 13))
+        }
+        .redacted(reason: .placeholder)
+        .padding(14).frame(width: width, alignment: .topLeading)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 20))
+        .accessibilityHidden(true)
     }
 }
 
@@ -656,8 +686,8 @@ struct RelatedCollectionCard: View {
             }
             RelatedCollection.tint(index).opacity(0.72)
             VStack(spacing: 3) {
-                Text(collection.name).font(.system(size: showCount ? 24 : 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.7)
-                if showCount, let subtitle { Text(subtitle).font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85)) }
+                Text(collection.name).font(.app(size: showCount ? 24 : 19, weight: .bold)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.7)
+                if showCount, let subtitle { Text(subtitle).font(.app(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85)) }
             }.shadow(color: .black.opacity(0.35), radius: 4).padding(.horizontal, 10)
         }.clipShape(RoundedRectangle(cornerRadius: 22))
             .accessibilityElement(children: .ignore).accessibilityLabel(collection.name + (subtitle.map { ", " + $0 } ?? ""))
@@ -692,17 +722,27 @@ struct RelatedCollectionsSection: View {
     var genres: [String] = []
     @Environment(DiaryStore.self) private var store
     @State private var model = RelatedCollectionsModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Group {
-            if !model.items.isEmpty {
+            if !model.items.isEmpty || !model.loaded {
                 VStack(alignment: .leading, spacing: 12) {
                     ShowSectionHeading(title: "Related collections", value: ShowPageRoute.collections(route, title: title, anime: anime), identifier: "title-collections-all")
+                        .allowsHitTesting(!model.items.isEmpty)
                     ScrollView(.horizontal) {
                         HStack(spacing: 12) {
                             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, collection in
                                 RelatedCollectionLink(collection: collection, route: route, anime: anime) {
                                     RelatedCollectionCard(collection: collection, index: index).frame(width: 180, height: 116)
                                 }.accessibilityIdentifier("title-collection-\(index)")
+                            }
+                            // While they load: grey cards of the same size where they'll land (the row took no room
+                            // until the first came, then pushed the page down mid-scroll).
+                            if !model.loaded {
+                                ForEach(0..<max(0, 2 - model.items.count), id: \.self) { _ in
+                                    RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .tertiarySystemFill)).frame(width: 180, height: 116)
+                                        .accessibilityHidden(true)
+                                }
                             }
                         }
                     }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -711,6 +751,9 @@ struct RelatedCollectionsSection: View {
                 // A real view keeps the task alive; on an empty Group it never ran.
                 Color.clear.frame(height: 0).accessibilityHidden(true)
             }
-        }.task(id: route) { await model.load(store: store, route: route, anime: anime, genres: genres) }
+        }
+        // None at all: the room it held closes smoothly rather than at once.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: model.loaded && model.items.isEmpty)
+        .task(id: route) { await model.load(store: store, route: route, anime: anime, genres: genres) }
     }
 }

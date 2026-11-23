@@ -15,7 +15,7 @@ struct LibraryTitleRow: View {
             Artwork(path: title.poster, title: title.name).frame(width: 72, height: 108)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 10) {
-                Text(title.name).font(.system(size: 15, weight: .semibold)).lineLimit(1).frame(minHeight: 20.25)
+                Text(title.name).font(.app(size: 15, weight: .semibold)).lineLimit(1).frame(minHeight: 20.25)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 InlineFlowLayout(spacing: 10, rowSpacing: 10) {
                     if let score { RatingBadge(score: score) }

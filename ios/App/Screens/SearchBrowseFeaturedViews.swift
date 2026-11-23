@@ -135,7 +135,7 @@ struct SearchTagsPage: View {
             animeTags = names.map { SearchBrowseTag(name: $0, anilist: true) }
             loadedAnime = true
         } catch is CancellationError { }
-        catch { if !Task.isCancelled { animeFailure = error.localizedDescription } }
+        catch { if !Task.isCancelled { animeFailure = FriendlyError.message(error) } }
     }
 
     private func find(_ requested: String) async {
@@ -147,7 +147,7 @@ struct SearchTagsPage: View {
             matches = found; completed = requested
         } catch {
             guard !Task.isCancelled, requested == query else { return }
-            failure = error.localizedDescription; completed = requested
+            failure = FriendlyError.message(error); completed = requested
         }
     }
 }
@@ -198,7 +198,7 @@ struct SearchTagTitlesPage: View {
     private func load() async {
         failure = nil
         do { category = try await tag.resolve(store: store) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -330,7 +330,7 @@ struct SearchAnimeTagTitlesPage: View {
             page = number
             hasNext = result.hasNext
         } catch {
-            if !Task.isCancelled, id == requestID, selection == filters { failure = error.localizedDescription }
+            if !Task.isCancelled, id == requestID, selection == filters { failure = FriendlyError.message(error) }
         }
     }
 }
@@ -500,7 +500,7 @@ struct SearchPeopleGrid: View {
                 if !new.isEmpty { break }
             }
         } catch is CancellationError { }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 

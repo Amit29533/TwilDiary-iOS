@@ -141,7 +141,7 @@ struct HomeView: View {
                         NavigationLink(value: AppDestination.calendar) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Airing calendar").accessibilityIdentifier("home-calendar-more")
                     }
                     if overview.upcoming.isEmpty {
-                        Text("No upcoming air dates in your library for the next 30 days.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                        Text("No upcoming air dates in your library for the next 30 days.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
                             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                             .cardSurface(20)
                             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
@@ -160,7 +160,7 @@ struct HomeView: View {
                                 NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
                                     .buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
                             }
-                            if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.system(size: 14, weight: .semibold)) }
+                            if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.app(size: 14, weight: .semibold)) }
                         }
                     }
                 }

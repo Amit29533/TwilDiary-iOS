@@ -62,7 +62,7 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
             lists += next.lists.filter { !known.contains($0.id) }
             page = next.page; totalPages = next.totalPages
         } catch is CancellationError { }
-        catch { if generation == request && !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if generation == request && !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
 }
 
@@ -132,6 +132,6 @@ struct CanvasListRoute: Hashable { let id: Int; let name: String; let user: Stri
             items = CatalogTools.merging(items, converted)
             page = next.page; totalPages = next.totalPages
         } catch is CancellationError { }
-        catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
 }

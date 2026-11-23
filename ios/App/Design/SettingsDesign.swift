@@ -15,8 +15,8 @@ struct SettingsIntro: View {
                 // Native: one plain line, as a system page explains itself.
                 Text(text).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else {
-                Text(eyebrow.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(eyebrow.uppercased()).font(.app(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                Text(text).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }.padding(.horizontal, ThemeStore.current.native ? 16 : 4)
     }
@@ -34,7 +34,7 @@ struct SettingsGroup<Content: View>: View {
             if let label {
                 HStack(spacing: 4) {
                     // Native: the grouped list's own header (13 pt, secondary, inset to the rows' text).
-                    Text(label.uppercased()).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary)
+                    Text(label.uppercased()).font(.app(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary)
                     if let info { SettingsInfoButton(text: info).padding(.vertical, -10) }
                 }.frame(height: 24).padding(.leading, native ? 16 : 0)
             }
@@ -51,9 +51,9 @@ struct SettingsRowTitle: View {
     init(_ title: String, _ subtitle: String) { self.title = title; self.subtitle = subtitle }
     var body: some View {
         if ThemeStore.current.native {
-            Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            Text(title).font(.app(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
         } else {
-            VStack(alignment: .leading, spacing: 2) { Text(title).font(.system(size: 15, weight: .semibold)); Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 2) { Text(title).font(.app(size: 15, weight: .semibold)); Text(subtitle).font(.app(size: 12)).foregroundStyle(.secondary) }
         }
     }
 }
@@ -87,13 +87,13 @@ struct SettingsActionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.85)
-                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                Text(title).font(.app(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.85)
+                if let subtitle { Text(subtitle).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
             }
             Spacer(minLength: 8)
             if busy { ProgressView().controlSize(.small) }
             Button(action: action) {
-                Text(button).font(.system(size: 15, weight: .semibold)).lineLimit(1).padding(.horizontal, 14).frame(height: 34)
+                Text(button).font(.app(size: 15, weight: .semibold)).lineLimit(1).padding(.horizontal, 14).frame(height: 34)
                     .nativeSmallGlass(prominent: !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
             }.buttonStyle(.plain).disabled(disabled || busy).opacity(disabled || busy ? 0.5 : 1).accessibilityIdentifier(identifier)
         }.frame(height: 52).accessibilityElement(children: .contain)
@@ -120,7 +120,7 @@ struct SettingsTile: View {
         if ThemeStore.current.native {
             NativeTile(symbol: symbol, size: size >= 44 ? 36 : 30)
         } else {
-            Image(systemName: symbol).font(.system(size: size * 0.42, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+            Image(systemName: symbol).font(.app(size: size * 0.42, weight: .medium)).foregroundStyle(HomeStyle.chipText)
                 .frame(width: size, height: size).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: size * 0.32))
                 .accessibilityHidden(true)
         }
@@ -139,8 +139,8 @@ struct SettingsRow<Leading: View, Trailing: View>: View {
             leading
             VStack(alignment: .leading, spacing: native ? 1 : 2) {
                 // Native: a list row's 17 pt body title and 13 pt secondary line, 52 pt tall.
-                Text(title).font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let subtitle { Text(subtitle).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+                Text(title).font(.app(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.app(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
             }.frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }.padding(.horizontal, native ? 16 : 15).padding(.vertical, native ? 8 : 10).frame(minHeight: native ? 52 : 64).contentShape(Rectangle())
@@ -155,7 +155,7 @@ extension SettingsRow where Leading == EmptyView {
 /// The design's chevron for rows that open a page.
 struct SettingsChevron: View {
     var body: some View {
-        Image(systemName: "chevron.right").font(.system(size: ThemeStore.current.native ? 14 : 15, weight: .semibold))
+        Image(systemName: "chevron.right").font(.app(size: ThemeStore.current.native ? 14 : 15, weight: .semibold))
             .foregroundStyle(ThemeStore.current.native ? Color(uiColor: .tertiaryLabel) : Color(themed: "#6a6a78"))
     }
 }
@@ -165,10 +165,10 @@ struct SettingsPillButtonStyle: ButtonStyle {
     var outlined = false
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
         if ThemeStore.current.native {
-            configuration.label.font(.system(size: 15, weight: .semibold)).padding(.horizontal, 14).frame(height: 34)
+            configuration.label.font(.app(size: 15, weight: .semibold)).padding(.horizontal, 14).frame(height: 34)
                 .nativeSmallGlass(prominent: !outlined)
         } else {
-            configuration.label.font(.system(size: 13, weight: outlined ? .semibold : .bold))
+            configuration.label.font(.app(size: 13, weight: outlined ? .semibold : .bold))
                 .foregroundStyle(outlined ? HomeStyle.primary : HomeStyle.chipText)
                 .padding(.horizontal, 14).frame(height: 34)
                 .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
@@ -184,10 +184,10 @@ struct SettingsPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
         if ThemeStore.current.native {
-            configuration.label.font(.system(size: 17, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 50)
+            configuration.label.font(.app(size: 17, weight: .semibold)).frame(maxWidth: .infinity).frame(height: 50)
                 .nativeGlassCapsule(prominent: true).opacity(enabled ? 1 : 0.45)
         } else {
-            configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+            configuration.label.font(.app(size: 15, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                 .frame(maxWidth: .infinity).frame(height: 50)
                 .background(HomeStyle.chip, in: Capsule())
                 .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
@@ -199,10 +199,10 @@ struct SettingsPrimaryButtonStyle: ButtonStyle {
 struct SettingsDestructiveButtonStyle: ButtonStyle {
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
         if ThemeStore.current.native {
-            configuration.label.font(.system(size: 17, weight: .regular)).frame(maxWidth: .infinity).frame(height: 50)
+            configuration.label.font(.app(size: 17, weight: .regular)).frame(maxWidth: .infinity).frame(height: 50)
                 .nativeGlassCapsule(prominent: false, ink: Color(uiColor: .systemRed))
         } else {
-            configuration.label.font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+            configuration.label.font(.app(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
                 .frame(maxWidth: .infinity).frame(height: 52)
                 .pillSurface(border: nil)
                 .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -240,7 +240,7 @@ struct SettingsToggleStyle: ToggleStyle {
 /// A 12 pt #9a9aa8 note under a card.
 struct SettingsFootnote: View {
     let text: String
-    var body: some View { Text(text).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
+    var body: some View { Text(text).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
 }
 
 /// The Episodes page's season card (owner's design "Season — line in the middle"): the season
@@ -265,20 +265,20 @@ struct SeasonProgressCard: View {
                 Picker("Season", selection: $season) { ForEach(seasons, id: \.self) { Text($0 == 0 ? "Specials" : "Season \($0)").tag($0) } }
             } label: {
                 HStack(spacing: 8) {
-                    Text(season == 0 ? "Specials" : "Season \(season)").font(.system(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                    if seasons.count > 1 { Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(themed: "#A78BDB")) }
+                    Text(season == 0 ? "Specials" : "Season \(season)").font(.app(size: 17, weight: .semibold)).tracking(-0.17).foregroundStyle(HomeStyle.ink).lineLimit(1)
+                    if seasons.count > 1 { Image(systemName: "chevron.down").font(.app(size: 11, weight: .semibold)).foregroundStyle(Color(themed: "#A78BDB")) }
                 }.padding(.leading, 16).padding(.trailing, 14).frame(minHeight: 44)
                     .background(Color(themed: "#1E1E22"), in: Capsule()).fixedSize()
             }.disabled(seasons.count < 2).accessibilityLabel("Choose season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)")
                 .accessibilityIdentifier("episodes-page-season")
             VStack(spacing: 5) {
-                Text("\(watched) of \(total) watched").font(.system(size: 13, weight: .medium)).foregroundStyle(Color(themed: "#C4C4CC")).lineLimit(1).monospacedDigit()
+                Text("\(watched) of \(total) watched").font(.app(size: 13, weight: .medium)).foregroundStyle(Color(themed: "#C4C4CC")).lineLimit(1).monospacedDigit()
                 Capsule().fill(Color(themed: "#26262B")).frame(height: 6)
                     .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * CGFloat(percent) / 100) } }
                     .accessibilityHidden(true)
-                Text(remaining).font(.system(size: 13)).foregroundStyle(Color(themed: "#9A9AA3")).lineLimit(1).monospacedDigit()
+                Text(remaining).font(.app(size: 13)).foregroundStyle(Color(themed: "#9A9AA3")).lineLimit(1).monospacedDigit()
             }.frame(maxWidth: .infinity)
-            Text("\(percent)%").font(.system(size: 28, weight: .bold)).tracking(-0.56).monospacedDigit().foregroundStyle(theme.accent)
+            Text("\(percent)%").font(.app(size: 28, weight: .bold)).tracking(-0.56).monospacedDigit().foregroundStyle(theme.accent)
                 .frame(minWidth: 58, alignment: .trailing)
         }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
             .background(Color(themed: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
@@ -304,7 +304,7 @@ struct SettingsBadge: View {
         case .missing: (Color(themed: "#f5c26b"), Color(themed: "#2b2516"))
         case .plain: (HomeStyle.secondary, Color(themed: "#1e1e26"))
         }
-        Text(text).font(.system(size: 12, weight: .bold)).foregroundStyle(ink).lineLimit(1).truncationMode(.middle)
+        Text(text).font(.app(size: 12, weight: .bold)).foregroundStyle(ink).lineLimit(1).truncationMode(.middle)
             .padding(.horizontal, 10).frame(height: 24).background(fill, in: Capsule())
     }
 }
@@ -323,8 +323,8 @@ struct SettingsServiceHeader<Extra: View>: View {
                 BrandLogo(service: logo, size: 30).frame(width: 52, height: 52)
                     .background(Color(themed: "#1a1a21"), in: RoundedRectangle(cornerRadius: 15))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    if !subtitle.isEmpty { Text(subtitle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
+                    Text(title).font(.app(size: 20, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    if !subtitle.isEmpty { Text(subtitle).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if let badge { SettingsBadge(text: badge.text, tone: badge.tone).padding(.top, 2) }
             }
@@ -341,7 +341,7 @@ struct SettingsLabel<Accessory: View>: View {
     @ViewBuilder var accessory: Accessory
     var body: some View {
         HStack(spacing: 8) {
-            Text(text.uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            Text(text.uppercased()).font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
             accessory
             Spacer(minLength: 0)
         }.frame(minHeight: 30).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
@@ -354,12 +354,12 @@ struct SettingsInfoButton: View {
     @State private var showing = false
     var body: some View {
         Button { showing = true } label: {
-            Text("i").font(.system(size: 14, weight: .bold, design: .serif)).italic().foregroundStyle(HomeStyle.chipText)
+            Text("i").font(.app(size: 14, weight: .bold, design: .serif)).italic().foregroundStyle(HomeStyle.chipText)
                 .frame(width: 30, height: 30).background(Color(themed: "#1e1e26"), in: Circle())
                 .frame(width: 44, height: 44).contentShape(Circle())
         }.buttonStyle(.plain).accessibilityLabel("About this")
             .popover(isPresented: $showing) {
-                Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.primary).fixedSize(horizontal: false, vertical: true)
+                Text(text).font(.app(size: 14)).foregroundStyle(HomeStyle.primary).fixedSize(horizontal: false, vertical: true)
                     .padding(16).frame(width: 280, alignment: .leading).presentationCompactAdaptation(.popover)
             }
     }
@@ -370,7 +370,7 @@ struct SettingsFieldStyle: ViewModifier {
     var monospaced = false
     func body(content: Content) -> some View {
         let native = ThemeStore.current.native
-        content.font(.system(size: native ? 17 : 15, design: monospaced ? .monospaced : .default)).foregroundStyle(HomeStyle.primary)
+        content.font(.app(size: native ? 17 : 15, design: monospaced ? .monospaced : .default)).foregroundStyle(HomeStyle.primary)
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .padding(.horizontal, 14).frame(height: native ? 46 : 50)
             .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: native ? 12 : 14, style: .continuous))
@@ -387,14 +387,14 @@ struct SettingsWideButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
         if ThemeStore.current.native {
-            configuration.label.font(.system(size: 17, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity).frame(height: 50)
+            configuration.label.font(.app(size: 17, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity).frame(height: 50)
                 .nativeGlassCapsule(prominent: !outlined).opacity(enabled ? 1 : 0.5)
         } else {
             classic(configuration)
         }
     }
     private func classic(_ configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 15, weight: .bold)).lineLimit(1)
+        configuration.label.font(.app(size: 15, weight: .bold)).lineLimit(1)
             .foregroundStyle(outlined ? (enabled ? HomeStyle.primary : HomeStyle.secondary) : HomeStyle.chipText)
             .frame(maxWidth: .infinity).frame(height: 50)
             .background(outlined ? HomeStyle.round : HomeStyle.chip, in: Capsule())
@@ -407,7 +407,7 @@ struct SettingsWideButtonStyle: ButtonStyle {
 struct SettingsLinkLabel: View {
     let text: String
     var body: some View {
-        HStack(spacing: 6) { Image(systemName: "arrow.up.right.square").font(.system(size: 13, weight: .semibold)); Text(text) }
-            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 36)
+        HStack(spacing: 6) { Image(systemName: "arrow.up.right.square").font(.app(size: 13, weight: .semibold)); Text(text) }
+            .font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).frame(minHeight: 36)
     }
 }

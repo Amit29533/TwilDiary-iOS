@@ -65,8 +65,8 @@ struct PosterScoreBadge: View {
         if showsRating { badge }
     }
     private var badge: some View {
-        HStack(spacing: 5) { Image(systemName: "star.fill").font(.system(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
-            .font(.system(size: 12)).foregroundStyle(Color(themed: "#e7ca90"))
+        HStack(spacing: 5) { Image(systemName: "star.fill").font(.app(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }
+            .font(.app(size: 12)).foregroundStyle(Color(themed: "#e7ca90"))
             .padding(.horizontal, 5).padding(.vertical, 3).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6)).padding(6)
             .accessibilityElement(children: .combine).accessibilityLabel("Rated " + String(format: "%.1f", score))
     }

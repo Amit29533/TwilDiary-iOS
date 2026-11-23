@@ -23,10 +23,10 @@ struct HistoryView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(alignment: .center, spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Your watch history").font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+                            Text("Your watch history").font(.app(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
                                 .lineLimit(1).minimumScaleFactor(0.8)
                             Text("\(Text(entries.count.formatted()).foregroundStyle(HomeStyle.chipText).fontWeight(.bold)) \(entries.count == 1 ? "watch" : "watches")")
-                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("history-count")
+                                .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("history-count")
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         CollectionLayoutToggle(grid: $grid, collection: "history")
                     }
@@ -47,9 +47,9 @@ struct HistoryView: View {
                     if showRange {
                         HStack(spacing: 12) { dateField(.from); dateField(.to) }.padding(12).modifier(SettingsCard())
                     }
-                    if filters.invalidRange { Text("The start date must come before the end date.").font(.system(size: 13)).foregroundStyle(.red) }
+                    if filters.invalidRange { Text("The start date must come before the end date.").font(.app(size: 13)).foregroundStyle(.red) }
                     if filters.filtered {
-                        HStack { Text("Showing \(entries.count) of " + store.activeEventCount.counted("watch", "watches")).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Clear filters") { filters = HistoryQuery() }.font(.system(size: 13, weight: .semibold)) }
+                        HStack { Text("Showing \(entries.count) of " + store.activeEventCount.counted("watch", "watches")).font(.app(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Clear filters") { filters = HistoryQuery() }.font(.app(size: 13, weight: .semibold)) }
                     }
                     if entries.isEmpty {
                         DiaryEmptyState(title: "No watches found", description: "Try another title or date range. Unknown dates are excluded from date ranges.")
@@ -63,9 +63,9 @@ struct HistoryView: View {
                         ForEach(HistoryDay.group(Array(entries.prefix(limit)))) { day in
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack(alignment: .firstTextBaseline) {
-                                    Text(day.label).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                    Text(day.label).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
                                     Spacer(minLength: 8)
-                                    Text(day.entries.count.counted("watch", "watches")).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                                    Text(day.entries.count.counted("watch", "watches")).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                                 }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
                                 VStack(spacing: 0) {
                                     ForEach(Array(day.entries.enumerated()), id: \.element.id) { index, entry in
@@ -78,7 +78,7 @@ struct HistoryView: View {
                         }
                     }
                     if limit < entries.count { ScrollLoadTrigger(token: limit, loading: false) { limit += 12 } }
-                    HStack(alignment: .top, spacing: 6) { DiaryIcon(name: "clock-3", size: 13); Text("Unknown dates stay unknown. Dates are never guessed.").font(.system(size: 12)) }.foregroundStyle(.secondary)
+                    HStack(alignment: .top, spacing: 6) { DiaryIcon(name: "clock-3", size: 13); Text("Unknown dates stay unknown. Dates are never guessed.").font(.app(size: 12)) }.foregroundStyle(.secondary)
                 }.padding(14).padding(.bottom, 100)
             }.refreshable { await store.refresh() }
         }.diaryScreenBackground().diaryPageNavigation("Recently watched")
@@ -93,9 +93,9 @@ struct HistoryView: View {
     private func chip(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                if on { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)) }
+                if on { Image(systemName: "checkmark").font(.app(size: 11, weight: .bold)) }
                 Text(label)
-            }.font(.system(size: 14, weight: .semibold)).lineLimit(1).padding(.horizontal, 15).frame(height: 38)
+            }.font(.app(size: 14, weight: .semibold)).lineLimit(1).padding(.horizontal, 15).frame(height: 38)
                 .foregroundStyle(on ? HomeStyle.chipText : HomeStyle.primary)
                 .background(on ? HomeStyle.chip : HomeStyle.round, in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -105,9 +105,9 @@ struct HistoryView: View {
     private func dateField(_ field: HistoryDateSelection.Field) -> some View {
         let day = field == .from ? filters.from : filters.to
         return VStack(alignment: .leading, spacing: 6) {
-            Text(field.label).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(field.label).font(.app(size: 12)).foregroundStyle(.secondary)
             Button { dateSelection = HistoryDateSelection(field: field, initial: HistoryQuery.localDay(day) ?? store.now) } label: {
-                HStack(spacing: 6) { Text(day.isEmpty ? "Choose date" : day).font(.system(size: 13)).lineLimit(1); Spacer(minLength: 0); DiaryIcon(name: "calendar-days", size: 16) }.frame(minHeight: 44).padding(.horizontal, 10)
+                HStack(spacing: 6) { Text(day.isEmpty ? "Choose date" : day).font(.app(size: 13)).lineLimit(1); Spacer(minLength: 0); DiaryIcon(name: "calendar-days", size: 16) }.frame(minHeight: 44).padding(.horizontal, 10)
             }.buttonStyle(.plain).background { DiaryControlSurface(shape: RoundedRectangle(cornerRadius: 10), field: true) }.accessibilityLabel(field.label).accessibilityValue(day.isEmpty ? "Any date" : day)
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -172,13 +172,13 @@ struct HistoryDayRow: View {
             Artwork(path: model.artwork, title: model.name, initialsOnly: false)
                 .frame(width: 80, height: 46).clipShape(RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                Text(model.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                 HStack(spacing: 6) {
-                    Text(model.episode).font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                    if model.isRewatch { Text("Rewatched").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }
+                    Text(model.episode).font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                    if model.isRewatch { Text("Rewatched").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary) }
                 }.lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            if let date = model.date { Text(date.diaryTime()).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+            if let date = model.date { Text(date.diaryTime()).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
         }.padding(.horizontal, 12).padding(.vertical, 10).contentShape(Rectangle())
             .accessibilityElement(children: .combine).accessibilityLabel(model.accessibilityLabel)
     }

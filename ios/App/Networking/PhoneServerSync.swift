@@ -106,7 +106,7 @@ enum ExtrasStorage {
             lastSynced = .now; problem = nil
             return result.local
         } catch {
-            problem = error.localizedDescription
+            problem = FriendlyError.message(error)
             throw error
         }
     }

@@ -36,15 +36,27 @@ struct SeriesRatingCard: View {
         static func == (a: Point, b: Point) -> Bool { a.episode.index == b.episode.index && a.value == b.value }
     }
 
+    /// The show whose ratings have been read (with or without any).
+    @State private var readFor: Int?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         Group {
             if let ratings, ratings.episodes.count >= 2 {
                 card(ratings)
+            } else if readFor != show {
+                // While they load: the card's shape where it will land. It took no room until then, and came
+                // in under the episodes pushing the cast and the rest down mid-scroll.
+                DiaryLoadingPlaceholder(height: 270, label: "Loading episode ratings")
+                    .padding(12).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
         }
+        // None for this show: the room it held closes smoothly.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: readFor == show)
         .task(id: show) {
             watched = titleID.map(watchedPlaces) ?? []
             ratings = await SeriesRatingsLoader.load(tmdb: show, imdbID: imdbID, store: store)
+            readFor = show
         }
     }
 
@@ -54,7 +66,7 @@ struct SeriesRatingCard: View {
         return VStack(alignment: .leading, spacing: 8) {
             Button { selected = nil } label: {
                 Text(episode.map(heading) ?? "\(ratings.episodes.count) episodes")
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    .font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
                     .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.identity)
             }.buttonStyle(.plain).accessibilityHint(episode == nil ? "" : "Back to the whole show")
@@ -140,10 +152,10 @@ struct SeriesRatingCard: View {
     private func score(_ score: SeriesRatings.Score?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(score.map { $0.value.formatted(.number.precision(.fractionLength(1))) } ?? "–")
-                .font(.system(size: 16, weight: .bold)).foregroundStyle(score.map { RatingCircles.color($0.value) } ?? .secondary)
+                .font(.app(size: 16, weight: .bold)).foregroundStyle(score.map { RatingCircles.color($0.value) } ?? .secondary)
             // Always two lines (blank when there are no votes), so the chart below stays put.
             Text(score.flatMap { $0.votes > 0 ? $0.votes.formatted(.number.notation(.compactName)) : nil } ?? " ")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.app(size: 11)).foregroundStyle(.secondary)
         }.monospacedDigit().frame(minWidth: 34, alignment: .leading).contentTransition(.identity)
     }
 
@@ -164,7 +176,7 @@ struct SeriesRatingCard: View {
                     Text(heading(point.episode)).font(.caption.weight(.semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                Text(point.value.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 14, weight: .bold)).foregroundStyle(RatingCircles.color(point.value)).monospacedDigit()
+                Text(point.value.formatted(.number.precision(.fractionLength(1)))).font(.app(size: 14, weight: .bold)).foregroundStyle(RatingCircles.color(point.value)).monospacedDigit()
             }.padding(.horizontal, 9).padding(.vertical, 6).frame(maxWidth: .infinity).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11)).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
@@ -206,7 +218,7 @@ private struct SeriesRatingLine: View, Equatable {
                 .foregroundStyle(RatingCircles.color(average).opacity(0.85))
                 // Inside the chart, over the line's right end (beside it, it ran off the card).
                 .annotation(position: .top, alignment: .trailing, spacing: 3) {
-                    Text("avg " + average.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                    Text("avg " + average.formatted(.number.precision(.fractionLength(1)))).font(.app(size: 10, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(RatingCircles.color(average))
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(HomeStyle.card.opacity(0.85), in: Capsule())

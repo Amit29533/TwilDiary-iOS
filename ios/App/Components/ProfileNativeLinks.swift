@@ -81,7 +81,7 @@ struct ProfileNativeLinks: ViewModifier {
                         router.paths[tab, default: NavigationPath()].append(appearance)
                     }
                 } catch is CancellationError { }
-                catch { if !Task.isCancelled { failure = error.localizedDescription } }
+                catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
             }
         }
     }
@@ -120,7 +120,7 @@ struct ProfileWatchedShelf: View {
     var body: some View {
         let titles = ProfileWatchMatching.titles(appearances, workspace: store.workspace, confirmed: confirmed)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Watched").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+            Text("Watched").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
             if titles.isEmpty { Text("No watches from these matched titles yet.").font(.subheadline).foregroundStyle(.secondary) }
             else {
                 ProfileShelf {

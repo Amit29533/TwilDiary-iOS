@@ -612,14 +612,14 @@ struct SemanticSearchSection: View {
             if showsLabel && !(loading && matches.isEmpty) {
                 HStack(spacing: 8) {
                     CineMindMark(size: 20)
-                    Text("FROM YOUR DESCRIPTION").font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(CineGlow.linear)
+                    Text("FROM YOUR DESCRIPTION").font(.app(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(CineGlow.linear)
                 }.padding(.top, 6)
             }
             if !hasKey {
                 Button { addingKey = true } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Search by description with Gemini").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        Text("Add your free Gemini API key to find titles from a plot, theme or scene.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text("Search by description with Gemini").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Text("Add your free Gemini API key to find titles from a plot, theme or scene.").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                             .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(14)
                         .cardSurface(16)
@@ -628,9 +628,9 @@ struct SemanticSearchSection: View {
             } else if loading && matches.isEmpty {
                 CineThinking(label: "Finding titles that match").padding(.vertical, 8)
             } else if let failure {
-                Text(failure).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(failure).font(.app(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else if query.isEmpty {
-                Text("Describe it, then press Search.").font(.system(size: 14)).foregroundStyle(.secondary)
+                Text("Describe it, then press Search.").font(.app(size: 14)).foregroundStyle(.secondary)
             } else if visible.isEmpty && !loading {
                 Text(matches.isEmpty ? "Nothing matched that description. Try adding a detail." : "No AI matches in \(kind.rawValue).")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -649,24 +649,24 @@ struct SemanticSearchSection: View {
                 Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false).frame(width: 64, height: 96)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(match.item.name).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).truncationMode(.tail)
+                    Text(match.item.name).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).truncationMode(.tail)
                     HStack(spacing: 8) {
-                        Text(detail(match.item)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Text(detail(match.item)).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         // TMDB's score (or the diary's, for a title in your library), as on search's posters.
                         if let score = match.item.rating ?? store.libraryIdentity(match.item).flatMap({ store.title($0)?.communityScore }), score > 0 {
-                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.system(size: 11)); Text(String(format: "%.1f", score)) }
-                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e7ca90"))
+                            HStack(spacing: 4) { Image(systemName: "star.fill").font(.app(size: 11)); Text(String(format: "%.1f", score)) }
+                                .font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#e7ca90"))
                                 .accessibilityElement(children: .ignore).accessibilityLabel("Rated \(String(format: "%.1f", score))")
                         }
                         if let saved = store.libraryIdentity(match.item).flatMap({ store.title($0) }) {
-                            Text(saved.status.capitalized).font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            Text(saved.status.capitalized).font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .lineLimit(1).fixedSize().padding(.horizontal, 8).frame(height: 22).background(HomeStyle.chip, in: Capsule())
                                 .accessibilityLabel("In your library, " + saved.status)
                         }
                     }
                     // Why it matched, in the assistant's voice: its sparkle in its colours.
                     Text("\(Text(Image(systemName: "sparkle")).foregroundStyle(CineGlow.linear)) \(match.why)").foregroundStyle(HomeStyle.soft)
-                        .font(.system(size: 14)).lineLimit(3).truncationMode(.tail)
+                        .font(.app(size: 14)).lineLimit(3).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -694,7 +694,7 @@ struct SemanticSearchSection: View {
             Self.remember(found, for: text)
             withAnimation(.smooth) { matches = found }
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription; matches = [] }
+            if !Task.isCancelled { failure = FriendlyError.message(error); matches = [] }
         }
     }
 }
@@ -712,19 +712,19 @@ struct GeminiKeySheet: View {
                 HStack(spacing: 12) {
                     CineMindMark(size: 40)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(service.name).font(.system(size: 20, weight: .bold))
-                        Text("Powers AI search and CineMind").font(.system(size: 13)).foregroundStyle(.secondary)
+                        Text(service.name).font(.app(size: 20, weight: .bold))
+                        Text("Powers AI search and CineMind").font(.app(size: 13)).foregroundStyle(.secondary)
                     }
                 }
                 Text(service == .gemini ? "Get a free key at Google AI Studio and paste it here. Keys from other Google accounts share the load." : "Get a free key at GroqCloud and paste it here. Groq answers when Gemini can’t.")
-                    .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Open " + service.keysPageName) { openURL(service.keysPage) }
-                    .font(.system(size: 15, weight: .semibold))
-                SecureField(service.name + " API key", text: $value).font(.system(size: 15, design: .monospaced))
+                    .font(.app(size: 15, weight: .semibold))
+                SecureField(service.name + " API key", text: $value).font(.app(size: 15, design: .monospaced))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .padding(12).cardSurface(12).cineGlow(RoundedRectangle(cornerRadius: 12), active: !value.isEmpty)
                     .accessibilityIdentifier("gemini-key-field")
-                if let problem { Text(problem).font(.system(size: 13)).foregroundStyle(Color(uiColor: .systemRed)) }
+                if let problem { Text(problem).font(.app(size: 13)).foregroundStyle(Color(uiColor: .systemRed)) }
                 Spacer()
             }.padding(20)
                 .navigationTitle(SemanticSearch.ownKeys(service).isEmpty ? service.name + " API key" : "Add a " + service.name + " key").navigationBarTitleDisplayMode(.inline)

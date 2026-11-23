@@ -51,7 +51,7 @@ struct SeasonCardsSection: View {
 
     private func header(count: Int, remaining: Int) -> some View {
         HStack(spacing: 10) {
-            Text("Seasons").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+            Text("Seasons").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
             chip(count.formatted())
             if remaining > 0 { chip("~" + Self.duration(remaining) + " left").accessibilityIdentifier("title-seasons-remaining") }
             Spacer(minLength: 0)
@@ -61,11 +61,11 @@ struct SeasonCardsSection: View {
                     // "Olde / st" (owner's screenshot); where even one line doesn't fit, the arrows alone.
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 6) {
-                            Text(newestFirst ? "Newest" : "Oldest").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text(newestFirst ? "Newest" : "Oldest").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 .lineLimit(1).fixedSize()
-                            Image(systemName: "arrow.up.arrow.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                            Image(systemName: "arrow.up.arrow.down").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         }.padding(.horizontal, 14)
-                        Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Image(systemName: "arrow.up.arrow.down").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             .frame(width: 44)
                     }.frame(height: 44)
                         .pillSurface(border: HomeStyle.dateChipBorder)
@@ -76,7 +76,7 @@ struct SeasonCardsSection: View {
     }
     /// The Episodes heading's count chip.
     private func chip(_ text: String) -> some View {
-        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft).lineLimit(1).fixedSize()
+        Text(text).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft).lineLimit(1).fixedSize()
             .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
     }
@@ -107,7 +107,7 @@ struct SeasonCardsSection: View {
                     if posters[row.number] == nil {
                         ZStack {
                             Color.black.opacity(0.5)
-                            Text(row.number == 0 ? "SP" : "S\(row.number)").font(.system(size: 34, weight: .heavy)).foregroundStyle(.white.opacity(0.92))
+                            Text(row.number == 0 ? "SP" : "S\(row.number)").font(.app(size: 34, weight: .heavy)).foregroundStyle(.white.opacity(0.92))
                         }.accessibilityHidden(true)
                     }
                 }
@@ -127,8 +127,8 @@ struct SeasonCardsSection: View {
                     if row.complete { status("checkmark", Self.done).padding(7) }
                     else if watched > 0 { status("play.fill", Color(themed: "#2f7de1")).padding(7) }
                 }
-            Text(row.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
-            Text(line(row)).font(.system(size: 12)).monospacedDigit()
+            Text(row.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
+            Text(line(row)).font(.app(size: 12)).monospacedDigit()
                 .foregroundStyle(row.complete ? Self.done : watched > 0 ? theme.accent : HomeStyle.secondary).padding(.top, 3)
         }.frame(width: 111, alignment: .leading)
             .accessibilityElement(children: .ignore)
@@ -139,7 +139,7 @@ struct SeasonCardsSection: View {
         return "\(watched)/\(row.total) watched"
     }
     private func status(_ symbol: String, _ color: Color) -> some View {
-        Image(systemName: symbol).font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
+        Image(systemName: symbol).font(.app(size: 11, weight: .heavy)).foregroundStyle(.white)
             .frame(width: 26, height: 26).background(color, in: Circle())
             .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
     }

@@ -52,7 +52,7 @@ struct VoiceActorCharactersView: View {
         }
         #endif
         do { roles = try await AniListClient.shared.voiceActor(route.id).characters }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -85,7 +85,7 @@ struct VoiceActorRoleCard: View {
                         ProfileCardCaption(title: role.anime, secondary: true)
                         // Their other seasons and films with this character.
                         if role.moreAnime > 0 {
-                            Text("+\(role.moreAnime)").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                            Text("+\(role.moreAnime)").font(.app(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                                 .padding(.horizontal, 6).frame(height: 18).background(HomeStyle.chip, in: Capsule()).fixedSize()
                                 .accessibilityLabel("and \(role.moreAnime) more")
                         }
@@ -142,15 +142,15 @@ struct AniListMostWatched: View {
         if user.isEmpty { connectPrompt }
         else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
         else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 190, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
-        else if rows.isEmpty { Text("Nothing to rank yet.").font(.system(size: 13)).foregroundStyle(.secondary) }
+        else if rows.isEmpty { Text("Nothing to rank yet.").font(.app(size: 13)).foregroundStyle(.secondary) }
         else { MostWatchedShelf(ranking: rankingRoute) }
     }
     private var connectPrompt: some View {
         NavigationLink(value: AppDestination.anilist) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Add your AniList profile").font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
-                    Text("Settings → Connections and data → AniList").font(.system(size: 13)).foregroundStyle(.secondary)
+                    Text("Add your AniList profile").font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary)
+                    Text("Settings → Connections and data → AniList").font(.app(size: 13)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
                 DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
@@ -186,7 +186,7 @@ struct AniListMostWatched: View {
             let result = try await read.value
             guard !Task.isCancelled, requestedUser == user else { return }
             rows = result
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
     private static func voiceRow(_ stat: AniVoiceActorStat) -> RankedRow {
         RankedRow(id: stat.id, name: stat.person.name, detail: stat.native, image: stat.person.image, number: stat.count,
@@ -265,7 +265,7 @@ struct MostWatchedCast: View {
         else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 220, label: kind == .voice ? "Counting your voice actors" : "Counting your cast") }
         else if rows.isEmpty {
             Text(kind == .voice ? "Watch some anime and the voice actors you hear most show up here." : "Watch a few live-action titles and the cast you see most shows up here.")
-                .font(.system(size: 13)).foregroundStyle(.secondary)
+                .font(.app(size: 13)).foregroundStyle(.secondary)
         } else {
             MostWatchedShelf(ranking: rankingRoute, round: round)
         }
@@ -344,7 +344,7 @@ struct MostWatchedCast: View {
                 }
                 last = page.counted
             }
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 

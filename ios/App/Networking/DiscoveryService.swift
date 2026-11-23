@@ -155,7 +155,7 @@ extension DiscoveryServing {
             items = CatalogTools.merging(more ? items : [], next.items)
             page = next.page; totalPages = next.totalPages
         } catch is CancellationError { }
-        catch { if generation == request && !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if generation == request && !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
 }
 
@@ -199,7 +199,7 @@ extension DiscoveryServing {
             if movies.error != nil && shows.error != nil { error = movies.error }
             else if movies.error != nil || shows.error != nil { error = "Some recommendations could not load." }
         } catch is CancellationError { }
-        catch { if generation == request && !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if generation == request && !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
     private struct KindResult: Sendable { let items: [CatalogItem]?; let error: String? }
     private func fetch(_ kind: MediaKind, refresh: Bool) async throws -> KindResult {
@@ -208,6 +208,6 @@ extension DiscoveryServing {
             guard page.page == 1 else { throw APIError.message("The recommendations returned an unexpected page. Please retry.") }
             return KindResult(items: page.items, error: nil)
         } catch is CancellationError { throw CancellationError() }
-        catch { return KindResult(items: nil, error: error.localizedDescription) }
+        catch { return KindResult(items: nil, error: FriendlyError.message(error)) }
     }
 }

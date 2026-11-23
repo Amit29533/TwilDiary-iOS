@@ -56,9 +56,9 @@ enum SignInNavigationPolicy {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 10) {
                     BrandMark().fill(HomeStyle.chipText).frame(width: 36, height: 36).accessibilityHidden(true)
-                    Text(phoneOnly == nil ? "Sign in to your server" : "Sign in to TwilDiary").font(.system(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                    Text(phoneOnly == nil ? "Sign in to your server" : "Sign in to TwilDiary").font(.app(size: 28, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                     Text(phoneOnly == nil ? "Google, email or your Trakt account." : "Pick an account. You decide where things are kept in Settings.")
-                        .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 // The ways in, as rows (as Cinopsys lists them): Trakt first, then your server's own
                 // sign-in page. Both open in Apple's sign-in sheet and come straight back.
@@ -84,7 +84,7 @@ enum SignInNavigationPolicy {
                     }
                     if let onThisPhone {
                         optionRow(busy: false, id: "sign-in-local", title: "On this phone", detail: "Stays on this phone. No account") {
-                            Image(systemName: "iphone").font(.system(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            Image(systemName: "iphone").font(.app(size: 19, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .frame(width: 40, height: 40).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
                         } action: { onThisPhone() }
                     }
@@ -94,7 +94,7 @@ enum SignInNavigationPolicy {
                         BrandLogo(service: .cloudflare, size: 40)
                     } action: { Task { await webSignIn() } }
                     Text("Opens the sign-in page and comes straight back.")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
+                        .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).padding(.leading, 4)
                     if let webError {
                         Text(webError).font(.footnote).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("sign-in-browser-error")
@@ -102,28 +102,28 @@ enum SignInNavigationPolicy {
                 }
                 Button { withAnimation(Motion.smooth) { showOtherWays.toggle() } } label: {
                     HStack {
-                        Text("Other ways to sign in").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Text("Other ways to sign in").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 8)
-                        Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        Image(systemName: "chevron.down").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                             .rotationEffect(.degrees(showOtherWays ? 180 : 0))
                     }.padding(.horizontal, 16).frame(minHeight: 52).contentShape(Rectangle()).modifier(SettingsCard())
                 }.buttonStyle(.plain).accessibilityIdentifier("sign-in-other-ways")
                 if showOtherWays {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Other ways").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                        Text("Other ways").font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
                         Spacer(minLength: 8)
                         Menu {
                             Picker("Sign in with", selection: $mode) {
                                 ForEach(SignInMode.allCases.filter { $0 != .cloudflare }) { item in Text(item.rawValue).tag(item) }
                             }
                         } label: {
-                            HStack(spacing: 6) { Text(mode.rawValue); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
-                                .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                            HStack(spacing: 6) { Text(mode.rawValue); Image(systemName: "chevron.down").font(.app(size: 10, weight: .bold)) }
+                                .font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                                 .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
                         }.accessibilityLabel("Sign in with").accessibilityValue(mode.rawValue).accessibilityIdentifier("sign-in-method-picker")
                     }
-                    Text(mode.hint).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(mode.hint).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                     alternativeForm
                 }.padding(16).modifier(SettingsCard())
                 }
@@ -189,7 +189,7 @@ enum SignInNavigationPolicy {
                     HStack {
                         if submitting { ProgressView().controlSize(.small) }
                         Text(submitting ? "Signing in…" : "Sign in")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.app(size: 15, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -219,7 +219,7 @@ enum SignInNavigationPolicy {
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // Closing the sheet is not an error.
         } catch {
-            webError = "The sign-in page couldn’t finish: " + error.localizedDescription
+            webError = "The sign-in page couldn’t finish: " + FriendlyError.message(error)
         }
     }
 
@@ -228,8 +228,8 @@ enum SignInNavigationPolicy {
             HStack(spacing: 14) {
                 icon()
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(busy ? "Signing in…" : title).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    Text(detail).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(busy ? "Signing in…" : title).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(detail).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 if busy { ProgressView().controlSize(.small) } else { SettingsChevron() }
@@ -242,7 +242,7 @@ enum SignInNavigationPolicy {
         defer { serviceSigningIn = nil }
         do {
             if case .signedIn = try await ServiceSignIn.run(tracker.provider, store: store, using: webAuthenticationSession) { phoneOnly?(tracker) }
-        } catch { webError = error.localizedDescription }
+        } catch { webError = FriendlyError.message(error) }
     }
     /// TwilDiary's Trakt app ID: built in, remembered, or from your server's public sign-in check.
     private func traktAppID() async -> String? {
@@ -300,7 +300,7 @@ enum SignInNavigationPolicy {
             PendingTraktSignIn.waiting = (clientId, tokens)
             completion(AccessCredential(token: issued, expires: (json?["expiresAt"] as? String).flatMap(DiaryDate.parse)))
         } catch {
-            webError = "Trakt sign-in couldn’t finish: " + error.localizedDescription
+            webError = "Trakt sign-in couldn’t finish: " + FriendlyError.message(error)
         }
     }
 

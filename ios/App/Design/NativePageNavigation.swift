@@ -11,7 +11,7 @@ private struct NativePageNavigation: ViewModifier {
                 // The centred system title is replaced; the name keeps the back menu's label.
                 ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
                 ToolbarItem(placement: .topBarLeading) {
-                    Text(title).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(title).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         .fixedSize().accessibilityAddTraits(.isHeader)
                 }.sharedBackgroundVisibility(.hidden)
             }

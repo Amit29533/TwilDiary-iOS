@@ -284,14 +284,18 @@ struct JellyTagCircle: Identifiable, Sendable {
     let name: String
     let count: Int
     let cover: JellyfinClient.Item
+    /// The name with a capital first letter (TMDB's keywords come in lower case: "based on novel or book").
+    var title: String { name.prefix(1).uppercased() + name.dropFirst() }
 
     /// The tags on titles outside what you hid (a library, a title), the most used first (the first
-    /// `limit`). A tag written two ways is one, under the way it's written most.
+    /// `limit`). A tag written two ways is one, under the way it's written most. Its picture is the
+    /// newest title with a wide one (the tile is wide), else the newest.
     static func circles(in index: JellyLibraryIndex, hidden: Set<String>, limit: Int = 20) -> [JellyTagCircle] {
-        struct Gathered { var names: [String: Int]; var count: Int; var cover: JellyfinClient.Item; var added: String }
+        struct Gathered { var names: [String: Int]; var count: Int; var cover: JellyfinClient.Item; var wide: Bool; var added: String }
         var gathered: [String: Gathered] = [:]
         for entry in index.entries where !hidden.contains(entry.library) && !hidden.contains(entry.item.Id) {
             let added = entry.item.DateCreated ?? ""
+            let wide = !(entry.item.BackdropImageTags ?? []).isEmpty
             var seen = Set<String>()
             for written in entry.item.Tags ?? [] {
                 let name = written.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -300,10 +304,12 @@ struct JellyTagCircle: Identifiable, Sendable {
                 if var group = gathered[key] {
                     group.names[name, default: 0] += 1
                     group.count += 1
-                    if added > group.added { group.cover = entry.item; group.added = added }
+                    if (wide && !group.wide) || (wide == group.wide && added > group.added) {
+                        group.cover = entry.item; group.wide = wide; group.added = added
+                    }
                     gathered[key] = group
                 } else {
-                    gathered[key] = Gathered(names: [name: 1], count: 1, cover: entry.item, added: added)
+                    gathered[key] = Gathered(names: [name: 1], count: 1, cover: entry.item, wide: wide, added: added)
                 }
             }
         }
@@ -442,7 +448,7 @@ extension JellyRecommender {
         let task = Task<JellyLibraryIndex?, Never> {
             // Library by library (all at once), so each title knows its library; the whole server in one
             // go if the libraries can't be listed.
-            let libraries = ((try? await client.libraries()) ?? []).filter(JellyDiscover.holdsVideo).map(\.id)
+            let libraries = ((try? await client.libraries(user: user)) ?? []).filter(JellyDiscover.holdsVideo).map(\.id)
             var groups: [(library: String, items: [JellyfinClient.Item])] = []
             if libraries.isEmpty {
                 guard let items = try? await client.libraryIndex(user: user), !items.isEmpty else { return nil }

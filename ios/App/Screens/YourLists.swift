@@ -56,7 +56,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
             let rows = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
             lists = rows.compactMap { Self.list($0) }
             loaded = true
-        } catch { failure = error.localizedDescription }
+        } catch { failure = FriendlyError.message(error) }
     }
 
     /// A list's titles, in your order.
@@ -69,7 +69,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
             let found = rows.compactMap { Self.entry($0, store: store) }.sorted { $0.rank < $1.rank }
             entries[id] = found
             if let index = lists.firstIndex(where: { $0.id == id }) { lists[index].itemCount = found.count }
-        } catch { failure = error.localizedDescription }
+        } catch { failure = FriendlyError.message(error) }
     }
 
     /// Every list's titles (for the Add to list ticks): your lists are few, read one after another.
@@ -173,7 +173,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
         return YourListEntry(id: id, rank: row["rank"] as? Int ?? Int.max, listedAt: row["listed_at"] as? String, item: item)
     }
     private static func message(_ error: Error) -> String {
-        (error as? TraktWriteError)?.message ?? error.localizedDescription
+        (error as? TraktWriteError)?.message ?? FriendlyError.message(error)
     }
 }
 
@@ -229,7 +229,7 @@ struct YourListCard: View {
                 ZStack(alignment: .leading) {
                     HomeStyle.card
                     if posters.isEmpty {
-                        Image(systemName: "list.bullet.rectangle").font(.system(size: 30, weight: .light)).foregroundStyle(HomeStyle.chipText.opacity(0.6))
+                        Image(systemName: "list.bullet.rectangle").font(.app(size: 30, weight: .light)).foregroundStyle(HomeStyle.chipText.opacity(0.6))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     ForEach(Array(posters.enumerated().reversed()), id: \.offset) { index, poster in
@@ -244,9 +244,9 @@ struct YourListCard: View {
             .aspectRatio(1.15, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-            Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            Text(list.name).font(.app(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
             Text([list.itemCount.counted("title", "titles"), list.privacy.capitalized].joined(separator: " · "))
-                .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
         }.accessibilityElement(children: .combine)
     }
 }
@@ -371,7 +371,7 @@ struct YourListPage: View {
                     HStack(spacing: 12) {
                         Artwork(path: entry.item.artwork, title: entry.item.name, initialsOnly: false).frame(width: 40, height: 60).clipShape(RoundedRectangle(cornerRadius: 6))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.item.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                            Text(entry.item.name).font(.app(size: 15, weight: .semibold)).lineLimit(1)
                             if let year = entry.item.year { Text(String(year)).font(.caption).foregroundStyle(.secondary) }
                         }
                     }.listRowBackground(HomeStyle.card)
@@ -466,7 +466,7 @@ struct AddToListSheet: View {
                 }
                 Section {
                     if model.lists.isEmpty && (model.loading || !model.loaded) {
-                        HStack { ProgressView(); Text("Loading your lists").foregroundStyle(.secondary) }
+                        DiaryLoadingPlaceholder(label: "Loading your lists", layout: .list(rows: 3))
                     }
                     ForEach(model.lists) { list in
                         let on = model.contains(list.id, item.key)

@@ -31,9 +31,9 @@ struct CatalogGrid: View {
             HStack(spacing: 12) {
                 Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 68, height: 102).clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
-                    Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    if let score = item.rating, score > 0 { Label(score.formatted(.number.precision(.fractionLength(1))), systemImage: "star.fill").font(.system(size: 12)).foregroundStyle(.yellow) }
+                    Text(item.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                    Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.app(size: 12)).foregroundStyle(.secondary)
+                    if let score = item.rating, score > 0 { Label(score.formatted(.number.precision(.fractionLength(1))), systemImage: "star.fill").font(.app(size: 12)).foregroundStyle(.yellow) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 DiaryIcon(name: "chevron-right", size: 16).foregroundStyle(.secondary)
             }.contentShape(Rectangle())
@@ -60,8 +60,8 @@ struct CatalogPoster: View {
                 ProfileCardCaption(title: item.name).padding(.top, 8)
                 if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
             } else {
-                Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-                Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
+                Text(item.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+                Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.app(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
             }
         }.accessibilityElement(children: .combine)
     }
@@ -142,7 +142,7 @@ struct CatalogSearchView: View {
             if universal { kindChips(counts: counts, total: ranked.count) }
             if !ready {
                 if universal { SearchLandingView(kind: kind, recent: recent, choose: { query = $0 }, clear: { recentJSON = "[]" }, remove: { forget($0) }).id(kind) }
-                else { Text("Find a title, or paste an IMDb ID.").font(.system(size: 14)).foregroundStyle(.secondary) }
+                else { Text("Find a title, or paste an IMDb ID.").font(.app(size: 14)).foregroundStyle(.secondary) }
             }
             // Nothing found: the closest spelling ("breking bad" → Breaking Bad).
             if universal && ready && !aiSearch && !isIMDbLookup && kind != .people && completedScope == scope && failure == nil && !loading && ranked.isEmpty
@@ -157,18 +157,18 @@ struct CatalogSearchView: View {
             if ready && !universal {
                 // In your library (only when something matches).
                 if !localMatches.isEmpty {
-                    HStack { Text("In Library · \(localMatches.count)").font(.system(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
+                    HStack { Text("In Library · \(localMatches.count)").font(.app(size: 15, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "search") }
                     CollectionLayout(grid: grid, columns: 3) { ForEach(localMatches.prefix(libraryShown)) { title in
                         Button { chooseLibrary(title.id) } label: { searchRow(title) }.buttonStyle(.plain)
                             .accessibilityIdentifier((onLibraryChoose == nil ? "search-library-" : "match-title-") + title.id)
                     } }
-                    if localMatches.count > libraryShown { Button("More library matches") { if universal && !libraryExpanded { libraryExpanded = true } else { libraryLimit += 20 } }.font(.system(size: 13)).frame(minHeight: 44) }
+                    if localMatches.count > libraryShown { Button("More library matches") { if universal && !libraryExpanded { libraryExpanded = true } else { libraryLimit += 20 } }.font(.app(size: 13)).frame(minHeight: 44) }
                 }
                 // Online (TMDB): only while it's loading, has results, or failed.
                 if (loading && results.isEmpty) || !visibleOnline.isEmpty || failure != nil {
-                if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows" : "Not in library").font(.system(size: 15, weight: .semibold)) }
+                if !universal || !visibleOnline.isEmpty || failure != nil { Text(universal ? "Movies & shows" : "Not in library").font(.app(size: 15, weight: .semibold)) }
                 if loading && results.isEmpty { DiaryLoadingPlaceholder(label: "Searching online", layout: .list(rows: 5)) }
-                if let failure { HStack { Text(failure).font(.system(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.system(size: 13)) } }
+                if let failure { HStack { Text(failure).font(.app(size: 13)).foregroundStyle(.secondary); Spacer(minLength: 0); Button("Retry") { requestPage(page) }.font(.app(size: 13)) } }
                 CollectionLayout(grid: grid, columns: 3) { ForEach(Array(visibleOnline.prefix(onlineShown)), id: \.key) { item in
                     Button { chooseCatalog(item.route) } label: { onlineRow(item) }
                         .buttonStyle(.plain).accessibilityIdentifier("search-" + item.key)
@@ -178,7 +178,7 @@ struct CatalogSearchView: View {
                 }
                 }
                 if totalPages > 1 && (!universal || onlineExpanded) {
-                    HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.system(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.system(size: 13))
+                    HStack { Button("Previous") { requestPage(page - 1) }.disabled(page <= 1 || loading); Spacer(); Text("Page \(page) of \(totalPages)").font(.app(size: 13)).foregroundStyle(.secondary); Spacer(); Button("Next") { requestPage(page + 1) }.disabled(page >= min(500, totalPages) || loading) }.font(.app(size: 13))
                 }
             }
             if universal && ready && !isIMDbLookup && ((kind == .all && !aiSearch) || kind == .people) {
@@ -229,7 +229,7 @@ struct CatalogSearchView: View {
                             if ready, let count = count(item, counts: counts, total: total) {
                                 Text(count.formatted()).foregroundStyle(on ? ThemeStore.current.chipInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit()
                             }
-                        }.font(typeSize.isAccessibilitySize ? .subheadline.weight(.semibold) : .system(size: 15, weight: .semibold))
+                        }.font(typeSize.isAccessibilitySize ? .subheadline.weight(.semibold) : .app(size: 15, weight: .semibold))
                             .foregroundStyle(on ? ThemeStore.current.chipInk : HomeStyle.primary)
                             .padding(.horizontal, 15).padding(.vertical, typeSize.isAccessibilitySize ? 8 : 0).frame(minHeight: 40)
                             .background(on ? HomeStyle.chipText : HomeStyle.round, in: Capsule())
@@ -320,7 +320,7 @@ struct CatalogSearchView: View {
             }
             if loading && !shown.isEmpty { ProgressView().frame(maxWidth: .infinity, minHeight: 44).accessibilityLabel("Searching online") }
             if !aiSearch && !loading && shown.isEmpty && failure == nil && completedScope == searchScope && !hasMore {
-                Text("No \(kind == .all ? "titles" : kind.rawValue.lowercased()) match “\(normalized)”.").font(.system(size: 14)).foregroundStyle(.secondary)
+                Text("No \(kind == .all ? "titles" : kind.rawValue.lowercased()) match “\(normalized)”.").font(.app(size: 14)).foregroundStyle(.secondary)
             }
         }
     }
@@ -413,7 +413,7 @@ struct CatalogSearchView: View {
                 addFailures[key] = store.error ?? "This title couldn’t be added."
             }
         } catch {
-            addFailures[key] = error.localizedDescription
+            addFailures[key] = FriendlyError.message(error)
         }
     }
 
@@ -434,8 +434,8 @@ struct CatalogSearchView: View {
     /// Grid captions keep two lines of room, so a row of posters stays level whatever the names.
     private func resultCaption(_ name: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: grid ? 2 : 4) {
-            Text(name).font(.system(size: grid ? 14 : 15, weight: .semibold)).lineLimit(grid ? 2 : 4, reservesSpace: grid)
-            Text(detail).font(.system(size: grid ? 12 : 13)).foregroundStyle(.secondary).lineLimit(1)
+            Text(name).font(.app(size: grid ? 14 : 15, weight: .semibold)).lineLimit(grid ? 2 : 4, reservesSpace: grid)
+            Text(detail).font(.app(size: grid ? 12 : 13)).foregroundStyle(.secondary).lineLimit(1)
         }
     }
     private var normalized: String { DiarySearchTools.normalize(query) }
@@ -520,7 +520,7 @@ struct CatalogSearchView: View {
         } catch is CancellationError { }
         catch {
             if !Task.isCancelled, request == generation, scope == searchScope {
-                failure = error.localizedDescription; failedPage = number
+                failure = FriendlyError.message(error); failedPage = number
             }
         }
     }
@@ -631,7 +631,7 @@ struct CatalogDetailView: View {
                             if JellyfinShelf.shared.entries.contains(where: { $0.tmdb == route.id && $0.movie == (route.kind == .movie) }) {
                                 JellyfinPresenceRow(tmdb: route.id, movie: route.kind == .movie)
                             } else {
-                                Text("Not in your Jellyfin library.").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary)
+                                Text("Not in your Jellyfin library.").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary)
                                     .task { await JellyfinShelf.shared.refreshQuietly(store: store) }
                             }
                             Spacer(minLength: 0)
@@ -679,7 +679,7 @@ struct CatalogDetailView: View {
     }
     /// The page's main action, in the same colours as a saved title's "Watching" pill (#cdbbff on #2a2440).
     private func primaryLabel(_ text: String, icon: String) -> some View {
-        HStack(spacing: 8) { Image(systemName: icon).font(.system(size: 14, weight: .bold)); Text(text).font(.system(size: 15, weight: .bold)) }
+        HStack(spacing: 8) { Image(systemName: icon).font(.app(size: 14, weight: .bold)); Text(text).font(.app(size: 15, weight: .bold)) }
             .foregroundStyle(HomeStyle.chipText).frame(maxWidth: .infinity).frame(height: 48)
             .background(HomeStyle.chip, in: Capsule())
             .contentShape(Capsule())
@@ -700,7 +700,7 @@ struct CatalogDetailView: View {
                                                           libraryID: nil, movie: route.kind == .movie, tmdb: route.id))
             }
         } catch is CancellationError { }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -741,9 +741,9 @@ private struct CatalogSeasonPreview: View {
             SeasonCardsSection(preview: details, selected: $selected)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
-                    Text("Episodes").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    Text("Episodes").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     if !controller.items.isEmpty {
-                        Text(controller.items.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
+                        Text(controller.items.count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
                             .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     }
@@ -754,7 +754,7 @@ private struct CatalogSeasonPreview: View {
                         }
                     } label: {
                         HStack(spacing: 8) {
-                            Text(selected == 0 ? "Specials" : "Season \(selected)").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text(selected == 0 ? "Specials" : "Season \(selected)").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             if (details.seasons ?? []).count > 1 { DiaryIcon(name: "chevron-down", size: 13).foregroundStyle(HomeStyle.secondary) }
                         }.padding(.horizontal, 18).frame(height: 44)
                             .pillSurface(border: HomeStyle.dateChipBorder)
@@ -794,7 +794,7 @@ private struct CatalogSeasonPreview: View {
                     // As on the title page: the season's own Episodes page.
                     Button { router.paths[router.selectedTab, default: NavigationPath()].append(ShowPageRoute.catalogEpisodes(route, season: selected)) } label: {
                         HStack(spacing: 6) { Text("Show all \(controller.items.count) episodes"); DiaryIcon(name: "chevron-right", size: 14) }
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(maxWidth: .infinity).frame(height: 48)
                             .pillSurface(border: HomeStyle.shortcutBorder)
                     }.buttonStyle(.springPress).accessibilityIdentifier("catalog-all-episodes")
@@ -821,7 +821,7 @@ private struct CatalogSeasonPreview: View {
     }
     private func filter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
+            Text(name).font(.app(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
                 .padding(.horizontal, 20).frame(height: 44)
                 .pillSurface(chosen: on ? ThemeStore.accent : nil)
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
@@ -870,6 +870,27 @@ private struct CatalogSeasonPreview: View {
     }
 }
 
+/// A row of 111-wide tiles (a photo or poster, a name and a line) in grey, while it loads: the cast and
+/// More like this rows' own sizes, so they land where it was.
+struct TilesPlaceholder: View {
+    let height: CGFloat
+    let label: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(0..<4, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 0) {
+                    RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .tertiarySystemFill)).frame(width: 111, height: height)
+                    Text("A name here").font(.app(size: 14, weight: .semibold)).padding(.top, 11)
+                    Text("A line").font(.app(size: 12)).padding(.top, 3)
+                }.frame(width: 111, alignment: .leading)
+            }
+        }
+        .redacted(reason: .placeholder)
+        .frame(maxWidth: .infinity, alignment: .leading).clipped()
+        .accessibilityElement(children: .ignore).accessibilityLabel(label)
+    }
+}
+
 struct CastAndRelated: View {
     let route: CatalogRoute
     var sourceTitle: String? = nil
@@ -888,6 +909,9 @@ struct CastAndRelated: View {
     @State private var cast: [CastPerson] = []
     @State private var related: [CatalogItem] = []
     @State private var failure: String?
+    /// The title whose cast, and whose More like this, have been read (with or without any).
+    @State private var castRead: CatalogRoute?
+    @State private var relatedRead: CatalogRoute?
     var body: some View {
         // Design: sections 42 pt apart, 22 pt headings, 111 pt tiles (radius 18) 12 pt apart.
         VStack(alignment: .leading, spacing: 42) {
@@ -895,7 +919,7 @@ struct CastAndRelated: View {
             if !cast.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Cast").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    Text("Cast").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 8)
                     if let seeAll { SeeAllLink(value: seeAll, identifier: "title-cast-all") }
                 }.frame(minHeight: 44)
@@ -909,14 +933,20 @@ struct CastAndRelated: View {
                                         .fullScreenArtwork(CatalogTools.image(person.profilePath, size: "w185"), title: person.name) {
                                             router.paths[router.selectedTab, default: NavigationPath()].append(PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character))
                                         }
-                                    Text(person.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).padding(.top, 11)
-                                    Text(person.character).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2).padding(.top, 3)
+                                    Text(person.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).padding(.top, 11)
+                                    Text(person.character).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2).padding(.top, 3)
                                 }.frame(width: 111, alignment: .leading).multilineTextAlignment(.leading)
                             }.buttonStyle(.plain).accessibilityIdentifier("cast-person-" + String(person.id))
                         }
                     }
                 }.scrollIndicators(.hidden).scrollClipDisabled()
               }
+            } else if castRead != route {
+                // While it loads: the row's shapes where it will land (it took no room, then pushed the page down).
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Cast").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).frame(minHeight: 44)
+                    TilesPlaceholder(height: 148, label: "Loading the cast")
+                }
             }
             if awardHistoryRoute == route, let sourceTitle {
                 TitleAwardsSection(route: route, title: sourceTitle, imdbID: awardsIMDbID)
@@ -926,7 +956,7 @@ struct CastAndRelated: View {
             if !related.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("More like this").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                        Text("More like this").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                         Spacer(minLength: 8)
                         SeeAllLink(value: ShowPageRoute.related(route, title: sourceTitle ?? ""), identifier: "title-related-all")
                     }.frame(minHeight: 44)
@@ -936,11 +966,19 @@ struct CastAndRelated: View {
                         }
                     }.scrollIndicators(.hidden).scrollClipDisabled().accessibilityIdentifier("related-titles-shelf")
                 }
+            } else if relatedRead != route {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("More like this").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).frame(minHeight: 44)
+                    TilesPlaceholder(height: 167, label: "Loading titles like this")
+                }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: cast.isEmpty)
         .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: related.isEmpty)
+        // A stand-in going (nothing to show after all) closes smoothly too.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: castRead)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: relatedRead)
         .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: awardHistoryRoute)
         .task(id: route) { await load() }
         .task(id: "\(route.kind.rawValue):\(route.id):\(awardsIMDbID ?? "")") {
@@ -972,15 +1010,17 @@ struct CastAndRelated: View {
                 .overlay(alignment: .bottomLeading) { if let score { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .wantsPosterScore(item, known: score, store: store)
-            Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
-            Text(item.year.map(String.init) ?? "").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
+            Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
+            Text(item.year.map(String.init) ?? "").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
         }.frame(width: 111, alignment: .leading).accessibilityElement(children: .combine)
     }
     private func load() async {
         failure = nil
-        do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do { cast = try await store.cast(route).cast } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
+        castRead = route
         // Never suggest the title you're looking at.
-        do { related = try await store.related(route).items.filter { $0.route != route } } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do { related = try await store.related(route).items.filter { $0.route != route } } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
+        relatedRead = route
     }
 }
 

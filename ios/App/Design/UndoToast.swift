@@ -27,11 +27,11 @@ struct UndoToast: View {
     var body: some View {
         HStack(spacing: 5) {
             DiaryIcon(name: "check", size: 15).foregroundStyle(Color(themed: "#79d8bc"))
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5f5f7"))
+            Text(label).font(.app(size: 12, weight: .semibold)).foregroundStyle(Color(themed: "#f5f5f7"))
                 .lineLimit(1).layoutPriority(1)
             if store.canUndo {
-                Button { Task { await store.undo() } } label: {
-                    Text("Undo").font(.system(size: 12, weight: .bold)).foregroundStyle(ThemeStore.accent).frame(minWidth: 44, minHeight: 44)
+                Button { Haptics.play(.light); Task { await store.undo() } } label: {
+                    Text("Undo").font(.app(size: 12, weight: .bold)).foregroundStyle(ThemeStore.accent).frame(minWidth: 44, minHeight: 44)
                 }.disabled(store.busy || store.writesBlocked).accessibilityIdentifier("undo-action")
             }
             Button { store.dismissUndo() } label: { DiaryIcon(name: "x", size: 13).frame(width: 36, height: 44) }

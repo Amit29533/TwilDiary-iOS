@@ -47,12 +47,12 @@ struct SimklSettingsView: View {
                         BrandLogo(service: .simkl, size: 44)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(account.signedIn ? (account.username.map { "@" + $0 } ?? "Signed in") : "Simkl")
-                                .font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                .font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         }
                         Spacer(minLength: 4)
                         if !account.signedIn {
                             Button { Task { await signIn() } } label: {
-                                Text(working ? "Opening…" : "Sign in").font(.system(size: 14, weight: .bold)).foregroundStyle(WatchStyle.ink)
+                                Text(working ? "Opening…" : "Sign in").font(.app(size: 14, weight: .bold)).foregroundStyle(WatchStyle.ink)
                                     .padding(.horizontal, 14).frame(height: 34).background(WatchStyle.fill, in: Capsule())
                             }.buttonStyle(.plain).disabled(working).accessibilityIdentifier("simkl-sign-in")
                         }
@@ -64,7 +64,7 @@ struct SimklSettingsView: View {
                     SettingsGroup {
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Also save my activity to Simkl").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Text("Also save my activity to Simkl").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             }
                             Spacer(minLength: 4)
                             Toggle("", isOn: $account.saving).labelsHidden().tint(theme.accent).accessibilityIdentifier("simkl-saving")
@@ -86,13 +86,13 @@ struct SimklSettingsView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(mirror.sending ? "Sending \(mirror.queue.jobs.count)…" : "\(mirror.queue.jobs.count) waiting")
-                                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                     // Where it stands: paused until a time (Simkl's daily limit or a long wait), and today's requests.
-                                    Text(waitingDetail).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                                    Text(waitingDetail).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                                     if let fraction = mirror.sendFraction { SendProgressBar(fraction: fraction).padding(.top, 4) }
                                 }
                                 Spacer()
-                                Button("Send now") { Task { await mirror.sendNow() } }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                                Button("Send now") { Task { await mirror.sendNow() } }.font(.app(size: 14, weight: .semibold)).tint(theme.accent)
                                     .disabled(mirror.sending || !account.saving)
                             }.padding(.horizontal, 15).frame(minHeight: 56)
                         }
@@ -123,22 +123,22 @@ struct SimklSettingsView: View {
                         ForEach(Array(mirror.notKept.prefix(30).enumerated()), id: \.element.id) { index, item in
                             if index > 0 { SettingsDivider() }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                                Text(item.reason).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                                Text(item.label).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text(item.reason).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
                                 if let reply = item.reply, !reply.isEmpty {
                                     // Simkl's own answer, for a closer look, folded away.
                                     DisclosureGroup("Simkl’s answer") {
-                                        Text(reply).font(.system(size: 11, design: .monospaced)).foregroundStyle(HomeStyle.secondary).textSelection(.enabled)
+                                        Text(reply).font(.app(size: 11, design: .monospaced)).foregroundStyle(HomeStyle.secondary).textSelection(.enabled)
                                             .frame(maxWidth: .infinity, alignment: .leading)
-                                    }.font(.system(size: 12)).tint(HomeStyle.secondary)
+                                    }.font(.app(size: 12)).tint(HomeStyle.secondary)
                                 }
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.vertical, 10)
                         }
                         SettingsDivider()
                         HStack {
-                            Button("Try again") { Task { await mirror.retryNotKept() } }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                            Button("Try again") { Task { await mirror.retryNotKept() } }.font(.app(size: 14, weight: .semibold)).tint(theme.accent)
                                 .frame(maxWidth: .infinity, minHeight: 48).disabled(!account.canSend || mirror.sending)
-                            Button("Clear this list") { mirror.clearNotKept() }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                            Button("Clear this list") { mirror.clearNotKept() }.font(.app(size: 14, weight: .semibold)).tint(theme.accent)
                                 .frame(maxWidth: .infinity, minHeight: 48)
                         }
                     }
@@ -148,19 +148,19 @@ struct SimklSettingsView: View {
                         ForEach(Array(mirror.filedDifferently.prefix(20).enumerated()), id: \.element.id) { index, item in
                             if index > 0 { SettingsDivider() }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                                Text(item.reason).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                                Text(item.label).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text(item.reason).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).padding(.vertical, 10)
                         }
                         SettingsDivider()
-                        Button("Clear this list") { mirror.clearFiledDifferently() }.font(.system(size: 14, weight: .semibold)).tint(theme.accent)
+                        Button("Clear this list") { mirror.clearFiledDifferently() }.font(.app(size: 14, weight: .semibold)).tint(theme.accent)
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
                 }
                 if let message { SettingsFootnote(text: message) }
                 if account.signedIn || !mirror.queue.jobs.isEmpty || !mirror.notKept.isEmpty {
                     Button(role: .destructive) { confirmRemove = true } label: {
-                        Text("Disconnect and remove").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                        Text("Disconnect and remove").font(.app(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
                             .frame(maxWidth: .infinity, minHeight: ThemeStore.current.native ? 52 : 50)
                     }.buttonStyle(.plain).foregroundStyle(.red).cardSurface(16)
                         .accessibilityIdentifier("simkl-remove")
@@ -179,6 +179,6 @@ struct SimklSettingsView: View {
         defer { working = false }
         do {
             if try await account.signIn(using: webSession) { message = "Signed in. Turn on “Also save my activity to Simkl” to start." }
-        } catch { message = error.localizedDescription }
+        } catch { message = FriendlyError.message(error) }
     }
 }

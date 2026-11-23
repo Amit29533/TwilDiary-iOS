@@ -18,7 +18,7 @@ struct NativeTile: View {
         let tint = color ?? Self.color(for: symbol)
         let shape = RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
         // As iOS 26's Settings: dark icons in dark mode (the symbol in its colour on a dark tile), colour tiles in light.
-        Image(systemName: symbol).font(.system(size: size * 0.5, weight: .medium)).foregroundStyle(colorScheme == .dark ? tint : .white)
+        Image(systemName: symbol).font(.app(size: size * 0.5, weight: .medium)).foregroundStyle(colorScheme == .dark ? tint : .white)
             .symbolRenderingMode(.monochrome)
             .frame(width: size, height: size)
             .background { if colorScheme == .dark { shape.fill(Color.black.opacity(0.55)) } else { shape.fill(tint.gradient) } }
@@ -195,7 +195,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                 Button {
                     withAnimation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22)) { selection = segment.value }
                 } label: {
-                    Text(segment.title).font(.system(size: 14, weight: on ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
+                    Text(segment.title).font(.app(size: 14, weight: on ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
                         .lineLimit(1).minimumScaleFactor(0.8).padding(.horizontal, 5).frame(maxWidth: .infinity, minHeight: 34)
                         .background {
                             if on {
@@ -218,7 +218,7 @@ struct NativeRoundGlass: View {
     var selected = false
     var size: CGFloat = 36
     var body: some View {
-        Image(systemName: system).font(.system(size: size * 0.4, weight: .semibold))
+        Image(systemName: system).font(.app(size: size * 0.4, weight: .semibold))
             .foregroundStyle(selected ? Color.white : Color(uiColor: .label))
             .frame(width: size, height: size)
             .background(selected ? Color(uiColor: .systemBlue) : Color(uiColor: .tertiarySystemFill), in: Circle())

@@ -230,7 +230,7 @@ import TwilDiaryCore
         self.providerSettingsStore = providerSettingsStore ?? UserDefaultsProviderSettingsStore()
         #endif
         do { self.providerSettings = try self.providerSettingsStore.load() }
-        catch { self.providerSettings = ProviderConnectionSettings(); self.error = error.localizedDescription }
+        catch { self.providerSettings = ProviderConnectionSettings(); self.error = FriendlyError.message(error) }
         if !isPreview { removeSimkl() }
         #if DEBUG
         if isPreview {
@@ -763,7 +763,7 @@ import TwilDiaryCore
     }
     private func persistProviderSettings(_ next: ProviderConnectionSettings) -> Bool {
         do { try providerSettingsStore.save(next) }
-        catch { self.error = error.localizedDescription; return false }
+        catch { self.error = FriendlyError.message(error); return false }
         providerSettings = next
         return true
     }
@@ -790,7 +790,7 @@ import TwilDiaryCore
         }
         guard queued else { return }
         do { try outboxStore.save(next, scope: scope); outbox = next }
-        catch { self.error = "Provider delivery could not be saved: " + error.localizedDescription; return }
+        catch { self.error = "Provider delivery could not be saved: " + FriendlyError.message(error); return }
         Task { await flushDirectProviders() }
     }
     /// Flushes pending outbox mutations to all enabled and authenticated direct providers (`trakt`, `mdblist`, `wetrakr`).
@@ -900,16 +900,16 @@ import TwilDiaryCore
                     // A finite retry budget (as Cinopsys has): one that keeps failing is set aside
                     // instead of holding up every edit behind it.
                     if entry.attempts + 1 >= Self.outboxRetryBudget {
-                        setAside(entry, provider: provider, reason: error.localizedDescription)
+                        setAside(entry, provider: provider, reason: FriendlyError.message(error))
                         continue
                     }
                     var next = outbox
-                    next.recordFailure(entryID: entry.id, error: error.localizedDescription)
+                    next.recordFailure(entryID: entry.id, error: FriendlyError.message(error))
                     if let scope = outboxScope {
                         do { try outboxStore.save(next, scope: scope); outbox = next }
-                        catch { self.error = error.localizedDescription }
+                        catch { self.error = FriendlyError.message(error) }
                     }
-                    if error.localizedDescription == plan.blocked.joined(separator: " ") || error.localizedDescription.hasPrefix("A previous history request needs reconciliation") {
+                    if FriendlyError.message(error) == plan.blocked.joined(separator: " ") || FriendlyError.message(error).hasPrefix("A previous history request needs reconciliation") {
                         blockedTitles.insert(entry.mutation.titleId)
                         continue
                     }
@@ -1088,7 +1088,7 @@ import TwilDiaryCore
     }
     @discardableResult func restore(_ title: MediaTitle) async -> Bool {
         guard phoneOnly, PhoneTrash.shared.contains(title.id) else { return false }
-        do { try await restoreOnPhone(title); return true } catch { self.error = error.localizedDescription; return false }
+        do { try await restoreOnPhone(title); return true } catch { self.error = FriendlyError.message(error); return false }
     }
     @discardableResult func refreshTitleMetadata(_ title: MediaTitle) async -> Bool {
         // Details and episodes from TMDB on the phone.
@@ -1317,7 +1317,7 @@ import TwilDiaryCore
             applyDiarySource()
             return true
         } catch {
-            self.error = error.localizedDescription
+            self.error = FriendlyError.message(error)
             return false
         }
     }

@@ -110,7 +110,7 @@ struct HomeSavedShelves: View {
             if titles.isEmpty && found[filter.id] == nil {
                 Color.clear.frame(height: posterSize.homeWidth * 1.5 + 62)
             } else if titles.isEmpty {
-                Text("Nothing matches this shelf right now.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                Text("Nothing matches this shelf right now.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
                     .padding(16).frame(maxWidth: .infinity, alignment: .leading)
                     .cardSurface(20)
                     .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))

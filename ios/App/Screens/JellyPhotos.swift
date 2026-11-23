@@ -70,13 +70,13 @@ struct JellyPhotoViewer: View {
             if chrome && pulled == 0 {
                 HStack(spacing: 12) {
                     Button { close() } label: {
-                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        Image(systemName: "xmark").font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
                             .frame(width: 44, height: 44).background(.black.opacity(0.45), in: Circle()).contentShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("jellyspace-photo-close")
                     VStack(alignment: .leading, spacing: 2) {
                         Text(photos.indices.contains(index) ? (photos[index].Name ?? "Photo") : "Photo")
-                            .font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                        Text("\(index + 1) of \(photos.count)").font(.system(size: 12)).opacity(0.7)
+                            .font(.app(size: 15, weight: .semibold)).lineLimit(1)
+                        Text("\(index + 1) of \(photos.count)").font(.app(size: 12)).opacity(0.7)
                     }.foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 4)
                     Spacer(minLength: 0)
                 }
@@ -118,7 +118,7 @@ private struct JellyPhotoPage: View {
             if let image {
                 JellyZoomImage(image: image, tapped: tapped, pulled: pulled, close: close)
             } else if failed {
-                Image(systemName: "photo").font(.system(size: 40)).foregroundStyle(.white.opacity(0.5))
+                Image(systemName: "photo").font(.app(size: 40)).foregroundStyle(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).onTapGesture(perform: tapped)
             } else {
                 ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).onTapGesture(perform: tapped)

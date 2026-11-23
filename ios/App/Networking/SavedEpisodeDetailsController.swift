@@ -59,7 +59,7 @@ import TwilDiaryCore
         } catch {
             guard session == generation, reads[season]?.id == read.id else { return }
             reads.removeValue(forKey: season)
-            if !(error is CancellationError) { errors[season] = error.localizedDescription }
+            if !(error is CancellationError) { errors[season] = FriendlyError.message(error) }
         }
     }
 }

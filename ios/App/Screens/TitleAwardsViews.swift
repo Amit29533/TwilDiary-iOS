@@ -14,7 +14,7 @@ struct TitleAwardsSection: View {
         let destination = ShowPageRoute.titleAwards(route, title: title, imdbID: imdbID)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
-                Text("Awards and nominations").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                Text("Awards and nominations").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
                 // The round chevron every section uses for "see all".
@@ -32,10 +32,10 @@ struct TitleAwardsSection: View {
                             if index > 0 { Divider().padding(.leading, 44) }
                             HStack(spacing: 8) {
                                 // The row's place, as the ranked lists elsewhere.
-                                Text("\(index + 1).").font(.system(size: 15, weight: .bold)).monospacedDigit()
+                                Text("\(index + 1).").font(.app(size: 15, weight: .bold)).monospacedDigit()
                                     .foregroundStyle(index < 3 ? HomeStyle.chipText : HomeStyle.secondary)
                                     .frame(width: 22, alignment: .leading)
-                                Text(row.ceremony).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Text(row.ceremony).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                     .lineLimit(1).truncationMode(.tail)
                                 Spacer(minLength: 8)
                                 if row.wins > 0 { counter("trophy.fill", row.wins, tint: Color(themed: "#e7ca90")) }
@@ -67,8 +67,8 @@ struct TitleAwardsSection: View {
 /// A small counter: the icon and the number in a soft capsule.
 private func counter(_ symbol: String, _ count: Int, tint: Color) -> some View {
     HStack(spacing: 4) {
-        Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(tint)
-        Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
+        Image(systemName: symbol).font(.app(size: 11, weight: .semibold)).foregroundStyle(tint)
+        Text(count.formatted()).font(.app(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
     }.padding(.horizontal, 8).frame(height: 24).background(tint.opacity(0.14), in: Capsule())
 }
 
@@ -77,8 +77,8 @@ private struct AwardCountStyle: LabelStyle {
     let tint: Color
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 5) {
-            configuration.icon.font(.system(size: 13, weight: .medium)).foregroundStyle(tint)
-            configuration.title.font(.system(size: 15)).foregroundStyle(.secondary).monospacedDigit()
+            configuration.icon.font(.app(size: 13, weight: .medium)).foregroundStyle(tint)
+            configuration.title.font(.app(size: 15)).foregroundStyle(.secondary).monospacedDigit()
         }
     }
 }
@@ -186,7 +186,7 @@ struct TitleAwardsPage: View {
                     ForEach(groups) { ceremony in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 8) {
-                                Text(ceremony.name).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                                Text(ceremony.name).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                                     .accessibilityAddTraits(.isHeader)
                                 Spacer(minLength: 8)
                                 // Wins and the other nominations, each with its own icon (as the title page's card).
@@ -239,9 +239,9 @@ struct TitleAwardsPage: View {
 
     private func summaryChip(_ symbol: String, _ count: Int, _ label: String, tint: Color) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
-            Text(count.formatted()).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
-            Text(label).font(.system(size: 13)).foregroundStyle(.secondary)
+            Image(systemName: symbol).font(.app(size: 13, weight: .semibold)).foregroundStyle(tint)
+            Text(count.formatted()).font(.app(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
+            Text(label).font(.app(size: 13)).foregroundStyle(.secondary)
         }.padding(.horizontal, 12).frame(height: 34).background(HomeStyle.card, in: Capsule())
             .overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             .accessibilityElement(children: .combine)
@@ -253,12 +253,12 @@ struct TitleAwardsPage: View {
             Text(row.year.map(String.init) ?? "—").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
                 .frame(width: 36, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.category).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                Text(row.category).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let recipient = row.recipient { Text(recipient).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
             }
             Spacer(minLength: 8)
-            Image(systemName: row.won ? "trophy.fill" : "medal").font(.system(size: 14, weight: .semibold))
+            Image(systemName: row.won ? "trophy.fill" : "medal").font(.app(size: 14, weight: .semibold))
                 .foregroundStyle(row.won ? Color(themed: "#e7ca90") : Color.secondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)

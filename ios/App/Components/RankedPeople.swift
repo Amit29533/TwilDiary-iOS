@@ -62,7 +62,7 @@ struct FavouriteHeartButton: View {
             FavouritesStore.shared.toggle(kind, ref: ref, name: name, image: image, subtitle: subtitle, store: store)
             feedback += 1
         } label: {
-            Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.system(size: size * 0.46, weight: .semibold))
+            Image(systemName: saved ? "heart.fill" : "heart").contentTransition(.symbolEffect(.replace)).symbolEffect(.bounce, value: saved).font(.app(size: size * 0.46, weight: .semibold))
                 .foregroundStyle(saved ? HomeStyle.chipText : .white)
                 .frame(width: size, height: size)
                 .background(tinted ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.black.opacity(0.55)), in: Circle())
@@ -93,7 +93,7 @@ struct MostWatchedSection<Content: View>: View {
             if heading != nil || !(ranking?.people.isEmpty ?? true) {
             HStack(spacing: 8) {
                 if let heading {
-                    Text(heading).font(.system(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text(heading).font(.app(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         .accessibilityValue(ranking?.status ?? "").accessibilityAddTraits(.isHeader)
                 }
                 Spacer(minLength: 4)
@@ -121,18 +121,18 @@ struct MostWatchedShelf: View {
                     VStack(spacing: 6) {
                         Artwork(path: person.row.image, title: person.row.name, alignment: .top).frame(width: 64, height: 64).clipShape(Circle())
                             .overlay(Circle().strokeBorder(HomeStyle.outline(0.1)))
-                        Text(person.row.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Text(person.row.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             .multilineTextAlignment(.center).lineLimit(2).truncationMode(.tail)
-                        Text(person.row.count).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Text(person.row.count).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     }.frame(maxWidth: .infinity).contentShape(Rectangle()).accessibilityElement(children: .combine)
                 }
             }
             NavigationLink(value: ranking) {
                 VStack(spacing: 6) {
-                    Image(systemName: "arrow.right").font(.system(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                    Image(systemName: "arrow.right").font(.app(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .frame(width: 64, height: 64).background(HomeStyle.round, in: Circle())
                         .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-                    Text("See all").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                    Text("See all").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                 }.frame(maxWidth: .infinity).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel("See all \(ranking.people.count)").accessibilityIdentifier(ranking.identifier + "-more")
         }
@@ -148,16 +148,16 @@ struct MostWatchedShelf: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 18))
                                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08)))
                                 .overlay(alignment: .topLeading) {
-                                    Text("#\(index + 1)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                                    Text("#\(index + 1)").font(.app(size: 12, weight: .bold)).monospacedDigit()
                                         .foregroundStyle(ThemeStore.current.accentInk).padding(.horizontal, 8).frame(height: 24)
                                         .background(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom), in: Capsule())
                                         .padding(8)
                                 }
                                 .padding(.bottom, 6)
-                            Text(person.row.name).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                            Text(person.row.name).font(.app(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
                                 .lineLimit(1).truncationMode(.tail)
                             Text([person.row.count, person.row.extra].compactMap { $0 }.joined(separator: " · "))
-                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                                .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
                         }.multilineTextAlignment(.leading).contentShape(Rectangle())
                             .accessibilityElement(children: .combine)
                     }
@@ -196,27 +196,27 @@ struct PeopleRankingView: View {
         EdgeToEdgeScroll(frosted: true) {
             LazyVStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    Text(route.category).font(.system(size: 34, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.primary)
+                    Text(route.category).font(.app(size: 34, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.primary)
                         .lineLimit(1).minimumScaleFactor(0.8).accessibilityIdentifier("people-ranking-category")
                 }.padding(.bottom, 4)
-                if let status = route.status { Text(status).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
+                if let status = route.status { Text(status).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary) }
                 ForEach(Array(route.people.enumerated()), id: \.element.id) { index, person in
                     RankedPersonLink(person: person, identifier: "ranking-" + route.identifier) {
                         HStack(alignment: .center, spacing: 14) {
-                            Text(String(index + 1)).font(.system(size: 22, weight: .bold)).monospacedDigit()
+                            Text(String(index + 1)).font(.app(size: 22, weight: .bold)).monospacedDigit()
                                 .foregroundStyle(index < 3 ? HomeStyle.chipText : HomeStyle.secondary).frame(width: 30)
                             Artwork(path: person.row.image, title: person.row.name, alignment: .top).frame(width: 52, height: 64)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(person.row.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                                Text(person.row.name).font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                                 if let detail = person.row.detail, !detail.isEmpty {
-                                    Text(detail).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                                    Text(detail).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
                                 }
                                 Text([person.row.count, person.row.extra].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
+                                    .font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
                                     .padding(.horizontal, 10).frame(height: 26).background(HomeStyle.chip, in: Capsule())
                             }.frame(maxWidth: .infinity, alignment: .leading)
-                            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                            Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         }.padding(.horizontal, 14).padding(.vertical, 12)
                             .cardSurface(22)
                             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))

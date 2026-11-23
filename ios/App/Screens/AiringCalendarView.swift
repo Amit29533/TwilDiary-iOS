@@ -108,7 +108,7 @@ struct AiringCalendarView: View {
                 let on = tab == item
                 Button { withAnimation(.snappy(duration: 0.25)) { tab = item } } label: {
                     VStack(spacing: 8) {
-                        Text(item.title).font(.system(size: 16, weight: on ? .bold : .semibold)).foregroundStyle(on ? HomeStyle.primary : HomeStyle.secondary)
+                        Text(item.title).font(.app(size: 16, weight: on ? .bold : .semibold)).foregroundStyle(on ? HomeStyle.primary : HomeStyle.secondary)
                         ZStack { if on { Capsule().fill(theme.accent).matchedGeometryEffect(id: "line", in: underline) } else { Color.clear } }.frame(height: 3)
                     }.fixedSize().frame(minHeight: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("calendar-tab-" + item.id)
@@ -176,18 +176,18 @@ struct AiringCalendarView: View {
             : today.formatted(.dateTime.month(.wide))
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(monthName).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.8)
+                Text(monthName).font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
                 HStack(spacing: 4) {
                     Text("\(items.count)").foregroundStyle(HomeStyle.chipText).bold()
                     Text("upcoming ·").foregroundStyle(HomeStyle.secondary)
                     Text("\(thisWeek)").foregroundStyle(HomeStyle.chipText).bold()
                     Text("this week").foregroundStyle(HomeStyle.secondary)
-                }.font(.system(size: 13)).lineLimit(1).monospacedDigit()
+                }.font(.app(size: 13)).lineLimit(1).monospacedDigit()
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
                 ForEach(Array(["M", "T", "W", "T", "F", "S", "S"].enumerated()), id: \.offset) { _, letter in
-                    Text(letter).font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    Text(letter).font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                 }
                 ForEach(days, id: \.self) { day in dayCell(day, today: today, count: counts[day] ?? 0) }
             }
@@ -199,9 +199,9 @@ struct AiringCalendarView: View {
         let selected = selectedDate == day
         return Button { withAnimation(.snappy) { selectedDate = selected ? nil : day } } label: {
             VStack(spacing: 2) {
-                Text(day, format: .dateTime.day()).font(.system(size: 16, weight: count > 0 || isToday ? .bold : .medium)).monospacedDigit()
+                Text(day, format: .dateTime.day()).font(.app(size: 16, weight: count > 0 || isToday ? .bold : .medium)).monospacedDigit()
                     .foregroundStyle(isToday ? ThemeStore.current.accentInk : count > 0 ? HomeStyle.primary : HomeStyle.secondary.opacity(past ? 0.45 : 1))
-                if isToday { Text("NOW").font(.system(size: 8, weight: .heavy)).foregroundStyle(ThemeStore.current.accentInk) }
+                if isToday { Text("NOW").font(.app(size: 8, weight: .heavy)).foregroundStyle(ThemeStore.current.accentInk) }
                 else { Circle().fill(count > 0 ? HomeStyle.chipText : .clear).frame(width: 4, height: 4) }
             }.frame(maxWidth: .infinity).frame(height: 44)
                 .background {
@@ -259,19 +259,20 @@ struct AiringCalendarView: View {
                     if let score = item.title.communityScore, score > 0 { scoreBadge(score) }
                     CalendarStyle.badge(away(when.away))
                 } extra: {
-                    if !summary.isEmpty { Text(summary).font(.system(size: 13)).foregroundStyle(Color(themed: "#a9a3b5")).lineLimit(2).multilineTextAlignment(.leading) }
+                    if !summary.isEmpty { Text(summary).font(.app(size: 13)).foregroundStyle(Color(themed: "#a9a3b5")).lineLimit(2).multilineTextAlignment(.leading) }
                 }
             }.buttonStyle(.plain).accessibilityIdentifier("calendar-row-" + item.id)
             if item.daysAway <= 0 {
-                Button { Task { await store.recordViewing(item.title, episode: item.episode, watchedAt: store.now) } } label: {
+                // The same tap feel as a tick anywhere else (it had none here).
+                Button { Haptics.play(.success); Task { await store.recordViewing(item.title, episode: item.episode, watchedAt: store.now) } } label: {
                     DiaryIcon(name: "check", size: 18).foregroundStyle(theme.accent).frame(width: 44, height: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(store.writesBlocked).accessibilityLabel("Mark watched")
             }
         }.task(id: item.id) { await loadAirTime(item) }
     }
     private func scoreBadge(_ score: Double) -> some View {
-        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-            .font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+        HStack(spacing: 3) { Image(systemName: "star.fill").font(.app(size: 9)); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+            .font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
             .padding(.horizontal, 8).frame(height: 22).background(HomeStyle.chip, in: Capsule())
     }
     private func badge(_ text: String, strong: Bool = false) -> some View { CalendarStyle.badge(text, strong: strong) }
@@ -312,16 +313,16 @@ struct AiringCalendarView: View {
     private func catchupCard(_ items: [UpcomingSchedule.Item]) -> some View {
         let shows = Set(items.map(\.title.id)).count
         return HStack(spacing: 14) {
-            Text("\(items.count)").font(.system(size: 44, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
+            Text("\(items.count)").font(.app(size: 44, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.6).frame(minWidth: 34)
             VStack(alignment: .leading, spacing: 3) {
-                Text(items.count == 1 ? "episode to catch up" : "episodes to catch up").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.85)
-                Text("Across " + shows.counted("show", "shows") + " · aired in the last \(catchupDays) days").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                Text(items.count == 1 ? "episode to catch up" : "episodes to catch up").font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.85)
+                Text("Across " + shows.counted("show", "shows") + " · aired in the last \(catchupDays) days").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
             }
             Spacer(minLength: 4)
             Button { confirmMarkAll = true } label: {
                 Group { if marking { ProgressView().controlSize(.small) } else { Text("Mark all") } }
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    .font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     .padding(.horizontal, 16).frame(height: 40).pillSurface(border: nil)
                     .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
             }.buttonStyle(.springPress).disabled(marking || store.writesBlocked).accessibilityIdentifier("calendar-mark-all")
@@ -357,14 +358,14 @@ struct AiringCalendarView: View {
             NavigationLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) { poster(group.title) }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(airedText).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(airedText).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     badge("\(group.items.count) behind", strong: true)
                 }
                 NavigationLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) {
-                    Text(group.title.name).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                    Text(group.title.name).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                 }.buttonStyle(.plain)
-                Text(group.title.categoryName + " · " + span).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
+                Text(group.title.categoryName + " · " + span).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
                 if progress.aired > 0 {
                     GeometryReader { proxy in
                         Capsule().fill(Color.primary.opacity(0.1)).overlay(alignment: .leading) {
@@ -374,10 +375,10 @@ struct AiringCalendarView: View {
                     }.frame(height: 4).padding(.top, 4)
                 }
                 HStack(spacing: 8) {
-                    Text("\(progress.watched) of \(progress.aired) watched").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).monospacedDigit()
+                    Text("\(progress.watched) of \(progress.aired) watched").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).monospacedDigit()
                     Spacer(minLength: 4)
-                    Button { Task { await store.recordViewing(group.title, episode: first.episode, watchedAt: store.now) } } label: {
-                        Text("Watch E\(first.episode.number)").font(.system(size: 14, weight: .bold)).foregroundStyle(WatchStyle.ink).lineLimit(1)
+                    Button { Haptics.play(.success); Task { await store.recordViewing(group.title, episode: first.episode, watchedAt: store.now) } } label: {
+                        Text("Watch E\(first.episode.number)").font(.app(size: 14, weight: .bold)).foregroundStyle(WatchStyle.ink).lineLimit(1)
                             .padding(.horizontal, 14).frame(height: 34)
                             .background(WatchStyle.fill, in: Capsule())
                             .frame(minHeight: 44).contentShape(Capsule())
@@ -398,6 +399,7 @@ struct AiringCalendarView: View {
     private func markAll(_ items: [UpcomingSchedule.Item]) {
         guard !marking else { return }
         marking = true
+        Haptics.play(.success)
         Task {
             for item in items.sorted(by: { ($0.title.id, $0.episode.season, $0.episode.number) < ($1.title.id, $1.episode.season, $1.episode.number) }) {
                 await store.recordViewing(item.title, episode: item.episode, watchedAt: store.now)
@@ -433,7 +435,7 @@ struct AiringCalendarView: View {
     }
 
     private func empty(_ text: String) -> some View {
-        Text(text).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).frame(maxWidth: .infinity, alignment: .leading)
+        Text(text).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).frame(maxWidth: .infinity, alignment: .leading)
             .padding(16).cardSurface(18)
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
     }
@@ -456,8 +458,8 @@ struct AiringCalendarView: View {
     static func pill(_ label: String, active: Bool = false) -> some View {
         HStack(spacing: 6) {
             Text(label).lineLimit(1).truncationMode(.tail).frame(maxWidth: 120)
-            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
-        }.font(.system(size: 14, weight: .semibold)).fixedSize()
+            Image(systemName: "chevron.down").font(.app(size: 11, weight: .bold)).opacity(0.8)
+        }.font(.app(size: 14, weight: .semibold)).fixedSize()
             .foregroundStyle(active ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 38)
             .pillSurface(HomeStyle.card, chosen: active ? HomeStyle.chip : nil)
@@ -468,10 +470,10 @@ struct AiringCalendarView: View {
         HStack(spacing: 5) {
             Text(label).foregroundStyle(Color(themed: "#c5c0cf"))
             Text("(\(count))").foregroundStyle(HomeStyle.primary)
-        }.font(.system(size: 20, weight: .bold)).padding(.top, 4)
+        }.font(.app(size: 20, weight: .bold)).padding(.top, 4)
     }
     static func badge(_ text: String, strong: Bool = false) -> some View {
-        Text(text).font(.system(size: 12, weight: .bold)).foregroundStyle(strong ? HomeStyle.chipText : HomeStyle.primary).lineLimit(1)
+        Text(text).font(.app(size: 12, weight: .bold)).foregroundStyle(strong ? HomeStyle.chipText : HomeStyle.primary).lineLimit(1)
             .padding(.horizontal, 8).frame(height: 22)
             .background(strong ? HomeStyle.chip : Color.primary.opacity(0.08), in: Capsule())
     }
@@ -489,12 +491,12 @@ struct AiringCalendarView: View {
             poster(path, name: name)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 6) {
-                    Text(when).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(when).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     badges()
                 }
-                Text(name).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
-                Text(line).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
+                Text(name).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                Text(line).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
                 extra()
             }
         }.contentShape(Rectangle())
@@ -512,24 +514,24 @@ struct CalendarGenreSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Genres").font(.system(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+                Text("Genres").font(.app(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
                 Spacer()
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                    Image(systemName: "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
                         .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
                         .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                 }.buttonStyle(.plain).accessibilityLabel("Close")
             }.padding(.horizontal, 20).padding(.top, 22)
             ScrollView {
                 if names.isEmpty {
-                    Text("None of the shows on your calendar have genres yet.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                    Text("None of the shows on your calendar have genres yet.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     InlineFlowLayout {
                         ForEach(names, id: \.self) { name in
                             let on = pending.contains(name)
                             Button { withAnimation(.snappy(duration: 0.2)) { if on { pending.remove(name) } else { pending.insert(name) } } } label: {
-                                Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                                Text(name).font(.app(size: 15, weight: .semibold)).lineLimit(1)
                                     .foregroundStyle(on ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
                                     .padding(.horizontal, 15).frame(height: 40)
                                     .background(on ? HomeStyle.chip : HomeStyle.card, in: Capsule())
@@ -543,7 +545,7 @@ struct CalendarGenreSheet: View {
                 .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentSize.height }) { _, height in chipsHeight = height }
             HStack(spacing: 10) {
                 Button("Clear") { withAnimation(.snappy) { pending = [] } }
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     .frame(width: 110, height: 52).pillSurface(border: nil)
                     .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     .buttonStyle(.plain).disabled(pending.isEmpty).opacity(pending.isEmpty ? 0.5 : 1)

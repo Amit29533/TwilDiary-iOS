@@ -60,7 +60,7 @@ struct RecentlyViewedShelf: View {
                 HStack {
                     Text("Recently viewed").font(.headline).foregroundStyle(.primary).accessibilityAddTraits(.isHeader)
                     Spacer()
-                    Button("Clear") { json = "[]" }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
+                    Button("Clear") { json = "[]" }.font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
                         .accessibilityIdentifier("search-clear-viewed")
                 }
                 ScrollView(.horizontal) {
@@ -70,7 +70,7 @@ struct RecentlyViewedShelf: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: 90, height: 135)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                    Text(item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                         .lineLimit(2).multilineTextAlignment(.leading)
                                 }.frame(width: 90, alignment: .leading)
                             }.buttonStyle(.springPress).accessibilityIdentifier("search-viewed-" + item.key)
@@ -124,7 +124,7 @@ struct SearchStudiosAndFranchises: View {
                                     VStack(alignment: .leading, spacing: 6) {
                                         Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: 100, height: 150)
                                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        Text(item.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                        Text(item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                             .lineLimit(2).multilineTextAlignment(.leading)
                                     }.frame(width: 100, alignment: .leading)
                                 }.buttonStyle(.springPress).simultaneousGesture(TapGesture().onEnded(onChoose))
@@ -144,10 +144,10 @@ struct SearchStudiosAndFranchises: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(company.name).font(.headline).foregroundStyle(HomeStyle.primary).lineLimit(2)
                                     Text(["Studio", company.country.flatMap { Locale.current.localizedString(forRegionCode: $0) }].compactMap { $0 }.joined(separator: " · "))
-                                        .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                                        .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 4)
-                                Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
+                                Image(systemName: "chevron.right").font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
                             }.padding(12).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded(onChoose))
                             .accessibilityIdentifier("search-studio-\(company.id)")

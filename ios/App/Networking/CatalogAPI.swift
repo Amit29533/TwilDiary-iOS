@@ -160,6 +160,6 @@ extension DiaryStore {
             error = nil
             return title.id
         }
-        catch { self.error = error.localizedDescription; return nil }
+        catch { self.error = FriendlyError.message(error); return nil }
     }
 }

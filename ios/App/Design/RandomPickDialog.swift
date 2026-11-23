@@ -62,7 +62,7 @@ struct RandomPickDialog: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 8) {
                             DiaryIcon(name: "sparkles", size: 17)
-                            Text("A little surprise").font(.system(size: 14)).accessibilityHidden(true)
+                            Text("A little surprise").font(.app(size: 14)).accessibilityHidden(true)
                             Spacer(minLength: 0)
                             Button(action: onClose) {
                                 DiaryIcon(name: "x", size: 15).frame(width: 30, height: 30).background(Color.primary.opacity(0.1), in: Circle())
@@ -79,12 +79,12 @@ struct RandomPickDialog: View {
                                     .disabled(active.count < 2 || rolling).accessibilityIdentifier("random-pick-again")
                                 Button { onOpen(picked.id) } label: { HStack(spacing: 6) { Text("Open title"); DiaryIcon(name: "arrow-up-right", size: 15) }.frame(maxWidth: .infinity) }
                                     .buttonStyle(.diaryPrimary).accessibilityIdentifier("random-pick-open")
-                            }.font(.system(size: 14, weight: .semibold)).padding(.top, 16)
+                            }.font(.app(size: 14, weight: .semibold)).padding(.top, 16)
                         } else {
                             VStack(spacing: 14) {
                                 DiaryIcon(name: "sparkles", size: 32).foregroundStyle(theme.accent)
-                                Text("Your next story starts here").font(.system(size: 20, weight: .bold)).foregroundStyle(.primary)
-                                Text("Add some titles to your collection for a surprise pick.").font(.system(size: 14)).foregroundStyle(.secondary)
+                                Text("Your next story starts here").font(.app(size: 20, weight: .bold)).foregroundStyle(.primary)
+                                Text("Add some titles to your collection for a surprise pick.").font(.app(size: 14)).foregroundStyle(.secondary)
                                 Button("Add a title", action: onAdd).buttonStyle(.diaryPrimary).controlSize(.large)
                             }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.vertical, 28)
                         }
@@ -100,10 +100,10 @@ struct RandomPickDialog: View {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: compact ? 85 : 115, height: compact ? 128 : 173)
                 .clipShape(RoundedRectangle(cornerRadius: 11)).shadow(color: .black.opacity(0.53), radius: 13, y: 10).rotationEffect(.degrees(-3))
             VStack(alignment: .leading, spacing: 10) {
-                Text("FROM YOUR COLLECTION").font(.system(size: 11)).tracking(0.77).foregroundStyle(theme.accent)
-                Text(title.name).font(.system(size: 19.2, weight: .bold)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("random-picked-name")
-                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(Color(themed: "#c5c0cf"))
-                Text(title.status.capitalized).font(.system(size: 12)).foregroundStyle(theme.accent)
+                Text("FROM YOUR COLLECTION").font(.app(size: 11)).tracking(0.77).foregroundStyle(theme.accent)
+                Text(title.name).font(.app(size: 19.2, weight: .bold)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("random-picked-name")
+                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 13)).foregroundStyle(Color(themed: "#c5c0cf"))
+                Text(title.status.capitalized).font(.app(size: 12)).foregroundStyle(theme.accent)
                     .padding(.horizontal, 9).padding(.vertical, 4).background(theme.accent.opacity(0.0784), in: Capsule()).overlay(Capsule().strokeBorder(theme.accent.opacity(0.2667)))
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, compact ? 12 : 18).padding(.vertical, compact ? 20 : 26).frame(minHeight: 240)

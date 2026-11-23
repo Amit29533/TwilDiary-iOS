@@ -56,7 +56,7 @@ struct RatingsStrip<PersonalRating: View>: View {
             ForEach(items) { item in
                 HStack(spacing: 5) {
                     RatingSourceMark(source: item.source).frame(width: item.source == "imdb" ? 34 : 21, height: 21)
-                    Text(item.text).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(.white).monospacedDigit()
+                    Text(item.text).font(.app(size: 14.5, weight: .semibold)).foregroundStyle(.white).monospacedDigit()
                         .lineLimit(1).fixedSize()
                 }.accessibilityElement(children: .ignore)
                     .accessibilityLabel(Self.name(item.source) + " " + item.text)
@@ -127,10 +127,10 @@ struct RatingSourceMark: View {
                 case "tomatoes": BrandLogo(service: .rottenTomatoes, size: size)
                 case "popcorn":
                     // Rotten Tomatoes' audience score: its logo with a popcorn badge.
-                    BrandLogo(service: .rottenTomatoes, size: size).overlay(alignment: .bottomTrailing) { Text("🍿").font(.system(size: size * 0.42)).offset(x: size * 0.15, y: size * 0.12) }
+                    BrandLogo(service: .rottenTomatoes, size: size).overlay(alignment: .bottomTrailing) { Text("🍿").font(.app(size: size * 0.42)).offset(x: size * 0.15, y: size * 0.12) }
                 case "metacritic": BrandLogo(service: .metacritic, size: size)
                 default:
-                    Text(String(source.prefix(2)).uppercased()).font(.system(size: size * 0.38, weight: .bold)).foregroundStyle(.white)
+                    Text(String(source.prefix(2)).uppercased()).font(.app(size: size * 0.38, weight: .bold)).foregroundStyle(.white)
                         .frame(width: size, height: size).background(Color.primary.opacity(0.15), in: RoundedRectangle(cornerRadius: size * 0.22))
                 }
             }.frame(width: proxy.size.width, height: proxy.size.height)

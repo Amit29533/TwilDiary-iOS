@@ -52,6 +52,6 @@ struct CloudflareUsage: Decodable, Sendable {
             guard generation == request, !Task.isCancelled else { return }
             usage = next
         } catch is CancellationError { }
-        catch { if generation == request && !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if generation == request && !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
 }

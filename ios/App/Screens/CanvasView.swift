@@ -114,7 +114,7 @@ private struct CanvasContent: View {
                 let on = tab == item
                 // The page swaps at once (no cross-fade flash); only the words change weight.
                 Button { tab = item; if item == .movies { network = nil } } label: {
-                    Text(item.label).font(.system(size: 24, weight: .bold)).tracking(-0.4).lineLimit(1)
+                    Text(item.label).font(.app(size: 24, weight: .bold)).tracking(-0.4).lineLimit(1)
                         .foregroundStyle(on ? HomeStyle.ink : Color(themed: "#8a8794"))
                         .animation(.snappy(duration: 0.2), value: on)
                         .contentShape(Rectangle())
@@ -156,10 +156,10 @@ private struct CanvasContent: View {
     private func pill(_ label: String, icon: String? = nil, active: Bool = false, accent: Bool = false) -> some View {
         let tinted = active || accent
         return HStack(spacing: 6) {
-            if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
+            if let icon { Image(systemName: icon).font(.app(size: 13, weight: .bold)) }
             Text(label).lineLimit(1).truncationMode(.tail).frame(maxWidth: 170)
-            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
-        }.font(.system(size: 15, weight: .semibold)).fixedSize()
+            Image(systemName: "chevron.down").font(.app(size: 11, weight: .bold)).opacity(0.8)
+        }.font(.app(size: 15, weight: .semibold)).fixedSize()
             .foregroundStyle(tinted ? HomeStyle.chipText : Color(themed: "#e6e1ee"))
             .padding(.horizontal, 14).frame(height: 40)
             .background(tinted ? HomeStyle.chip : HomeStyle.card, in: Capsule())
@@ -178,9 +178,9 @@ private struct CanvasContent: View {
                 NavigationLink(value: AppDestination.trakt) {
                     HStack(spacing: 10) {
                         BrandLogo(service: .trakt, size: 22)
-                        Text("Connect Trakt for your recommendations").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Text("Connect Trakt for your recommendations").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     }.padding(.horizontal, 14).frame(minHeight: 48).diaryPanel(padding: 0, radius: 14).contentShape(Rectangle())
                 }.buttonStyle(.springPress).accessibilityIdentifier("canvas-connect-trakt")
             }
@@ -225,9 +225,9 @@ private struct CanvasContent: View {
     }
     private func notice(_ text: String, retry: (() -> Void)? = nil) -> some View {
         HStack(spacing: 10) {
-            Text(text).font(.system(size: 14)).foregroundStyle(.secondary)
+            Text(text).font(.app(size: 14)).foregroundStyle(.secondary)
             Spacer(minLength: 0)
-            if let retry { Button("Retry", action: retry).font(.system(size: 14, weight: .semibold)).frame(minHeight: 44) }
+            if let retry { Button("Retry", action: retry).font(.app(size: 14, weight: .semibold)).frame(minHeight: 44) }
         }.padding(.horizontal, 14).padding(.vertical, 10).diaryPanel(padding: 0, radius: 14)
     }
     private static let years = Array((1950...Calendar.current.component(.year, from: .now)).reversed())
@@ -283,7 +283,7 @@ struct CanvasMosaic: View {
         let label = Artwork(path: art, title: item.name, initialsOnly: false)
             .overlay(alignment: .bottomLeading) {
                 if wide {
-                    Text(item.name).font(.system(size: width * 0.5 > 150 && item == items.first ? 26 : 18, weight: .bold)).tracking(-0.4)
+                    Text(item.name).font(.app(size: width * 0.5 > 150 && item == items.first ? 26 : 18, weight: .bold)).tracking(-0.4)
                         .foregroundStyle(.white).lineLimit(1).truncationMode(.tail).padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom))
@@ -334,10 +334,10 @@ struct CanvasListCard: View {
                 }
                 .padding([.horizontal, .top], 10)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(Color(themed: "#f3f0f7"))
+                Text(title).font(.app(size: 16, weight: .bold)).foregroundStyle(Color(themed: "#f3f0f7"))
                     .lineLimit(2, reservesSpace: true).truncationMode(.tail).multilineTextAlignment(.leading)
                 if let owner {
-                    Text("by " + owner).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                    Text("by " + owner).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
                 }
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         }.cardSurface(20)
@@ -358,26 +358,26 @@ private struct CanvasGenreSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    Text("Genres").font(.system(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+                    Text("Genres").font(.app(size: 24, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
                     Spacer()
                     Button("Reset") { withAnimation(.snappy) { genres = []; anime = false } }
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain)
+                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain)
                         .disabled(count == 0).opacity(count == 0 ? 0.45 : 1).frame(minHeight: 44).accessibilityIdentifier("canvas-genres-reset")
                     Button { dismiss() } label: {
-                        Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                        Image(systemName: "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
                             .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
                             .overlay(Circle().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     }.buttonStyle(.plain).accessibilityLabel("Close")
                 }
-                Text(count >= 6 ? "Up to six genres; remove one to pick another." : "Pick one or more genres.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                Text(count >= 6 ? "Up to six genres; remove one to pick another." : "Pick one or more genres.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
                 InlineFlowLayout {
                     ForEach(options, id: \.self) { name in
                         let on = name == "Anime" ? anime : genres.contains(name)
                         Button { withAnimation(.snappy(duration: 0.2)) { toggle(name) } } label: {
                             HStack(spacing: 6) {
-                                if on { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)) }
+                                if on { Image(systemName: "checkmark").font(.app(size: 12, weight: .bold)) }
                                 Text(name).lineLimit(1)
-                            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#e6e1ee"))
+                            }.font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#e6e1ee"))
                                 .padding(.horizontal, 15).frame(height: 40)
                                 .background(on ? AnyShapeStyle(LinearGradient(colors: [ThemeStore.current.accentTop, ThemeStore.current.accentBottom], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(HomeStyle.card), in: Capsule())
                                 .overlay(Capsule().strokeBorder(on ? Color.clear : HomeStyle.dateChipBorder, lineWidth: 1))
@@ -408,7 +408,7 @@ struct CanvasListView: View {
                 if let loader {
                     if !loader.items.isEmpty { CatalogGrid(items: loader.items, showsLayoutToggle: false) }
                     if loader.loading && loader.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
-                    if let error = loader.error { Text(error).font(.system(size: 14)).foregroundStyle(.secondary) }
+                    if let error = loader.error { Text(error).font(.app(size: 14)).foregroundStyle(.secondary) }
                     if loader.hasMore || (loader.loading && !loader.items.isEmpty) {
                         ScrollLoadTrigger(token: loader.items.count, loading: loader.loading) { Task { await loader.load(more: true) } }
                     }

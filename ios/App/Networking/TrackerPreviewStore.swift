@@ -153,7 +153,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             plans[tracker] = analysed.plan
             nameUnnamed(tracker, analysed.comparison.unnamedKeys, store: store)
         } catch {
-            if !Task.isCancelled, session == generation { errors[tracker] = error.localizedDescription }
+            if !Task.isCancelled, session == generation { errors[tracker] = FriendlyError.message(error) }
         }
     }
     /// Simkl, read by its own sync (SimklMirror.readLibrary): its library in the diary's terms,
@@ -382,10 +382,10 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                 switch Self.delivery(error) {
                 case .rejected:
                     pending[tracker]?.removeAll { $0.id == next.id }
-                    DeadLetters.add(tracker.provider, title: Self.describe(next.body, store: store), reason: error.localizedDescription)
-                    refused(tracker, "\(tracker.name) refused a change: " + error.localizedDescription, store: store)
+                    DeadLetters.add(tracker.provider, title: Self.describe(next.body, store: store), reason: FriendlyError.message(error))
+                    refused(tracker, "\(tracker.name) refused a change: " + FriendlyError.message(error), store: store)
                 case .authBlocked:
-                    errors[tracker] = error.localizedDescription
+                    errors[tracker] = FriendlyError.message(error)
                     store.error = "\(tracker.name) needs you to reconnect. Your changes are kept and sent once it’s reconnected."
                     return false
                 case .notSent, .retryLater, .uncertain:
@@ -395,11 +395,11 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                     guard TraktDelivery.of(error) != .notSent, !TraktDelivery.paused(error), let index = pending[tracker]?.firstIndex(where: { $0.id == next.id }) else { return false }
                     let tries = (pending[tracker]?[index].attempts ?? 0) + 1
                     pending[tracker]?[index].attempts = tries
-                    pending[tracker]?[index].lastError = error.localizedDescription
+                    pending[tracker]?[index].lastError = FriendlyError.message(error)
                     guard tries >= Self.retryBudget else { return false }
                     pending[tracker]?.removeAll { $0.id == next.id }
-                    DeadLetters.add(tracker.provider, title: Self.describe(next.body, store: store), reason: error.localizedDescription)
-                    refused(tracker, "\(tracker.name) kept failing on a change, so it was set aside: " + error.localizedDescription, store: store)
+                    DeadLetters.add(tracker.provider, title: Self.describe(next.body, store: store), reason: FriendlyError.message(error))
+                    refused(tracker, "\(tracker.name) kept failing on a change, so it was set aside: " + FriendlyError.message(error), store: store)
                 }
             }
         }
@@ -568,7 +568,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
         } catch {
             writing = nil
             await check(tracker, store: store)
-            throw APIError.message((sent > 0 ? "Added \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + error.localizedDescription)
+            throw APIError.message((sent > 0 ? "Added \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + FriendlyError.message(error))
         }
         writing = nil
         libraries[tracker]?.activities = nil
@@ -615,7 +615,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             writeResults[tracker] = "Sent to \(tracker.name): " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: tracker.name)
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
-            if !Task.isCancelled, session == generation { errors[tracker] = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
+            if !Task.isCancelled, session == generation { errors[tracker] = (sent > 0 ? "Sent \(sent) before stopping. " : "") + FriendlyError.message(error) }
         }
         guard session == generation else { return }
         writing = nil; writeProgress = nil
@@ -908,7 +908,7 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                     case .signIn, .stop:
                         // The sign-in, the account's limit, or a pause the service asked for: the
                         // calls after this one would fail the same way.
-                        run.stopped = error.localizedDescription
+                        run.stopped = FriendlyError.message(error)
                         return
                     case .retry where tries < 3, .busy where tries < 3:
                         let wait = [5, 15, 45][tries]
@@ -929,14 +929,14 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
                             queue.insert(contentsOf: halves, at: 0)
                             total += halves.count; run.splits += 1
                         } else if keys.isEmpty {
-                            run.refused[request.summary] = error.localizedDescription
+                            run.refused[request.summary] = FriendlyError.message(error)
                         } else {
-                            for key in keys { run.refused[key] = error.localizedDescription }
+                            for key in keys { run.refused[key] = FriendlyError.message(error) }
                         }
                     case .rejected:
                         // The call itself (a path or method the service doesn't take): not halved.
-                        if keys.isEmpty { run.refused[request.summary] = error.localizedDescription }
-                        for key in keys { run.refused[key] = error.localizedDescription }
+                        if keys.isEmpty { run.refused[request.summary] = FriendlyError.message(error) }
+                        for key in keys { run.refused[key] = FriendlyError.message(error) }
                     }
                     break attempts
                 }

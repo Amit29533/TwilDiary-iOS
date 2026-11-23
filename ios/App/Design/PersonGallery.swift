@@ -17,7 +17,7 @@ struct PersonPhotoShelf: View {
         if photos.count >= 2 {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Photos").font(.system(size: 24, weight: .bold)).tracking(-0.6)
+                    Text("Photos").font(.app(size: 24, weight: .bold)).tracking(-0.6)
                     Spacer(minLength: 8)
                     SeeAllLink(value: PersonPhotosRoute(name: name, photos: photos), identifier: "profile-photos-all")
                 }
@@ -135,7 +135,7 @@ struct PersonPhotoViewer: View {
             if controls, let message {
                 VStack {
                     Spacer()
-                    Text(message).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    Text(message).font(.app(size: 13, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 16).frame(height: 36).background(Color(themed: "#1c1a1e").opacity(0.9), in: Capsule()).padding(.bottom, 30)
                 }.transition(.opacity).allowsHitTesting(false)
             }
@@ -162,7 +162,7 @@ struct PersonPhotoViewer: View {
             Spacer(minLength: 8)
             // One picture (a poster, a cover, character art): no "1 / 1".
             if photos.count > 1 {
-                Text("\(index + 1) / \(photos.count)").font(.system(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
+                Text("\(index + 1) / \(photos.count)").font(.app(size: 17, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
                     .padding(.horizontal, 18).frame(height: 40).background(Color(themed: "#2b2727").opacity(0.88), in: Capsule())
                     .accessibilityLabel("Photo \(index + 1) of \(photos.count)")
             }
@@ -194,7 +194,7 @@ struct PersonPhotoViewer: View {
         } label: { circle("ellipsis") }.accessibilityLabel("More photo options").accessibilityIdentifier("photo-menu")
     }
     private func circle(_ symbol: String) -> some View {
-        Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+        Image(systemName: symbol).font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
             .frame(width: 44, height: 44).background(Color(themed: "#1c1a1e").opacity(0.85), in: Circle())
             .overlay(Circle().strokeBorder(HomeStyle.outline(0.14), lineWidth: 0.67)).contentShape(Circle())
     }
@@ -216,7 +216,7 @@ struct PersonPhotoViewer: View {
             let (data, _) = try await URLSession.shared.data(from: original)
             try await Self.addToPhotos(data)
             message = "Saved to Photos."
-        } catch { message = error.localizedDescription }
+        } catch { message = FriendlyError.message(error) }
     }
 }
 

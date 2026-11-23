@@ -90,7 +90,7 @@ struct SimklAPI: Sendable {
         let data: Data, response: URLResponse
         SimklUsage.counted()
         do { (data, response) = try await session.data(for: request(path, method: method, query: query, body: body)) }
-        catch { throw Failure.unavailable(error.localizedDescription) }
+        catch { throw Failure.unavailable(FriendlyError.message(error)) }
         let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
         Self.recordQuota(http)
         if (200..<300).contains(status) { return data }
@@ -140,7 +140,7 @@ struct SimklAPI: Sendable {
         let data: Data, response: URLResponse
         do { (data, response) = try await session.data(for: request("/redirect", method: "GET", query: query.merging(["to": "simkl"]) { first, _ in first }, body: nil),
                                                       delegate: SimklNoRedirects()) }
-        catch { throw Failure.unavailable(error.localizedDescription) }
+        catch { throw Failure.unavailable(FriendlyError.message(error)) }
         let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
         if (300..<400).contains(status) { return Self.match(location: http?.value(forHTTPHeaderField: "Location") ?? "") }
         if (200..<300).contains(status) { return nil }

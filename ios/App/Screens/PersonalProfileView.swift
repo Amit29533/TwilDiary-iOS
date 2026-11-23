@@ -10,7 +10,7 @@ struct PersonalAvatar: View {
         Group {
             if profile.usesPhoto, let image = profile.photo { Image(uiImage: image).resizable().scaledToFill() }
             else if let character = profile.character { Artwork(path: character.image, title: character.name) }
-            else { Text(String(profile.name.prefix(1)).uppercased()).font(.system(size: size * 0.4, weight: .semibold)).frame(maxWidth: .infinity, maxHeight: .infinity).background(theme.accent.opacity(0.2)) }
+            else { Text(String(profile.name.prefix(1)).uppercased()).font(.app(size: size * 0.4, weight: .semibold)).frame(maxWidth: .infinity, maxHeight: .infinity).background(theme.accent.opacity(0.2)) }
         }.frame(width: size, height: size).clipShape(Circle()).accessibilityHidden(true)
     }
 }
@@ -54,7 +54,7 @@ struct MilestoneBadge: View {
         ZStack {
             Hexagon().fill(colour.opacity(milestone.earned ? 0.22 : 0.06))
             Hexagon().stroke(colour.opacity(milestone.earned ? 1 : 0.4), style: StrokeStyle(lineWidth: 2.5, dash: milestone.earned ? [] : [4, 3]))
-            Image(systemName: milestone.symbol).font(.system(size: size * 0.32, weight: .medium)).foregroundStyle(colour.opacity(milestone.earned ? 1 : 0.55))
+            Image(systemName: milestone.symbol).font(.app(size: size * 0.32, weight: .medium)).foregroundStyle(colour.opacity(milestone.earned ? 1 : 0.55))
         }.frame(width: size, height: size * 1.08)
             .overlay(alignment: .bottom) {
                 if milestone.earned { Capsule().fill(colour).frame(width: size * 0.55, height: size * 0.18).offset(y: size * 0.07) }
@@ -124,7 +124,7 @@ struct MilestoneDetailView: View {
                 HStack {
                     Spacer()
                     Button(action: dismiss) {
-                        Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Image(systemName: "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             .frame(width: 44, height: 44).background(Color.primary.opacity(0.1), in: Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Close").accessibilityIdentifier("milestone-close")
                 }.padding(.horizontal, 20).padding(.top, 8).opacity(shown ? 1 : 0)
@@ -140,9 +140,9 @@ struct MilestoneDetailView: View {
                     .accessibilityHint("Spins the badge").accessibilityAction { Task { await spin() } }
                 VStack(spacing: 8) {
                     Text("\(milestone.earned ? "EARNED" : "IN PROGRESS") · LEVEL \(level) OF \(ladder.count)")
-                        .font(.system(size: 12, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary)
-                    Text(milestone.title).font(.system(size: 28, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center)
-                    Text(MilestoneInfo.about(milestone.id)).font(.system(size: 15)).foregroundStyle(HomeStyle.secondary)
+                        .font(.app(size: 12, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary)
+                    Text(milestone.title).font(.app(size: 28, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center)
+                    Text(MilestoneInfo.about(milestone.id)).font(.app(size: 15)).foregroundStyle(HomeStyle.secondary)
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 }.padding(.top, 30).padding(.horizontal, 32).opacity(shown ? 1 : 0).offset(y: shown ? 0 : 18)
                 Spacer(minLength: 20)
@@ -167,23 +167,23 @@ struct MilestoneDetailView: View {
             Hexagon().fill(LinearGradient(colors: [colour.opacity(0.35), colour.opacity(0.12)], startPoint: .top, endPoint: .bottom))
             Hexagon().stroke(colour, lineWidth: 3)
             VStack(spacing: 8) {
-                Text(milestone.title).font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center)
-                Text(milestone.earned ? "Earned" : milestone.progressLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(colour)
-                Text("TWILDIARY").font(.system(size: 10, weight: .bold)).tracking(2).foregroundStyle(HomeStyle.ink.opacity(0.55)).padding(.top, 6)
+                Text(milestone.title).font(.app(size: 19, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center)
+                Text(milestone.earned ? "Earned" : milestone.progressLabel).font(.app(size: 13, weight: .semibold)).foregroundStyle(colour)
+                Text("TWILDIARY").font(.app(size: 10, weight: .bold)).tracking(2).foregroundStyle(HomeStyle.ink.opacity(0.55)).padding(.top, 6)
             }.padding(24)
         }.frame(width: 170, height: 184)
     }
     private func panel(next: ProfileMilestone?, goal: ProfileMilestone?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(next.map { "Next: " + $0.title } ?? (goal == nil ? "Top level reached" : "Your progress"))
-                .font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                .font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink)
             if let goal {
                 let done = min(goal.progress, goal.target)
                 HStack {
                     Text("\(done.formatted()) of \(goal.target.formatted())\(goal.unit)")
                     Spacer()
                     Text("\((goal.target - done).formatted()) to go")
-                }.font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                }.font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
                 Capsule().fill(Color.primary.opacity(0.1)).frame(height: 8).overlay(alignment: .leading) {
                     GeometryReader { proxy in
                         Capsule().fill(Color(themed: goal.colour))
@@ -191,7 +191,7 @@ struct MilestoneDetailView: View {
                     }
                 }
             } else {
-                Text("You've earned every level of this badge.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                Text("You've earned every level of this badge.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
             }
         }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface(24)
@@ -263,10 +263,10 @@ struct PersonalProfileView: View {
                 HStack(alignment: .top, spacing: 12) { streakTile(overview.streaks); weekTile }
                 NavigationLink(value: AppDestination.statistics) {
                     HStack(spacing: 14) {
-                        Image(systemName: "chart.bar.fill").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 48, height: 48).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
+                        Image(systemName: "chart.bar.fill").font(.app(size: 18)).foregroundStyle(theme.accent).frame(width: 48, height: 48).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Statistics").font(.system(size: 19, weight: .bold)).foregroundStyle(HomeStyle.ink)
-                            Text("Watch time, habits and taste").font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
+                            Text("Statistics").font(.app(size: 19, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                            Text("Watch time, habits and taste").font(.app(size: 14)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
                         }
                         Spacer(); DiaryIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
                     }.padding(16).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
@@ -308,18 +308,18 @@ struct PersonalProfileView: View {
         return VStack(spacing: 6) {
             Button { showAvatarPicker = true } label: {
                 PersonalAvatar(size: 104).overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "camera.fill").font(.system(size: 12)).foregroundStyle(.white).frame(width: 30, height: 30)
+                    Image(systemName: "camera.fill").font(.app(size: 12)).foregroundStyle(.white).frame(width: 30, height: 30)
                         .background(.black.opacity(0.75), in: Circle())
                 }
             }.buttonStyle(.plain).accessibilityLabel("Change profile picture").accessibilityIdentifier("profile-avatar")
-            Text(profile.name).font(.system(size: 28, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center).padding(.top, 8)
-            if !handle.isEmpty { Text(handle).font(.system(size: 16)).foregroundStyle(.secondary) }
+            Text(profile.name).font(.app(size: 28, weight: .bold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center).padding(.top, 8)
+            if !handle.isEmpty { Text(handle).font(.app(size: 16)).foregroundStyle(.secondary) }
             if let joined = trakt?.joined {
                 HStack(spacing: 6) { Image(systemName: "calendar"); Text("Joined " + joined.formatted(.dateTime.month(.wide).year())) }
-                    .font(.system(size: 14)).foregroundStyle(.secondary)
+                    .font(.app(size: 14)).foregroundStyle(.secondary)
             }
             Button { editing = true } label: {
-                Text("Edit profile").font(.system(size: 15, weight: .semibold)).padding(.horizontal, 18).frame(height: 36)
+                Text("Edit profile").font(.app(size: 15, weight: .semibold)).padding(.horizontal, 18).frame(height: 36)
                     .nativeGlassCapsule(prominent: false)
             }.buttonStyle(.plain).accessibilityIdentifier("profile-edit-name").padding(.top, 8)
         }.frame(maxWidth: .infinity).padding(.top, 70)
@@ -339,21 +339,21 @@ struct PersonalProfileView: View {
                 Button { showAvatarPicker = true } label: {
                     PersonalAvatar(size: 100).padding(3).overlay(Circle().strokeBorder(theme.accent, lineWidth: 2.5))
                         .overlay(alignment: .bottomTrailing) {
-                            Image(systemName: "camera.fill").font(.system(size: 12)).foregroundStyle(.white).frame(width: 30, height: 30).background(.black.opacity(0.75), in: Circle())
+                            Image(systemName: "camera.fill").font(.app(size: 12)).foregroundStyle(.white).frame(width: 30, height: 30).background(.black.opacity(0.75), in: Circle())
                         }
                 }.buttonStyle(.plain).accessibilityLabel("Change profile picture").accessibilityIdentifier("profile-avatar")
                 Spacer()
                 Button { editing = true } label: {
-                    Text("Edit profile").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 20).frame(height: 46)
+                    Text("Edit profile").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 20).frame(height: 46)
                         .background(Color.primary.opacity(0.1), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.15)))
                 }.buttonStyle(.plain).accessibilityIdentifier("profile-edit-name")
             }
-            Text(profile.name).font(.system(size: 30, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.ink).padding(.top, 6)
-            if !handle.isEmpty { Text(handle).font(.system(size: 16)).foregroundStyle(.secondary) }
+            Text(profile.name).font(.app(size: 30, weight: .bold)).tracking(-0.8).foregroundStyle(HomeStyle.ink).padding(.top, 6)
+            if !handle.isEmpty { Text(handle).font(.app(size: 16)).foregroundStyle(.secondary) }
             if let trakt {
                 if let joined = trakt.joined {
                     HStack(spacing: 6) { Image(systemName: "calendar"); Text("Joined " + joined.formatted(.dateTime.month(.wide).year())) }
-                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                        .font(.app(size: 14)).foregroundStyle(.secondary)
                 }
             }
         }.padding(.top, 70)
@@ -379,8 +379,8 @@ struct PersonalProfileView: View {
     }
     private func tile(_ icon: String, _ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(theme.accent); Text(label).font(.system(size: 14)).foregroundStyle(.secondary) }
-            Text(value).font(.system(size: 26, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.7)
+            HStack(spacing: 6) { Image(systemName: icon).font(.app(size: 13)).foregroundStyle(theme.accent); Text(label).font(.app(size: 14)).foregroundStyle(.secondary) }
+            Text(value).font(.app(size: 26, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.7)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     /// Opens Statistics on a tab.
@@ -393,19 +393,19 @@ struct PersonalProfileView: View {
         return Button { openStats(.habits) } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Image(systemName: "flame").font(.system(size: 16)).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.16), in: Circle())
+                    Image(systemName: "flame").font(.app(size: 16)).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.16), in: Circle())
                     Spacer(); DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(streaks.current)").font(.system(size: 30, weight: .bold)).foregroundStyle(HomeStyle.ink)
-                    Text("day streak").font(.system(size: 14)).foregroundStyle(.secondary)
+                    Text("\(streaks.current)").font(.app(size: 30, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                    Text("day streak").font(.app(size: 14)).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 4) {
                     ForEach(Array(week.enumerated()), id: \.offset) { _, day in
                         VStack(spacing: 3) {
                             Circle().fill(day.count > 0 ? theme.accent : Color.primary.opacity(0.12)).frame(width: 14, height: 14)
                                 .overlay { if day.date == DiaryDate.day(store.now) { Circle().strokeBorder(theme.accent, lineWidth: 1.5).padding(-2) } }
-                            Text(Self.weekdayLetter(day.date)).font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text(Self.weekdayLetter(day.date)).font(.app(size: 10)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity)
                     }
                 }
@@ -439,14 +439,14 @@ struct PersonalProfileView: View {
         let most = max(1, days.map(\.minutes).max() ?? 1)
         return Button { openStats(.overview) } label: {
             VStack(alignment: .leading, spacing: 8) {
-                Text("This week").font(.system(size: 14)).foregroundStyle(.secondary)
-                Text(DiaryDate.duration(days.reduce(0) { $0 + $1.minutes })).font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent).lineLimit(1).minimumScaleFactor(0.7)
+                Text("This week").font(.app(size: 14)).foregroundStyle(.secondary)
+                Text(DiaryDate.duration(days.reduce(0) { $0 + $1.minutes })).font(.app(size: 26, weight: .bold)).foregroundStyle(theme.accent).lineLimit(1).minimumScaleFactor(0.7)
                 HStack(alignment: .bottom, spacing: 4) {
                     ForEach(Array(days.enumerated()), id: \.offset) { index, item in
                         VStack(spacing: 3) {
                             RoundedRectangle(cornerRadius: 3).fill(item.minutes > 0 ? theme.accent : Color.primary.opacity(0.12))
                                 .frame(height: item.minutes > 0 ? max(6, 48 * CGFloat(item.minutes) / CGFloat(most)) : 3)
-                            Text(["M", "T", "W", "T", "F", "S", "S"][index]).font(.system(size: 10, weight: item.day == today ? .bold : .regular))
+                            Text(["M", "T", "W", "T", "F", "S", "S"][index]).font(.app(size: 10, weight: item.day == today ? .bold : .regular))
                                 .foregroundStyle(item.day == today ? theme.accent : .secondary)
                         }.frame(maxWidth: .infinity)
                     }
@@ -459,9 +459,9 @@ struct PersonalProfileView: View {
         return VStack(alignment: .leading, spacing: 14) {
             NavigationLink(value: MilestonesRoute()) {
                 HStack {
-                    Text("Milestones").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                    Text("Milestones").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
-                    HStack(spacing: 3) { Text("\(earned.count) earned"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#ff8a6a"))
+                    HStack(spacing: 3) { Text("\(earned.count) earned"); DiaryIcon(name: "chevron-right", size: 12) }.font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#ff8a6a"))
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("profile-milestones").accessibilityLabel("Milestones, \(earned.count) earned")
             // Every badge, sideways; a tap opens Milestones.
@@ -482,16 +482,16 @@ struct PersonalProfileView: View {
         let watches = days.reduce(0) { $0 + $1.entries.count }
         return NavigationLink(value: OnThisDayRoute()) { HStack(alignment: .top, spacing: 14) {
             VStack(spacing: 0) {
-                Text(store.now.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(theme.accent)
-                Text(store.now.formatted(.dateTime.day())).font(.system(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                Text(store.now.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.app(size: 11, weight: .bold)).foregroundStyle(theme.accent)
+                Text(store.now.formatted(.dateTime.day())).font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink)
             }.frame(width: 56, height: 60).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 4) {
-                Text("On this day").font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                Text("On this day").font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.ink)
                 if let first = days.first, let entry = first.entries.first {
                     Text("\(first.ago) you watched \(entry.title.name)" + (watches > 1 ? " and \(watches - 1) more." : "."))
-                        .font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Nothing happened today.").font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("Nothing happened today.").font(.app(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
@@ -505,9 +505,9 @@ struct PersonalProfileView: View {
         return Button { openStats(.taste) } label: {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("Ratings").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                    Text("Ratings").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
-                    HStack(spacing: 3) { Text("\(insights.ratedCount) total"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
+                    HStack(spacing: 3) { Text("\(insights.ratedCount) total"); DiaryIcon(name: "chevron-right", size: 12) }.font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
                 }
                 HStack(alignment: .bottom, spacing: 8) {
                     ForEach(0..<10, id: \.self) { index in
@@ -515,7 +515,7 @@ struct PersonalProfileView: View {
                         VStack(spacing: 5) {
                             RoundedRectangle(cornerRadius: 5).fill(index == top && count > 0 ? theme.accent : theme.accent.opacity(count > 0 ? 0.5 : 0.12))
                                 .frame(height: count > 0 ? max(6, 90 * CGFloat(count) / CGFloat(most)) : 3)
-                            Text("\(index + 1)").font(.system(size: 12, weight: index == top ? .bold : .regular)).foregroundStyle(index == top ? .white : .secondary)
+                            Text("\(index + 1)").font(.app(size: 12, weight: index == top ? .bold : .regular)).foregroundStyle(index == top ? .white : .secondary)
                         }.frame(maxWidth: .infinity)
                     }
                 }.frame(height: 116, alignment: .bottom)
@@ -528,7 +528,7 @@ struct PersonalProfileView: View {
             .compactMap { store.title($0.titleId) }.filter { seen.insert($0.id).inserted }.prefix(6)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Watch history").font(.system(size: 22, weight: .bold))
+                Text("Watch history").font(.app(size: 22, weight: .bold))
                 Spacer()
                 SeeAllLink(value: AppDestination.history, identifier: "profile-history-all")
             }
@@ -538,7 +538,7 @@ struct PersonalProfileView: View {
                         NavigationLink(value: title.id) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 116, height: 172).clipShape(RoundedRectangle(cornerRadius: 14))
-                                Text(title.name).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).frame(width: 116, alignment: .leading)
+                                Text(title.name).font(.app(size: 14.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).frame(width: 116, alignment: .leading)
                             }
                         }.buttonStyle(.springPress)
                     }
@@ -559,10 +559,10 @@ struct PersonalProfileView: View {
     }
     private func collection(_ icon: String, _ title: String, _ detail: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 16)).foregroundStyle(theme.accent).frame(width: 44, height: 44).background(theme.accent.opacity(0.14), in: Circle())
+            Image(systemName: icon).font(.app(size: 16)).foregroundStyle(theme.accent).frame(width: 44, height: 44).background(theme.accent.opacity(0.14), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.75)
-                Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
+                Text(title).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink).lineLimit(1).minimumScaleFactor(0.75)
+                Text(detail).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 20).contentShape(Rectangle())
@@ -637,15 +637,15 @@ struct OnThisDayView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if days.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: "calendar").font(.system(size: 28)).foregroundStyle(theme.accent)
-                        Text("Nothing on this day yet").font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                        Text("Watches from this date in earlier months and years appear here.").font(.system(size: 14))
+                        Image(systemName: "calendar").font(.app(size: 28)).foregroundStyle(theme.accent)
+                        Text("Nothing on this day yet").font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                        Text("Watches from this date in earlier months and years appear here.").font(.app(size: 14))
                             .foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                     }.frame(maxWidth: .infinity).padding(.vertical, 60)
                 } else {
                     carousel(days)
                     ForEach(days) { day in dayCard(day) }
-                    Text("More memories tomorrow").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    Text("More memories tomorrow").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                         .frame(maxWidth: .infinity).padding(.top, 6)
                 }
             }.padding(.horizontal, 16).padding(.bottom, 28)
@@ -653,8 +653,8 @@ struct OnThisDayView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text("On this day").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        Text(store.now.formatted(.dateTime.weekday(.wide).day().month(.wide))).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                        Text("On this day").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Text(store.now.formatted(.dateTime.weekday(.wide).day().month(.wide))).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                     }.lineLimit(1).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
                 }
             }
@@ -681,11 +681,11 @@ struct OnThisDayView: View {
                             }
                         }.animation(.smooth(duration: 0.3), value: current).accessibilityHidden(true)
                     } else {
-                        Text("\((days.firstIndex { $0.id == current } ?? 0) + 1) of \(days.count)").font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                        Text("\((days.firstIndex { $0.id == current } ?? 0) + 1) of \(days.count)").font(.app(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
                     }
                     if !reduceMotion {
                         Button { paused.toggle() } label: {
-                            Image(systemName: paused ? "play.fill" : "pause.fill").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                            Image(systemName: paused ? "play.fill" : "pause.fill").contentTransition(.symbolEffect(.replace)).font(.app(size: 14, weight: .bold)).foregroundStyle(HomeStyle.secondary)
                                 .frame(width: 44, height: 44).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel(paused ? "Play memories" : "Pause memories").accessibilityIdentifier("on-this-day-pause")
                     }
@@ -709,12 +709,12 @@ struct OnThisDayView: View {
                 .overlay { Artwork(path: first.title.backdrop ?? first.title.poster, title: first.title.name, initialsOnly: false) }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             VStack(alignment: .leading, spacing: 2) {
-                Text(day.ago).font(.system(size: 24, weight: .bold)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(day.ago).font(.app(size: 24, weight: .bold)).lineLimit(1).minimumScaleFactor(0.8)
                 HStack(spacing: 8) {
-                    Text(first.title.name).font(.system(size: 17, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                    Text(first.title.name).font(.app(size: 17, weight: .semibold)).lineLimit(1).truncationMode(.tail)
                     // The rest of that day's titles, kept visible however long the first name is.
                     if others > 0 {
-                        Text("+\(others)").font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        Text("+\(others)").font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                             .padding(.horizontal, 8).frame(height: 22).background(HomeStyle.chip, in: Capsule()).fixedSize()
                             .accessibilityLabel("and \(others) more")
                     }
@@ -728,8 +728,8 @@ struct OnThisDayView: View {
     private func dayCard(_ day: OnThisDay.Day) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(day.ago).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                Text(day.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year())).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                Text(day.ago).font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                Text(day.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year())).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             ForEach(day.entries) { entry in
                 NavigationLink(value: entry.title.id) { row(entry) }.buttonStyle(.plain)
@@ -749,9 +749,9 @@ struct OnThisDayView: View {
                 .overlay { Artwork(path: entry.title.backdrop ?? entry.title.poster, title: entry.title.name, initialsOnly: false) }
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
-                Text(entry.title.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                Text(detail).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                if !meta.isEmpty { Text(meta).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                Text(entry.title.name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(detail).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                if !meta.isEmpty { Text(meta).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
@@ -774,33 +774,33 @@ struct MilestonesView: View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 16) {
-                    Text("\(earned.count)").font(.system(size: 52, weight: .heavy)).foregroundStyle(Color(themed: "#ffc83d"))
+                    Text("\(earned.count)").font(.app(size: 52, weight: .heavy)).foregroundStyle(Color(themed: "#ffc83d"))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("milestones earned").font(.system(size: 20, weight: .bold)).foregroundStyle(HomeStyle.ink)
-                        if let next { Text("Next up: " + next.title + " · " + next.progressLabel).font(.system(size: 14)).foregroundStyle(.secondary) }
+                        Text("milestones earned").font(.app(size: 20, weight: .bold)).foregroundStyle(HomeStyle.ink)
+                        if let next { Text("Next up: " + next.title + " · " + next.progressLabel).font(.app(size: 14)).foregroundStyle(.secondary) }
                     }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("Earned").font(.system(size: 22, weight: .bold))
+                    Text("Earned").font(.app(size: 22, weight: .bold))
                     if earned.isEmpty { Text("Log a watch to earn your first milestone.").font(.subheadline).foregroundStyle(.secondary) }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 4), spacing: 22) {
                         ForEach(earned) { item in
                             Button { $selected.open(item) } label: {
                                 VStack(spacing: 10) {
                                     MilestoneBadge(milestone: item, size: 52)
-                                    Text(item.title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                                    Text(item.title).font(.app(size: 12.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                                 }.frame(maxWidth: .infinity).contentShape(Rectangle())
                             }.buttonStyle(.springPress).accessibilityElement(children: .combine).accessibilityIdentifier("milestone-" + item.id)
                         }
                     }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Up next").font(.system(size: 22, weight: .bold))
+                    Text("Up next").font(.app(size: 22, weight: .bold))
                     ForEach(upcoming.prefix(6)) { item in
                         Button { $selected.open(item) } label: { HStack(spacing: 14) {
                             MilestoneBadge(milestone: item, size: 40)
                             VStack(alignment: .leading, spacing: 6) {
-                                HStack { Text(item.title).font(.system(size: 16, weight: .semibold)); Spacer(); Text(item.progressLabel).font(.system(size: 13)).foregroundStyle(.secondary) }
+                                HStack { Text(item.title).font(.app(size: 16, weight: .semibold)); Spacer(); Text(item.progressLabel).font(.app(size: 13)).foregroundStyle(.secondary) }
                                 Capsule().fill(Color.primary.opacity(0.1)).frame(height: 8).overlay(alignment: .leading) {
                                     GeometryReader { proxy in Capsule().fill(Color(themed: item.colour)).frame(width: proxy.size.width * min(1, Double(item.progress) / Double(max(1, item.target)))) }
                                 }
@@ -831,25 +831,25 @@ struct EditProfileView: View {
             VStack(spacing: 16) {
                 VStack(spacing: 8) {
                     PersonalAvatar(size: 120).padding(4).overlay(Circle().strokeBorder(theme.accent, lineWidth: 2.5))
-                    Text("Pick a character or use your own photo").font(.system(size: 14)).foregroundStyle(.secondary)
+                    Text("Pick a character or use your own photo").font(.app(size: 14)).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Choose a character").font(.system(size: 22, weight: .bold))
+                    Text("Choose a character").font(.app(size: 22, weight: .bold))
                     ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 14) {
                             ForEach(catalog.characters) { choice in ProfileCharacterAvatarButton(choice: choice, size: 72) { PersonalProfile.shared.select(choice) } }
                         }
                     }.scrollIndicators(.hidden)
                     PhotosPicker(selection: $selection, matching: .images) {
-                        Label("Upload a photo", systemImage: "camera").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                        Label("Upload a photo", systemImage: "camera").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                             .frame(maxWidth: .infinity, minHeight: 50).background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.12)))
                     }.accessibilityIdentifier("profile-custom-photo")
                     if let error = error ?? catalog.error { Text(error).font(.footnote).foregroundStyle(.secondary) }
                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Name").font(.system(size: 14)).foregroundStyle(.secondary)
+                    Text("Name").font(.app(size: 14)).foregroundStyle(.secondary)
                     TextField("Name", text: $name).textContentType(.name).padding(14).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-                    Text("Username").font(.system(size: 14)).foregroundStyle(.secondary).padding(.top, 6)
+                    Text("Username").font(.app(size: 14)).foregroundStyle(.secondary).padding(.top, 6)
                     TextField("@username", text: $handle).textInputAutocapitalization(.never).autocorrectionDisabled().padding(14).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
                 }.padding(18).diaryPanel(padding: 0, radius: 22)
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 28)
@@ -871,7 +871,7 @@ struct EditProfileView: View {
                 do {
                     guard let data = try await selection.loadTransferable(type: Data.self), !Task.isCancelled else { return }
                     try PersonalProfile.shared.savePhoto(data)
-                } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+                } catch { if !Task.isCancelled { self.error = FriendlyError.message(error) } }
             }
     }
 }
@@ -899,7 +899,7 @@ private struct AvatarPickerView: View {
                 if !catalog.characters.isEmpty {
                     // Same sideways row as Edit profile (a lazy grid here never drew in the sheet).
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Choose a character").font(.system(size: 20, weight: .bold)).frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Choose a character").font(.app(size: 20, weight: .bold)).frame(maxWidth: .infinity, alignment: .leading)
                         ScrollView(.horizontal) {
                             HStack(alignment: .top, spacing: 14) {
                                 ForEach(catalog.characters) { choice in
@@ -920,7 +920,7 @@ private struct AvatarPickerView: View {
                 do {
                     guard let data = try await selection.loadTransferable(type: Data.self), !Task.isCancelled, generation == request else { return }
                     try PersonalProfile.shared.savePhoto(data); dismiss()
-                } catch { if !Task.isCancelled && generation == request { self.error = error.localizedDescription } }
+                } catch { if !Task.isCancelled && generation == request { self.error = FriendlyError.message(error) } }
             }
             .onDisappear { generation = UUID() }
             .task { await catalog.load(preview: store.isPreview) }

@@ -36,6 +36,19 @@ enum EpisodeRowState: Equatable {
 }
 
 /// The newest watch of each episode of a title, for "Watched today".
+/// Today ("2026-11-23"), worked out once a minute: the Episodes pages and the title page asked once for
+/// every episode on every redraw, and a long season's thousands of calendar sums made scrolling stutter.
+@MainActor enum EpisodeToday {
+    private static var saved: (minute: Int, zone: String, day: String)?
+    static func day(_ now: Date) -> String {
+        let minute = Int(now.timeIntervalSince1970 / 60), zone = TimeZone.current.identifier
+        if let saved, saved.minute == minute, saved.zone == zone { return saved.day }
+        let day = DiaryDate.day(now)
+        saved = (minute, zone, day)
+        return day
+    }
+}
+
 @MainActor enum EpisodeWatchDates {
     /// Kept until the diary changes: the Episodes page asks on every redraw, and reading each
     /// watch's date again was the page's biggest cost for a long show.
@@ -62,7 +75,7 @@ struct EpisodeChip: View {
     let text: String
     var accent = false
     var body: some View {
-        Text(text).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+        Text(text).font(.app(size: 11, weight: .semibold)).lineLimit(1)
             .foregroundStyle(accent ? HomeStyle.chipText : text.hasPrefix("Watched") ? HomeStyle.dateChipText : HomeStyle.secondary)
             .padding(.horizontal, 9).frame(height: 22)
             .background(accent ? HomeStyle.chip : Color(themed: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
@@ -71,8 +84,8 @@ struct EpisodeChip: View {
 struct ScoreChip: View {
     let score: Double
     var body: some View {
-        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-            .font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+        HStack(spacing: 3) { Image(systemName: "star.fill").font(.app(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+            .font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary)
             .padding(.horizontal, 9).frame(height: 22).background(Color(themed: "#1e1e26"), in: RoundedRectangle(cornerRadius: 11))
             .accessibilityElement(children: .ignore).accessibilityLabel("Rated " + score.formatted(.number.precision(.fractionLength(1))))
     }
@@ -86,7 +99,7 @@ struct EpisodeTick: View {
     var body: some View {
         ZStack {
             if watched { Circle().fill(theme.accent) } else { Circle().strokeBorder(next ? theme.accent : Color(themed: "#3a3a46"), lineWidth: 2) }
-            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(watched ? ThemeStore.current.accentInk : next ? theme.accent : Color(themed: "#3a3a46"))
+            Image(systemName: "checkmark").font(.app(size: 14, weight: .bold)).foregroundStyle(watched ? ThemeStore.current.accentInk : next ? theme.accent : Color(themed: "#3a3a46"))
         }.frame(width: 32, height: 32).frame(width: 44, height: 44).contentShape(Rectangle())
     }
 }
@@ -117,7 +130,7 @@ struct EpisodeCardRow: View {
                     VStack(alignment: .leading, spacing: 5) {
                         // The number isn't a spoiler: hidden rows keep it ("9. A story for later").
                         Text(name.hasPrefix("Episode ") ? name : "\(number). \(name)")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
+                            .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading)
                         // State, score and length on one line: the state shortens before anything wraps.
                         ViewThatFits(in: .horizontal) {
                             facts(state.text)
@@ -183,7 +196,7 @@ struct EpisodeGridCard: View {
                     .padding(1).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 22))
                     .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     .overlay(alignment: .topLeading) {
-                        Text(state == .next ? "UP NEXT" : "E\(number)").font(.system(size: 12, weight: .bold))
+                        Text(state == .next ? "UP NEXT" : "E\(number)").font(.app(size: 12, weight: .bold))
                             .foregroundStyle(state == .next ? HomeStyle.chipText : HomeStyle.primary)
                             .padding(.horizontal, 10).frame(height: 24).background(HomeStyle.card.opacity(0.8), in: Capsule()).padding(10)
                     }
@@ -194,14 +207,14 @@ struct EpisodeGridCard: View {
                         ZStack {
                             Circle().fill(watched ? AnyShapeStyle(theme.accent) : AnyShapeStyle(HomeStyle.card.opacity(0.8)))
                             Circle().strokeBorder(state == .next || watched ? theme.accent : Color(themed: "#3a3a46"), lineWidth: 2)
-                            Image(systemName: "checkmark").font(.system(size: 14, weight: .bold))
+                            Image(systemName: "checkmark").font(.app(size: 14, weight: .bold))
                                 .foregroundStyle(watched ? ThemeStore.current.accentInk : state == .next ? theme.accent : HomeStyle.secondary)
                         }.frame(width: 34, height: 34).frame(width: 48, height: 48).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("Mark episode \(number) \(watched ? "unwatched" : "watched")")
                         .accessibilityIdentifier("episode-watch-\(number)").padding(4)
                     }
                 }
-            Text(hidden ? name : "\(number) · \(name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
+            Text(hidden ? name : "\(number) · \(name)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
             // Score, length and when it was watched on one line when they fit.
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) {
@@ -254,7 +267,7 @@ struct ShowPageTitle: ToolbarContent {
     var body: some ToolbarContent {
         // One centred title, as on Favourites; the content scrolls under a feathered, frosted band.
         ToolbarItem(placement: .principal) {
-            Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+            Text(title).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                 .accessibilityLabel(subtitle.isEmpty ? title : "\(title), \(subtitle)").accessibilityAddTraits(.isHeader)
         }
     }
@@ -268,7 +281,7 @@ struct ShowFilterChip: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         Button(action: action) {
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#e6e1ee"))
+            Text(label).font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#e6e1ee"))
                 .padding(.horizontal, 16).frame(height: 40)
                 .background(on ? AnyShapeStyle(theme.accent) : AnyShapeStyle(Color.primary.opacity(0.07)), in: Capsule())
                 .overlay { if !on { Capsule().strokeBorder(HomeStyle.outline(0.1)) } }
@@ -375,7 +388,7 @@ struct EpisodesPage: View {
 
     private func seasonCard(_ title: MediaTitle) -> some View {
         let progress = store.seasonProgress(title, season: season)
-        return SeasonProgressCard(season: $season, seasons: EpisodeSelection.seasons(in: store.titleScope(titleID), titleID: titleID),
+        return SeasonProgressCard(season: $season, seasons: store.memoized("title.seasons|" + titleID) { EpisodeSelection.seasons(in: store.titleScope(titleID), titleID: titleID) },
                                   watched: progress.watched, total: progress.total, remainingMinutes: progress.remainingMinutes)
     }
 
@@ -414,9 +427,9 @@ struct EpisodesPage: View {
                 HStack(spacing: 12) {
                     EpisodeTick(watched: allWatched)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Text(allWatched ? "All watched" : ([left.count.formatted() + " to watch"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                            .font(.app(size: 13)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
@@ -442,7 +455,7 @@ struct EpisodesPage: View {
             .presentationDetents([.large]).presentationDragIndicator(.visible)
     }
 
-    private func aired(_ episode: Episode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day(store.now) } ?? false }
+    private func aired(_ episode: Episode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= EpisodeToday.day(store.now) } ?? false }
     private func hidden(_ episode: Episode, watched: Set<String>) -> Bool { hideSpoilers && !watched.contains(episode.id) && !revealed.contains(episode.id) }
     private func name(_ episode: Episode, watched: Set<String>) -> String {
         if hidden(episode, watched: watched) { return "A story for later" }
@@ -505,7 +518,7 @@ struct RelatedTitlesPage: View {
     }
     private func load() async {
         failure = nil
-        do { items = try await store.related(route).items.filter { $0.route != route } } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do { items = try await store.related(route).items.filter { $0.route != route } } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -524,6 +537,23 @@ struct RelatedTitlesPage: View {
         ]
         return (try? JSONSerialization.data(withJSONObject: object)).flatMap { try? JSONDecoder().decode(MediaTitle.self, from: $0) }
     }
+    /// The same, kept while the season's episodes are the same: the preview's episode sheet asked for them on
+    /// every redraw of the page behind it (each swipe), and each episode went through JSON there and back.
+    static func keptEpisodes(_ items: [CatalogEpisode], route: CatalogRoute, season: Int, artwork: (CatalogEpisode) -> String?) -> [Episode] {
+        let key = "\(route.id)|\(season)|" + items.map { "\($0.number):\($0.name.count):\($0.overview.count):\($0.stillPath ?? "")" }.joined(separator: ",")
+        if let kept, kept.key == key { return kept.value }
+        let made = episodes(items, route: route, season: season, artwork: artwork)
+        kept = (key, made)
+        return made
+    }
+    private static var kept: (key: String, value: [Episode])?
+    static func keptTitle(_ route: CatalogRoute, details: CatalogDetails) -> MediaTitle? {
+        if let keptPreview, keptPreview.route == route, keptPreview.name == details.name { return keptPreview.title }
+        let made = title(route, details: details)
+        keptPreview = (route, details.name, made)
+        return made
+    }
+    private static var keptPreview: (route: CatalogRoute, name: String, title: MediaTitle?)?
     static func episodes(_ items: [CatalogEpisode], route: CatalogRoute, season: Int, artwork: (CatalogEpisode) -> String?) -> [Episode] {
         items.compactMap { episode in
             let object: [String: Any] = [
@@ -649,9 +679,9 @@ struct PreviewEpisodesPage: View {
             } label: {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                        Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Text(([episodes.count.formatted() + " episodes"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                            .font(.app(size: 13)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
@@ -664,9 +694,10 @@ struct PreviewEpisodesPage: View {
     }
     private func sheet(_ number: Int) -> some View {
         let items = controller?.items ?? []
-        let episodes = PreviewDiaryModels.episodes(items, route: route, season: season, artwork: artwork)
+        let episodes = PreviewDiaryModels.keptEpisodes(items, route: route, season: season, artwork: artwork)
+        let ratings = TraktTitleReads.cachedRatings(show: route.id, season: season)
         return Group {
-            if let details, let title = PreviewDiaryModels.title(route, details: details), let source = items.first(where: { $0.number == number }),
+            if let details, let title = PreviewDiaryModels.keptTitle(route, details: details), let source = items.first(where: { $0.number == number }),
                let episode = episodes.first(where: { $0.number == number }) {
                 EpisodeInfoSheet(title: title, season: season, episodes: episodes, episode: episode,
                                  page: { item in
@@ -674,7 +705,7 @@ struct PreviewEpisodesPage: View {
                                      return .init(name: source.name.isEmpty ? "Episode \(item.number)" : source.name,
                                                   summary: source.overview.isEmpty ? "No episode summary available." : source.overview,
                                                   artwork: artwork(source), hidden: false, runtime: source.runtimeMinutes, tmdbScore: source.communityScore,
-                                                  traktScore: TraktTitleReads.cachedRatings(show: route.id, season: season)[item.number], watched: false)
+                                                  traktScore: ratings[item.number], watched: false)
                                  },
                                  onToggleWatched: { _ in }, onNeighbour: { neighbour(of: number, forward: $0) },
                                  onNote: {}, onClose: { selected = nil }, inDiary: false)
@@ -682,7 +713,7 @@ struct PreviewEpisodesPage: View {
             }
         }
     }
-    private func aired(_ episode: CatalogEpisode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= DiaryDate.day(store.now) } == true }
+    private func aired(_ episode: CatalogEpisode) -> Bool { episode.airedOn.map { SeasonAdjustment.validDay($0) && $0 <= EpisodeToday.day(store.now) } == true }
     private func hidden(_ episode: CatalogEpisode) -> Bool { hideSpoilers && !revealed.contains(episode.number) }
     private func state(_ episode: CatalogEpisode) -> EpisodeRowState { aired(episode) ? .notWatched : .notAired }
     private func artwork(_ episode: CatalogEpisode) -> String? { CatalogTools.image(episode.stillPath) ?? details.flatMap { CatalogTools.image($0.backdropPath, size: "w780") } }
@@ -760,7 +791,7 @@ struct CastCreditsPage: View {
     private func segment(_ tab: Tab) -> some View {
         let on = selected == tab
         return Button { selection = tab } label: {
-            Text(tab.rawValue).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
+            Text(tab.rawValue).font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? theme.ink : Color(themed: "#c5c0cf"))
                 .frame(maxWidth: .infinity).frame(height: 40)
                 .background { if on { Capsule().fill(theme.accent) } }
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
@@ -800,11 +831,11 @@ struct CastCreditsPage: View {
                                 Artwork(path: character.image, title: character.name)
                                     .frame(width: 72, height: 88).clipShape(RoundedRectangle(cornerRadius: 12))
                                 VStack(alignment: .leading, spacing: 5) {
-                                    Text(character.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                                    Text(character.name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                                     if character.role != nil { EpisodeChip(text: character.roleName, accent: character.role == "MAIN") }
                                     if let actor = character.voiceActor {
-                                        Text("Voiced by").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                                        Text(actor.name).font(.system(size: 14.5, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                                        Text("Voiced by").font(.app(size: 12.5)).foregroundStyle(.secondary)
+                                        Text(actor.name).font(.app(size: 14.5, weight: .medium)).foregroundStyle(HomeStyle.primary)
                                     }
                                 }
                                 Spacer(minLength: 0)
@@ -846,15 +877,15 @@ struct CastCreditsPage: View {
         HStack(spacing: 12) {
             if image == nil {
                 Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Color(themed: "#d2c4f4"))
+                    .font(.app(size: 17, weight: .bold)).foregroundStyle(Color(themed: "#d2c4f4"))
                     .frame(width: 54, height: 54).background(Color(themed: "#2a2440"), in: Circle())
             } else {
                 Artwork(path: image, title: name).frame(width: 54, height: 54).clipShape(Circle())
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(name).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                Text(name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                 if !roles.isEmpty {
-                    Text(roles.joined(separator: " · ")).font(.system(size: 13.5))
+                    Text(roles.joined(separator: " · ")).font(.app(size: 13.5))
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -876,7 +907,7 @@ struct CastCreditsPage: View {
             let result = try await store.fullCredits(route)
             try Task.checkCancellation()
             credits = result
-        } catch { if !Task.isCancelled { creditsFailure = error.localizedDescription } }
+        } catch { if !Task.isCancelled { creditsFailure = FriendlyError.message(error) } }
     }
 
     private func loadCharacters() async {
@@ -887,7 +918,7 @@ struct CastCreditsPage: View {
                                                                   tmdbID: route.id, full: true, originalLanguage: originalLanguage)
             try Task.checkCancellation()
             characters = result
-        } catch { if !Task.isCancelled { voiceFailure = error.localizedDescription } }
+        } catch { if !Task.isCancelled { voiceFailure = FriendlyError.message(error) } }
     }
 }
 
@@ -932,7 +963,7 @@ struct InListsPage: View {
             case .recent: lists = try await TitleListsCache.load(store: store, route: route, sort: "updated")
             case .yours: lists = try await TraktTitleReads.yourLists(store: store, route: route)
             }
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -956,7 +987,7 @@ struct RelatedCollectionsPage: View {
                     Text(model.needsKey ? "Add your TMDB key in Settings → Connections → TMDB to see related collections." : "TMDB has no related collections for this title.")
                         .font(.subheadline).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                 }
-                if !model.loaded { ProgressView().padding(.top, 40) }
+                if !model.loaded { DiaryLoadingPlaceholder(height: 150, label: "Loading related collections") }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ShowPageTitle(title: "Related collections", subtitle: title) }
@@ -976,14 +1007,14 @@ struct TMDbCollectionPage: View {
             VStack(alignment: .leading, spacing: 18) {
                 if let collection {
                     if !collection.overview.isEmpty {
-                        Text(collection.overview).font(.system(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
+                        Text(collection.overview).font(.app(size: 14)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], alignment: .leading, spacing: 18) {
                         ForEach(collection.parts, id: \.key) { item in link(item) }
                     }
                 } else if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
-                } else { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
+                } else { DiaryLoadingPlaceholder(label: "Loading the collection", layout: .posterGrid(columns: 3, rows: 2)).padding(.top, 8) }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ShowPageTitle(title: name, subtitle: collection.map { $0.parts.count.counted("film", "films") } ?? "TMDb collection") }
@@ -1001,8 +1032,8 @@ struct TMDbCollectionPage: View {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false).aspectRatio(2 / 3, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
-            Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 9)
-            Text(item.year.map(String.init) ?? "Movie").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
+            Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 9)
+            Text(item.year.map(String.init) ?? "Movie").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
         }
     }
     private func load() async {
@@ -1010,7 +1041,7 @@ struct TMDbCollectionPage: View {
         do {
             if let token = TMDBDirect.token(store) { collection = try await TMDBDirect.collection(id, token: token) }
             else { collection = try await store.read(CatalogTools.apiPath("/api/metadata/collection", query: ["id": String(id)])) }
-        } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -1039,8 +1070,8 @@ struct CompaniesPage: View {
                             HStack(spacing: 14) {
                                 CompanyLogo(company: company).frame(width: 108, height: 66)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(company.name).font(.system(size: 16.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
-                                    Text(CompanyRoutes.label(company, animated: animated)).font(.system(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
+                                    Text(company.name).font(.app(size: 16.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(1)
+                                    Text(CompanyRoutes.label(company, animated: animated)).font(.app(size: 13.5)).foregroundStyle(.secondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                                 DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
@@ -1062,6 +1093,6 @@ struct CompaniesPage: View {
     private func load() async {
         failure = nil
         do { extras = try await TitleExtrasCache.load(store: store, route: route) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }

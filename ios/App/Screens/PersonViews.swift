@@ -163,7 +163,7 @@ struct PersonView: View {
         let biographyID = voiceFirst ? "voice-actor-biography" : "profile-biography"
         let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 14) {
-            Text("About").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+            Text("About").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 .accessibilityAddTraits(.isHeader).padding(.top, 6)
             ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
             if let actor, let content {
@@ -174,7 +174,7 @@ struct PersonView: View {
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     ProfileBiography(text: AttributedString(tmdbProse), expanded: $expanded, identifier: biographyID, collapsedLines: 3,
-                                     style: .system(size: 17))
+                                     style: .app(size: 17))
                     if !tmdbProse.isEmpty, let source = tmdb.source { ProfileSourceNote(source: source) }
                 }
             }
@@ -208,7 +208,7 @@ struct PersonView: View {
     }
     private func sectionHeading(_ label: String, route: PersonFilmographyRoute) -> some View {
         HStack {
-            Text(label).font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            Text(label).font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).lineLimit(1)
             Spacer(minLength: 4)
             SectionMoreLink(label: "View more " + label, value: route,
                             identifier: "person-more-" + route.section.rawValue + (route.onServer ? "-server" : ""))
@@ -220,7 +220,7 @@ struct PersonView: View {
         let characters = actor.characters
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Characters \(characters.count)").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                Text("Characters \(characters.count)").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 Spacer(minLength: 4)
                 if characters.count > 1 {
                     SectionMoreLink(label: "All characters", value: VoiceActorCharactersRoute(id: actor.id, name: actor.name),
@@ -247,7 +247,7 @@ struct PersonView: View {
                 guard !Task.isCancelled else { return }
                 person = found
             } catch is CancellationError { return }
-            catch { if !Task.isCancelled { failure = error.localizedDescription }; return }
+            catch { if !Task.isCancelled { failure = FriendlyError.message(error) }; return }
             await matchVoice()
         case .voice(let route):
             do { actor = try await voiceActor(route) }
@@ -255,7 +255,7 @@ struct PersonView: View {
             catch {
                 guard !Task.isCancelled else { return }
                 // AniList unreachable: the TMDB side still makes a page when its id is known.
-                if route.tmdbID == nil { failure = error.localizedDescription; return }
+                if route.tmdbID == nil { failure = FriendlyError.message(error); return }
             }
             guard !Task.isCancelled else { return }
             if actor == nil && route.tmdbID == nil { missing = true; return }
@@ -370,9 +370,9 @@ struct PersonFilmographyView: View {
                           titleIdentifier: "person-filmography-heading", accessory: AnyView(CollectionLayoutToggle(grid: $grid, collection: "catalog"))) {
             VStack(alignment: .leading, spacing: 16) {
                 if person != nil {
-                    if let error = filters.error { Text(error).font(.system(size: 13)).foregroundStyle(.secondary) }
+                    if let error = filters.error { Text(error).font(.app(size: 13)).foregroundStyle(.secondary) }
                     else {
-                        Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
+                        Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.app(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
                         if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
                         else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
                         if shown < items.count { ScrollLoadTrigger(token: shown, loading: false) { shown += 40 } }
@@ -390,6 +390,6 @@ struct PersonFilmographyView: View {
         failure = nil
         do { let result = try await store.person(route.person); guard !Task.isCancelled else { return }; person = result.person }
         catch is CancellationError { }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }

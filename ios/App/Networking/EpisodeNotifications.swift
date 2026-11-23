@@ -247,10 +247,10 @@ struct EpisodeAlertsPrompt: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "bell.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+            Image(systemName: "bell.fill").font(.app(size: 26, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                 .frame(width: 58, height: 58).background(HomeStyle.chip, in: Circle())
-            Text("Turn on notifications").font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
-            Text("Never miss a new episode of the shows you watch.").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary)
+            Text("Turn on notifications").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
+            Text("Never miss a new episode of the shows you watch.").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
                 Button("Not now") { UserDefaults.standard.set(true, forKey: EpisodeNotifications.askedKey); dismiss() }

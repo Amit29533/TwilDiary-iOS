@@ -45,19 +45,19 @@ struct AniListSyncSection: View {
                     ForEach(Array(sync.notKept.prefix(30).enumerated()), id: \.element.id) { index, item in
                         if index > 0 { SettingsDivider() }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                            Text(item.reason).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                            Text(item.label).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            Text(item.reason).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 10)
                     }
                     SettingsDivider()
-                    Button("Clear this list") { sync.clearNotKept() }.font(.system(size: 15, weight: .semibold))
+                    Button("Clear this list") { sync.clearNotKept() }.font(.app(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 48)
                 }
             }
             if let message { SettingsFootnote(text: message) }
             if account.signedIn || !sync.waiting.isEmpty || !sync.notKept.isEmpty {
                 Button(role: .destructive) { confirmRemove = true } label: {
-                    Text("Disconnect and remove").font(.system(size: 17)).frame(maxWidth: .infinity, minHeight: 52)
+                    Text("Disconnect and remove").font(.app(size: 17)).frame(maxWidth: .infinity, minHeight: 52)
                 }.buttonStyle(.plain).foregroundStyle(.red).cardSurface(16).accessibilityIdentifier("anilist-sync-remove")
                 SettingsFootnote(text: "Signs out and deletes everything TwilDiary kept for AniList on this iPhone. Nothing on AniList changes.")
             }
@@ -84,39 +84,39 @@ struct AniListSyncSection: View {
                 if let progress = sync.lookupProgress, progress.total > 0 {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Looking up your anime on AniList: \(progress.done.formatted()) of \(progress.total.formatted())…")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         SendProgressBar(fraction: Double(progress.done) / Double(progress.total))
-                        Text("About two seconds a title, the first time only. Nothing is sent.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text("About two seconds a title, the first time only. Nothing is sent.").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                     }
                 } else if sync.checking {
-                    Text("Reading AniList…").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text("Reading AniList…").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 }
                 if let stats = sync.readStats {
                     Text("Read in \(stats.seconds < 10 ? String(format: "%.1f", stats.seconds) : String(Int(stats.seconds))) s · \(stats.requests.counted("request", "requests")) · progress, status, scores")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                    Text(statusLine(stats)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text(statusLine(stats)).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                 }
                 if let comparison = sync.comparison {
                     if comparison.notLookedUp > 0 {
-                        Text(comparison.notLookedUp.counted("title", "titles") + " not looked up on AniList yet").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(comparison.notLookedUp.counted("title", "titles") + " not looked up on AniList yet").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                     }
                     if comparison.matches {
                         Label("Matches your diary: " + comparison.matching.counted("entry", "entries"), systemImage: "checkmark.seal.fill")
-                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(Color.accentColor)
+                            .font(.app(size: 17, weight: .semibold)).foregroundStyle(Color.accentColor)
                     } else {
-                        Text("\(comparison.matching.formatted()) entries match. Differences:").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Text("\(comparison.matching.formatted()) entries match. Differences:").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         differences("Only in the diary", comparison.missing)
                         differences("Progress, status or rating", comparison.different)
                         differences("Only on AniList", comparison.onlyOnAniList)
                     }
                 } else if !sync.checking {
-                    Text(sync.checkProblem ?? "Tap Check to compare.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    Text(sync.checkProblem ?? "Tap Check to compare.").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                 }
                 if let problem = sync.checkProblem, sync.comparison != nil {
                     Text(problem).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if let result = sync.lastResult {
-                    Label(result, systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    Label(result, systemImage: "checkmark").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).padding(15).modifier(SettingsCard())
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("anilist-sync-direct")
@@ -131,9 +131,9 @@ struct AniListSyncSection: View {
     @ViewBuilder private func differences(_ name: String, _ items: [AniListPlan.Difference]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(name): \(items.count.formatted())").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                Text("\(name): \(items.count.formatted())").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, item in
-                    Text("· \(item.title) — \(item.detail)").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("· \(item.title) — \(item.detail)").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -162,8 +162,8 @@ struct AniListSyncSection: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(account.aniListWins ? "AniList" : "Diary").lineLimit(1)
-                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold))
-                    }.font(.system(size: 17, weight: .semibold)).foregroundStyle(Color.accentColor)
+                        Image(systemName: "chevron.down").font(.app(size: 12, weight: .bold))
+                    }.font(.app(size: 17, weight: .semibold)).foregroundStyle(Color.accentColor)
                         .padding(.horizontal, 16).frame(height: 40).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
                 }.accessibilityIdentifier("anilist-sync-truth")
             }
@@ -212,7 +212,7 @@ struct AniListSyncSection: View {
         defer { working = false }
         do {
             if try await account.signIn(using: webSession) { message = "Signed in. Turn on “Also save my activity to AniList”: your anime go on their own, about two seconds each." }
-        } catch { message = error.localizedDescription }
+        } catch { message = FriendlyError.message(error) }
     }
 }
 

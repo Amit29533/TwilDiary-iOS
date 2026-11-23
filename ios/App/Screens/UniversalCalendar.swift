@@ -106,9 +106,9 @@ struct UniversalRelease: Identifiable, Hashable, Sendable {
                     replies.add((day, nil, "Invalid TMDB request.")); continue
                 }
                 session.dataTask(with: request) { data, response, error in
-                    if let error { replies.add((day, nil, error.localizedDescription)); return }
+                    if let error { replies.add((day, nil, FriendlyError.message(error))); return }
                     do { replies.add((day, try TMDBDirect.checked(data ?? Data(), response), nil)) }
-                    catch { replies.add((day, nil, error.localizedDescription)) }
+                    catch { replies.add((day, nil, FriendlyError.message(error))) }
                 }.resume()
             }
         }
@@ -221,10 +221,10 @@ struct UniversalCalendarSection: View {
                 RetryNotice(message: failure) { Task { await load() } }
             } else if let items {
                 if items.isEmpty && !loadingMore {
-                    Text("Nothing releasing with these filters.").font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).padding(.top, 8)
+                    Text("Nothing releasing with these filters.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).padding(.top, 8)
                 } else { list(items) }
                 if loadingMore {
-                    HStack(spacing: 8) { ProgressView(); Text("Loading later days").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
+                    HStack(spacing: 8) { ProgressView(); Text("Loading later days").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary) }
                         .frame(maxWidth: .infinity).padding(.vertical, 12)
                 } else if let moreFailure {
                     RetryNotice(message: "Later days couldn’t be loaded. " + moreFailure) { Task { await load() } }
@@ -253,7 +253,7 @@ struct UniversalCalendarSection: View {
                 loadingMore = index < steps.count - 1
             } catch {
                 guard mine == generation, !Task.isCancelled else { return }
-                if index == 0 { failure = error.localizedDescription; items = nil } else { moreFailure = error.localizedDescription }
+                if index == 0 { failure = FriendlyError.message(error); items = nil } else { moreFailure = FriendlyError.message(error) }
                 loadingMore = false
                 return
             }

@@ -13,8 +13,8 @@ struct SettingsLine<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let subtitle { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+                Text(title).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let subtitle { Text(subtitle).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
             }
             Spacer(minLength: 8)
             trailing
@@ -34,7 +34,7 @@ struct ExtrasStorageGroup: View {
     var body: some View {
         SettingsGroup(label: "Where extras live", info: "Tags, Queue, full notes, statuses Trakt can’t keep, file folders, favourite people and Trash. The iPhone always has a copy; turn on Google Drive here, or your server in Connections, to keep one there too.") {
             SettingsLine(title: "On this iPhone", subtitle: "Tags, Queue, notes, folders and more") {
-                Image(systemName: "checkmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
+                Image(systemName: "checkmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent)
             }
             SettingsDivider()
             SettingsLine(title: "Google Drive", subtitle: driveConnected ? "Kept in step through TwilDiary's Drive folder" : "Connect Google Drive below to keep them there") {
@@ -44,7 +44,7 @@ struct ExtrasStorageGroup: View {
             // The switch lives in Connections only (owner's request: one switch, one place).
             SettingsLine(title: "Your server", subtitle: serverSubtitle) {
                 if sync.running { ProgressView().controlSize(.small).accessibilityLabel("Syncing with your server") }
-                else { Text(server ? "On" : "Off").font(.system(size: 14, weight: .semibold)).foregroundStyle(server ? theme.accent : HomeStyle.secondary) }
+                else { Text(server ? "On" : "Off").font(.app(size: 14, weight: .semibold)).foregroundStyle(server ? theme.accent : HomeStyle.secondary) }
             }.accessibilityIdentifier("extras-server")
         }
         .onChange(of: drive) { _, on in if on { Task { await PhoneDriveSync.pullIfDue(store: store, force: true) } } }
@@ -113,10 +113,10 @@ struct LanguageRegionView: View {
     static func regionName(_ code: String) -> String { Locale.current.localizedString(forRegionCode: code) ?? code }
     private func row<Trailing: View>(_ icon: String, _ title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(width: 38, height: 38).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+            Image(systemName: icon).font(.app(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(width: 38, height: 38).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
-                if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary) }
+                Text(title).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                if let subtitle { Text(subtitle).font(.app(size: 13)).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 8)
             trailing()
@@ -202,10 +202,10 @@ struct SyncBackupView: View {
             VStack(alignment: .leading, spacing: 22) {
                 SettingsGroup(label: "Sync") {
                     SettingsLine(title: "Background sync", subtitle: refresh == .available ? "Syncs now and then while the app is closed" : "Otherwise it syncs when you open the app") {
-                        Text(refresh == .available ? "On" : "Off").font(.system(size: 15)).foregroundStyle(.secondary)
+                        Text(refresh == .available ? "On" : "Off").font(.app(size: 15)).foregroundStyle(.secondary)
                     }
                     Button { if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) } } label: {
-                        Text("Open Settings").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
+                        Text("Open Settings").font(.app(size: 16, weight: .semibold)).foregroundStyle(theme.accent)
                             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(.horizontal, 16)
                     }.buttonStyle(.plain).accessibilityHint("Background App Refresh is turned on in the Settings app")
                     SettingsDivider()
@@ -282,6 +282,6 @@ struct SyncBackupView: View {
             for old in files.dropFirst(7) { try? FileManager.default.removeItem(at: old) }
             UserDefaults.standard.set(day, forKey: lastKey)
             return "Saved today’s copy to Files."
-        } catch { return "Couldn’t save a copy: " + error.localizedDescription }
+        } catch { return "Couldn’t save a copy: " + FriendlyError.message(error) }
     }
 }

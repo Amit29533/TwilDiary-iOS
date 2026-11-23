@@ -24,17 +24,17 @@ struct TrashView: View {
                 // Design (boards 11 and 14): a 44 pt tile, "Removed titles", and the count or Empty on the right.
                 HStack(spacing: 14) {
                     SettingsTile(symbol: "trash", size: 44)
-                    Text("Removed titles").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text("Removed titles").font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 0)
                     if archived.isEmpty {
-                        Text("Empty").font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                        Text("Empty").font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.secondary)
                             .padding(.horizontal, 12).frame(height: 25).pillSurface(border: nil)
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                     } else {
                         Menu {
                             Button("Empty Trash", systemImage: "trash", role: .destructive) { confirmEmpty = true }.disabled(store.writesBlocked)
                         } label: {
-                            Text(archived.count.counted("title", "titles")).font(.system(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                            Text(archived.count.counted("title", "titles")).font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                                 .padding(.horizontal, 12).frame(height: 24).background(HomeStyle.chip, in: Capsule())
                         }.accessibilityLabel("Empty Trash").accessibilityIdentifier("empty-trash")
                     }
@@ -44,7 +44,7 @@ struct TrashView: View {
                     HStack(spacing: 4) {
                         Text("In Trash").foregroundStyle(HomeStyle.secondary)
                         Text("(\(shown.count))").foregroundStyle(HomeStyle.primary)
-                    }.font(.system(size: 18, weight: .bold))
+                    }.font(.app(size: 18, weight: .bold))
                     Spacer(minLength: 0)
                     if selecting {
                         Button(allSelected ? "Select none" : "Select all") { toggleAll() }.buttonStyle(SettingsPillButtonStyle(outlined: true)).disabled(shown.isEmpty)
@@ -76,15 +76,15 @@ struct TrashView: View {
                 if selecting {
                     let titles = shown.filter { selected.contains($0.id) }
                     HStack(spacing: 10) {
-                        Text(titles.isEmpty ? "Select titles" : "\(titles.count) selected").font(.system(size: 14, weight: .semibold))
+                        Text(titles.isEmpty ? "Select titles" : "\(titles.count) selected").font(.app(size: 14, weight: .semibold))
                             .foregroundStyle(HomeStyle.primary).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         Button("Restore") { review = CollectionReview(titles: titles, change: .restore) }
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                            .font(.app(size: 14, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                             .padding(.horizontal, 18).frame(height: 40)
                             .background(HomeStyle.chip, in: Capsule())
                             .accessibilityIdentifier("trash-restore-selected")
                         Button("Delete forever", role: .destructive) { review = CollectionReview(titles: titles, change: .purge) }
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                            .font(.app(size: 14, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
                             .padding(.horizontal, 16).frame(height: 40).background(Color(themed: "#3a1d26"), in: Capsule())
                             .accessibilityIdentifier("trash-delete-selected")
                     }.buttonStyle(.plain).disabled(titles.isEmpty || store.writesBlocked)
@@ -100,7 +100,7 @@ struct TrashView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     // Design: "Select" (dimmed when empty), "Done" in the accent pill while selecting.
                     Button(selecting ? "Done" : "Select") { selecting.toggle(); selected = [] }
-                        .font(.system(size: 15, weight: selecting ? .bold : .semibold))
+                        .font(.app(size: 15, weight: selecting ? .bold : .semibold))
                         .foregroundStyle(selecting ? HomeStyle.chipText : archived.isEmpty ? Color(themed: "#7a7a88") : HomeStyle.primary)
                         .disabled(archived.isEmpty).accessibilityIdentifier("trash-select")
                 }
@@ -147,7 +147,7 @@ struct TrashView: View {
                         ZStack {
                             Circle().fill(selected.contains(title.id) ? theme.accent : HomeStyle.card.opacity(0.85))
                             Circle().strokeBorder(selected.contains(title.id) ? .clear : Color(themed: "#4a4a56"), lineWidth: 1.5)
-                            if selected.contains(title.id) { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk) }
+                            if selected.contains(title.id) { Image(systemName: "checkmark").font(.app(size: 12, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk) }
                         }.frame(width: 26, height: 26).padding(grid ? 8 : 0).offset(x: grid ? 0 : -6)
                     }
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(selected.contains(title.id) ? theme.accent : .clear, lineWidth: 1.5))

@@ -17,7 +17,7 @@ struct TitleNotesSheet: View {
         NavigationStack {
             if let title = store.title(titleID) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(title.name).font(.system(size: 15)).foregroundStyle(.secondary)
+                    Text(title.name).font(.app(size: 15)).foregroundStyle(.secondary)
                     DisclosureGroup("Collections") {
                         InlineFlowLayout {
                             ForEach(title.tags ?? [], id: \.self) { tag in

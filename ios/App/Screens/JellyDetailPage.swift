@@ -49,7 +49,7 @@ struct JellyCompactTitle: View {
         HStack(spacing: 8) {
             JellyImage(url: poster).frame(width: 28, height: 28).background(HomeStyle.card)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+            Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
         }
         .frame(height: 28)
         .frame(maxWidth: pageWidth > 0 ? max(120, pageWidth - 160) : nil)
@@ -198,12 +198,12 @@ struct JellyDetailPage: View {
             if let kind = kindLabel {
                 HStack(spacing: 6) {
                     Image("jellyfin-mark").resizable().scaledToFit().frame(width: 16, height: 16)
-                    Text(kind).font(.system(size: 12, weight: .semibold)).tracking(3).foregroundStyle(HomeStyle.secondary)
+                    Text(kind).font(.app(size: 12, weight: .semibold)).tracking(3).foregroundStyle(HomeStyle.secondary)
                 }.accessibilityHidden(true)
             }
             // Long names: up to three lines, a little smaller before they end in "…" (the whole name
             // is in the top bar once scrolled, and in File info).
-            Text(name).font(.system(size: 28, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
+            Text(name).font(.app(size: 28, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary)
                 .lineLimit(3).minimumScaleFactor(0.75).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
         }
@@ -234,7 +234,7 @@ struct JellyDetailPage: View {
                 }
             }.padding(.top, 4)
             if let overview = detail.Overview.map(JellySpace.plainText), !overview.isEmpty {
-                Text(overview).font(.system(size: 15)).foregroundStyle(HomeStyle.primary)
+                Text(overview).font(.app(size: 15)).foregroundStyle(HomeStyle.primary)
                     .lineLimit(fullOverview ? nil : 3).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     .onTapGesture { withAnimation(.snappy(duration: 0.25)) { fullOverview.toggle() } }
@@ -255,22 +255,22 @@ struct JellyDetailPage: View {
                 HStack(spacing: 8) {
                     if let score = detail.CommunityRating, score > 0 {
                         HStack(spacing: 3) {
-                            Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(Color(themed: "#f5c451"))
-                            Text(String(format: "%.1f", score)).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Image(systemName: "star.fill").font(.app(size: 11)).foregroundStyle(Color(themed: "#f5c451"))
+                            Text(String(format: "%.1f", score)).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         }
                     }
                     if let critics = detail.CriticRating, critics > 0 {
                         HStack(spacing: 3) {
                             Circle().fill(Color(red: 0.98, green: 0.2, blue: 0.04)).frame(width: 9, height: 9)
-                            Text("\(Int(critics))%").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text("\(Int(critics))%").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         }
                     }
-                    if let years = years(detail) { Text(years).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary) }
+                    if let years = years(detail) { Text(years).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary) }
                     if let rating = detail.OfficialRating, !rating.isEmpty {
-                        Text(rating).font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary.opacity(0.9))
+                        Text(rating).font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary.opacity(0.9))
                             .padding(.horizontal, 5).frame(height: 18).background(Color.primary.opacity(0.16), in: RoundedRectangle(cornerRadius: 3))
                     }
-                    if let length = length(detail) { Text(length).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary) }
+                    if let length = length(detail) { Text(length).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary) }
                     ForEach(outlined.prefix(count), id: \.text) { badge($0.symbol, $0.text) }
                 }.fixedSize()
             }
@@ -304,12 +304,12 @@ struct JellyDetailPage: View {
     private func topTenLine(_ rank: String) -> some View {
         HStack(spacing: 8) {
             VStack(spacing: -2) {
-                Text("TOP").font(.system(size: 7, weight: .heavy))
-                Text("10").font(.system(size: 11, weight: .heavy))
+                Text("TOP").font(.app(size: 7, weight: .heavy))
+                Text("10").font(.app(size: 11, weight: .heavy))
             }
             .foregroundStyle(.white).frame(width: 22, height: 24)
             .background(Color(red: 0.86, green: 0.1, blue: 0.12), in: RoundedRectangle(cornerRadius: 3))
-            Text(rank).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            Text(rank).font(.app(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
         }
         .accessibilityElement(children: .ignore).accessibilityLabel(rank + " in the Top 10")
     }
@@ -320,7 +320,7 @@ struct JellyDetailPage: View {
                 Image(systemName: symbol)
                 Text(title).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.system(size: 17, weight: .bold))
+            .font(.app(size: 17, weight: .bold))
             .foregroundStyle(primary ? ThemeStore.current.canvas : HomeStyle.primary)
             .frame(maxWidth: .infinity).frame(height: 46)
             .background(primary ? AnyShapeStyle(HomeStyle.primary) : AnyShapeStyle(Color.primary.opacity(0.14)),
@@ -365,8 +365,8 @@ struct JellyDetailPage: View {
     }
     private func creditLine(_ label: String, _ names: [String], more: Bool) -> some View {
         let shown = names.prefix(3).joined(separator: ", ")
-        let tail = more ? Text(" … more").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary) : Text("")
-        return Text("\(label): \(shown)\(tail)").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+        let tail = more ? Text(" … more").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary) : Text("")
+        return Text("\(label): \(shown)\(tail)").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
     }
 
     /// Favourite, Watched, Share and (a film) File info: a symbol with its name under it.
@@ -406,13 +406,13 @@ struct JellyDetailPage: View {
     private func actionButton(_ symbol: String, title: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { actionLabel(symbol, title: title) }
             .buttonStyle(.springPress).accessibilityLabel(label)
-            .sensoryFeedback(.selection, trigger: symbol)
+            .haptic(.selection, trigger: symbol)
     }
     private func actionLabel(_ symbol: String, title: String) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 22)).foregroundStyle(HomeStyle.primary)
+            Image(systemName: symbol).font(.app(size: 22)).foregroundStyle(HomeStyle.primary)
                 .contentTransition(.symbolEffect(.replace)).frame(height: 26)
-            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            Text(title).font(.app(size: 11, weight: .medium)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
         }.frame(maxWidth: .infinity).padding(.vertical, 4).contentShape(Rectangle())
     }
     /// "Dune (2021)", and its IMDb page when Jellyfin knows it.
@@ -426,10 +426,10 @@ struct JellyDetailPage: View {
 
     private func badge(_ symbol: String?, _ text: String) -> some View {
         HStack(spacing: 4) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 10, weight: .semibold)) }
+            if let symbol { Image(systemName: symbol).font(.app(size: 10, weight: .semibold)) }
             Text(text)
         }
-        .font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary.opacity(0.85))
+        .font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.primary.opacity(0.85))
         .padding(.horizontal, 5).frame(height: 18)
         .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(HomeStyle.primary.opacity(0.4), lineWidth: 1))
     }
@@ -530,7 +530,7 @@ struct JellyDetailPage: View {
             JellyServerEdits.shared.deleted.insert(route.id)
             dismiss()
         } catch {
-            deleteFailure = error.localizedDescription
+            deleteFailure = FriendlyError.message(error)
         }
     }
     /// The show's first episode outside the specials (season 0).
@@ -549,9 +549,9 @@ struct JellyDetailPage: View {
             HStack(spacing: 6) {
                 Image(systemName: "square.stack")
                 Text("Version: " + (chosen.Name ?? "")).lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold))
+                Image(systemName: "chevron.up.chevron.down").font(.app(size: 11, weight: .semibold))
             }
-            .font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+            .font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
             .padding(.horizontal, 12).frame(height: 32).background(Color.primary.opacity(0.09), in: Capsule())
         }.accessibilityIdentifier("jellyspace-version")
     }
@@ -589,7 +589,7 @@ struct JellyDetailPage: View {
                 HStack(alignment: .top, spacing: 22) {
                     ForEach(available, id: \.self) { item in
                         Button { withAnimation(.snappy(duration: 0.25)) { tab = item } } label: {
-                            Text(item.rawValue).font(.system(size: 16, weight: .bold))
+                            Text(item.rawValue).font(.app(size: 16, weight: .bold))
                                 .foregroundStyle(item == current ? HomeStyle.primary : HomeStyle.secondary)
                                 .fixedSize().padding(.top, 12)
                                 .overlay(alignment: .top) {
@@ -640,17 +640,17 @@ struct JellyDetailPage: View {
                     } label: {
                         HStack(spacing: 6) {
                             Text(title).lineLimit(1)
-                            Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold))
-                        }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Image(systemName: "chevron.down").font(.app(size: 12, weight: .bold))
+                        }.font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                     }.accessibilityLabel("Season: " + title).accessibilityIdentifier("jellyspace-season-menu")
                 } else {
-                    Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text(title).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 }
                 Spacer(minLength: 8)
                 if !episodes.isEmpty {
                     let left = episodes.filter { $0.UserData?.Played != true }.count
                     Text(left == 0 ? "All watched" : left == episodes.count ? "\(episodes.count) episodes" : "\(episodes.count) · \(left) left")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                        .font(.app(size: 13, weight: .medium)).foregroundStyle(HomeStyle.secondary)
                 }
             }
             LazyVStack(spacing: 2) {
@@ -665,7 +665,7 @@ struct JellyDetailPage: View {
         let genres = detail.GenreItems ?? []
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text(name).font(.system(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                Text(name).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                 ForEach(creditGroups(detail)) { group in
                     VStack(alignment: .leading, spacing: 4) {
                         creditsHeading(group.id)
@@ -681,9 +681,9 @@ struct JellyDetailPage: View {
                         ForEach(genres, id: \.Id) { genre in
                             Button { open(JellyListRoute(kind: .genre, id: genre.Id, name: genre.Name ?? "Genre")) } label: {
                                 HStack {
-                                    Text(genre.Name ?? "Genre").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                                    Text(genre.Name ?? "Genre").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary)
                                     Spacer(minLength: 8)
-                                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                                    Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                                 }.frame(minHeight: 40).contentShape(Rectangle())
                             }.buttonStyle(.springPress)
                         }
@@ -692,7 +692,7 @@ struct JellyDetailPage: View {
                 if let rating = detail.OfficialRating, !rating.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         creditsHeading("Age rating")
-                        Text(rating).font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary)
+                        Text(rating).font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.primary)
                     }
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).padding(20).padding(.top, 8)
@@ -700,21 +700,21 @@ struct JellyDetailPage: View {
         .diaryScreenBackground()
     }
     private func creditsHeading(_ text: String) -> some View {
-        Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary).accessibilityAddTraits(.isHeader)
+        Text(text).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary).accessibilityAddTraits(.isHeader)
     }
     private func personRow(_ person: JellyfinClient.Detail.Person, client: JellyfinClient) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle().fill(HomeStyle.card)
-                Image(systemName: "person.fill").font(.system(size: 18)).foregroundStyle(HomeStyle.secondary)
+                Image(systemName: "person.fill").font(.app(size: 18)).foregroundStyle(HomeStyle.secondary)
                 JellyImage(url: person.PrimaryImageTag.flatMap { JellyfinClient.imageURL(base: client.base, item: person.Id, type: "Primary", tag: $0, width: 160) })
             }.frame(width: 44, height: 44).clipShape(Circle())
             VStack(alignment: .leading, spacing: 1) {
-                Text(person.Name ?? "").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                if let role = person.Role, !role.isEmpty { Text(role).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                Text(person.Name ?? "").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let role = person.Role, !role.isEmpty { Text(role).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
             }
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+            Image(systemName: "chevron.right").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
         }.padding(.vertical, 4).contentShape(Rectangle())
     }
     /// Closes the sheet and opens a person's or genre's list on this tab.
@@ -737,7 +737,7 @@ struct JellyDetailPage: View {
             favourite = found.UserData?.IsFavorite == true
             if found.kind == "Series", let left = found.UserData?.UnplayedItemCount { JellyNewEpisodes.seen(route.id, unwatched: left) }
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
+            if !Task.isCancelled { failure = FriendlyError.message(error) }
             return
         }
         // More like this and the extras don't wait for the seasons and episodes: all at once.

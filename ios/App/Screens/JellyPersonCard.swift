@@ -52,7 +52,7 @@ struct JellyPersonCard: View {
                 Image("jellyfin-mark").resizable().scaledToFit().frame(width: 22, height: 22)
                     .frame(width: 36, height: 36).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("IN JELLYSPACE").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                    Text("IN JELLYSPACE").font(.app(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
                     Text(found.count == 1 ? "1 title on your server" : "\(found.count) titles on your server")
                         .font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Text(found.titles.prefix(3).compactMap(\.Name).joined(separator: " · "))
@@ -70,7 +70,7 @@ struct JellyPersonCard: View {
                         }
                     }.accessibilityHidden(true)
                 }
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#a9a7b6"))
+                Image(systemName: "chevron.right").font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#a9a7b6"))
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)

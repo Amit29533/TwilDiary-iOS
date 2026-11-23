@@ -77,11 +77,11 @@ struct MainTrackerView: View {
         HStack(alignment: .top, spacing: 14) {
             BrandLogo(service: option.brand, size: 34)
             VStack(alignment: .leading, spacing: 3) {
-                Text(option.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
+                Text(option.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
                 Text(option.summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
-            Image(systemName: "checkmark").font(.system(size: 17, weight: .bold)).foregroundStyle(theme.accent)
+            Image(systemName: "checkmark").font(.app(size: 17, weight: .bold)).foregroundStyle(theme.accent)
                 .opacity(option == tracker ? 1 : 0).frame(width: 24)
         }.padding(14).frame(minHeight: 64).contentShape(Rectangle())
     }
@@ -198,8 +198,8 @@ struct TrackerPreviewPanel: View {
         } label: {
             HStack(spacing: 6) {
                 Text(forceSource == .diary ? "Diary" : tracker.name)
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
-            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                Image(systemName: "chevron.down").font(.app(size: 10, weight: .bold))
+            }.font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                 .padding(.horizontal, 14).frame(height: 34).modifier(SourceMenuFace())
         }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
             .accessibilityIdentifier(tracker.rawValue + "-force-source")
@@ -219,17 +219,17 @@ struct TrackerPreviewPanel: View {
                 HStack(spacing: 12) {
                     Group {
                         if running || trakt.writeProgress != nil { ProgressView().controlSize(.small).tint(HomeStyle.chipText) }
-                        else { Image(systemName: matched ? "checkmark" : "arrow.triangle.2.circlepath").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .bold)) }
+                        else { Image(systemName: matched ? "checkmark" : "arrow.triangle.2.circlepath").contentTransition(.symbolEffect(.replace)).font(.app(size: 14, weight: .bold)) }
                     }.foregroundStyle(HomeStyle.chipText).frame(width: 36, height: 36).background(HomeStyle.chip, in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(headline).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
+                        Text(headline).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                             .accessibilityIdentifier(matched ? id + "-match" : id + "-differences")
-                        if let checked { Text("Checked " + checked.formatted(.relative(presentation: .named))).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }
+                        if let checked { Text("Checked " + checked.formatted(.relative(presentation: .named))).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary) }
                     }
                     Spacer(minLength: 0)
                 }
                 if let fraction = SendProgress.fraction(trakt.writeProgress) { SendProgressBar(fraction: fraction).accessibilityIdentifier(id + "-progress") }
-                if let error { Text(error).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error") }
+                if let error { Text(error).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier(id + "-error") }
                 Button {
                     Task { await trakt.check(store: store) }
                 } label: {
@@ -361,7 +361,7 @@ struct TrackerPreviewPanel: View {
         let intoDiary = others.canForceIntoDiary(tracker, store: store)
         VStack(alignment: .leading, spacing: ThemeStore.current.native ? 12 : 10) {
             HStack(spacing: 8) {
-                Text("Source of truth").font(ThemeStore.current.native ? .system(size: 17) : .subheadline.weight(.semibold))
+                Text("Source of truth").font(ThemeStore.current.native ? .app(size: 17) : .subheadline.weight(.semibold))
                 SettingsInfoButton(text: forceSource == .diary
                  ? "Makes \(tracker.name) your diary: what it lacks is added, what it has that your diary doesn’t is taken off, and failures are retried. Titles \(tracker.name) can’t take as sent are left as they are and named. You’ll see what changes first; it can’t be undone."
                  : "Makes your diary \(tracker.name): what it lacks is added to \((store.diaryService ?? .trakt).name), what isn’t on \(tracker.name) is taken off, and failures are retried. Titles that can’t be taken as sent are left as they are and named. You’ll see what changes first; it can’t be undone.").padding(.vertical, -10)
@@ -375,8 +375,8 @@ struct TrackerPreviewPanel: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(forceSource == .diary ? "Diary" : tracker.name)
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
-                    }.font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                        Image(systemName: "chevron.down").font(.app(size: 10, weight: .bold))
+                    }.font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 12).frame(height: 32).modifier(SourceMenuFace())
                 }.accessibilityLabel("Source of truth").accessibilityValue(forceSource == .diary ? "Diary" : tracker.name)
                     .accessibilityIdentifier(tracker.rawValue + "-force-source")
@@ -436,7 +436,7 @@ struct TrackerPreviewPanel: View {
         let compared = report.comparison
         let timing = report.seconds.formatted(.number.precision(.fractionLength(1))) + " s · " + report.requests.counted("request", "requests")
         Text(report.fetched.isEmpty ? "Nothing changed on \(tracker.name) since the last check · \(timing)" : "Read in \(timing) · " + report.fetched.map(\.rawValue).joined(separator: ", "))
-            .font(.system(size: 13, weight: .semibold)).accessibilityIdentifier(id + "-timing")
+            .font(.app(size: 13, weight: .semibold)).accessibilityIdentifier(id + "-timing")
         Text(counts(library)).font(.caption).foregroundStyle(.secondary)
         if !report.unavailable.isEmpty {
             Text("\(tracker.name) didn’t give: " + report.unavailable.map(\.rawValue).joined(separator: ", ") + ". They’re asked for again next time.").font(.caption).foregroundStyle(.secondary)
@@ -446,10 +446,10 @@ struct TrackerPreviewPanel: View {
         }
         if compared.matches {
             Label("Matches your diary: \(compared.matchingPlays.counted("play", "plays"))", systemImage: "checkmark.seal.fill")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier(id + "-match")
+                .font(.app(size: 13, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier(id + "-match")
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text("\(compared.matchingPlays.counted("play", "plays")) match. Differences:").font(.system(size: 13, weight: .semibold))
+                Text("\(compared.matchingPlays.counted("play", "plays")) match. Differences:").font(.app(size: 13, weight: .semibold))
                 differences("Only on \(tracker.name)", compared.onlyOnTrakt)
                 differences("Only in the diary", compared.onlyInDiary)
                 differences("Ratings", compared.ratingDifferences)

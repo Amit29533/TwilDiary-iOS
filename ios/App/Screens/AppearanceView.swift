@@ -23,7 +23,7 @@ struct AppearanceView: View {
                 if theme == .native {
                     // Native's light or dark: follow the iPhone, or always one (as Apple's apps offer).
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("APPEARANCE").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).padding(.leading, 16)
+                        Text("APPEARANCE").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).padding(.leading, 16)
                         NativeSegmentedControl(segments: NativeAppearance.allCases.map { NativeSegment(value: $0, title: $0.title, id: "native-appearance-" + $0.rawValue) },
                                                selection: $nativeAppearance)
                         SettingsFootnote(text: nativeAppearance == .automatic ? "Follows your iPhone’s light or dark setting." : "Always \(nativeAppearance.rawValue), whatever your iPhone is set to.")
@@ -33,7 +33,7 @@ struct AppearanceView: View {
                 SettingsGroup(label: "Feel") {
                     HStack(spacing: ThemeStore.current.native ? 12 : 14) {
                         SettingsTile(symbol: "iphone.radiowaves.left.and.right")
-                        Text("Haptics").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
+                        Text("Haptics").font(.app(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
                             .foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 4)
                         Toggle("", isOn: $haptics).labelsHidden().tint(ThemeStore.current.native ? Color(uiColor: .systemGreen) : theme.accent)
@@ -80,15 +80,15 @@ private struct ThemeCard: View {
                 ZStack {
                     if selected {
                         Circle().fill(item.accent)
-                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
+                        Image(systemName: "checkmark").font(.app(size: 11, weight: .bold)).foregroundStyle(ThemeStore.current.accentInk)
                     } else { Circle().strokeBorder(Color(themed: "#3a3a46"), lineWidth: 1.5) }
                 }.frame(width: 22, height: 22).padding(8)
             }
             HStack(spacing: 7) {
                 Circle().fill(item.accent).frame(width: 8, height: 8)
-                Text(item.name).font(.system(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(item.name).font(.app(size: 15, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
             }.padding(.top, 10)
-            Text(item.detail).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 2)
+            Text(item.detail).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 2)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface(22)
             .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(selected ? item.accent : HomeStyle.cardBorder, lineWidth: selected ? 1.5 : HomeStyle.hairline))

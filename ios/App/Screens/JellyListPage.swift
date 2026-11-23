@@ -67,7 +67,7 @@ struct JellyListPage: View {
         let profile = person.ProviderIds?.first { $0.key.lowercased() == "tmdb" }.flatMap { Int($0.value) }.map { PersonRoute(id: $0) }
         let photo = ZStack {
             Rectangle().fill(HomeStyle.card)
-            Image(systemName: "person.fill").font(.system(size: 34)).foregroundStyle(HomeStyle.secondary)
+            Image(systemName: "person.fill").font(.app(size: 34)).foregroundStyle(HomeStyle.secondary)
             JellyImage(url: person.ImageTags?["Primary"].flatMap { JellyfinClient.imageURL(base: client.base, item: person.Id, type: "Primary", tag: $0, width: 400) })
         }.frame(width: 110, height: 150).clipShape(RoundedRectangle(cornerRadius: 14))
         return HStack(alignment: .top, spacing: 14) {
@@ -79,14 +79,14 @@ struct JellyListPage: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 if let bio = person.Overview.map(JellySpace.plainText), !bio.isEmpty {
-                    Text(bio).font(.system(size: 14)).foregroundStyle(HomeStyle.primary.opacity(0.85)).lineLimit(fullBio ? nil : 6)
+                    Text(bio).font(.app(size: 14)).foregroundStyle(HomeStyle.primary.opacity(0.85)).lineLimit(fullBio ? nil : 6)
                     Button(fullBio ? "Show less" : "Show more") { withAnimation { fullBio.toggle() } }
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(ThemeStore.accent)
+                        .font(.app(size: 14, weight: .semibold)).foregroundStyle(ThemeStore.accent)
                 }
                 if let profile {
                     NavigationLink(value: profile) {
                         Label("Full profile", systemImage: "person.text.rectangle")
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             .padding(.horizontal, 14).frame(height: 36).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
                     }
                     .buttonStyle(.springPress).padding(.top, 4)
@@ -146,7 +146,7 @@ struct JellyListPage: View {
                 if last { return }
             }
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
+            if !Task.isCancelled { failure = FriendlyError.message(error) }
         }
     }
 }

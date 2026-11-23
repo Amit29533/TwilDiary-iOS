@@ -104,12 +104,12 @@ struct CustomiseView: View {
     private var rowBackground: Color { ThemeStore.current.native ? Color(uiColor: .secondarySystemBackground) : HomeStyle.card }
     /// The settings pages' group label (SettingsGroup): uppercase, 13 pt, secondary.
     private func sectionHeader(_ text: String) -> some View {
-        Text(text.uppercased()).font(.system(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
+        Text(text.uppercased()).font(.app(size: 13, weight: ThemeStore.current.native ? .regular : .bold))
             .foregroundStyle(HomeStyle.secondary).textCase(nil).accessibilityAddTraits(.isHeader)
     }
     private func label(_ title: String, symbol: String, hidden: Bool) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(hidden ? .secondary : .primary).frame(width: 24)
+            Image(systemName: symbol).font(.app(size: 15, weight: .semibold)).foregroundStyle(hidden ? .secondary : .primary).frame(width: 24)
             Text(title).foregroundStyle(hidden ? .secondary : .primary)
         }
     }
@@ -120,12 +120,12 @@ struct CustomiseView: View {
             Spacer(minLength: 8)
             if hideable {
                 Button { toggle(); Haptics.play(.selection) } label: {
-                    Image(systemName: hidden ? "eye.slash" : "eye").font(.system(size: 16, weight: .semibold))
+                    Image(systemName: hidden ? "eye.slash" : "eye").font(.app(size: 16, weight: .semibold))
                         .foregroundStyle(hidden ? Color.secondary : Color.accentColor).frame(width: 36, height: 32).contentShape(Rectangle())
                 }.buttonStyle(.plain)
                     .accessibilityLabel(hidden ? "Show " + title : "Hide " + title).accessibilityIdentifier(identifier)
             } else {
-                Image(systemName: "lock").font(.system(size: 13)).foregroundStyle(.tertiary).accessibilityLabel("Always shown")
+                Image(systemName: "lock").font(.app(size: 13)).foregroundStyle(.tertiary).accessibilityLabel("Always shown")
             }
         }
     }

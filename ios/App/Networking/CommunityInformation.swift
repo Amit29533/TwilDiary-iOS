@@ -162,7 +162,7 @@ extension DiaryStore {
             guard result.valid else { throw APIError.message("Community information was incomplete. Please retry.") }
             value = result
         } catch is CancellationError { }
-        catch { if generation == request && !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if generation == request && !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
 }
 

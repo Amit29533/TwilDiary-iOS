@@ -16,13 +16,13 @@ struct FilesView: View {
 
                     JellyfinCard()
                     ForEach(DiskSummary.make(activeLocations)) { disk in diskButton(disk) }
-                    HStack { Text("Mapped folders").font(.system(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); SectionMoreButton(label: "Browse titles", identifier: "files-browse") { router.libraryDisk(selected) } }
+                    HStack { Text("Mapped folders").font(.app(size: 19, weight: .semibold)); Spacer(); CollectionLayoutToggle(grid: $grid, collection: "files"); SectionMoreButton(label: "Browse titles", identifier: "files-browse") { router.libraryDisk(selected) } }
                     if selected != "all" { Button("All drives") { selected = "all" }.font(.caption.bold()) }
                     CollectionLayout(grid: grid) { ForEach(locations) { location in folderRow(location) } }
                     if locations.isEmpty { ContentUnavailableView("No mapped folders", systemImage: "folder", description: Text("Try another drive.")) }
                     HStack(alignment: .top, spacing: 10) {
                         DiaryIcon(name: "info", size: 18)
-                        VStack(alignment: .leading, spacing: 8) { Text("Shown as of the last Jellyfin sync.").font(.system(size: 13)).foregroundStyle(.secondary) }
+                        VStack(alignment: .leading, spacing: 8) { Text("Shown as of the last Jellyfin sync.").font(.app(size: 13)).foregroundStyle(.secondary) }
                     }.diaryPanel()
                 // Keep the final action above the floating tab bar, matching the web shell's bottom clearance.
                 }.padding(14).padding(.bottom, 100)
@@ -37,9 +37,9 @@ struct FilesView: View {
             HStack(alignment: .top, spacing: 14) {
                 DiaryIcon(name: "hard-drive", size: 23).foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(disk.letters.joined(separator: " / ") + " · " + disk.deviceName).font(.system(size: 14, weight: .semibold))
-                    Text(disk.folders.counted("mapped folder", "mapped folders") + " · " + disk.titleCount.counted("title", "titles")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    HStack(spacing: 5) { Circle().fill(disk.present > 0 ? Color.mint : .secondary).frame(width: 5, height: 5); Text(disk.evidence).font(.system(size: 12)).foregroundStyle(disk.present > 0 ? Color.mint : .secondary) }
+                    Text(disk.letters.joined(separator: " / ") + " · " + disk.deviceName).font(.app(size: 14, weight: .semibold))
+                    Text(disk.folders.counted("mapped folder", "mapped folders") + " · " + disk.titleCount.counted("title", "titles")).font(.app(size: 12)).foregroundStyle(.secondary)
+                    HStack(spacing: 5) { Circle().fill(disk.present > 0 ? Color.mint : .secondary).frame(width: 5, height: 5); Text(disk.evidence).font(.app(size: 12)).foregroundStyle(disk.present > 0 ? Color.mint : .secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.padding(20).diarySectionBackground(radius: 16, fill: selected == disk.key ? theme.accent.opacity(0.12) : Color(themed: "#111115"), stroke: selected == disk.key ? theme.accent.opacity(0.6) : Color.primary.opacity(0.13), emphasized: selected == disk.key)
         }.buttonStyle(.plain).accessibilityAddTraits(selected == disk.key ? .isSelected : [])
@@ -49,10 +49,10 @@ struct FilesView: View {
         return layout {
             if location.deviceId == "jellyfin" { BrandLogo(service: .jellyfin, size: 22) } else { DiaryIcon(name: "folder", size: 20).foregroundStyle(.tint) }
             VStack(alignment: .leading, spacing: 7) {
-                NavigationLink(value: location.titleId) { HStack(spacing: 5) { Text(store.title(location.titleId)?.name ?? "Unmatched title").font(.system(size: 14, weight: .semibold)); DiaryIcon(name: "chevron-right", size: 14) } }.buttonStyle(.plain)
-                Text("\(location.season.map { "Season \($0)" } ?? "Title folder") · \(location.fileCount.counted("file", "files")) · \(location.sizeBytes.map { String(format: "%.1f GB", Double($0) / 1e9) } ?? "Size unknown")").font(.system(size: 11)).foregroundStyle(.secondary)
-                Text(location.path).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                Text(evidence(location.evidence)).font(.system(size: 11)).foregroundStyle(.secondary)
+                NavigationLink(value: location.titleId) { HStack(spacing: 5) { Text(store.title(location.titleId)?.name ?? "Unmatched title").font(.app(size: 14, weight: .semibold)); DiaryIcon(name: "chevron-right", size: 14) } }.buttonStyle(.plain)
+                Text("\(location.season.map { "Season \($0)" } ?? "Title folder") · \(location.fileCount.counted("file", "files")) · \(location.sizeBytes.map { String(format: "%.1f GB", Double($0) / 1e9) } ?? "Size unknown")").font(.app(size: 11)).foregroundStyle(.secondary)
+                Text(location.path).font(.app(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                Text(evidence(location.evidence)).font(.app(size: 11)).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
             Button { UIPasteboard.general.string = location.path; copied = location.id } label: { DiaryIcon(name: copied == location.id ? "check" : "copy", size: 18).frame(width: 44, height: 44) }.buttonStyle(.plain).accessibilityLabel("Copy path for \(store.title(location.titleId)?.name ?? "mapped folder")")
         }.padding(18).diarySectionBackground(radius: 16)

@@ -28,8 +28,8 @@ struct SettingsView: View {
                         HStack(spacing: 14) {
                             PersonalAvatar().frame(width: 56, height: 56)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(PersonalProfile.shared.name).font(.system(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                                Text(accountHandle).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                                Text(PersonalProfile.shared.name).font(.app(size: 18, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                                Text(accountHandle).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                             }
                             Spacer(); chevron
                         }.padding(15).modifier(SettingsCard()).contentShape(Rectangle())
@@ -114,11 +114,11 @@ struct SettingsView: View {
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
                             Text("\(Text("TwilDiary \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0") · ").foregroundStyle(HomeStyle.secondary))\(Text("About and licenses").fontWeight(.semibold).foregroundStyle(HomeStyle.chipText))")
-                                .font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 44)
+                                .font(.app(size: 13)).frame(maxWidth: .infinity, minHeight: 44)
                         }.accessibilityIdentifier("settings-about")
-                        Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
+                        Text("This product uses the TMDB API but is not endorsed or certified by TMDB.").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                         Button { confirmSignOut = true } label: {
-                            Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
+                            Text("Sign out").font(.app(size: 15, weight: .bold)).foregroundStyle(Color(themed: "#ffb3c0"))
                                 .frame(maxWidth: .infinity, minHeight: 52).pillSurface(border: nil)
                         }.disabled(store.busy).padding(.top, 8).accessibilityIdentifier("settings-sign-out")
                     }.frame(maxWidth: .infinity).padding(.horizontal, 12).padding(.top, 8)
@@ -126,7 +126,7 @@ struct SettingsView: View {
             }.refreshable { await store.refresh() }
         }
         .alert(signOutTitle, isPresented: $confirmSignOut) { Button("Sign out", role: .destructive) { store.signOut() }; Button("Cancel", role: .cancel) {} }
-            .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
+            .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .json, defaultFilename: "TwilDiary-\(DiaryDate.day(store.now))") { result in if case .failure(let error) = result { store.error = FriendlyError.message(error) } }
             .fileImporter(isPresented: $showImport, allowedContentTypes: [.json]) { result in
                 switch result {
                 case .success(let url):
@@ -146,11 +146,11 @@ struct SettingsView: View {
                             }
                             throw APIError.message("Import a TwilDiary backup (.json).")
                         } catch {
-                            store.error = error.localizedDescription
+                            store.error = FriendlyError.message(error)
                         }
                     }
                 case .failure(let error):
-                    store.error = error.localizedDescription
+                    store.error = FriendlyError.message(error)
                 }
             }
     }
@@ -178,10 +178,10 @@ struct SettingsView: View {
             Button { Task { if store.phoneOnly { await store.readDiaryServiceIfDue(olderThan: 0) } else { await store.refresh() } } } label: {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Text("Your diary").font(.system(size: 18, weight: .bold))
+                        Text("Your diary").font(.app(size: 18, weight: .bold))
                         Spacer(minLength: 8)
                         HStack(spacing: 5) { Circle().fill(tint).frame(width: 6, height: 6); Text(state) }
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 22)
+                            .font(.app(size: 12, weight: .bold)).foregroundStyle(tint).padding(.horizontal, 10).frame(height: 22)
                             .background(state == "Synced" || state == "On this phone" ? Color(themed: "#1b2b25") : tint.opacity(0.14), in: Capsule())
                     }
                     HStack(spacing: 8) {
@@ -199,8 +199,8 @@ struct SettingsView: View {
     }
     private func statTile(_ value: Int, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value.formatted()).font(.system(size: 20, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+            Text(value.formatted()).font(.app(size: 20, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
         }.padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 59, alignment: .leading)
             .background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 14))
             .accessibilityElement(children: .combine)
@@ -231,7 +231,7 @@ struct SettingsView: View {
         // Design: a 13 pt bold #9a9aa8 label, 16 pt above a #0e0e12 card (radius 22).
         let native = ThemeStore.current.native
         return VStack(alignment: .leading, spacing: native ? 7 : 16) {
-            Text(name).font(.system(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20)
+            Text(name).font(.app(size: 13, weight: native ? .regular : .bold)).foregroundStyle(HomeStyle.secondary).frame(height: 20)
                 .padding(.top, 8).padding(.leading, native ? 16 : 0)
             VStack(spacing: 0, content: content).modifier(SettingsCard())
         }
@@ -292,7 +292,7 @@ struct SettingsView: View {
             NativeTile(symbol: symbol, size: 30, color: tint.system)
         } else {
             // Design: one style for every row, a #cdbbff icon on a 38 pt #2a2440 tile.
-            Image(systemName: symbol).font(.system(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+            Image(systemName: symbol).font(.app(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
                 .frame(width: 38, height: 38).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
         }
     }
@@ -303,13 +303,13 @@ struct SettingsView: View {
         HStack(spacing: 14) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(title).font(.app(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 // Native: no explanation on the list (owner); the row's own page explains.
-                if let subtitle, !ThemeStore.current.native { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+                if let subtitle, !ThemeStore.current.native { Text(subtitle).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
             }.layoutPriority(1)
             Spacer(minLength: 4)
             // The value gives way (one line, …) before the title wraps.
-            if let value { Text(value).font(.system(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).lineLimit(1).truncationMode(.tail) }
+            if let value { Text(value).font(.app(size: 13, weight: title == "Connections" ? .semibold : .regular)).foregroundStyle(title == "Connections" ? HomeStyle.chipText : HomeStyle.secondary).lineLimit(1).truncationMode(.tail) }
             if disclosure { chevron }
         }.padding(.horizontal, padded ? (ThemeStore.current.native ? 16 : 15) : 0).frame(minHeight: padded ? (ThemeStore.current.native ? 52 : 64) : 40).contentShape(Rectangle())
     }
@@ -327,7 +327,7 @@ struct SettingsView: View {
                     data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
                 }
                 exportDocument = DiaryJSONDocument(data: data); showExport = true
-            } catch { store.error = error.localizedDescription }
+            } catch { store.error = FriendlyError.message(error) }
         }
     }
 }
@@ -378,14 +378,14 @@ struct TMDBConnectionView: View {
                             savedMessage = nil
                         }.buttonStyle(SettingsWideButtonStyle(outlined: true)).accessibilityIdentifier("tmdb-api-toggle")
                     }
-                    if let error { Text(error).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
-                    if let savedMessage { Text(savedMessage).font(.system(size: 13)).foregroundStyle(Color(themed: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
+                    if let error { Text(error).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true) }
+                    if let savedMessage { Text(savedMessage).font(.app(size: 13)).foregroundStyle(Color(themed: "#7fe0b5")).accessibilityIdentifier("tmdb-api-saved") }
                 }
                 if editingApi {
                     SettingsGroup(label: "Your own token") {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Paste a TMDB Read Access Token (without “Bearer”).")
-                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                                .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                             SecureField("TMDB Read Access Token", text: $tokenInput).settingsField(monospaced: true)
                                 .accessibilityIdentifier("tmdb-api-token-field")
                             HStack(spacing: 10) {
@@ -437,7 +437,7 @@ struct TMDBConnectionView: View {
             verified = true
         } catch {
             verified = false
-            self.error = error.localizedDescription
+            self.error = FriendlyError.message(error)
         }
     }
 }
@@ -552,7 +552,7 @@ struct ExternalProviderConnectionView: View {
         VStack(alignment: .leading, spacing: 0) {
             Toggle(isOn: $enabled) {
                 VStack(alignment: .leading, spacing: ThemeStore.current.native ? 1 : 2) {
-                    Text("Send my edits to \(displayName)").font(.system(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
+                    Text("Send my edits to \(displayName)").font(.app(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.toggleStyle(SettingsToggleStyle()).settingsRowFrame()
                 .onChange(of: enabled) { _, on in if on { loggingMethod = .serverAndDirectAPI }; persistDraft() }
@@ -560,7 +560,7 @@ struct ExternalProviderConnectionView: View {
             if pendingOutboxCount > 0 {
                 SettingsDivider()
                 HStack {
-                    Text("\(pendingOutboxCount) waiting to send").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    Text("\(pendingOutboxCount) waiting to send").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                         .accessibilityIdentifier("\(provider.rawValue)-outbox-count")
                     Spacer()
                     Button(syncing ? "Sending…" : "Send now") {
@@ -585,9 +585,9 @@ struct ExternalProviderConnectionView: View {
                 HStack {
                     let native = ThemeStore.current.native
                     Text(provider == .mdblist ? "Use an API key instead" : "Use your own key or token instead")
-                        .font(.system(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        .font(.app(size: native ? 17 : 15, weight: native ? .regular : .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.app(size: 13, weight: .semibold))
                         .foregroundStyle(native ? Color(uiColor: .tertiaryLabel) : Color(themed: "#6a6a78"))
                         .rotationEffect(.degrees(showOwnKey ? 180 : 0))
                 }.padding(.horizontal, ThemeStore.current.native ? 16 : 15).frame(minHeight: ThemeStore.current.native ? 52 : 56).contentShape(Rectangle()).modifier(SettingsCard())
@@ -628,8 +628,8 @@ struct ExternalProviderConnectionView: View {
                 if let approval {
                     SettingsDivider()
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Approve TwilDiary on \(displayName) with this code:").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
-                        Text(approval.userCode).font(.system(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
+                        Text("Approve TwilDiary on \(displayName) with this code:").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(approval.userCode).font(.app(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
                             .accessibilityIdentifier("\(provider.rawValue)-user-code")
                         HStack(spacing: 10) {
                             Button("Open \(displayName)") { openURL(approval.verificationURLComplete ?? approval.verificationURL) }.buttonStyle(SettingsPillButtonStyle())
@@ -639,14 +639,14 @@ struct ExternalProviderConnectionView: View {
                 }
                 if needsSetup {
                     SettingsDivider()
-                    TextField("\(displayName) app client ID", text: $signInAppID).font(.system(size: 17, design: .monospaced))
+                    TextField("\(displayName) app client ID", text: $signInAppID).font(.app(size: 17, design: .monospaced))
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($appIDFocused).submitLabel(.go).onSubmit { if let id = ProfileText.line(signInAppID) { startSignIn(id) } }
                         .settingsRowFrame().accessibilityIdentifier("\(provider.rawValue)-sign-in-app-id")
                     SettingsDivider()
                     Link(destination: URL(string: developer)!) {
                         SettingsRow(title: isTrakt ? "Trakt app settings" : "\(displayName) developer page") {
-                            Image(systemName: "arrow.up.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
+                            Image(systemName: "arrow.up.right").font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
                         }
                     }.buttonStyle(.plain)
                 }
@@ -658,7 +658,7 @@ struct ExternalProviderConnectionView: View {
                 if isTrakt && signedIn {
                     SettingsDivider()
                     Button { confirmTraktSignOut = true } label: {
-                        Text("Sign out of Trakt").font(.system(size: 17)).foregroundStyle(Color(uiColor: .systemRed))
+                        Text("Sign out of Trakt").font(.app(size: 17)).foregroundStyle(Color(uiColor: .systemRed))
                             .frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame().contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("trakt-sign-out")
                 }
@@ -678,7 +678,7 @@ struct ExternalProviderConnectionView: View {
                     let appId = appClientId ?? ProfileText.line(signInAppID)
                     Text(onPhone ? "Signed in on this iPhone\(currentConfig.username.map { " as @" + $0 } ?? "")."
                          : "Sign in on Trakt and come straight back.")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("trakt-sign-in-state")
                     Button {
                         if let appId { startSignIn(appId) } else {
@@ -701,12 +701,12 @@ struct ExternalProviderConnectionView: View {
                     SettingsDivider().padding(.horizontal, -15).padding(.vertical, 4)
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("One-time setup").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text("One-time setup").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             Spacer(minLength: 8)
                             SettingsInfoButton(text: "On trakt.tv/oauth/applications, open your app and add \(ProviderWebSignIn.redirect(for: .trakt)) as a redirect URI (one per line, next to any you have).")
                         }
                         Text("Your Trakt app needs the redirect \(ProviderWebSignIn.redirect(for: .trakt)).")
-                            .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                            .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                         if appClientId == nil {
                             TextField("Trakt app client ID", text: $signInAppID).settingsField(monospaced: true)
                                 .focused($appIDFocused)
@@ -733,7 +733,7 @@ struct ExternalProviderConnectionView: View {
                     if let approval {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Approve TwilDiary on \(displayName) with this code:").font(.caption).foregroundStyle(.secondary)
-                            Text(approval.userCode).font(.system(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
+                            Text(approval.userCode).font(.app(size: 26, weight: .bold, design: .monospaced)).textSelection(.enabled)
                                 .accessibilityIdentifier("\(provider.rawValue)-user-code")
                             HStack(spacing: 10) {
                                 Button("Open \(displayName)") { openURL(approval.verificationURLComplete ?? approval.verificationURL) }
@@ -748,7 +748,7 @@ struct ExternalProviderConnectionView: View {
                         SettingsDivider().padding(.horizontal, -15).padding(.vertical, 4)
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
-                                Text("One-time setup").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Text("One-time setup").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 Spacer(minLength: 8)
                                 SettingsInfoButton(text: provider == .mdblist
                                     ? "Create a free “Device Code” app on MDBList’s developer page (no redirect needed), then paste its client ID here or under Connections → All keys."
@@ -757,7 +757,7 @@ struct ExternalProviderConnectionView: View {
                                     : "Create a free V2 mobile app on \(displayName) with the redirect \(ProviderWebSignIn.redirect(for: provider)), then paste its client ID here or under Connections → All keys.")
                             }
                             Text(apps == nil ? "Checking for TwilDiary’s \(displayName) app…" : "Paste your \(displayName) client ID.")
-                                .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                                .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("\(provider.rawValue)-sign-in-unavailable")
                             TextField("\(displayName) app client ID", text: $signInAppID).settingsField(monospaced: true)
                                 .focused($appIDFocused)
@@ -828,7 +828,7 @@ struct ExternalProviderConnectionView: View {
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // Closing the sheet is not an error.
         } catch {
-            if !Task.isCancelled { errorMessage = error.localizedDescription }
+            if !Task.isCancelled { errorMessage = FriendlyError.message(error) }
         }
     }
     /// MDBList: its sign-in only redirects to web addresses, so it uses the device code instead.
@@ -864,7 +864,7 @@ struct ExternalProviderConnectionView: View {
             }
             throw APIError.message("The code expired. Sign in again.")
         } catch {
-            if !Task.isCancelled && !(error is CancellationError) { errorMessage = error.localizedDescription }
+            if !Task.isCancelled && !(error is CancellationError) { errorMessage = FriendlyError.message(error) }
         }
     }
 
@@ -885,7 +885,7 @@ struct ExternalProviderConnectionView: View {
         return SettingsServiceHeader(logo: brand, title: displayName, subtitle: currentConfig.username.map { "@" + $0 } ?? "",
                                      badge: (badge, tone)) {
             if let lastSync = currentConfig.lastSyncedAt, let date = DiaryDate.parse(lastSync) {
-                Text("Last sent \(date.diaryTime(date: .abbreviated))").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                Text("Last sent \(date.diaryTime(date: .abbreviated))").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
             }
         }.accessibilityIdentifier("\(provider.rawValue)-status-badge")
     }
@@ -895,7 +895,7 @@ struct ExternalProviderConnectionView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if provider == .mdblist {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("MDBList API Key (apikey)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        Text("MDBList API Key (apikey)").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         SecureField("Paste your MDBList API key", text: $apiKey)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -905,7 +905,7 @@ struct ExternalProviderConnectionView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Client ID (\(provider.rawValue)-api-key)")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                            .font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         TextField("Your \(displayName) Client ID", text: $clientId)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -914,7 +914,7 @@ struct ExternalProviderConnectionView: View {
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("OAuth Access Token (Bearer)")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                            .font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                         SecureField("Paste your access token", text: $accessToken)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -923,7 +923,7 @@ struct ExternalProviderConnectionView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Account username (optional)").font(.system(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    Text("Account username (optional)").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
                     TextField("username", text: $username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -1048,7 +1048,7 @@ struct ExternalProviderConnectionView: View {
             guard store.updateProviderConfig(connectedCfg) else { errorMessage = store.error; return }
             statusMessage = "Connected to \(displayName) API."
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = FriendlyError.message(error)
         }
     }
 
@@ -1057,7 +1057,7 @@ struct ExternalProviderConnectionView: View {
         do {
             deviceSession = try await store.directClient.requestDeviceCode(provider: provider, clientId: clientId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = FriendlyError.message(error)
         }
     }
 
@@ -1086,7 +1086,7 @@ struct ExternalProviderConnectionView: View {
                 statusMessage = "Waiting for authorization at \(auth.verificationURL.absoluteString)…"
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = FriendlyError.message(error)
         }
     }
 }

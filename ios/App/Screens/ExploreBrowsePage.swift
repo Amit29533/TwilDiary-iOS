@@ -30,7 +30,7 @@ struct ExploreBrowseHeader: View {
                 } else if let path = cover ?? artwork {
                     Artwork(path: path, title: "", initialsOnly: false)
                 } else {
-                    Image(systemName: symbol).font(.system(size: 95, weight: .light))
+                    Image(systemName: symbol).font(.app(size: 95, weight: .light))
                         .foregroundStyle(HomeStyle.chipText.opacity(0.32))
                         .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 36)
                 }

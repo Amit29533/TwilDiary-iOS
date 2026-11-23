@@ -168,7 +168,7 @@ struct ProfileAliases: View {
                     // Native: a plain heading, as the sections of an Apple Music artist page.
                     Text("Also known as").font(.headline).foregroundStyle(Color(uiColor: .label))
                 } else {
-                    Text("ALSO KNOWN AS").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                    Text("ALSO KNOWN AS").font(.app(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
                 }
                 InlineFlowLayout(spacing: 8, rowSpacing: 8) {
                     ForEach(visible, id: \.self) { name in
@@ -270,13 +270,13 @@ struct ProfileAbout: View {
             ForEach(content.sections) { section in ProfileSectionCard(section: section) }
             if !sites.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("LINKS").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(themed: "#a9a7b6"))
+                    Text("LINKS").font(.app(size: 13, weight: .bold)).foregroundStyle(Color(themed: "#a9a7b6"))
                     ProfileWebsiteButtons(links: sites)
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("profile-links-section")
             }
             if !content.references.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("RELATED PROFILES AND TITLES").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(themed: "#a9a7b6"))
+                    Text("RELATED PROFILES AND TITLES").font(.app(size: 13, weight: .bold)).foregroundStyle(Color(themed: "#a9a7b6"))
                     InlineFlowLayout(spacing: 12, rowSpacing: 4) {
                         ForEach(content.references) { link in
                             Link(destination: link.url) { Text(link.title).underline().font(.subheadline).frame(minHeight: 44) }
@@ -305,7 +305,7 @@ struct ProfileHighlights: View {
                         VStack(alignment: .leading, spacing: 8) {
                             // A card with one field named like the card needs no second label.
                             if facts.count > 1 || !(kind == .affiliation || kind == .relations || fact.label.lowercased() == kind.title.lowercased()) {
-                                Text(fact.label.uppercased()).font(.system(size: 11, weight: .bold)).tracking(0.4).foregroundStyle(Color(themed: "#a9a7b6"))
+                                Text(fact.label.uppercased()).font(.app(size: 11, weight: .bold)).tracking(0.4).foregroundStyle(Color(themed: "#a9a7b6"))
                             }
                             if kind == .relations { ProfileRelations(items: fact.items) } else { ProfileValue(fact: fact) }
                         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -325,9 +325,9 @@ struct ProfileHighlightCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                Image(systemName: icon).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                     .frame(width: 30, height: 30).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
-                Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                Text(title).font(.app(size: 16, weight: .bold)).foregroundStyle(HomeStyle.primary)
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             content
         }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
@@ -369,12 +369,12 @@ private struct ProfileRelations: View {
                 if index > 0 { Rectangle().fill(Color(themed: "#1c1c23")).frame(height: HomeStyle.hairline) }
                 let (name, relation) = Self.split(item)
                 HStack(spacing: 12) {
-                    Image(systemName: "person.fill").font(.system(size: 13)).foregroundStyle(HomeStyle.chipText)
+                    Image(systemName: "person.fill").font(.app(size: 13)).foregroundStyle(HomeStyle.chipText)
                         .frame(width: 32, height: 32).background(HomeStyle.round, in: Circle()).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(AniListText.formatted(name, hideSpoilers: false)).font(.system(size: 15, weight: .semibold))
+                        Text(AniListText.formatted(name, hideSpoilers: false)).font(.app(size: 15, weight: .semibold))
                             .foregroundStyle(HomeStyle.primary).tint(HomeStyle.primary).lineLimit(2)
-                        if let relation { Text(relation).font(.system(size: 12)).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(2) }
+                        if let relation { Text(relation).font(.app(size: 12)).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(2) }
                     }
                     Spacer(minLength: 0)
                 }.padding(.vertical, 8)
@@ -390,7 +390,7 @@ private struct ProfileRelations: View {
 private struct ProfileChip: View {
     let markdown: String
     var body: some View {
-        Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.system(size: 14, weight: .semibold))
+        Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.app(size: 14, weight: .semibold))
             .foregroundStyle(HomeStyle.primary).tint(HomeStyle.chipText).lineLimit(1)
             .padding(.horizontal, 12).frame(minHeight: 32)
             .pillSurface(border: nil)
@@ -401,7 +401,7 @@ private struct ProfileChip: View {
 private struct ProfileRichText: View {
     let markdown: String
     var body: some View {
-        Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.system(size: 15)).lineSpacing(2)
+        Text(AniListText.formatted(markdown, hideSpoilers: false)).font(.app(size: 15)).lineSpacing(2)
             .foregroundStyle(HomeStyle.primary).tint(HomeStyle.chipText).fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -418,7 +418,7 @@ struct ProfileSectionCard: View {
                 items(Array(section.items.prefix(4)))
                 if section.items.count > 4 {
                     Button("Show all \(section.items.count)") { all = true }
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain).frame(minHeight: 36)
+                        .font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText).buttonStyle(.plain).frame(minHeight: 36)
                         .accessibilityIdentifier("profile-section-all-" + section.id)
                 }
             }
@@ -474,24 +474,24 @@ struct ProfileSourceRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: "play.rectangle").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
+                Image(systemName: "play.rectangle").font(.app(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
                     .frame(width: 36, height: 36).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("FROM").font(.system(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                    Text("FROM").font(.app(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
                     Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
                         .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     if let parts {
                         HStack(spacing: 6) {
                             Text("as " + parts.name).font(.caption).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(1)
                             if parts.voice {
-                                Text("Voice").font(.system(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                Text("Voice").font(.app(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 6).padding(.vertical, 2).background(HomeStyle.chip, in: Capsule())
                             }
                         }
                     }
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "arrow.uturn.backward").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#a9a7b6"))
+                Image(systemName: "arrow.uturn.backward").font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#a9a7b6"))
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)

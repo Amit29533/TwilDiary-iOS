@@ -156,20 +156,20 @@ struct ServiceLimitsView: View {
     private func load() async {
         failure = nil
         do { limits = try await ServiceLimitsReader.read(tracker, store: store) }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
     @ViewBuilder private func dailyCard(_ daily: ProviderQuota.Daily?) -> some View {
         SettingsGroup(label: "Daily requests", info: dailyNote) {
             VStack(alignment: .leading, spacing: 10) {
                 if let daily {
                     Text("\(daily.used.formatted()) of \(daily.limit.formatted()) used today")
-                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+                        .font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
                     LimitBar(fraction: Double(daily.used) / Double(max(1, daily.limit)), accent: theme.accent)
                     if let reset = daily.resetsAt, reset > .now {
-                        Text("Resets in " + Self.untilText(reset)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text("Resets in " + Self.untilText(reset)).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                     }
                 } else {
-                    Text(noDailyText).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(noDailyText).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("limits-daily")
@@ -188,23 +188,23 @@ struct ServiceLimitsView: View {
                 if let quota {
                     // Simkl's own count for the whole account (every connected app shares it).
                     Text("\(quota.used.formatted()) of \(quota.limit.formatted()) used today")
-                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+                        .font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
                     LimitBar(fraction: Double(quota.used) / Double(max(1, quota.limit)), accent: theme.accent)
-                    if resets > .now { Text("Resets in " + Self.untilText(resets)).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary) }
-                    Text("TwilDiary sent \(usage.count.formatted()) of them.").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                    if resets > .now { Text("Resets in " + Self.untilText(resets)).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary) }
+                    Text("TwilDiary sent \(usage.count.formatted()) of them.").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                 } else {
                     Text("\(usage.count.formatted()) \(usage.count == 1 ? "request" : "requests") from TwilDiary today")
-                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+                        .font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
                     Text("Simkl’s count for your account shows after TwilDiary’s next request.")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if reached {
                     Text("Simkl’s daily limit is reached. Sending resumes at \(time).")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).fixedSize(horizontal: false, vertical: true)
+                        .font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#f5c26b")).fixedSize(horizontal: false, vertical: true)
                 }
                 if waiting > 0 {
                     Text("\(waiting.formatted()) \(waiting == 1 ? "change" : "changes") waiting to send")
-                        .font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                 }
             }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("limits-daily")
@@ -247,10 +247,10 @@ private struct LimitRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(row.label).font(.system(size: 15, weight: row.used == nil ? .regular : .semibold))
+                Text(row.label).font(.app(size: 15, weight: row.used == nil ? .regular : .semibold))
                     .foregroundStyle(row.used == nil ? HomeStyle.secondary : HomeStyle.primary)
                 Spacer(minLength: 8)
-                Text(valueText).font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                Text(valueText).font(.app(size: 14, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(row.used == nil ? HomeStyle.secondary : LimitBar.tint(fraction, accent: accent))
             }
             if row.used != nil, row.limit != nil { LimitBar(fraction: fraction, accent: accent) }

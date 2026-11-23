@@ -79,7 +79,7 @@ struct ActiveCheckIn: Codable, Equatable, Sendable {
             }
             finish(logged: false, store: store)
         } catch {
-            store.error = "The check-in couldn’t be cancelled: " + error.localizedDescription
+            store.error = "The check-in couldn’t be cancelled: " + FriendlyError.message(error)
         }
     }
 
@@ -150,16 +150,16 @@ struct CheckInBanner: View {
                     let total = check.endsAt.timeIntervalSince(check.startedAt)
                     let left = max(0, check.endsAt.timeIntervalSince(context.date))
                     HStack(spacing: 12) {
-                        Image(systemName: "play.circle.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        Image(systemName: "play.circle.fill").font(.app(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(width: 36, height: 36).background(HomeStyle.chip, in: Circle())
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Checked in on \(check.tracker?.name ?? "your tracker") · \(LiveCheckIn.timeLeft(left))")
-                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
-                            Text(check.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                                .font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                            Text(check.label).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                             ProgressView(value: total > 0 ? min(1, max(0, 1 - left / total)) : 1).tint(HomeStyle.chipText)
                         }
                         Button { Task { await live.cancel(store: store) } } label: {
-                            Text(live.cancelling ? "Cancelling…" : "Cancel").font(.system(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            Text(live.cancelling ? "Cancelling…" : "Cancel").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .padding(.horizontal, 14).frame(height: 34).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
                         }.buttonStyle(.plain).disabled(live.cancelling).accessibilityIdentifier("check-in-cancel")
                     }

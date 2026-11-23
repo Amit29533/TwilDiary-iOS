@@ -104,7 +104,7 @@ struct TVDBConnectionView: View {
         } catch {
             guard !Task.isCancelled else { return }
             if replacement == nil { verified = false }
-            self.error = error.localizedDescription
+            self.error = FriendlyError.message(error)
         }
     }
 }

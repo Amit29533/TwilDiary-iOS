@@ -73,7 +73,7 @@ struct AnimeAppearanceView: View {
                 identified = found.page.library; choices = found.page.online
             }
         } catch {
-            if !Task.isCancelled, generation == request { failure = error.localizedDescription }
+            if !Task.isCancelled, generation == request { failure = FriendlyError.message(error) }
         }
     }
 

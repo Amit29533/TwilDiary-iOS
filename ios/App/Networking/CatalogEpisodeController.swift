@@ -25,6 +25,6 @@ import TwilDiaryCore
             items = result.items.sorted { $0.number < $1.number }; revealed = reveal
             cache[number] = (items, reveal)
         } catch is CancellationError { }
-        catch { if generation == request, !Task.isCancelled { self.error = error.localizedDescription } }
+        catch { if generation == request, !Task.isCancelled { self.error = FriendlyError.message(error) } }
     }
 }

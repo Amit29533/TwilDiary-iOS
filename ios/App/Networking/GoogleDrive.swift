@@ -275,7 +275,7 @@ struct GoogleDriveRow: View {
                             run("Deleting…") { await GoogleDrive.signOut(deleteBackup: true); notice = "Google Drive disconnected and the backup deleted." }
                         }
                     } label: {
-                        Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        Image(systemName: "ellipsis").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                             .frame(width: 44, height: 44).contentShape(Rectangle())
                     }.accessibilityLabel("Google Drive actions").accessibilityIdentifier("drive-actions")
                 }
@@ -299,7 +299,7 @@ struct GoogleDriveRow: View {
     private func run(_ label: String, _ work: @escaping @MainActor () async throws -> Void) {
         working = label; notice = nil
         Task {
-            do { try await work() } catch { notice = error.localizedDescription }
+            do { try await work() } catch { notice = FriendlyError.message(error) }
             working = nil
         }
     }

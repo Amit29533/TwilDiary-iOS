@@ -22,6 +22,8 @@ import GoogleCast
     private(set) var itemID: String?
     private(set) var title = ""
     private(set) var seriesName: String?
+    /// The show of what the TV plays (for the remote's picture, also when it's opened from the casting bar).
+    private(set) var seriesID: String?
     private(set) var duration: Double = 0
     private(set) var paused = false
     /// The last position the TV reported, and when (the time between is counted on the phone).
@@ -74,17 +76,38 @@ import GoogleCast
         itemID = item.Id
         title = item.kind == "Episode" ? (item.Name ?? "") : (item.Name ?? "")
         seriesName = item.SeriesName
+        seriesID = item.SeriesId
         duration = item.RunTimeTicks.map { Double($0) / 10_000_000 } ?? 0
         reported = seconds; reportedAt = .now; paused = false
     }
     func togglePause() {
-        command(paused ? "Unpause" : "Pause")
+        if let media {
+            if paused { media.play() } else { media.pause() }
+        } else {
+            command(paused ? "Unpause" : "Pause")
+        }
         reported = position(); reportedAt = .now
         paused.toggle()
     }
     func seek(to seconds: Double) {
-        command("Seek", options: ["position": max(0, seconds)])
-        reported = max(0, seconds); reportedAt = .now
+        let target = max(0, seconds)
+        if let media {
+            let options = GCKMediaSeekOptions()
+            options.interval = target
+            options.resumeState = .unchanged
+            media.seek(with: options)
+        } else {
+            command("Seek", options: ["position": target])
+        }
+        reported = target; reportedAt = .now
+    }
+    /// Google's own media channel to the TV's player, once it plays something: pause, play and seek go
+    /// there (every Cast receiver takes them, Jellyfin's included, and answers at once). Jellyfin's own
+    /// messages are the way while nothing's loaded, and for what only Jellyfin knows (tracks, next).
+    private var media: GCKRemoteMediaClient? {
+        guard let client = GCKCastContext.sharedInstance().sessionManager.currentCastSession?.remoteMediaClient,
+              client.mediaStatus != nil else { return nil }
+        return client
     }
     func next() { command("NextTrack") }
     /// A Jellyfin stream index (its MediaStreams' Index); -1 turns subtitles off.
@@ -97,8 +120,15 @@ import GoogleCast
     }
 
     private func command(_ name: String, options: [String: Any] = [:]) {
-        guard connected, let base = server else { return }
-        send(name, options: options, base: base)
+        guard connected else { return }
+        if let base = server { send(name, options: options, base: base); return }
+        // Still getting ready (just reconnected, the app opened again): sent once it is. A tap then was
+        // dropped without a word, so the controls seemed not to work.
+        guard let client = JellySpace.client else { return }
+        Task { [self] in
+            guard let base = await serverFields(client), connected else { return }
+            send(name, options: options, base: base)
+        }
     }
     private func send(_ name: String, options: [String: Any], base: TVFields) {
         var message: [String: Any] = ["userId": base.user, "deviceId": JellyDevice.id, "accessToken": base.token, "serverAddress": base.address,
@@ -178,7 +208,7 @@ import GoogleCast
         }
     }
     fileprivate func detach() {
-        deviceName = nil; itemID = nil; title = ""; seriesName = nil; duration = 0; paused = false; reported = 0
+        deviceName = nil; itemID = nil; title = ""; seriesName = nil; seriesID = nil; duration = 0; paused = false; reported = 0
         channel = nil; server = nil; making = nil
     }
     /// A message from the TV: what it's playing, where, paused or not; or what went wrong.
@@ -193,6 +223,7 @@ import GoogleCast
                 if let id = item["Id"] as? String { itemID = id }
                 if let name = item["Name"] as? String { title = name }
                 seriesName = item["SeriesName"] as? String
+                seriesID = item["SeriesId"] as? String
                 if let ticks = (item["RunTimeTicks"] as? NSNumber)?.doubleValue, ticks > 0 { duration = ticks / 10_000_000 }
             }
             if let play = state["PlayState"] as? [String: Any] {
@@ -297,41 +328,45 @@ struct JellyCastRemote: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let client = JellySpace.client, let id = cast.itemID ?? playback?.id {
-                JellyImage(url: JellyfinClient.imageURL(base: client.base, item: playback?.item.SeriesId ?? id, type: "Backdrop", tag: nil, width: 900))
-                    .ignoresSafeArea().blur(radius: 30).opacity(0.35)
+                // Filling the screen without setting its width: the picture (wider than the phone) set the
+                // remote's width, so its sides were off the screen (Audio & Subtitles, Stop casting, the times).
+                Color.clear.overlay {
+                    JellyImage(url: JellyfinClient.imageURL(base: client.base, item: playback?.item.SeriesId ?? cast.seriesID ?? id, type: "Backdrop", tag: nil, width: 900))
+                }
+                .clipped().ignoresSafeArea().blur(radius: 30).opacity(0.35)
             }
             VStack(spacing: 18) {
                 HStack {
                     Button(action: close) {
-                        Image(systemName: "chevron.down").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "chevron.down").font(.app(size: 18, weight: .bold)).foregroundStyle(.white)
                             .frame(width: 44, height: 44).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel("Close the remote")
                     Spacer()
                     JellyCastButton().frame(width: 44, height: 44)
                 }
                 Spacer()
-                Image(systemName: "tv").font(.system(size: 54, weight: .light)).foregroundStyle(.white.opacity(0.85))
-                Text("Playing on " + (cast.deviceName ?? "TV")).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
+                Image(systemName: "tv").font(.app(size: 54, weight: .light)).foregroundStyle(.white.opacity(0.85))
+                Text("Playing on " + (cast.deviceName ?? "TV")).font(.app(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                 VStack(spacing: 4) {
                     Text(cast.title.isEmpty ? (playback?.title ?? "") : cast.title)
-                        .font(.system(size: 22, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center).lineLimit(2)
+                        .font(.app(size: 22, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center).lineLimit(2)
                     if let series = cast.seriesName ?? playback?.item.SeriesName {
-                        Text(series).font(.system(size: 15)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                        Text(series).font(.app(size: 15)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
                     }
                 }
                 if let problem = cast.problem {
-                    Text(problem).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    Text(problem).font(.app(size: 13, weight: .semibold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8).background(.red.opacity(0.6), in: Capsule())
                 }
                 Spacer()
                 JellyCastProgress(scrub: $scrub)
                 HStack(spacing: 44) {
                     Button { cast.seek(to: cast.position() - 15) } label: { Image(systemName: "gobackward.15") }.accessibilityLabel("Back 15 seconds")
-                    Button { cast.togglePause() } label: { Image(systemName: cast.paused ? "play.fill" : "pause.fill").font(.system(size: 40)) }
+                    Button { cast.togglePause() } label: { Image(systemName: cast.paused ? "play.fill" : "pause.fill").font(.app(size: 40)) }
                         .accessibilityLabel(cast.paused ? "Play" : "Pause")
                     Button { cast.seek(to: cast.position() + 15) } label: { Image(systemName: "goforward.15") }.accessibilityLabel("On 15 seconds")
                 }
-                .font(.system(size: 30, weight: .medium)).foregroundStyle(.white).buttonStyle(.plain)
+                .font(.app(size: 30, weight: .medium)).foregroundStyle(.white).buttonStyle(.plain)
                 // Round buttons with their names under them, sharing the width: three pills side by side
                 // were wider than the screen (cut off at both edges, and the bar's times pushed off it).
                 HStack(alignment: .top, spacing: 8) {
@@ -355,7 +390,7 @@ struct JellyCastRemote: View {
         }
         .preferredColorScheme(.dark)
         .task(id: playback?.id) { await start() }
-        .task(id: cast.itemID) { await loadTracks() }
+        .task(id: cast.itemID) { await loadTracks(); await findNext() }
         .onChange(of: cast.connected) { _, connected in if !connected { close() } }
     }
 
@@ -386,6 +421,16 @@ struct JellyCastRemote: View {
         hasNext = !queue.isEmpty
         await cast.play(item, from: seconds, queue: queue)
     }
+    /// Whether the TV has an episode after the one it plays now (it was sent the rest of the season): Next
+    /// Episode was missing when the remote was opened from the casting bar, and stayed after the last one.
+    private func findNext() async {
+        guard let client = JellySpace.client, let id = JellyCast.shared.itemID else { return }
+        let user = await JellyfinUser.id(client)
+        guard let item = try? await client.item(id), item.kind == "Episode", let series = item.SeriesId, let season = item.SeasonId,
+              let episodes = try? await client.episodes(of: series, season: season, user: user),
+              let at = episodes.firstIndex(where: { $0.Id == id }) else { return }
+        hasNext = at + 1 < episodes.count
+    }
     /// The audio and subtitle tracks of what's playing (Jellyfin's stream indexes, which the TV takes).
     private func loadTracks() async {
         guard let client = JellySpace.client, let id = JellyCast.shared.itemID ?? playback?.id else { return }
@@ -415,7 +460,7 @@ private struct JellyCastProgress: View {
                     Spacer()
                     Text("-" + JellyPlayerView.clock(max(0, cast.duration - now)))
                 }
-                .font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.7))
+                .font(.app(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(.white.opacity(0.7))
             }
         }
     }
@@ -460,9 +505,9 @@ private struct JellyCastRound: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 19, weight: .semibold))
+            Image(systemName: symbol).font(.app(size: 19, weight: .semibold))
                 .frame(width: 48, height: 48).background(.white.opacity(0.15), in: Circle())
-            Text(title).font(.system(size: 12, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2)
+            Text(title).font(.app(size: 12, weight: .semibold)).multilineTextAlignment(.center).lineLimit(2)
         }
         .foregroundStyle(tint).frame(maxWidth: .infinity).contentShape(Rectangle())
     }
@@ -476,15 +521,15 @@ struct JellyCastBar: View {
         let cast = JellyCast.shared
         if cast.connected, cast.itemID != nil {
             HStack(spacing: 12) {
-                Image(systemName: "tv").font(.system(size: 20)).foregroundStyle(HomeStyle.secondary).frame(width: 42, height: 42)
+                Image(systemName: "tv").font(.app(size: 20)).foregroundStyle(HomeStyle.secondary).frame(width: 42, height: 42)
                     .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(cast.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    Label(cast.deviceName ?? "TV", systemImage: "dot.radiowaves.left.and.right").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Text(cast.title).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Label(cast.deviceName ?? "TV", systemImage: "dot.radiowaves.left.and.right").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 Button { cast.togglePause() } label: {
-                    Image(systemName: cast.paused ? "play.fill" : "pause.fill").font(.system(size: 18)).foregroundStyle(HomeStyle.primary)
+                    Image(systemName: cast.paused ? "play.fill" : "pause.fill").font(.app(size: 18)).foregroundStyle(HomeStyle.primary)
                         .frame(width: 40, height: 40).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(cast.paused ? "Play on the TV" : "Pause on the TV")
             }

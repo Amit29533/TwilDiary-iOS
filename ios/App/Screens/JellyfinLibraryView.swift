@@ -31,11 +31,11 @@ struct JellyfinLibraryView: View {
     private var entries: [JellyfinEntry] { JellyfinShelf.matched(shelf.entries, diary: store.activeTitles) }
     @ViewBuilder private var content: some View {
         Text(summary)
-            .font(.system(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-summary")
+            .font(.app(size: 13)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-summary")
         if let failure, let at = shelf.savedAt {
             // Away from home: the saved list stays, and says how old it is.
             Text("Jellyfin can’t be reached, so this is the list from \(at.formatted(.relative(presentation: .named))). It updates when you’re home.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-saved")
+                .font(.app(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("jellyfin-library-saved")
                 .accessibilityHint(failure)
         }
         chipRow {
@@ -51,7 +51,7 @@ struct JellyfinLibraryView: View {
             }
         }
         let items = shown
-        if items.isEmpty { Text("Nothing here with these filters.").font(.system(size: 13)).foregroundStyle(.secondary).padding(.top, 8) }
+        if items.isEmpty { Text("Nothing here with these filters.").font(.app(size: 13)).foregroundStyle(.secondary).padding(.top, 8) }
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 18) {
             ForEach(items) { entry in JellyfinEntryCard(entry: entry) }
         }
@@ -87,7 +87,7 @@ struct JellyfinLibraryView: View {
     }
     private func chip(_ text: String, on: Bool, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
+            Text(text).font(.app(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
                 .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : Color.primary.opacity(0.06), in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : Color.primary.opacity(0.12)))
         }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier(id)
@@ -97,7 +97,7 @@ struct JellyfinLibraryView: View {
     private func load() async {
         loading = true; failure = nil
         defer { loading = false }
-        do { try await shelf.refresh(store: store) } catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        do { try await shelf.refresh(store: store) } catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
         if let drive, !shelf.entries.contains(where: { $0.drive == drive }) { self.drive = nil }
     }
 }
@@ -115,11 +115,11 @@ struct JellyfinEntryCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.outline(0.1)))
                 .overlay(alignment: .topLeading) {
                     if entry.diaryID != nil {
-                        Text("In diary").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                        Text("In diary").font(.app(size: 10, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 6).frame(height: 18).background(theme.accent, in: Capsule()).padding(6)
                     }
                 }
-            Text(entry.name).font(.system(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
+            Text(entry.name).font(.app(size: 13, weight: .semibold)).lineLimit(2).foregroundStyle(.primary)
             Text([entry.year.map(String.init), entry.movie ? "Movie" : "Show"].compactMap { $0 }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
@@ -171,8 +171,8 @@ struct JellyfinPresenceRow: View {
                 HStack(spacing: 12) {
                     BrandLogo(service: .jellyfin, size: 30)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("In your Jellyfin").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
-                        Text(Self.place(entry)).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        Text("In your Jellyfin").font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
+                        Text(Self.place(entry)).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     }
                     Spacer(minLength: 0)
                 }.padding(.horizontal, 14).padding(.vertical, 12)

@@ -32,12 +32,12 @@ struct BackupsView: View {
                     HStack(spacing: 14) {
                         SettingsTile(symbol: "externaldrive.badge.timemachine", size: 44)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Last backup").font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
-                            Text(backups?.first.map(date) ?? (backups == nil ? "Checking…" : "None yet")).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary)
+                            Text("Last backup").font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                            Text(backups?.first.map(date) ?? (backups == nil ? "Checking…" : "None yet")).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                         }
                     }
                     HStack(spacing: 8) {
-                        Text("Your whole diary, kept on your server").font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Text("Your whole diary, kept on your server").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         Spacer(minLength: 0)
                         SettingsInfoButton(text: "Titles, watches, ratings, notes, tags and file locations, plus your last Trakt read. Restoring merges it back, so nothing newer is lost.")
                     }
@@ -50,15 +50,15 @@ struct BackupsView: View {
                     }.buttonStyle(SettingsPrimaryButtonStyle()).disabled(working != nil || store.isPreview).accessibilityIdentifier("backup-now")
                 }.padding(17).modifier(SettingsCard())
                 if let message { SettingsFootnote(text: message) }
-                if let failure { Text(failure).font(.system(size: 12)).foregroundStyle(Color(themed: "#ff8a8a")).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
+                if let failure { Text(failure).font(.app(size: 12)).foregroundStyle(Color(themed: "#ff8a8a")).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
                 if let backups {
                     if backups.isEmpty {
                         DiaryEmptyState(title: "No backups yet", description: "Back up before big changes, like switching to Trakt as your diary.")
                     } else {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("RECENT BACKUPS").font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
+                            Text("RECENT BACKUPS").font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.secondary)
                             Spacer(minLength: 8)
-                            Text("The newest 20 are kept").font(.system(size: 12)).foregroundStyle(HomeStyle.secondary)
+                            Text("The newest 20 are kept").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                         }.padding(.horizontal, 4).padding(.top, 4)
                         VStack(spacing: 0) {
                             ForEach(Array(backups.enumerated()), id: \.element.id) { index, backup in
@@ -91,17 +91,17 @@ struct BackupsView: View {
     private func row(_ backup: Summary) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(date(backup)).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(date(backup)).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 Text([backup.label, backup.titles.counted("title", "titles"), backup.watches.counted("watch", "watches"),
                       ByteCountFormatter.string(fromByteCount: Int64(backup.sizeBytes), countStyle: .file)].joined(separator: " · "))
-                    .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
+                    .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2)
             }
             Spacer(minLength: 8)
             Menu {
                 Button("Restore", systemImage: "arrow.counterclockwise") { restoring = backup }
                 Button("Delete", systemImage: "trash", role: .destructive) { deleting = backup }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                Image(systemName: "ellipsis").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
                     .frame(width: 44, height: 44).background(HomeStyle.round, in: Circle())
             }.disabled(working != nil)
                 .accessibilityLabel("Backup actions").accessibilityIdentifier("backup-actions-\(backup.id)")
@@ -119,7 +119,7 @@ struct BackupsView: View {
             backups = (try await ServerBackups.read(store, "/api/backups") as BackupList).backups; failure = nil
             ServerBackups.noteLatest(backups?.compactMap { DiaryDate.parse($0.createdAt) }.max())
         }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
     private func backUp() async {
         working = "Backing up…"; message = nil; failure = nil
@@ -128,7 +128,7 @@ struct BackupsView: View {
             let saved = try await ServerBackups.save(store: store, label: "Manual backup")
             message = "Backed up \(saved.titles.counted("title", "titles")) and \(saved.watches.counted("watch", "watches"))."
             await load()
-        } catch { failure = error.localizedDescription }
+        } catch { failure = FriendlyError.message(error) }
     }
     private func restore(_ backup: Summary) async {
         working = "Restoring…"; message = nil; failure = nil
@@ -138,12 +138,12 @@ struct BackupsView: View {
             // Restore goes where your diary lives: into Trakt when Trakt holds it (the server's
             // copy is read-only then, and changing it wouldn't change what you see).
             message = try await ServerBackups.restore(snapshot.diary, phone: snapshot.phone, store: store)
-        } catch { failure = error.localizedDescription }
+        } catch { failure = FriendlyError.message(error) }
     }
     private func delete(_ backup: Summary) async {
         struct Deleted: Decodable { let deleted: Bool }
         do { _ = try await ServerBackups.read(store, "/api/backups/" + backup.id, method: "DELETE") as Deleted; await load() }
-        catch { failure = error.localizedDescription }
+        catch { failure = FriendlyError.message(error) }
     }
 }
 
@@ -238,9 +238,9 @@ struct BackupsView: View {
             let current = BackupSchedule(rawValue: choice) ?? .weekly
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Automatic backups").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Text("Automatic backups").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     Text(current.next(after: ServerBackups.last).map { "Next: " + ($0 <= .now ? "when you next open the app" : $0.formatted(date: .abbreviated, time: .omitted)) } ?? "Only when you tap Back up now")
-                        .font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Menu {
@@ -248,8 +248,8 @@ struct BackupsView: View {
                         ForEach(BackupSchedule.allCases) { Text($0.label).tag($0.rawValue) }
                     }
                 } label: {
-                    HStack(spacing: 6) { Text(current.label); Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)) }
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
+                    HStack(spacing: 6) { Text(current.label); Image(systemName: "chevron.down").font(.app(size: 10, weight: .bold)) }
+                        .font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 12).frame(height: 32).background(HomeStyle.chip, in: Capsule())
                 }.accessibilityLabel("Automatic backups").accessibilityValue(current.label).accessibilityIdentifier("backup-schedule")
             }

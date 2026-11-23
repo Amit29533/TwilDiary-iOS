@@ -25,7 +25,7 @@ struct AnimeCharactersRow: View {
         VStack(alignment: .leading, spacing: 8) {
             if !characters.isEmpty {
                 HStack {
-                    Text("Characters").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    Text("Characters").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                     Spacer(minLength: 8)
                     if let seeAll { SeeAllLink(value: seeAll, identifier: "title-characters-all") }
                 }.frame(minHeight: 44)
@@ -38,7 +38,7 @@ struct AnimeCharactersRow: View {
                     }
                 }.scrollIndicators(.hidden).scrollClipDisabled()
             } else if failed {
-                Button("Characters didn’t load · Retry") { Task { await load() } }.font(.system(size: 13)).foregroundStyle(.secondary)
+                Button("Characters didn’t load · Retry") { Task { await load() } }.font(.app(size: 13)).foregroundStyle(.secondary)
             }
         }.task(id: "\(tmdbID ?? 0)|\(title)|\(year ?? 0)|\(movie)|\(originalLanguage ?? "")") { await load() }
     }
@@ -52,13 +52,13 @@ struct AnimeCharactersRow: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if character.role == "MAIN" {
-                        Text("Main").font(.system(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 8).frame(height: 22)
+                        Text("Main").font(.app(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText).padding(.horizontal, 8).frame(height: 22)
                             .background(HomeStyle.card.opacity(0.82), in: Capsule()).padding(8)
                     }
                 }
-            Text(character.name).font(.system(size: 14, weight: .semibold)).lineLimit(2).foregroundStyle(HomeStyle.primary).padding(.top, 11)
+            Text(character.name).font(.app(size: 14, weight: .semibold)).lineLimit(2).foregroundStyle(HomeStyle.primary).padding(.top, 11)
             if let actor = character.voiceActor {
-                Text(actor.name).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 3)
+                Text(actor.name).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 3)
             }
         }.frame(width: 111, alignment: .leading).multilineTextAlignment(.leading)
             .accessibilityElement(children: .combine)
@@ -101,7 +101,7 @@ struct CharacterView: View {
                         if let source = ProfileText.line(route.sourceTitle) {
                             ProfileSourceRow(title: source) { dismiss() }.accessibilityIdentifier("character-source")
                         }
-                        Text("About").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                        Text("About").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                         details(character, biography: biography)
                         ProfileAbout(content: biography, excludingFacts: ["height", "blood-type"],
                                      additionalLinks: [ProfileWebsiteLink(url: URL(string: "https://anilist.co/character/\(character.id)")!, title: "AniList")].compactMap { $0 })
@@ -148,7 +148,7 @@ struct CharacterView: View {
     }
     private func voicedBy(_ actors: [AniPerson]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Voiced by").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+            Text("Voiced by").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
             ProfileShelf {
                 ForEach(actors, id: \.id) { actor in
                     NavigationLink(value: VoiceActorRoute(id: actor.id, name: actor.name)) {
@@ -168,7 +168,7 @@ struct CharacterView: View {
     }
     private func appearsIn(_ items: [AniAppearance]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Appears in").font(.system(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+            Text("Appears in").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
             ProfileShelf {
                 ForEach(items) { item in
                     AnimeAppearanceButton(appearance: item) {
@@ -205,7 +205,7 @@ struct CharacterView: View {
             // One Wikidata request links every anime below to TMDB, so a tap usually opens at once.
             Task { await WikidataAnime.shared.routes(result.appearances.map { WikidataAnime.Anime(id: $0.id, format: $0.format) }) }
         }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -249,11 +249,11 @@ struct FavouritesView: View {
                     }
                 }.id(tab).padding(.horizontal, 16).padding(.top, 14)
                 HStack(spacing: 10) {
-                    Image(systemName: "heart.fill").font(.system(size: 20)).foregroundStyle(HomeStyle.chipText).accessibilityHidden(true)
-                    Text("Hearted").font(.system(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                    Image(systemName: "heart.fill").font(.app(size: 20)).foregroundStyle(HomeStyle.chipText).accessibilityHidden(true)
+                    Text("Hearted").font(.app(size: 26, weight: .bold)).tracking(-0.4).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("favourites-hearted-heading")
                     if !all.isEmpty {
-                        Text(all.count.formatted()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
+                        Text(all.count.formatted()).font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
                             .frame(minWidth: 26).padding(.horizontal, 4).frame(height: 26).background(HomeStyle.chip, in: Capsule())
                     }
                     Spacer(minLength: 4)
@@ -262,8 +262,8 @@ struct FavouritesView: View {
                 if !all.isEmpty {
                     HStack(spacing: 10) {
                         HStack(spacing: 10) {
-                            Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-                            TextField("Search hearted", text: $query).font(.system(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
+                            Image(systemName: "magnifyingglass").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                            TextField("Search hearted", text: $query).font(.app(size: 16)).textInputAutocapitalization(.never).autocorrectionDisabled()
                                 .accessibilityIdentifier("favourites-search")
                         }.padding(.horizontal, 16).frame(height: 46).background(HomeStyle.card, in: Capsule())
                             .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: 1))
@@ -273,10 +273,10 @@ struct FavouritesView: View {
                             }
                         } label: {
                             HStack(spacing: 6) {
-                                Image(systemName: "arrow.up.arrow.down").font(.system(size: 13, weight: .bold))
+                                Image(systemName: "arrow.up.arrow.down").font(.app(size: 13, weight: .bold))
                                 Text(sort == "name" ? "A–Z" : sort == "oldest" ? "Oldest" : "Recent").lineLimit(1)
-                                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.8)
-                            }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).fixedSize()
+                                Image(systemName: "chevron.down").font(.app(size: 11, weight: .bold)).opacity(0.8)
+                            }.font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText).fixedSize()
                                 .padding(.horizontal, 14).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
                         }.accessibilityLabel("Order").accessibilityIdentifier("favourites-sort")
                     }.padding(.horizontal, 16).padding(.top, 12)
@@ -318,7 +318,7 @@ struct FavouritesView: View {
                 let on = pillTab == kind
                 // The page swaps at once (no cross-fade through a half-blank page); only the pill slides.
                 Button { choose(kind) } label: {
-                    Text(Favourite.Kind(rawValue: kind)?.label ?? "Title").font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(Favourite.Kind(rawValue: kind)?.label ?? "Title").font(.app(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(on ? ThemeStore.current.accentInk : Color(themed: "#c5c0cf"))
                         .padding(.horizontal, 12).frame(height: 40)
                         .background {
@@ -351,7 +351,7 @@ struct FavouritesView: View {
             ForEach([true, false], id: \.self) { isGrid in
                 let on = grid.wrappedValue == isGrid
                 Button { withAnimation(.smooth(duration: 0.28)) { grid.wrappedValue = isGrid } } label: {
-                    Image(systemName: isGrid ? "square.grid.2x2" : "list.bullet").contentTransition(.symbolEffect(.replace)).font(.system(size: 14, weight: .semibold))
+                    Image(systemName: isGrid ? "square.grid.2x2" : "list.bullet").contentTransition(.symbolEffect(.replace)).font(.app(size: 14, weight: .semibold))
                         .foregroundStyle(on ? HomeStyle.chipText : HomeStyle.secondary)
                         .frame(width: 40, height: 34).background { if on { Capsule().fill(HomeStyle.chip) } }.contentShape(Capsule())
                 }.buttonStyle(.plain).accessibilityLabel(isGrid ? "Show favourites as grid" : "Show favourites as list")
@@ -380,7 +380,7 @@ private struct FavouriteTitlesSection: View {
             HStack(spacing: 8) {
                 Text(heading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                 if !items.isEmpty {
-                    Text(items.count.formatted()).font(.system(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
+                    Text(items.count.formatted()).font(.app(size: 13, weight: .bold)).foregroundStyle(HomeStyle.chipText).monospacedDigit()
                         .frame(minWidth: 24).padding(.horizontal, 4).frame(height: 24).background(HomeStyle.chip, in: Capsule())
                 }
             }.padding(.horizontal, 16).accessibilityIdentifier("favourite-titles-" + id)
@@ -441,8 +441,8 @@ struct FavouriteLink: View {
             HStack(spacing: 14) {
                 Artwork(path: item.image, title: item.name, alignment: .top).frame(width: 56, height: 64).clipShape(RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.name).font(.system(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
-                    Text(item.subtitle ?? item.kind.singular).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                    Text(item.name).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                    Text(item.subtitle ?? item.kind.singular).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if hearts { Color.clear.frame(width: 42, height: 1) }
                 else { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary) }
@@ -456,8 +456,8 @@ struct FavouriteLink: View {
                     .overlay { Artwork(path: item.image, title: item.name, alignment: .top) }
                     .clipShape(RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08)))
                     .padding(.bottom, 6)
-                Text(item.name).font(.system(size: 15, weight: .bold)).lineLimit(2).foregroundStyle(HomeStyle.primary)
-                Text(item.subtitle ?? item.kind.singular).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
+                Text(item.name).font(.app(size: 15, weight: .bold)).lineLimit(2).foregroundStyle(HomeStyle.primary)
+                Text(item.subtitle ?? item.kind.singular).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1).truncationMode(.tail)
             }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
         } else {
             HomeFavouriteCard(item: item).frame(width: size + 18)

@@ -427,11 +427,14 @@ struct JellyfinClient: Sendable {
     /// A view of the signed-in user's (a library they can see).
     struct LibraryView: Decodable, Sendable { let Id: String; let Name: String?; let CollectionType: String? }
     struct LibraryViews: Decodable, Sendable { let Items: [LibraryView] }
-    /// The libraries: a signed-in account's own (UserViews: a regular account may not read the
-    /// server's list, which answers it 403), else, with the server's API key (no user of its own),
-    /// the server's list (VirtualFolders). Playlists and Live TV aren't libraries here.
-    func libraries() async throws -> [JellyfinLibrary] {
-        if let views: LibraryViews = try? await get("UserViews"), !views.Items.isEmpty {
+    /// The libraries: a user's own (UserViews: a regular account may not read the server's list,
+    /// which answers it 403): the signed-in account's, or with the server's API key the `user`
+    /// JellySpace watches as (without one the key has no user, and every library on the server was
+    /// listed: a user who may see only some still got all their rows). Else the server's list
+    /// (VirtualFolders). Playlists and Live TV aren't libraries here.
+    func libraries(user: String? = nil) async throws -> [JellyfinLibrary] {
+        let query = user.map { [URLQueryItem(name: "userId", value: $0)] } ?? []
+        if let views: LibraryViews = try? await get("UserViews", query), !views.Items.isEmpty {
             return views.Items.filter { !["playlists", "livetv"].contains($0.CollectionType?.lowercased() ?? "") }
                 .map { JellyfinLibrary(id: $0.Id, name: $0.Name ?? "Library", type: $0.CollectionType?.lowercased()) }
         }
@@ -951,7 +954,7 @@ struct JellyfinClient: Sendable {
             }
             remember(JellyfinSummary(at: .now, mapped: mapped, notInDiary: notInDiary, personal: personal, libraries: chosen.count))
             await store.refresh()
-        } catch is CancellationError { } catch { self.error = error.localizedDescription }
+        } catch is CancellationError { } catch { self.error = FriendlyError.message(error) }
     }
     /// Everything the chosen Movies and Shows libraries hold, as Sync now reads them, for the
     /// Jellyfin page. Personal items (no TMDB, IMDb or TVDB id) stay out and are only counted.

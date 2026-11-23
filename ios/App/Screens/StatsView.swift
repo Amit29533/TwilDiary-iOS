@@ -40,7 +40,7 @@ struct StatsView: View {
         HStack(spacing: 4) {
             ForEach(Tab.allCases, id: \.self) { item in
                 Button { tab = item } label: {
-                    Text(item.rawValue).font(.system(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(item.rawValue).font(.app(size: 15, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         .foregroundStyle(tab == item ? theme.ink : Color(themed: "#c5c0cf"))
                         .frame(maxWidth: .infinity).frame(height: 42)
                         .background { if tab == item { Capsule().fill(theme.accent) } }.contentShape(Capsule())
@@ -107,7 +107,7 @@ struct StatsView: View {
                     NavigationLink(value: AppDestination.history) {
                         HStack(spacing: 12) {
                             DiaryIcon(name: "history", size: 18).foregroundStyle(theme.accent).frame(width: 36, height: 36).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                            VStack(alignment: .leading, spacing: 2) { Text("Watch history").font(.system(size: 16, weight: .semibold)); caption("Every watch, by date", size: 12) }
+                            VStack(alignment: .leading, spacing: 2) { Text("Watch history").font(.app(size: 16, weight: .semibold)); caption("Every watch, by date", size: 12) }
                             Spacer(); DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(.secondary)
                         }.foregroundStyle(HomeStyle.ink).statsPanel()
                     }.buttonStyle(.plain).accessibilityIdentifier("stats-history")
@@ -121,8 +121,8 @@ struct StatsView: View {
                             Text("All time").tag(0); Text("Monthly").tag(1); Text("Yearly").tag(2)
                         }
                     } label: {
-                        HStack(spacing: 5) { Text(scopeLabel); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
-                            .font(.system(size: 14, weight: .semibold)).padding(.horizontal, 4)
+                        HStack(spacing: 5) { Text(scopeLabel); Image(systemName: "chevron.down").font(.app(size: 11, weight: .bold)) }
+                            .font(.app(size: 14, weight: .semibold)).padding(.horizontal, 4)
                     }.accessibilityLabel("Statistics period").accessibilityValue(scopeLabel).accessibilityIdentifier("stats-scope")
                 }
             }
@@ -157,8 +157,8 @@ struct StatsView: View {
                     Menu {
                         Picker("Watch time year", selection: Binding(get: { data.selectedYear }, set: { year = $0 })) { ForEach(data.years, id: \.self) { Text(String($0)).tag($0) } }
                     } label: {
-                        HStack(spacing: 6) { Text(String(data.selectedYear)); Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold)) }
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
+                        HStack(spacing: 6) { Text(String(data.selectedYear)); Image(systemName: "chevron.up.chevron.down").font(.app(size: 11, weight: .semibold)) }
+                            .font(.app(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
                             .background(Color.primary.opacity(0.06), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.12)))
                     }.accessibilityLabel("Year").accessibilityValue(String(data.selectedYear)).accessibilityIdentifier("stats-year")
                 }
@@ -173,7 +173,7 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     caption("Busiest day", size: 12)
                     Text(highlights.busiest.map { StatsHighlights.shortDate($0.date) + " · " + DiaryDate.duration($0.minutes) } ?? "None in this period")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(highlights.busiest == nil ? Color.secondary : theme.accent)
+                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(highlights.busiest == nil ? Color.secondary : theme.accent)
                 }
                 Spacer(minLength: 0)
                 if highlights.busiest != nil { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
@@ -185,16 +185,16 @@ struct StatsView: View {
     }
     private func trendFigures(_ value: StatsOverview.Trend, highlights: StatsHighlights) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(DiaryDate.duration(value.minutes)).font(.system(size: 34, weight: .bold)).foregroundStyle(theme.accent).tracking(-1.4).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
-            Text("avg \(DiaryDate.duration(Int(highlights.averageMinutes.rounded()))) / day").font(.system(size: 16)).foregroundStyle(.secondary)
+            Text(DiaryDate.duration(value.minutes)).font(.app(size: 34, weight: .bold)).foregroundStyle(theme.accent).tracking(-1.4).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+            Text("avg \(DiaryDate.duration(Int(highlights.averageMinutes.rounded()))) / day").font(.app(size: 16)).foregroundStyle(.secondary)
             // Always one line (invisible when there is nothing to compare), so the card keeps its height.
             let difference = value.difference ?? 0
             // Nothing watched in either period: no "— 0m" line.
             let comparable = value.difference != nil && (value.minutes > 0 || difference != 0)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("\(difference > 0 ? "↑" : difference < 0 ? "↓" : "—") \(DiaryDate.duration(abs(difference)))").font(.system(size: 15, weight: .bold))
+                Text("\(difference > 0 ? "↑" : difference < 0 ? "↓" : "—") \(DiaryDate.duration(abs(difference)))").font(.app(size: 15, weight: .bold))
                     .foregroundStyle(difference > 0 ? Color(themed: "#5fe0b0") : difference < 0 ? Color(themed: "#ff6b6b") : Color(themed: "#c5c0cf"))
-                Text(value.period == .today ? "vs yesterday" : value.comparison).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                Text(value.period == .today ? "vs yesterday" : value.comparison).font(.app(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }.padding(.top, 4).opacity(comparable ? 1 : 0).accessibilityHidden(!comparable)
         }
     }
@@ -234,17 +234,17 @@ struct StatsView: View {
                             .foregroundStyle(native && selectedBucket == nil && bucket.key != latest ? Color(uiColor: .systemGray2)
                                 : theme.accent.opacity(selectedBucket == nil || selectedBucket == bucket.key ? 1 : 0.45)).cornerRadius(native ? 5 : 3)
                             .annotation(position: .top, spacing: 3) {
-                                if labelled(bucket) { Text(DiaryDate.duration(bucket.minutes)).font(.system(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.ink).fixedSize() }
+                                if labelled(bucket) { Text(DiaryDate.duration(bucket.minutes)).font(.app(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.ink).fixedSize() }
                             }
                     }
                     if native, average > 0 {
                         RuleMark(y: .value("Average", average)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3])).foregroundStyle(Color(uiColor: .secondaryLabel))
-                            .annotation(position: .top, alignment: .leading, spacing: 2) { Text("Average").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary) }
+                            .annotation(position: .top, alignment: .leading, spacing: 2) { Text("Average").font(.app(size: 10, weight: .medium)).foregroundStyle(.secondary) }
                     }
                 }.chartXAxis(.hidden).chartYAxis {
                     AxisMarks(position: .trailing, values: [0, Double(peak) / 2, Double(peak)]) { mark in
                         AxisGridLine().foregroundStyle(Color.primary.opacity(0.08))
-                        AxisValueLabel { if let minutes = mark.as(Double.self) { Text(axisLabel(Int(minutes.rounded()))).font(.system(size: 10)).foregroundStyle(.secondary) } }
+                        AxisValueLabel { if let minutes = mark.as(Double.self) { Text(axisLabel(Int(minutes.rounded()))).font(.app(size: 10)).foregroundStyle(.secondary) } }
                     }
                 }.chartXScale(domain: -0.5...(Double(max(1, buckets.count)) - 0.5), range: .plotDimension(padding: 0)).chartYScale(domain: 0...Double(peak) * 1.18).accessibilityHidden(true)
                     .chartOverlay { _ in
@@ -255,14 +255,14 @@ struct StatsView: View {
                     }
                     .overlay(alignment: .top) {
                         if let key = selectedBucket, let bucket = buckets.first(where: { $0.key == key }) {
-                            VStack(spacing: 1) { Text(bucket.label).font(.system(size: 11)); Text(DiaryDate.duration(bucket.minutes)).font(.system(size: 13, weight: .semibold)) }
+                            VStack(spacing: 1) { Text(bucket.label).font(.app(size: 11)); Text(DiaryDate.duration(bucket.minutes)).font(.app(size: 13, weight: .semibold)) }
                                 .padding(.horizontal, 8).padding(.vertical, 4).background(Color(themed: "#2a2638"), in: RoundedRectangle(cornerRadius: 8)).allowsHitTesting(false)
                         }
                     }
             }.frame(height: 130)
             HStack(spacing: 0) {
                 ForEach(buckets) { bucket in
-                    Text(shown.contains(bucket.key) ? bucket.label : "").font(.system(size: 10, weight: selectedBucket == bucket.key ? .semibold : .regular))
+                    Text(shown.contains(bucket.key) ? bucket.label : "").font(.app(size: 10, weight: selectedBucket == bucket.key ? .semibold : .regular))
                         .foregroundStyle(selectedBucket == bucket.key ? Color.white : Color.secondary).lineLimit(1).fixedSize().frame(maxWidth: .infinity)
                 }
             }.padding(.trailing, 28).accessibilityHidden(true)
@@ -274,7 +274,7 @@ struct StatsView: View {
         let latest = grouped.mapValues { $0.compactMap { DiaryDate.parse($0.watchedAt) }.max() ?? .distantPast }
         let ids = grouped.keys.sorted { a, b in (latest[a] ?? .distantPast) > (latest[b] ?? .distantPast) }
         return VStack(alignment: .leading, spacing: 12) {
-            HStack { Text(bucket.description).font(.system(size: 15, weight: .bold)); Spacer(); Button("Close") { selectedBucket = nil }.font(.system(size: 13)) }
+            HStack { Text(bucket.description).font(.app(size: 15, weight: .bold)); Spacer(); Button("Close") { selectedBucket = nil }.font(.app(size: 13)) }
             if ids.isEmpty { caption("No watches logged in this period.") }
             ScrollView(.horizontal) { HStack(alignment: .top, spacing: 12) { ForEach(ids, id: \.self) { id in if let title = store.title(id) {
                 VStack(alignment: .leading, spacing: 6) { NavigationLink(value: id) { PosterCard(title: title) }.buttonStyle(.plain); caption("\(grouped[id]?.count ?? 0) \(grouped[id]?.count == 1 ? "watch" : "watches")", size: 12) }.frame(width: 112)
@@ -292,7 +292,7 @@ struct StatsView: View {
                 HStack {
                     heading("Your days"); Spacer()
                     NavigationLink(value: AppDestination.history) {
-                        HStack(spacing: 3) { Text("Calendar"); DiaryIcon(name: "chevron-right", size: 12) }.font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 36)
+                        HStack(spacing: 3) { Text("Calendar"); DiaryIcon(name: "chevron-right", size: 12) }.font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 36)
                     }.buttonStyle(.plain).accessibilityIdentifier("stats-calendar")
                 }
                 caption("\(days.all.formatted()) of \(days.elapsed.formatted()) days watched", size: 13)
@@ -303,7 +303,7 @@ struct StatsView: View {
                 streakTile("calendar", days.year.formatted(), "Active in " + String(DiaryDate.calendar().component(.year, from: clock)))
             }
             HStack(alignment: .top, spacing: 6) {
-                VStack(alignment: .leading, spacing: 4) { ForEach(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], id: \.self) { Text($0).font(.system(size: 11)).frame(height: 14) } }.foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) { ForEach(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], id: \.self) { Text($0).font(.app(size: 11)).frame(height: 14) } }.foregroundStyle(.secondary)
                 HStack(spacing: 4) { ForEach(0..<12, id: \.self) { column in
                     VStack(spacing: 4) { ForEach(0..<7, id: \.self) { row in
                         let day = value.heatmap[column * 7 + row]
@@ -311,15 +311,15 @@ struct StatsView: View {
                     } }.frame(maxWidth: .infinity)
                 } }
             }
-            HStack(spacing: 4) { Text("Last 12 weeks"); Spacer(); Text("Less"); ForEach(0..<5, id: \.self) { level in RoundedRectangle(cornerRadius: 2).fill(heatColor(level, 4)).frame(width: 11, height: 11) }; Text("More") }.font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack(spacing: 4) { Text("Last 12 weeks"); Spacer(); Text("Less"); ForEach(0..<5, id: \.self) { level in RoundedRectangle(cornerRadius: 2).fill(heatColor(level, 4)).frame(width: 11, height: 11) }; Text("More") }.font(.app(size: 11)).foregroundStyle(.secondary)
         }.statsPanel()
     }
     /// The owner's second design: icon on top, the figure, then its label.
     private func streakTile(_ symbol: String, _ value: String, _ label: String) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 20)).foregroundStyle(theme.accent)
-            Text(value).font(.system(size: 18, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
-            Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
+            Image(systemName: symbol).font(.app(size: 20)).foregroundStyle(theme.accent)
+            Text(value).font(.app(size: 18, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.app(size: 12)).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity).padding(.vertical, 14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08))).accessibilityElement(children: .combine)
     }
@@ -351,7 +351,7 @@ struct StatsView: View {
     private func backlog(_ value: StatsOverview.Backlog) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Button { router.library("all") } label: {
-                HStack(spacing: 12) { Image(systemName: "archivebox").font(.system(size: 20)); heading("Backlog"); Spacer(); DiaryIcon(name: "chevron-right", size: 16).foregroundStyle(theme.accent) }.contentShape(Rectangle())
+                HStack(spacing: 12) { Image(systemName: "archivebox").font(.app(size: 20)); heading("Backlog"); Spacer(); DiaryIcon(name: "chevron-right", size: 16).foregroundStyle(theme.accent) }.contentShape(Rectangle())
             }.buttonStyle(.plain)
             GeometryReader { geometry in HStack(spacing: 0) { ForEach(statuses, id: \.self) { status in statusColor(status).frame(width: geometry.size.width * CGFloat(value.counts[status] ?? 0) / CGFloat(max(1, value.total))) } } }
                 .frame(height: 10).clipShape(Capsule()).accessibilityLabel(statuses.map { "\($0.capitalized): \(value.counts[$0] ?? 0)" }.joined(separator: ", "))
@@ -361,24 +361,24 @@ struct StatsView: View {
                     Button { router.library(status) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 7) {
                             Circle().fill(statusColor(status)).frame(width: 9, height: 9).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
-                            Text("\(value.counts[status] ?? 0)").font(.system(size: 18, weight: .bold)).monospacedDigit()
-                            Text(status.capitalized).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
+                            Text("\(value.counts[status] ?? 0)").font(.app(size: 18, weight: .bold)).monospacedDigit()
+                            Text(status.capitalized).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1)
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
             }.foregroundStyle(HomeStyle.ink)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    Image(systemName: "clock").font(.system(size: 18)).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
+                    Image(systemName: "clock").font(.app(size: 18)).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
                     VStack(alignment: .leading, spacing: 1) {
                         caption("Planned runtime", size: 12)
-                        Text(DiaryDate.duration(value.plannedMinutes)).font(.system(size: 24, weight: .bold)).foregroundStyle(theme.accent).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                        Text(DiaryDate.duration(value.plannedMinutes)).font(.app(size: 24, weight: .bold)).foregroundStyle(theme.accent).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     }
                     Spacer(minLength: 0)
                 }
                 if value.unknownPlanned > 0 { caption(value.unknownPlanned.counted("title lacks", "titles lack") + " runtime or complete episode data", size: 12) }
                 Button { router.library("planned") } label: {
-                    HStack(spacing: 6) { Text("Open planned"); Image(systemName: "arrow.right") }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                    HStack(spacing: 6) { Text("Open planned"); Image(systemName: "arrow.right") }.font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                         .frame(maxWidth: .infinity).frame(height: 46).background(HomeStyle.chip, in: Capsule()).contentShape(Capsule())
                 }.buttonStyle(.springPress).accessibilityIdentifier("stats-open-planned")
             }.padding(14).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
@@ -388,7 +388,7 @@ struct StatsView: View {
     private func goneQuiet(_ stale: [StatsOverview.Progress]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: "moon.zzz").font(.system(size: 20)).foregroundStyle(theme.accent)
+                Image(systemName: "moon.zzz").font(.app(size: 20)).foregroundStyle(theme.accent)
                 VStack(alignment: .leading, spacing: 2) { heading("Gone quiet"); caption("Pick them back up or mark them dropped", size: 12) }
             }
             if stale.isEmpty { caption("Nothing has stalled. Everything you're watching moved in the last 30 days.") }
@@ -398,18 +398,18 @@ struct StatsView: View {
                         HStack(spacing: 12) {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 46, height: 64).clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(item.title.name).font(.system(size: 15, weight: .semibold)).lineLimit(2)
+                                Text(item.title.name).font(.app(size: 15, weight: .semibold)).lineLimit(2)
                                 caption("Last watched \(item.daysSince ?? 0) days ago", size: 12)
                             }
                             Spacer(minLength: 0)
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain).foregroundStyle(HomeStyle.ink)
                     Button("Drop") { Task { await store.setStatus(item.title, status: "dropped") } }
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
+                        .font(.app(size: 14, weight: .semibold)).foregroundStyle(theme.accent).padding(.horizontal, 14).frame(height: 36)
                         .background(theme.accent.opacity(0.12), in: Capsule()).buttonStyle(.plain).disabled(store.busy)
                 }.padding(8).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
             }
-            if staleLimit < stale.count { Button("Show more") { staleLimit += 5 }.font(.system(size: 13, weight: .semibold)) }
+            if staleLimit < stale.count { Button("Show more") { staleLimit += 5 }.font(.app(size: 13, weight: .semibold)) }
         }.statsPanel().accessibilityIdentifier("stats-gone-quiet")
     }
 
@@ -443,16 +443,16 @@ struct StatsView: View {
     }
     private func genreRow(_ name: String, count: Int, share: Double) -> some View {
         HStack(spacing: 10) {
-            Text(name).font(.system(size: 14, weight: .semibold)).lineLimit(1).frame(width: 118, alignment: .leading)
+            Text(name).font(.app(size: 14, weight: .semibold)).lineLimit(1).frame(width: 118, alignment: .leading)
             Capsule().fill(Color.primary.opacity(0.08)).frame(height: 10).overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * min(1, share / 100)) } }
-            Text("\(Int(share.rounded()))% · \(count)").font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 62, alignment: .trailing)
+            Text("\(Int(share.rounded()))% · \(count)").font(.app(size: 12)).foregroundStyle(.secondary).monospacedDigit().frame(width: 62, alignment: .trailing)
         }.foregroundStyle(HomeStyle.ink).frame(minHeight: 28).contentShape(Rectangle())
     }
 
     // MARK: Helpers
 
-    private func heading(_ text: String) -> some View { Text(text).font(.system(size: 20, weight: .bold)) }
-    private func caption(_ text: String, size: CGFloat = 13) -> some View { Text(text).font(.system(size: size)).foregroundStyle(.secondary) }
+    private func heading(_ text: String) -> some View { Text(text).font(.app(size: 20, weight: .bold)) }
+    private func caption(_ text: String, size: CGFloat = 13) -> some View { Text(text).font(.app(size: size)).foregroundStyle(.secondary) }
     private func heatColor(_ count: Int, _ maxCount: Int) -> Color { count == 0 ? Color.primary.opacity(0.06) : theme.accent.opacity(Double(max(1, Int(ceil(Double(count) / Double(maxCount) * 4)))) / 4) }
     private func localDay(_ value: String) -> Date { let fields = value.split(separator: "-").compactMap { Int($0) }; return fields.count == 3 ? DiaryDate.calendar().date(from: DateComponents(year: fields[0], month: fields[1], day: fields[2], hour: 12)) ?? store.now : store.now }
     private var statuses: [String] { ["planned", "watching", "completed", "dropped"] }
@@ -473,7 +473,7 @@ private struct StatsRangeSelector: View {
         // Segments are plain: a glass capsule per segment washed out the sliding accent
         // selection (native segmented controls keep one surface and one selection).
         HStack(spacing: 3) { ForEach(ranges) { range in
-            Button { selection = range } label: { Text(label(range)).font(.system(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? theme.ink : Color(themed: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
+            Button { selection = range } label: { Text(label(range)).font(.app(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? theme.ink : Color(themed: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
         } }.frame(height: 38).background(alignment: .leading) {
             GeometryReader { geometry in
                 if let index = ranges.firstIndex(of: selection) {

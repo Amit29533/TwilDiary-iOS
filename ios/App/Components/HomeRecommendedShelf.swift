@@ -10,6 +10,9 @@ struct HomeRecommendedShelf: View {
     @Environment(DiaryStore.self) private var store
     @State private var items: [CatalogItem] = []
     @State private var seed: MediaTitle?
+    /// The first read has finished (with picks or without).
+    @State private var loaded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Group {
             if !items.isEmpty, let seed {
@@ -25,12 +28,22 @@ struct HomeRecommendedShelf: View {
                         }.scrollTargetLayout()
                     }.scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden).scrollClipDisabled()
                 }
+            } else if !loaded, !seeds.isEmpty {
+                // While it reads: the heading and posters' shapes where the shelf will land. It took no room
+                // until then, and appeared in the middle of Home pushing everything under it down.
+                VStack(alignment: .leading, spacing: 16) {
+                    HomeSectionHeader(title: "Recommended", icon: "cinemind", subtitle: seeds.first.map { "Because you watched " + $0.name }) { EmptyView() }
+                    DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf)
+                }
             } else {
                 // A real (zero-height) view, so the task below runs: on an empty Group it never did,
                 // and the shelf never loaded. The negative padding cancels Home's 32 pt section gap.
                 Color.clear.frame(height: 0).padding(.top, -32).accessibilityHidden(true)
             }
-        }.task(id: seeds.map(\.id)) { await load() }
+        }
+        // Nothing to recommend: the room it held closes smoothly.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: loaded)
+        .task(id: seeds.map(\.id)) { await load(); loaded = true }
     }
     @ViewBuilder private func link(_ item: CatalogItem) -> some View {
         if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {

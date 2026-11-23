@@ -17,7 +17,7 @@ struct AnimeRelatedRow: View {
             if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     // The same heading as Cast and More like this.
-                    Text("Related").font(.system(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    Text("Related").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                         .frame(minHeight: 44)
                     ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 12) {
@@ -40,7 +40,7 @@ struct AnimeRelatedRow: View {
             .overlay(alignment: .bottomLeading) {
                 ZStack(alignment: .bottomLeading) {
                     LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
-                    Text(item.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(item.label).font(.app(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
                         .padding(.horizontal, 12).padding(.bottom, 10)
                 }.clipShape(RoundedRectangle(cornerRadius: 18)).allowsHitTesting(false)
             }
@@ -48,12 +48,12 @@ struct AnimeRelatedRow: View {
                 if let saved {
                     HStack(spacing: -6) {
                         if let score = saved.score, score > 0 {
-                            Text(String(Int(score.rounded()))).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                            Text(String(Int(score.rounded()))).font(.app(size: 13, weight: .bold)).foregroundStyle(.white)
                                 .frame(width: 28, height: 28).background(Color(themed: "#3b4a9c"), in: Circle())
                                 .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1.5))
                         }
                         if saved.status == "completed" {
-                            Image(systemName: "checkmark").font(.system(size: 12, weight: .heavy)).foregroundStyle(.white)
+                            Image(systemName: "checkmark").font(.app(size: 12, weight: .heavy)).foregroundStyle(.white)
                                 .frame(width: 28, height: 28).background(Color(themed: "#3f9a4f"), in: Circle())
                                 .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1.5))
                         }

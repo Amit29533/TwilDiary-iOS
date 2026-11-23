@@ -58,12 +58,12 @@ struct TitleHero<Ratings: View>: View {
                     .contentShape(RoundedRectangle(cornerRadius: 16)).fullScreenArtwork(poster, title: name)
                     .accessibilityIdentifier("title-hero-poster")
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(name).font(.system(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
+                    Text(name).font(.app(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(HomeStyle.primary)
                         .lineLimit(2).truncationMode(.tail).allowsTightening(true)
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
-                    Text([year.map(String.init) ?? "—", category, runtimeText].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(HomeStyle.dateChipText).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                    Text([year.map(String.init) ?? "—", category, runtimeText].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 12)).foregroundStyle(HomeStyle.dateChipText).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                     TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime")).padding(.top, 6)
                     if !ratingsBelow { ratings.padding(.top, 14) }
                 }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
@@ -72,10 +72,10 @@ struct TitleHero<Ratings: View>: View {
             VStack(alignment: .leading, spacing: 4) {
                 if expanded && !synopsisParts.continuation.isEmpty {
                     Text(synopsisText.trimmingCharacters(in: .whitespacesAndNewlines))
-                        .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
+                        .font(.app(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
                         .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("title-synopsis-text")
-                    Button("Less") { setExpanded(false) }.font(.system(size: 17, weight: .semibold)).frame(minHeight: 44)
+                    Button("Less") { setExpanded(false) }.font(.app(size: 17, weight: .semibold)).frame(minHeight: 44)
                         .accessibilityIdentifier("title-synopsis-expanded")
                 } else {
                     synopsisLead
@@ -91,12 +91,12 @@ struct TitleHero<Ratings: View>: View {
     private var synopsisLead: some View {
         let hasOverflow = !synopsisParts.continuation.isEmpty
         return Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
-            .font(.system(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
+            .font(.app(size: 17)).lineSpacing(3).foregroundStyle(HomeStyle.primary)
             .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("title-synopsis-text")
             .overlay(alignment: .bottomTrailing) {
                 if !expanded && hasOverflow {
-                    Button("More") { setExpanded(true) }.font(.system(size: 17, weight: .semibold))
+                    Button("More") { setExpanded(true) }.font(.app(size: 17, weight: .semibold))
                         .frame(width: 52, height: 44).offset(y: 10)
                 }
             }

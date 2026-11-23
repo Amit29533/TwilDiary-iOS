@@ -318,7 +318,7 @@ enum PendingMerge {
                             skipped: skipped, comparison: analysis.comparison)
             plan = analysis.plan
         } catch {
-            if !Task.isCancelled, session == generation { self.error = error.localizedDescription }
+            if !Task.isCancelled, session == generation { self.error = FriendlyError.message(error) }
         }
     }
 
@@ -412,7 +412,7 @@ enum PendingMerge {
             writeResult = "Sent to Trakt: " + plan.summary.joined(separator: "; ") + ". " + tally.text(service: "Trakt")
                 + (plan.skippedPlays > 0 ? " \(plan.skippedPlays) diary watches have no date and were left out." : "")
         } catch {
-            if !Task.isCancelled, session == generation { self.error = (sent > 0 ? "Sent \(sent) before stopping. " : "") + error.localizedDescription }
+            if !Task.isCancelled, session == generation { self.error = (sent > 0 ? "Sent \(sent) before stopping. " : "") + FriendlyError.message(error) }
         }
         guard session == generation else { return }
         await check(store: store)
@@ -710,11 +710,11 @@ enum PendingMerge {
                 if kind == .retryLater || kind == .uncertain, !TraktDelivery.paused(error), let index = pending.firstIndex(where: { $0.id == next.id }) {
                     // A finite budget: one Trakt keeps failing on is set aside so the rest go on.
                     let tries = (pending[index].attempts ?? 0) + 1
-                    pending[index].attempts = tries; pending[index].lastError = error.localizedDescription
+                    pending[index].attempts = tries; pending[index].lastError = FriendlyError.message(error)
                     if tries >= TrackerPreviewStore.retryBudget {
                         pending.removeAll { $0.id == next.id }
-                        if let store { DeadLetters.add(.trakt, title: TrackerPreviewStore.describe(next.body, store: store), reason: error.localizedDescription) }
-                        refused("Trakt kept failing on a change, so it was set aside: " + error.localizedDescription, store: store)
+                        if let store { DeadLetters.add(.trakt, title: TrackerPreviewStore.describe(next.body, store: store), reason: FriendlyError.message(error)) }
+                        refused("Trakt kept failing on a change, so it was set aside: " + FriendlyError.message(error), store: store)
                         continue
                     }
                 }
@@ -730,8 +730,8 @@ enum PendingMerge {
                     return false
                 case .rejected:
                     pending.removeAll { $0.id == next.id }
-                    if let store { DeadLetters.add(.trakt, title: TrackerPreviewStore.describe(next.body, store: store), reason: error.localizedDescription) }
-                    refused("Trakt refused a change: " + error.localizedDescription, store: store)
+                    if let store { DeadLetters.add(.trakt, title: TrackerPreviewStore.describe(next.body, store: store), reason: FriendlyError.message(error)) }
+                    refused("Trakt refused a change: " + FriendlyError.message(error), store: store)
                 }
             }
             inFlight = nil
@@ -854,7 +854,7 @@ enum PendingMerge {
         } catch {
             writing = false
             await check(store: store)
-            throw APIError.message((sent > 0 ? "Restored \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + error.localizedDescription)
+            throw APIError.message((sent > 0 ? "Restored \(sent) before stopping; run it again to finish (nothing is added twice). " : "") + FriendlyError.message(error))
         }
         writing = false
         await check(store: store)

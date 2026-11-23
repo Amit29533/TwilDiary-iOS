@@ -37,7 +37,7 @@ struct SearchLandingView: View {
     /// A trending title's poster with its place in the chart.
     private func rankedPoster(index: Int, item: CatalogItem) -> some View {
         CatalogPoster(item: item).overlay(alignment: .topLeading) {
-            Text("\(index + 1)").font(.system(size: 15, weight: .heavy)).monospacedDigit()
+            Text("\(index + 1)").font(.app(size: 15, weight: .heavy)).monospacedDigit()
                 .foregroundStyle(index < 3 ? ThemeStore.current.accentInk : .white)
                 .frame(minWidth: 28, minHeight: 28).padding(.horizontal, 2)
                 .background(index < 3 ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.black.opacity(0.7)), in: Capsule())
@@ -52,13 +52,13 @@ struct SearchLandingView: View {
                     HStack {
                         Text("Recent searches").font(.headline).foregroundStyle(.primary)
                         Spacer()
-                        Button("Clear", action: clear).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("search-clear-recents")
+                        Button("Clear", action: clear).font(.app(size: 15, weight: .semibold)).foregroundStyle(theme.accent).accessibilityIdentifier("search-clear-recents")
                     }
                     InlineFlowLayout {
                         ForEach(recent, id: \.self) { query in
                             Button { choose(query) } label: {
-                                HStack(spacing: 6) { Image(systemName: "clock").font(.system(size: 12)); Text(query).lineLimit(1) }
-                                    .font(.system(size: 15, weight: .medium)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 12).frame(height: 36)
+                                HStack(spacing: 6) { Image(systemName: "clock").font(.app(size: 12)); Text(query).lineLimit(1) }
+                                    .font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.ink).padding(.horizontal, 12).frame(height: 36)
                                     .background(Color.primary.opacity(0.07), in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.outline(0.1)))
                             }.buttonStyle(.plain).accessibilityLabel("Search again for " + query)
                                 .contextMenu { Button("Remove", systemImage: "xmark", role: .destructive) { withAnimation(.snappy) { remove(query) } } }
@@ -114,7 +114,7 @@ struct SearchLandingView: View {
             shows = Array(CatalogTools.merging([], trendingShows.items).prefix(10))
             loadedRevision = revision
             Self.trending[trendingType] = (revision, shows, .now)
-        } catch { if !Task.isCancelled && revision == store.sessionRevision { failure = error.localizedDescription } }
+        } catch { if !Task.isCancelled && revision == store.sessionRevision { failure = FriendlyError.message(error) } }
     }
 }
 
@@ -167,9 +167,9 @@ struct SearchPeopleView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(person.name).font(.headline).foregroundStyle(HomeStyle.primary).lineLimit(2)
                             Text([person.kind == "cast" ? "Cast" : person.kind == "character" ? "Character" : "Voice actor", person.detail].compactMap { $0 }.joined(separator: " · "))
-                                .font(.system(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                                .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
-                        Spacer(minLength: 4); Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
+                        Spacer(minLength: 4); Image(systemName: "chevron.right").font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(themed: "#6a6a78"))
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard()).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.primary).accessibilityIdentifier("search-person-" + person.key)
             }
@@ -237,7 +237,7 @@ struct SearchPeopleView: View {
             nextPage[source] = page < min(500, reply.totalPages) ? page + 1 : nil
         } catch {
             if !Task.isCancelled, revision == store.sessionRevision {
-                failures[source] = "\(source.rawValue) could not be loaded. \(error.localizedDescription)"
+                failures[source] = "\(source.rawValue) could not be loaded. \(FriendlyError.message(error))"
             }
         }
     }

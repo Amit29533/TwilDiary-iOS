@@ -62,7 +62,7 @@ extension DiaryStore {
             undoLabel = "Moved to Trash"
             return true
         } catch {
-            self.error = error.localizedDescription
+            self.error = FriendlyError.message(error)
             return false
         }
     }

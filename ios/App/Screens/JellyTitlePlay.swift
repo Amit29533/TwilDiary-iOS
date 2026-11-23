@@ -46,7 +46,7 @@ struct JellyPlayButton: View {
                         else { ProgressView().tint(WatchStyle.ink) }
                         Text(target == nil ? (problem ?? label) : label).lineLimit(1)
                     }
-                    .font(.system(size: 16, weight: .bold)).foregroundStyle(WatchStyle.ink)
+                    .font(.app(size: 16, weight: .bold)).foregroundStyle(WatchStyle.ink)
                     .frame(maxWidth: .infinity).frame(height: 48).background(WatchStyle.fill, in: Capsule()).contentShape(Capsule())
                 }
                 .buttonStyle(.springPress).disabled(target == nil && problem == nil).accessibilityIdentifier("title-jellyspace-play")

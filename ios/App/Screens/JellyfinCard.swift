@@ -12,8 +12,8 @@ struct JellyfinCard: View {
             HStack(spacing: 12) {
                 BrandLogo(service: .jellyfin, size: 34)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Jellyfin").font(.system(size: 16, weight: .semibold))
-                    Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                    Text("Jellyfin").font(.app(size: 16, weight: .semibold))
+                    Text(subtitle).font(.app(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer(minLength: 8)
                 if sync?.configured == true {
@@ -30,8 +30,8 @@ struct JellyfinCard: View {
                             ForEach(readable) { library in
                                 let on = sync?.isOn(library) == true
                                 Button { sync?.toggle(library) } label: {
-                                    HStack(spacing: 6) { Image(systemName: on ? "checkmark" : "plus").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold)); Text(library.name) }
-                                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
+                                    HStack(spacing: 6) { Image(systemName: on ? "checkmark" : "plus").contentTransition(.symbolEffect(.replace)).font(.app(size: 11, weight: .bold)); Text(library.name) }
+                                        .font(.app(size: 13, weight: .semibold)).foregroundStyle(on ? theme.accent : Color(themed: "#c5c0cf"))
                                         .padding(.horizontal, 12).frame(height: 32).background(on ? theme.accent.opacity(0.12) : Color.primary.opacity(0.06), in: Capsule())
                                         .overlay(Capsule().strokeBorder(on ? theme.accent.opacity(0.5) : Color.primary.opacity(0.12)))
                                 }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("jellyfin-library-" + library.id)
@@ -41,14 +41,14 @@ struct JellyfinCard: View {
                     if skipped > 0 { caption("\(skipped.counted("other library", "other libraries")) (photos, home videos, music) never read") }
                 }
                 // Everything on Jellyfin, not just what's mapped: filters for the diary and drives.
-                NavigationLink(value: AppDestination.jellyfin) { Text("Browse Jellyfin →").font(.system(size: 13, weight: .semibold)) }
+                NavigationLink(value: AppDestination.jellyfin) { Text("Browse Jellyfin →").font(.app(size: 13, weight: .semibold)) }
                     .accessibilityIdentifier("jellyfin-browse")
                 if let progress = sync?.progress { caption(progress) }
                 if let summary = sync?.summary, sync?.running != true {
                     caption("\(summary.mapped.counted("title", "titles")) mapped · \(summary.notInDiary.formatted()) not in your diary · \(summary.personal.counted("personal item", "personal items")) skipped")
                         .accessibilityIdentifier("jellyfin-summary")
                 }
-                if let error = sync?.error { Text(error).font(.system(size: 12)).foregroundStyle(Color(themed: "#ff8a80")) }
+                if let error = sync?.error { Text(error).font(.app(size: 12)).foregroundStyle(Color(themed: "#ff8a80")) }
             } else {
                 Button("Connect Jellyfin") { setup = true }.buttonStyle(.diaryRowPrimary).accessibilityIdentifier("jellyfin-connect")
             }
@@ -62,5 +62,5 @@ struct JellyfinCard: View {
         if let summary = sync?.summary { return "Synced " + summary.at.formatted(.relative(presentation: .named)) }
         return "Ready to sync over your home Wi-Fi"
     }
-    private func caption(_ text: String) -> some View { Text(text).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+    private func caption(_ text: String) -> some View { Text(text).font(.app(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
 }

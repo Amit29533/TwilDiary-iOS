@@ -35,7 +35,7 @@ struct SearchAwardsPage: View {
                 if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
                 } else if !loaded {
-                    ProgressView().frame(maxWidth: .infinity).accessibilityLabel("Loading award ceremonies")
+                    DiaryLoadingPlaceholder(label: "Loading award ceremonies", layout: .list(rows: 5))
                 }
                 AwardsAttribution()
             }.padding(14).padding(.bottom, 32)
@@ -56,7 +56,7 @@ struct SearchAwardsPage: View {
             ceremonies = available
             loaded = true
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
+            if !Task.isCancelled { failure = FriendlyError.message(error) }
         }
     }
 }
@@ -143,7 +143,7 @@ private struct AwardsAttribution: View {
                 archive = available
                 await SearchAwardCache.shared.save(available, ceremony: cacheKey)
             } catch {
-                if !Task.isCancelled { failure = error.localizedDescription }
+                if !Task.isCancelled { failure = FriendlyError.message(error) }
             }
             return
         }
@@ -161,7 +161,7 @@ private struct AwardsAttribution: View {
             try Task.checkCancellation()
             archive = available
         } catch {
-            if !Task.isCancelled { failure = error.localizedDescription }
+            if !Task.isCancelled { failure = FriendlyError.message(error) }
         }
     }
 
@@ -483,14 +483,14 @@ private struct AwardNomineeRow: View {
                 .posterAspect()
                 .overlay(alignment: .topLeading) {
                     if winner {
-                        Image(systemName: "trophy.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(themed: "#e7ca90"))
+                        Image(systemName: "trophy.fill").font(.app(size: 12, weight: .bold)).foregroundStyle(Color(themed: "#e7ca90"))
                             .frame(width: 26, height: 26).background(.black.opacity(0.75), in: Circle()).padding(6)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+            Text(title).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
             Text(subtitle ?? nominee.note ?? (winner ? "Winner" : "Nominee"))
-                .font(.system(size: 12, weight: winner ? .semibold : .regular)).foregroundStyle(winner ? Color(themed: "#e7ca90") : .secondary)
+                .font(.app(size: 12, weight: winner ? .semibold : .regular)).foregroundStyle(winner ? Color(themed: "#e7ca90") : .secondary)
                 .lineLimit(1).frame(height: 18).padding(.top, 4)
         }.contentShape(Rectangle()).accessibilityElement(children: .combine).accessibilityLabel(title + (winner ? ", winner" : ", nominee"))
     }
@@ -554,7 +554,7 @@ struct SearchAwardNomineePage: View {
                 try Task.checkCancellation()
                 if let matched { personID = matched; return }
             } catch {
-                if !Task.isCancelled { failure = error.localizedDescription }
+                if !Task.isCancelled { failure = FriendlyError.message(error) }
             }
         }
         guard !Task.isCancelled else { return }
@@ -575,7 +575,7 @@ struct SearchAwardNomineePage: View {
                     return
                 }
             } catch {
-                if !Task.isCancelled { failure = error.localizedDescription }
+                if !Task.isCancelled { failure = FriendlyError.message(error) }
             }
         }
 
@@ -602,7 +602,7 @@ struct AwardLogoArt: View {
                 LinearGradient(colors: [.white.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
                 HStack(spacing: large ? 18 : 10) {
                     Image(uiImage: file).resizable().scaledToFit().padding(.vertical, large ? 28 : 10)
-                    Text(caption).font(.system(size: large ? 24 : 13, weight: .semibold, design: .serif)).tracking(large ? 2 : 1.2)
+                    Text(caption).font(.app(size: large ? 24 : 13, weight: .semibold, design: .serif)).tracking(large ? 2 : 1.2)
                         .foregroundStyle(LinearGradient(colors: [Color(webHex: "#f3d9a0"), Color(webHex: "#c79a4a")], startPoint: .top, endPoint: .bottom))
                         // Each word on its own line, never split: smaller type before a word breaks.
                         .lineSpacing(1).lineLimit(caption.split(separator: "\n").count)

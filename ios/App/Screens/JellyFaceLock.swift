@@ -104,10 +104,10 @@ private struct JellyFaceLockCover: ViewModifier {
                     Rectangle().fill(.ultraThickMaterial).ignoresSafeArea()
                     if !lock.covered {
                         VStack(spacing: 16) {
-                            Image(systemName: "faceid").font(.system(size: 46, weight: .light)).foregroundStyle(HomeStyle.primary)
-                            Text("JellySpace is locked").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Image(systemName: "faceid").font(.app(size: 46, weight: .light)).foregroundStyle(HomeStyle.primary)
+                            Text("JellySpace is locked").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             Button { Task { await lock.unlock() } } label: {
-                                Text("Unlock").font(.system(size: 15, weight: .semibold)).padding(.horizontal, 22).frame(height: 40)
+                                Text("Unlock").font(.app(size: 15, weight: .semibold)).padding(.horizontal, 22).frame(height: 40)
                             }
                             .buttonStyle(.borderedProminent).accessibilityIdentifier("jellyspace-face-unlock")
                         }

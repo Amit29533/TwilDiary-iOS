@@ -78,10 +78,10 @@ struct LibraryView: View {
         HStack {
             Button("Cancel") { selecting = false; selected = [] }.accessibilityIdentifier("selection-cancel")
             Spacer(minLength: 8)
-            Text("\(selected.count) selected").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).accessibilityIdentifier("selection-count")
+            Text("\(selected.count) selected").font(.app(size: 17, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).accessibilityIdentifier("selection-count")
             Spacer(minLength: 8)
             Button("All") { selected = Set(filtered.prefix(CollectionRequest.limit).map(\.id)) }.accessibilityLabel("Select all shown").accessibilityIdentifier("selection-all")
-        }.font(.system(size: 16, weight: .semibold)).tint(theme.accent).padding(.horizontal, 18).frame(height: 54)
+        }.font(.app(size: 16, weight: .semibold)).tint(theme.accent).padding(.horizontal, 18).frame(height: 54)
     }
     /// Jellyfin keeps the titles on the owner's Jellyfin server; every other filter still applies.
     private static let statuses = [("all", "All"), ("watching", "Watching"), ("planned", "Planned"), ("completed", "Completed"), ("dropped", "Dropped"), ("jellyfin", "Jellyfin"), ("queue", "Queue")]
@@ -94,8 +94,8 @@ struct LibraryView: View {
                     Button { status = on ? "all" : key } label: {
                         HStack(spacing: 7) {
                             Circle().fill(Self.statusDot(key)).frame(width: 8, height: 8)
-                            Text(name).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? HomeStyle.chipText : HomeStyle.primary)
-                            Text("\(counts[key] ?? 0)").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                            Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? HomeStyle.chipText : HomeStyle.primary)
+                            Text("\(counts[key] ?? 0)").font(.app(size: 13, weight: .semibold)).monospacedDigit()
                                 .foregroundStyle(on ? HomeStyle.chipText.opacity(0.8) : HomeStyle.secondary)
                         }.padding(.horizontal, 14).frame(height: 40)
                             .background(on ? HomeStyle.chip : HomeStyle.round, in: Capsule())
@@ -134,7 +134,7 @@ struct LibraryView: View {
             Button { showFilters = true } label: {
                 roundTool("sliders-horizontal").overlay(alignment: .topTrailing) {
                     if activeFilterCount > 0 {
-                        Text("\(activeFilterCount)").font(.system(size: 11, weight: .bold)).foregroundStyle(theme.ink)
+                        Text("\(activeFilterCount)").font(.app(size: 11, weight: .bold)).foregroundStyle(theme.ink)
                             .frame(minWidth: 18, minHeight: 18).background(theme.accent, in: Circle()).offset(x: 3, y: -3)
                     }
                 }
@@ -175,8 +175,8 @@ struct LibraryView: View {
                     if store.communityRatings.loading { ratingStatus("Loading community ratings…") }
                     else if store.communityRatings.unavailable {
                         HStack(alignment: .top, spacing: 8) {
-                            Text("Some \(ratingSource.label) ratings are unavailable.").font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            Button("Retry") { Task { await store.loadPublicRatings(collection, source: ratingSource, retry: true) } }.font(.system(size: 12, weight: .semibold)).accessibilityIdentifier("ratings-retry")
+                            Text("Some \(ratingSource.label) ratings are unavailable.").font(.app(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Retry") { Task { await store.loadPublicRatings(collection, source: ratingSource, retry: true) } }.font(.app(size: 12, weight: .semibold)).accessibilityIdentifier("ratings-retry")
                         }.padding(.horizontal, 14).padding(.bottom, 10)
                     }
                 }
@@ -205,10 +205,10 @@ struct LibraryView: View {
         if !extras.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("Not in your diary").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
-                    Text("\(extras.count)").font(.system(size: 14)).foregroundStyle(.secondary)
+                    Text("Not in your diary").font(.app(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
+                    Text("\(extras.count)").font(.app(size: 14)).foregroundStyle(.secondary)
                 }.accessibilityElement(children: .combine).accessibilityIdentifier("library-jellyfin-extras")
-                Text("On your Jellyfin. Open one to add it.").font(.system(size: 13)).foregroundStyle(.secondary)
+                Text("On your Jellyfin. Open one to add it.").font(.app(size: 13)).foregroundStyle(.secondary)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
                     ForEach(extras) { JellyfinEntryCard(entry: $0) }
                 }
@@ -222,8 +222,8 @@ struct LibraryView: View {
                             ForEach(shelves) { shelf in
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack(spacing: 8) {
-                                        Text(shelf.genre).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
-                                        Text("\(shelf.titles.count)").font(.system(size: 14)).foregroundStyle(.secondary)
+                                        Text(shelf.genre).font(.app(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
+                                        Text("\(shelf.titles.count)").font(.app(size: 14)).foregroundStyle(.secondary)
                                         Spacer()
                                         if shelf.genre != "Without a genre" {
                                             SectionMoreButton(label: "See all \(shelf.genre) titles", identifier: "library-genre-" + shelf.genre) { genres = [shelf.genre]; genreRows = false; list = false }
@@ -253,9 +253,9 @@ struct LibraryView: View {
     private var overview: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("All titles").font(.system(size: 22, weight: .bold)).tracking(-0.5)
+                Text("All titles").font(.app(size: 22, weight: .bold)).tracking(-0.5)
                 Spacer()
-                Text(filtered.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
+                Text(filtered.count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                     .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
@@ -265,9 +265,9 @@ struct LibraryView: View {
                     Color.clear.posterAspect()
                         .overlay {
                             VStack(spacing: 4) {
-                                Text("+\((filtered.count - overviewCount).formatted())").font(.system(size: 26, weight: .bold)).foregroundStyle(theme.accent)
+                                Text("+\((filtered.count - overviewCount).formatted())").font(.app(size: 26, weight: .bold)).foregroundStyle(theme.accent)
                                     .lineLimit(1).minimumScaleFactor(0.6)
-                                Text("See all").font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(1)
+                                Text("See all").font(.app(size: 14)).foregroundStyle(.secondary).lineLimit(1)
                             }.padding(.horizontal, 6)
                         }
                         .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
@@ -276,16 +276,16 @@ struct LibraryView: View {
                 }.buttonStyle(.springPress).accessibilityLabel("See all \(filtered.count) titles").accessibilityIdentifier("library-see-all")
             }
             HStack {
-                Text("Browse by genre").font(.system(size: 22, weight: .bold)).tracking(-0.5).lineLimit(1)
+                Text("Browse by genre").font(.app(size: 22, weight: .bold)).tracking(-0.5).lineLimit(1)
                 Spacer()
                 SectionMoreButton(label: "All genres", identifier: "library-all-genres") { genreRows = true; list = false }
             }.padding(.top, 12)
             ForEach(shelves.filter { $0.genre != "Without a genre" }) { shelf in
                 Button { genres = [shelf.genre] } label: {
                     HStack {
-                        Text(shelf.genre).font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                        Text(shelf.genre).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Spacer()
-                        Text(shelf.titles.count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
+                        Text(shelf.titles.count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                             .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
                         DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
                     }.padding(.horizontal, 16).frame(minHeight: 60).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
@@ -295,15 +295,15 @@ struct LibraryView: View {
         }.padding(.horizontal, 14)
     }
     private func ratingStatus(_ message: String) -> some View {
-        Text(message).font(.system(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 10)
+        Text(message).font(.app(size: 12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 10)
     }
     /// Names the filters that hide everything and clears them in one tap.
     private var noMatches: some View {
         VStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 30)).foregroundStyle(.secondary).accessibilityHidden(true)
-            Text("No titles match").font(.system(size: 17, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
-            Text(activeFilterNames.joined(separator: " · ")).font(.system(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("Clear filters") { clearFilters() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+            Image(systemName: "line.3.horizontal.decrease.circle").font(.app(size: 30)).foregroundStyle(.secondary).accessibilityHidden(true)
+            Text("No titles match").font(.app(size: 17, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
+            Text(activeFilterNames.joined(separator: " · ")).font(.app(size: 14)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Button("Clear filters") { clearFilters() }.font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                 .padding(.horizontal, 18).frame(height: 40).background(HomeStyle.chip, in: Capsule()).buttonStyle(.plain).padding(.top, 6)
         }.frame(maxWidth: .infinity).padding(.vertical, 40).padding(.horizontal, 24)
     }
@@ -344,7 +344,7 @@ struct LibraryView: View {
         }
     }
     private func checkCircle(_ on: Bool) -> some View {
-        Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity)
+        Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.app(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity)
             .foregroundStyle(on ? theme.accent : .white).shadow(color: .black.opacity(0.7), radius: 3)
     }
 
@@ -369,7 +369,7 @@ struct LibraryView: View {
         Button(action: action) { barLabel(name, icon: icon, color: color) }.buttonStyle(.plain).frame(maxWidth: .infinity).accessibilityIdentifier(identifier)
     }
     private func barLabel(_ name: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 3) { DiaryIcon(name: icon, size: 20); Text(name).font(.system(size: 11, weight: .medium)) }
+        VStack(spacing: 3) { DiaryIcon(name: icon, size: 20); Text(name).font(.app(size: 11, weight: .medium)) }
             .foregroundStyle(color).frame(maxWidth: .infinity, minHeight: 48).contentShape(Rectangle())
     }
     private func prepareReview(_ change: CollectionChange) { let titles = filtered.filter { selected.contains($0.id) }; if !titles.isEmpty { review = CollectionReview(titles: titles, change: change) } }
@@ -402,8 +402,8 @@ struct LibraryView: View {
                             Button { withAnimation(.smooth(duration: 0.25)) { showAllGenres.toggle() } } label: {
                                 HStack(spacing: 6) {
                                     Text(showAllGenres ? "Fewer" : "\(allGenres.count - visible.count) more")
-                                    Image(systemName: showAllGenres ? "chevron.up" : "chevron.down").contentTransition(.symbolEffect(.replace)).font(.system(size: 11, weight: .bold))
-                                }.font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                    Image(systemName: showAllGenres ? "chevron.up" : "chevron.down").contentTransition(.symbolEffect(.replace)).font(.app(size: 11, weight: .bold))
+                                }.font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                     .padding(.horizontal, 16).frame(height: 42)
                                     .overlay(Capsule().strokeBorder(HomeStyle.chipText.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
                             }.buttonStyle(.plain).accessibilityIdentifier("filter-genre-more")
@@ -437,22 +437,22 @@ struct LibraryView: View {
                     VStack(spacing: 0) {
                         Button { shelfName = activeFilterNames.joined(separator: " · "); namingShelf = true } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                                Text("Save as a Home shelf").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Image(systemName: "rectangle.stack.badge.plus").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                Text("Save as a Home shelf").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 Spacer()
                             }.padding(.horizontal, 16).frame(minHeight: 58).contentShape(Rectangle())
                         }.buttonStyle(.plain).disabled(activeFilterNames.isEmpty).opacity(activeFilterNames.isEmpty ? 0.45 : 1)
                             .accessibilityIdentifier("filter-save-shelf")
                         SettingsDivider()
-                        Toggle(isOn: $favoritesOnly) { Text("Favorites only").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(maxWidth: .infinity, alignment: .leading) }
+                        Toggle(isOn: $favoritesOnly) { Text("Favorites only").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).frame(maxWidth: .infinity, alignment: .leading) }
                             .toggleStyle(SettingsToggleStyle()).padding(.horizontal, 16).frame(minHeight: 58).accessibilityIdentifier("filter-favorites")
                         SettingsDivider()
                         Button { showFilters = false; openTrash() } label: {
                             HStack(spacing: 12) {
                                 DiaryIcon(name: "trash-2", size: 17).foregroundStyle(HomeStyle.secondary)
-                                Text("Trash").font(.system(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                                Text("Trash").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 Spacer()
-                                Text(trashCount.counted("title", "titles")).font(.system(size: 14)).foregroundStyle(HomeStyle.secondary)
+                                Text(trashCount.counted("title", "titles")).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
                             }.padding(.horizontal, 16).frame(minHeight: 58).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("Open Trash")
                     }.modifier(SettingsCard())
@@ -473,30 +473,30 @@ struct LibraryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showFilters = false } label: {
-                        Image(systemName: "xmark").font(.system(size: 15, weight: .semibold))
+                        Image(systemName: "xmark").font(.app(size: 15, weight: .semibold))
                     }.accessibilityLabel("Close")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { genres = []; tag = ""; drive = ""; favoritesOnly = false; minScore = 0 } label: { Text("Clear").lineLimit(1).fixedSize() }
-                        .font(.system(size: 15, weight: .semibold)).disabled(activeFilterCount == 0)
+                        .font(.app(size: 15, weight: .semibold)).disabled(activeFilterCount == 0)
                 }
             }
         }.presentationBackground(Color(themed: "#111116"))
     }
     private func sheetLabel(_ text: String, detail: String? = nil) -> some View {
         HStack {
-            Text(text.uppercased()).font(.system(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary)
+            Text(text.uppercased()).font(.app(size: 13, weight: .bold)).tracking(1.2).foregroundStyle(HomeStyle.secondary)
             Spacer()
-            if let detail { Text(detail).font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText) }
+            if let detail { Text(detail).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText) }
         }.padding(.top, 22).padding(.bottom, 10)
     }
     /// A filter chip (design): name and count on a dark pill; chosen, the accent with dark text.
     private func sheetChip(_ label: String, count: Int? = nil, icon: String? = nil, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                if let icon { Image(systemName: icon).font(.system(size: 13)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.secondary) }
-                Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary).lineLimit(1)
-                if let count { Text(count.formatted()).font(.system(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary) }
+                if let icon { Image(systemName: icon).font(.app(size: 13)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.secondary) }
+                Text(label).font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.primary).lineLimit(1)
+                if let count { Text(count.formatted()).font(.app(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(on ? ThemeStore.current.accentInk.opacity(0.7) : HomeStyle.secondary) }
             }.padding(.horizontal, 16).frame(height: 42)
                 .pillSurface(chosen: on ? theme.accent : nil)
                 .contentShape(Capsule())
@@ -634,8 +634,8 @@ struct LibraryPosterCard: View {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).posterAspect()
                 .overlay(alignment: .topLeading) {
                     if showsRating, let score {
-                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        HStack(spacing: 3) { Image(systemName: "star.fill").font(.app(size: 9)).foregroundStyle(Color(themed: "#ffc83d")); Text(score.formatted(.number.precision(.fractionLength(1)))) }
+                            .font(.app(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 7).frame(height: 22).background(.black.opacity(0.72), in: Capsule()).padding(6)
                     }
                 }
@@ -651,8 +651,8 @@ struct LibraryPosterCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
             if showsCaption {
-                Text(title.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
-                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
+                Text(title.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
+                Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
             }
         }.contentShape(Rectangle()).accessibilityElement(children: .ignore).accessibilityLabel(title.name)
             .accessibilityValue(Self.details(title, score: score, progress: progress, present: present))
@@ -688,17 +688,17 @@ struct LibraryListRow: View {
         HStack(spacing: 12) {
             Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 4) {
-                Text(title.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1)
-                Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)
+                Text(title.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1)
+                Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.app(size: 12)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)
                 HStack(spacing: 6) {
-                    Text(title.status.capitalized).font(.system(size: 11, weight: .medium)).foregroundStyle(Color(themed: "#c5c0cf"))
+                    Text(title.status.capitalized).font(.app(size: 11, weight: .medium)).foregroundStyle(Color(themed: "#c5c0cf"))
                         .padding(.horizontal, 8).frame(height: 20).overlay(Capsule().strokeBorder(HomeStyle.outline(0.16)))
-                    if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.system(size: 12)).foregroundStyle(Color(themed: "#a09aa9")) }
+                    if let score { Text(score.formatted(.number.precision(.fractionLength(1)))).font(.app(size: 12)).foregroundStyle(Color(themed: "#a09aa9")) }
                 }.padding(.top, 2)
             }
             Spacer(minLength: 0)
             if let selected {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity).foregroundStyle(selected ? theme.accent : Color(themed: "#a09aa9"))
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.app(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity).foregroundStyle(selected ? theme.accent : Color(themed: "#a09aa9"))
             } else { DiaryIcon(name: "chevron-right", size: 15).foregroundStyle(Color(themed: "#a09aa9")) }
         }.padding(10).background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(selected == true ? theme.accent.opacity(0.7) : Color.primary.opacity(0.1)))
@@ -716,9 +716,9 @@ struct GlanceView: View {
     @State private var showAll = false
     private func glanceHeading(_ name: String, _ count: Int) -> some View {
         HStack {
-            Text(name).font(.system(size: 24, weight: .bold)).tracking(-0.6)
+            Text(name).font(.app(size: 24, weight: .bold)).tracking(-0.6)
             Spacer()
-            Text(count.formatted()).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
+            Text(count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
                 .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
         }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 2)
     }
@@ -744,8 +744,8 @@ struct GlanceView: View {
                         Menu {
                             Picker("Order", selection: sort) { ForEach(GlanceSort.allCases, id: \.self) { Text($0.label).tag($0) } }
                         } label: {
-                            HStack(spacing: 6) { Text(sort.wrappedValue.label); Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)) }
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            HStack(spacing: 6) { Text(sort.wrappedValue.label); Image(systemName: "chevron.down").font(.app(size: 11, weight: .bold)) }
+                                .font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                 .padding(.horizontal, 14).frame(height: 40).pillSurface(border: nil)
                                 .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                         }.accessibilityLabel("Order").accessibilityValue(sort.wrappedValue.label).accessibilityIdentifier("glance-sort")
@@ -771,7 +771,7 @@ struct GlanceView: View {
                     }
                     if !showAll && continuing.count > 8 {
                         Button { showAll = true } label: {
-                            Text("Show all \(titles.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                            Text("Show all \(titles.count)").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                 .frame(maxWidth: .infinity, minHeight: 54).background(HomeStyle.card, in: Capsule()).overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
                         }.buttonStyle(.springPress).padding(.top, 6).accessibilityIdentifier("glance-show-all")
                     }
@@ -792,7 +792,7 @@ struct GlanceView: View {
     /// One side of the list | grid switch: the chosen one sits on the accent tint.
     private func layoutButton(grid value: Bool, icon: String) -> some View {
         Button { withAnimation(.smooth(duration: 0.28)) { grid = value } } label: {
-            Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+            Image(systemName: icon).font(.app(size: 15, weight: .semibold))
                 .foregroundStyle(grid == value ? HomeStyle.chipText : HomeStyle.secondary)
                 .frame(width: 40, height: 40).background(grid == value ? HomeStyle.chip : .clear, in: Circle())
                 .frame(width: 44, height: 44).contentShape(Circle())

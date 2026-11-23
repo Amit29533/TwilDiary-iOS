@@ -52,7 +52,7 @@ struct AnimeAppearanceButton<Label: View>: View {
                     router.paths[tab, default: NavigationPath()].append(appearance)
                 }
             } catch is CancellationError { }
-            catch { if !Task.isCancelled { failure = error.localizedDescription } }
+            catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
         }
     }
 }

@@ -34,7 +34,7 @@ struct APIKeyCheck: Decodable, Sendable, Equatable { let ok: Bool; let message: 
             keys = page.keys; loaded = true; error = nil
         } catch is CancellationError { }
         catch APIError.rejected(404, _) { self.error = "Your server doesn’t have Settings → APIs yet. It arrives with the next server update."; loaded = true }
-        catch { self.error = error.localizedDescription; loaded = true }
+        catch { self.error = FriendlyError.message(error); loaded = true }
     }
     /// Saves the new key, then asks its service whether it works.
     func save(_ name: String, value: String) async -> Bool {
@@ -49,7 +49,7 @@ struct APIKeyCheck: Decodable, Sendable, Equatable { let ok: Bool; let message: 
             struct Receipt: Decodable { let name: String; let hint: String }
             let _: Receipt = try await store.read("/api/settings/apis/\(name)", method: "PUT", body: ["value": value])
             await load(); await test(name); return true
-        } catch { self.error = error.localizedDescription; return false }
+        } catch { self.error = FriendlyError.message(error); return false }
     }
     func remove(_ name: String) async {
         do {
@@ -62,7 +62,7 @@ struct APIKeyCheck: Decodable, Sendable, Equatable { let ok: Bool; let message: 
             struct Receipt: Decodable { let removed: Bool }
             let _: Receipt = try await store.read("/api/settings/apis/\(name)", method: "DELETE")
             checks[name] = nil; await load()
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = FriendlyError.message(error) }
     }
     func test(_ name: String) async {
         testing.insert(name); defer { testing.remove(name) }
@@ -71,7 +71,7 @@ struct APIKeyCheck: Decodable, Sendable, Equatable { let ok: Bool; let message: 
             if store.isPreview { checks[name] = keys.first { $0.name == name }?.source == "missing" ? APIKeyCheck(ok: false, message: "Not set") : APIKeyCheck(ok: true, message: "Working"); return }
             #endif
             checks[name] = try await store.read("/api/settings/apis/\(name)/test", method: "POST", body: [:])
-        } catch { checks[name] = APIKeyCheck(ok: false, message: error.localizedDescription) }
+        } catch { checks[name] = APIKeyCheck(ok: false, message: FriendlyError.message(error)) }
     }
 
     #if DEBUG

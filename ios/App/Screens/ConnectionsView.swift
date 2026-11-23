@@ -39,7 +39,7 @@ struct ConnectionsView: View {
                         }
                     }
                     if let progress = activity {
-                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary) }.padding(.horizontal, 4)
+                        HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary) }.padding(.horizontal, 4)
                     } else if let note = note ?? lastResult {
                         SettingsFootnote(text: note).accessibilityIdentifier("trackers-note")
                     }
@@ -64,7 +64,7 @@ struct ConnectionsView: View {
                     } else {
                     HStack(spacing: 14) {
                         SettingsTile(symbol: "server.rack")
-                        Text("Your server").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Text("Your server").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         Spacer(minLength: 4)
                         Toggle("", isOn: $server).labelsHidden().tint(theme.accent)
                     }.padding(.horizontal, 15).frame(minHeight: 64).accessibilityIdentifier("connections-server")
@@ -89,7 +89,7 @@ struct ConnectionsView: View {
                             if ThemeStore.current.native {
                                 rowLabel(SettingsTile(symbol: "key.fill"), "All keys", "", value: nil)
                             } else {
-                                Text("All keys").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                                Text("All keys").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
                                     .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 15).contentShape(Rectangle())
                             }
                         }.buttonStyle(.plain).accessibilityIdentifier("settings-apis")
@@ -185,10 +185,10 @@ struct ConnectionsView: View {
                     VStack(alignment: .leading, spacing: native ? 1 : 3) {
                         HStack(spacing: 6) {
                             // Native: a list row's 17 pt title and 13 pt line, as the other settings rows.
-                            Text(tracker.name).font(.system(size: native ? 17 : 16, weight: native ? .semibold : .bold)).foregroundStyle(HomeStyle.primary)
-                            if let plan = profile?.plan { Text("· " + plan).font(.system(size: native ? 17 : 15)).foregroundStyle(HomeStyle.secondary) }
+                            Text(tracker.name).font(.app(size: native ? 17 : 16, weight: native ? .semibold : .bold)).foregroundStyle(HomeStyle.primary)
+                            if let plan = profile?.plan { Text("· " + plan).font(.app(size: native ? 17 : 15)).foregroundStyle(HomeStyle.secondary) }
                             if isMain {
-                                Image(systemName: "checkmark.seal.fill").font(.system(size: 15)).symbolRenderingMode(.palette)
+                                Image(systemName: "checkmark.seal.fill").font(.app(size: 15)).symbolRenderingMode(.palette)
                                     .foregroundStyle(.white, theme.accent).accessibilityHidden(true)
                             }
                         }.lineLimit(1)
@@ -197,7 +197,7 @@ struct ConnectionsView: View {
                                 Circle().fill(native ? Color(uiColor: sync ? .systemGreen : .systemGray) : sync ? Color(themed: "#7fe0b5") : Color(themed: "#8e8e9c"))
                                     .frame(width: 6, height: 6)
                             }
-                            Text(on && !detail.isEmpty && !problem ? detail : status).font(.system(size: native ? 13 : 12))
+                            Text(on && !detail.isEmpty && !problem ? detail : status).font(.app(size: native ? 13 : 12))
                                 .foregroundStyle(problem ? (native ? Color(uiColor: .systemOrange) : Color(themed: "#f5c26b")) : HomeStyle.secondary).lineLimit(1)
                         }
                     }
@@ -219,7 +219,7 @@ struct ConnectionsView: View {
                 Button { Task { await signIn(tracker) } } label: {
                     Group {
                         if signingIn == tracker { ProgressView().controlSize(.small) }
-                        else { Text(problem ? "Reconnect" : "Sign in").font(.system(size: 13, weight: .semibold)).lineLimit(1) }
+                        else { Text(problem ? "Reconnect" : "Sign in").font(.app(size: 13, weight: .semibold)).lineLimit(1) }
                     }.padding(.horizontal, 14).frame(height: 32).foregroundStyle(HomeStyle.chipText).background(HomeStyle.chip, in: Capsule())
                 }.buttonStyle(.plain).disabled(signingIn != nil).accessibilityIdentifier(tracker.rawValue + "-quick-sign-in")
                 }
@@ -240,7 +240,7 @@ struct ConnectionsView: View {
                     Button("Make \(tracker.name) match the diary", systemImage: "arrow.triangle.2.circlepath") { matching = tracker }
                 }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
+                Image(systemName: "ellipsis").font(.app(size: 17, weight: .semibold)).foregroundStyle(.secondary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("\(tracker.name) actions").accessibilityIdentifier(tracker.rawValue + "-actions").padding(.trailing, 6)
         }.background(isMain && !native ? Color(themed: "#1d1934") : .clear)
@@ -263,13 +263,13 @@ struct ConnectionsView: View {
                                 .offset(x: 4, y: 4)
                         }.opacity(on ? 1 : 0.6)
                     VStack(alignment: .leading, spacing: native ? 1 : 3) {
-                        Text("AniList").font(.system(size: native ? 17 : 16, weight: native ? .semibold : .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                        Text("AniList").font(.app(size: native ? 17 : 16, weight: native ? .semibold : .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                         HStack(spacing: 6) {
                             if on {
                                 Circle().fill(native ? Color(uiColor: sync ? .systemGreen : .systemGray) : sync ? Color(themed: "#7fe0b5") : Color(themed: "#8e8e9c"))
                                     .frame(width: 6, height: 6)
                             }
-                            Text(detail).font(.system(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                            Text(detail).font(.app(size: native ? 13 : 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 0)
@@ -282,7 +282,7 @@ struct ConnectionsView: View {
                     Task {
                         signingInAniList = true; defer { signingInAniList = false }
                         do { if try await aniList.signIn(using: webAuthenticationSession) { note = "Signed in to AniList" + (aniList.username.map { " as @" + $0 } ?? "") + "." } }
-                        catch { note = error.localizedDescription }
+                        catch { note = FriendlyError.message(error) }
                     }
                 }.buttonStyle(SettingsPillButtonStyle()).lineLimit(1).disabled(signingInAniList).accessibilityIdentifier("anilist-quick-sign-in")
             }
@@ -292,7 +292,7 @@ struct ConnectionsView: View {
                     Button("Make AniList match the diary", systemImage: "arrow.triangle.2.circlepath") { aniListSync.makeMatch(store: store) }.disabled(!aniList.canSend)
                 }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).foregroundStyle(.secondary)
+                Image(systemName: "ellipsis").font(.app(size: 17, weight: .semibold)).foregroundStyle(.secondary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }.accessibilityLabel("AniList actions").accessibilityIdentifier("anilist-actions").padding(.trailing, 6)
         }
@@ -302,7 +302,7 @@ struct ConnectionsView: View {
     private func avatar(_ path: String?, on: Bool) -> some View {
         ZStack {
             Circle().fill(ThemeStore.current.native ? Color(uiColor: .systemGray4) : Color(themed: "#2a2a31"))
-            Image(systemName: "person.fill").font(.system(size: 20)).foregroundStyle(ThemeStore.current.native ? Color.white : Color(themed: "#8e8e9c"))
+            Image(systemName: "person.fill").font(.app(size: 20)).foregroundStyle(ThemeStore.current.native ? Color.white : Color(themed: "#8e8e9c"))
             // Account pictures live on each service's own host (not TMDB's), so they load directly.
             if let path, let url = URL(string: path), url.scheme == "https" {
                 AsyncImage(url: url, transaction: Transaction(animation: .smooth(duration: 0.25))) { phase in
@@ -319,7 +319,7 @@ struct ConnectionsView: View {
                 await profiles.refresh(tracker, store: store, force: true)
                 note = "Signed in to \(tracker.name)" + (profiles.account(tracker)?.name.map { " as " + $0 } ?? "") + "."
             }
-        } catch { note = error.localizedDescription }
+        } catch { note = FriendlyError.message(error) }
     }
     /// The main tracker holds the diary: the diary is shown from it, and edits go to it.
     private func makeMain(_ tracker: MainTracker) {
@@ -348,20 +348,20 @@ struct ConnectionsView: View {
             // Native: as iOS Settings, the title alone with its value and chevron, 52 pt like every row.
             HStack(spacing: 12) {
                 leading.frame(width: 30, height: 30).clipShape(RoundedRectangle(cornerRadius: 7))
-                Text(title).font(.system(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(title).font(.app(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                 Spacer(minLength: 4)
-                if let value { Text(value).font(.system(size: 17)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                if let value { Text(value).font(.app(size: 17)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 SettingsChevron()
             }.settingsRowFrame().contentShape(Rectangle())
         } else {
             HStack(spacing: 14) {
                 leading
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    if !subtitle.isEmpty { Text(subtitle).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
+                    Text(title).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    if !subtitle.isEmpty { Text(subtitle).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(2) }
                 }
                 Spacer(minLength: 4)
-                if let value { Text(value).font(.system(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                if let value { Text(value).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 SettingsChevron()
             }.padding(.horizontal, 15).frame(minHeight: 64).contentShape(Rectangle())
         }

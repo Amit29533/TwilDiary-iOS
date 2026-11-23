@@ -208,16 +208,16 @@ struct JellyTrackList: View {
                         Group {
                             if now { Image(systemName: "speaker.wave.2.fill").foregroundStyle(ThemeStore.accent) }
                             else { Text(track.IndexNumber.map(String.init) ?? "·").foregroundStyle(HomeStyle.secondary) }
-                        }.font(.system(size: 13, weight: .semibold)).monospacedDigit().frame(width: 26)
+                        }.font(.app(size: 13, weight: .semibold)).monospacedDigit().frame(width: 26)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(track.Name ?? "Song").font(.system(size: 15, weight: now ? .semibold : .regular)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            Text(track.Name ?? "Song").font(.app(size: 15, weight: now ? .semibold : .regular)).foregroundStyle(HomeStyle.primary).lineLimit(1)
                             if let artist = JellyMusic.artist(track) {
-                                Text(artist).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                                Text(artist).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                             }
                         }
                         Spacer(minLength: 8)
                         if let seconds = track.RunTimeTicks.map({ Double($0) / 10_000_000 }), seconds > 0 {
-                            Text(JellyPlayerView.clock(seconds)).font(.system(size: 12)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                            Text(JellyPlayerView.clock(seconds)).font(.app(size: 12)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
                         }
                     }.padding(.horizontal, 6).frame(minHeight: 52).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("jellyspace-track-" + track.Id)
@@ -248,16 +248,16 @@ struct JellyMiniPlayer: View {
                     JellyImage(url: JellyMusic.artwork(track, base: client.base))
                 }.frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(track.Name ?? "Song").font(.system(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    if let artist = JellyMusic.artist(track) { Text(artist).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                    Text(track.Name ?? "Song").font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    if let artist = JellyMusic.artist(track) { Text(artist).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                 }
                 Spacer(minLength: 6)
                 Button { music.toggle() } label: {
-                    Image(systemName: music.playing ? "pause.fill" : "play.fill").font(.system(size: 20, weight: .semibold))
+                    Image(systemName: music.playing ? "pause.fill" : "play.fill").font(.app(size: 20, weight: .semibold))
                         .foregroundStyle(HomeStyle.primary).frame(width: 40, height: 40).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel(music.playing ? "Pause" : "Play")
                 Button { music.next() } label: {
-                    Image(systemName: "forward.fill").font(.system(size: 17, weight: .semibold))
+                    Image(systemName: "forward.fill").font(.app(size: 17, weight: .semibold))
                         .foregroundStyle(HomeStyle.primary).frame(width: 40, height: 40).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Next song")
             }
@@ -291,7 +291,7 @@ struct JellyNowPlaying: View {
                     case .artwork:
                         ZStack {
                             Rectangle().fill(HomeStyle.card)
-                            Image(systemName: "music.note").font(.system(size: 60)).foregroundStyle(HomeStyle.secondary)
+                            Image(systemName: "music.note").font(.app(size: 60)).foregroundStyle(HomeStyle.secondary)
                             JellyImage(url: JellyMusic.artwork(track, base: client.base))
                         }
                         .aspectRatio(1, contentMode: .fit).frame(maxWidth: 320).clipShape(RoundedRectangle(cornerRadius: 18))
@@ -311,9 +311,9 @@ struct JellyNowPlaying: View {
                     lyricsLoading = false
                 }
                 VStack(spacing: 4) {
-                    Text(track.Name ?? "Song").font(.system(size: 21, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.center)
+                    Text(track.Name ?? "Song").font(.app(size: 21, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.center)
                     Text([JellyMusic.artist(track), track.Album].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        .font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                 }
                 VStack(spacing: 4) {
                     Slider(value: Binding(get: { scrub ?? music.time }, set: { scrub = $0 }), in: 0...max(music.duration, 1)) { editing in
@@ -324,7 +324,7 @@ struct JellyNowPlaying: View {
                         Text(JellyPlayerView.clock(scrub ?? music.time))
                         Spacer()
                         Text("-" + JellyPlayerView.clock(max(0, music.duration - (scrub ?? music.time))))
-                    }.font(.system(size: 12)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                    }.font(.app(size: 12)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
                 }.padding(.horizontal, 8)
                 HStack(spacing: 44) {
                     control("backward.fill", label: "Previous song", size: 26) { music.previous() }
@@ -338,7 +338,7 @@ struct JellyNowPlaying: View {
                     toggle("list.bullet", label: "Up Next", on: view == .queue) { view = view == .queue ? .artwork : .queue }
                 }
                 Button("Stop") { music.stop(); dismiss() }
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("jellyspace-music-stop")
+                    .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.secondary).accessibilityIdentifier("jellyspace-music-stop")
             }
             Spacer(minLength: 10)
         }
@@ -347,7 +347,7 @@ struct JellyNowPlaying: View {
     }
     private func toggle(_ symbol: String, label: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(on ? theme.accent : HomeStyle.secondary)
+            Image(systemName: symbol).font(.app(size: 18, weight: .semibold)).foregroundStyle(on ? theme.accent : HomeStyle.secondary)
                 .frame(width: 44, height: 44).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(label).accessibilityAddTraits(on ? .isSelected : [])
     }
@@ -360,9 +360,9 @@ struct JellyNowPlaying: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if lyricsLoading && lyrics.isEmpty { ProgressView().frame(maxWidth: .infinity) }
-                    else if lyrics.isEmpty { Text("No lyrics").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary) }
+                    else if lyrics.isEmpty { Text("No lyrics").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary) }
                     ForEach(lyrics.indices, id: \.self) { index in
-                        Text(lyrics[index].Text ?? "").font(.system(size: 19, weight: .semibold))
+                        Text(lyrics[index].Text ?? "").font(.app(size: 19, weight: .semibold))
                             .foregroundStyle(!timed || index == now ? HomeStyle.primary : HomeStyle.secondary.opacity(0.7))
                             .frame(maxWidth: .infinity, alignment: .leading).id(index)
                     }
@@ -377,13 +377,13 @@ struct JellyNowPlaying: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 let upcoming = Array(music.queue.indices.dropFirst(music.index + 1))
-                if upcoming.isEmpty { Text("Nothing after this").font(.system(size: 15)).foregroundStyle(HomeStyle.secondary).padding(.vertical, 8) }
+                if upcoming.isEmpty { Text("Nothing after this").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).padding(.vertical, 8) }
                 ForEach(upcoming, id: \.self) { position in
                     let track = music.queue[position]
                     Button { music.jump(to: position) } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(track.Name ?? "Song").font(.system(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                            if let artist = JellyMusic.artist(track) { Text(artist).font(.system(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
+                            Text(track.Name ?? "Song").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                            if let artist = JellyMusic.artist(track) { Text(artist).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1) }
                         }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
@@ -392,7 +392,7 @@ struct JellyNowPlaying: View {
     }
     private func control(_ symbol: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: size, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+            Image(systemName: symbol).font(.app(size: size, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                 .frame(minWidth: 52, minHeight: 52).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(label)
     }

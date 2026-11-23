@@ -148,7 +148,7 @@ private struct SearchTVDBLists: View {
             nextPage = result.hasNext ? page + 1 : nil
             if page > 0 { visibleCount += 24 }
         } catch is CancellationError { }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 
     private static func nameKey(_ name: String) -> String {
@@ -342,7 +342,7 @@ struct SearchTVDBFranchisePage: View {
             listArt = result.artwork
             entries = result.entries
         } catch is CancellationError { }
-        catch { if !Task.isCancelled { failure = error.localizedDescription } }
+        catch { if !Task.isCancelled { failure = FriendlyError.message(error) } }
     }
 }
 

@@ -6,7 +6,7 @@ extension DiaryStore {
     /// the service holding your diary (each play by its own id).
     func removeWatchHistory(_ title: MediaTitle) async {
         guard diaryFromService else { return }
-        do { try await removeAllPlays(title); undoLabel = nil } catch { self.error = error.localizedDescription }
+        do { try await removeAllPlays(title); undoLabel = nil } catch { self.error = FriendlyError.message(error) }
     }
     /// The status menu on a show detail belongs to the selected season.
     @discardableResult func setSeasonStatus(_ title: MediaTitle, season: Int, status: String, watchedAt: Date) async -> Bool {

@@ -217,7 +217,7 @@ import NaturalLanguage
                     await translator.store([:], batch: batch, generation: generation)
                     return
                 }
-                await translator.failed(batch, generation: generation, reason: error.localizedDescription)
+                await translator.failed(batch, generation: generation, reason: FriendlyError.message(error))
                 return
             }
         }

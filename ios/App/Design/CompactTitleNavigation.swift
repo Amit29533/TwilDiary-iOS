@@ -28,7 +28,7 @@ struct CompactTitleNavigation: View {
     var body: some View {
         HStack(spacing: 8) {
             Artwork(path: poster, title: name, initialsOnly: false).frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 9))
-            Text(name).font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+            Text(name).font(.app(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
         }.frame(height: 28)
             .frame(maxWidth: pageWidth > 0 ? max(120, pageWidth - 160) : nil)
             .opacity(Double(progress))
@@ -52,7 +52,7 @@ struct ScrollLinkedBarTitle: View {
                 .accessibilityHidden(progress >= 0.5)
             Text(scrolled).opacity(Double(progress)).offset(y: reduceMotion ? 0 : (1 - progress) * 6)
                 .accessibilityHidden(progress < 0.5)
-        }.font(.system(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+        }.font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
             .accessibilityAddTraits(.isHeader)
     }
     /// From the heading's bottom edge on screen: 0 while it's in view, 1 once it's under the bar.
@@ -90,11 +90,11 @@ struct TitleMoreButtonLabel: View {
     /// Elsewhere (glass: false): the dark round button.
     var glass = true
     var body: some View {
-        let icon = Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+        let icon = Image(systemName: "ellipsis").font(.app(size: 17, weight: .bold)).foregroundStyle(.white)
             .frame(width: 44, height: 44).contentShape(Circle())
         if glass {
             // In the bar, the system's glass (same as the back button) draws around it.
-            Image(systemName: "ellipsis").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+            Image(systemName: "ellipsis").font(.app(size: 17, weight: .bold)).foregroundStyle(.white)
         } else {
             icon.background(Color(themed: "#2b2b30").opacity(0.94), in: Circle())
                 .overlay(Circle().strokeBorder(HomeStyle.outline(0.14), lineWidth: 0.67))

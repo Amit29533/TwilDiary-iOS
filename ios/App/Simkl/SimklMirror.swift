@@ -348,7 +348,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
                 return true
             }
         } catch {
-            delay(batch, by: nil, counting: true, problem: error.localizedDescription)
+            delay(batch, by: nil, counting: true, problem: FriendlyError.message(error))
             return false
         }
     }

@@ -72,7 +72,7 @@ struct AniListSyncAPI: Sendable {
         request.httpBody = try Self.body(text, variables)
         let data: Data, response: URLResponse
         do { (data, response) = try await URLSession.shared.data(for: request) }
-        catch { throw Failure.unavailable(error.localizedDescription) }
+        catch { throw Failure.unavailable(FriendlyError.message(error)) }
         let http = response as? HTTPURLResponse, status = http?.statusCode ?? 0
         if status == 429 { throw Failure.busy(Int(http?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 60) }
         if status >= 500 || status == 0 { throw Failure.unavailable("AniList didn’t answer (HTTP \(status)).") }
@@ -393,7 +393,7 @@ struct AniListSyncAPI: Sendable {
                 }
                 break
             } catch {
-                lastProblem = error.localizedDescription
+                lastProblem = FriendlyError.message(error)
                 break
             }
             AniListSyncStorage.save(waiting, "waiting.json")
@@ -558,7 +558,7 @@ struct AniListSyncAPI: Sendable {
             case .busy(let seconds): checkProblem = "AniList asked to slow down. Try again in \(seconds) s."
             case .unavailable(let message), .refused(let message): checkProblem = message
             }
-        } catch { checkProblem = error.localizedDescription }
+        } catch { checkProblem = FriendlyError.message(error) }
     }
 
     /// What one title would take from AniList, with TMDB's air days fetched for its seasons when
@@ -654,7 +654,7 @@ struct AniListSyncAPI: Sendable {
                 let api = AniListSyncAPI(token: token)
                 for listId in extra {
                     do { try await pace(); _ = try await api.call("mutation($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }", ["id": listId]) }
-                    catch { lastProblem = "Force Match stopped taking entries off AniList: " + error.localizedDescription; break }
+                    catch { lastProblem = "Force Match stopped taking entries off AniList: " + FriendlyError.message(error); break }
                 }
             }
             await resume(); await check(store: store)
