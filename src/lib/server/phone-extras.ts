@@ -5,7 +5,10 @@ import { ApiError } from './api.ts';
  * app reads the newest copy, merges it with its own (newer change wins) and saves the result.
  * One row; the body is the app's JSON, kept as text and never interpreted here. */
 const ROW = 'owner';
-export const PHONE_EXTRAS_LIMIT = 4 * 1024 * 1024;
+/** In UTF-8 bytes, with room for the row's other columns: D1 keeps at most 2,000,000 bytes in one
+ * string or row, so the 4 MB this allowed (counted in JavaScript characters) could pass here and then
+ * fail to store, and the extras stopped syncing. */
+export const PHONE_EXTRAS_LIMIT = 1_900_000;
 
 /** The table, made the first time it's used in this isolate (the same as migration 0027, which
  * is safe to apply after it): the endpoint needs no separate migration step to start working. */
@@ -29,8 +32,9 @@ export async function readPhoneExtras(db: D1Database): Promise<{ body: string | 
 
 export async function savePhoneExtras(db: D1Database, input: unknown, now = new Date()): Promise<{ updatedAt: string }> {
   const body = typeof (input as { body?: unknown } | null)?.body === 'string' ? (input as { body: string }).body : '';
-  if (!body || body.length > PHONE_EXTRAS_LIMIT)
-    throw new ApiError(400, 'invalid_input', 'Send the extras as JSON text within 4 MB.');
+  if (!body) throw new ApiError(400, 'invalid_input', 'Send the extras as JSON text.');
+  if (new TextEncoder().encode(body).byteLength > PHONE_EXTRAS_LIMIT)
+    throw new ApiError(413, 'too_large', 'The phone’s extras are larger than your server can keep in one piece (1.9 MB).');
   try {
     const parsed: unknown = JSON.parse(body);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object');

@@ -224,7 +224,50 @@ enum PendingMerge {
     init(file: URL = URL.applicationSupportDirectory.appending(path: "Trakt/library.json")) {
         self.traktFile = file
         self.file = UserDefaults.standard.bool(forKey: TraktDirectStore.localKey) ? Self.localFile : file
-        library = (try? Data(contentsOf: self.file)).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
+        load()
+    }
+    /// The saved copy, read. A missing file is a new diary; one that's there but can't be read is a
+    /// different thing: on this phone it's the only copy, so it's left exactly as it is (with a copy
+    /// beside it) and nothing is saved over it. A damaged file, or one from a newer build, used to be
+    /// replaced by an empty diary the moment On this phone was chosen.
+    private func load() {
+        switch Self.read(file) {
+        case .found(let saved):
+            library = saved
+            if error == Self.unreadable { error = nil }
+        case .absent:
+            library = nil
+            if localOnly {
+                let empty = TraktLibrary(fetchedAt: Date.now.formatted(.iso8601))
+                library = empty; save(empty)
+            }
+        case .unreadable:
+            library = nil
+            guard localOnly else { return }
+            Self.keepCopy(of: file)
+            error = Self.unreadable
+        }
+    }
+    private static let unreadable = "Your diary on this phone couldn’t be read, so it’s been left as it was. Nothing new is saved over it; try again after updating the app."
+    private enum Saved { case found(TraktLibrary), absent, unreadable }
+    private static func read(_ url: URL) -> Saved {
+        guard FileManager.default.fileExists(atPath: url.path) else { return .absent }
+        guard let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode(TraktLibrary.self, from: data) else { return .unreadable }
+        return .found(saved)
+    }
+    /// The unreadable file's bytes, copied beside it once (library.unreadable.json).
+    private static func keepCopy(of url: URL) {
+        let copy = url.deletingPathExtension().appendingPathExtension("unreadable.json")
+        guard !FileManager.default.fileExists(atPath: copy.path) else { return }
+        try? FileManager.default.copyItem(at: url, to: copy)
+    }
+    /// Read again when it couldn't be before: the app started in the background while the phone was
+    /// locked (the file is protected until it's unlocked), or the file was unreadable then. True when
+    /// it was read now.
+    @discardableResult func reloadIfUnread() -> Bool {
+        guard library == nil, localOnly, case .found = Self.read(file) else { return false }
+        load()
+        return true
     }
     /// Switches between the on-this-phone diary and Trakt's copy (each keeps its own file).
     func useLocal(_ on: Bool) {
@@ -233,11 +276,8 @@ enum PendingMerge {
         generation = UUID(); pending = []; token = nil; report = nil; plan = nil
         resetSender()
         file = on ? Self.localFile : traktFile
-        library = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(TraktLibrary.self, from: $0) }
-        if on, library == nil {
-            let empty = TraktLibrary(fetchedAt: Date.now.formatted(.iso8601))
-            library = empty; save(empty)
-        }
+        if !on, error == Self.unreadable { error = nil }
+        load()
     }
 
     func check(store: DiaryStore) async {
@@ -345,10 +385,27 @@ enum PendingMerge {
         return (movies.0 + shows.0, movies.1 + shows.1, movies.2 + shows.2)
     }
 
-    /// Written in the background (a run of edits writes once); the copy on screen is the record
-    /// until then, and the next check saves it again if a write fails.
+    /// Written in the background. Trakt's copy gathers a run of edits into one write (the next check
+    /// saves it again if a write fails). On this phone the file is the only copy: each edit is written
+    /// at once, and a write that fails is said and tried again (the app's next trip to the background,
+    /// or the next edit).
     private func save(_ library: TraktLibrary) {
-        BackgroundFiles.save(library, to: file, protected: true, excludeFolderFromBackup: true)
+        unsaved = false
+        guard localOnly else {
+            BackgroundFiles.save(library, to: file, protected: true, excludeFolderFromBackup: true)
+            return
+        }
+        BackgroundFiles.save(library, to: file, protected: true, excludeFolderFromBackup: true, delay: .zero) { [weak self] failure in
+            guard let self, self.localOnly else { return }
+            self.unsaved = true
+            self.error = "Your latest change couldn’t be saved on this phone (" + FriendlyError.message(failure) + "). It’s tried again."
+        }
+    }
+    @ObservationIgnored private var unsaved = false
+    /// A write on this phone that failed, tried again.
+    func saveIfUnsaved() {
+        guard unsaved, let library else { return }
+        save(library)
     }
     // MARK: Phase 2: make Trakt match the diary
 

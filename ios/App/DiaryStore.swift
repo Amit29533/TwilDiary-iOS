@@ -268,7 +268,9 @@ import TwilDiaryCore
                 applyDiarySource()
             }
         }
-        indexWorkspace()
+        // Not again when the diary was just built and indexed above (opening a phone-held diary indexed
+        // the same workspace twice, on the main thread, under the splash).
+        if indexedRevision != homeWorkspaceRevision { indexWorkspace() }
     }
     /// Opens the app on Trakt alone: after a Trakt sign-in when your server can't be reached
     /// (Cloudflare Access in front of it), or by choice. Nothing is read from the server.
@@ -501,7 +503,9 @@ import TwilDiaryCore
     /// Trakt holds the diary and the phone reads it (signed in here, with a TMDB key): episode
     /// lists come from TMDB on the phone.
     var phoneHoldsDiary: Bool { diaryFromTrakt && traktSignedInOnPhone && TMDBDirect.token(self) != nil }
-    private func indexWorkspace() { apply(WorkspaceIndex(workspace), changed: nil) }
+    private func indexWorkspace() { apply(WorkspaceIndex(workspace), changed: nil); indexedRevision = homeWorkspaceRevision }
+    /// The diary revision the index was last built for (see the end of init).
+    @ObservationIgnored private var indexedRevision: UUID?
     /// Derived lookups for a snapshot are computed on a background executor. Card
     /// revision diffs are computed there too, against the inputs current at start;
     /// if those inputs changed meanwhile, `apply` recomputes the diff on the main actor.

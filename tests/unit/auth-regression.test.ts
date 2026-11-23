@@ -40,7 +40,8 @@ test('persistent auth throttle rejects the eleventh address attempt and distribu
   try {
     for (let i = 0; i < 10; i++) await consumeSignInAttempt({DB: f.binding}, 'fixture-ip', now);
     await assert.rejects(consumeSignInAttempt({DB: f.binding}, 'fixture-ip', now), {status: 429});
-    for (let i = 0; i < 89; i++) await consumeSignInAttempt({DB: f.binding}, 'fixture-' + i, now);
+    // The refused eleventh didn't spend the global budget (10 of 100 so far): 90 more fill it.
+    for (let i = 0; i < 90; i++) await consumeSignInAttempt({DB: f.binding}, 'fixture-' + i, now);
     await assert.rejects(consumeSignInAttempt({DB: f.binding}, 'new-fixture', now), {status: 429});
     const rows = f.sqlite.prepare('SELECT id FROM auth_attempts').all();
     assert.equal(JSON.stringify(rows).includes('fixture-ip'), false);

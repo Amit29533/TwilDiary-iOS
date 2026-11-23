@@ -113,7 +113,9 @@ struct JellyfinEntry: Identifiable, Hashable, Codable, Sendable {
     /// `server`: the server's time for this list (to ask "unchanged?"); `uploaded`: a digest of the
     /// list last sent, so an unchanged list is never written to the server again.
     private struct Saved: Codable { let at: Date; let personal: Int; let entries: [JellyfinEntry]; var server: String?; var uploaded: String? }
-    private(set) var entries: [JellyfinEntry] = []
+    private(set) var entries: [JellyfinEntry] = [] { didSet { revision += 1 } }
+    /// Goes up each time the list changes (what a result worked out from it is kept by).
+    private(set) var revision = 0
     private(set) var personal = 0
     private(set) var savedAt: Date?
     private var server: String?

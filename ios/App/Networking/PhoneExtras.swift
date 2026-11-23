@@ -165,10 +165,14 @@ import TwilDiaryCore
             if !entry.isEmpty { entry.at = .now; merged[key] = entry }
         }
         entries = merged
-        let known = Set(locations.map(\.id))
+        // Each location once by its id: a backup carries the phone's copy and the archive's, with the same
+        // id, and both were added (a diary with two of one location breaks its own integrity rule). The
+        // phone's copy wins: it's already filed under the phone's key for its title. A duplicate an
+        // earlier restore left is dropped too.
         let fromArchive = archive.locations.compactMap { location in keyForID[location.titleId].map { location.moved(to: $0) } }
-        let added = ((backup?.locations ?? []) + fromArchive).filter { !known.contains($0.id) }
-        if !added.isEmpty { locations += added; changed[Part.locations.rawValue] = .now }
+        var seen = Set<String>()
+        let unique = (locations + (backup?.locations ?? []) + fromArchive).filter { seen.insert($0.id).inserted }
+        if unique.count != locations.count || unique.map(\.id) != locations.map(\.id) { locations = unique; changed[Part.locations.rawValue] = .now }
         save()
         if let favourites = backup?.favourites { FavouritesStore.shared.merge(favourites) }
         if let trash = backup?.trash { PhoneTrash.shared.merge(trash) }

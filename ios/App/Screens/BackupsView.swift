@@ -186,19 +186,22 @@ struct BackupsView: View {
     /// Puts a backup back where your diary lives (Trakt, the diary on this phone, or the server's),
     /// merging, so nothing newer is lost. Returns what to tell you.
     static func restore(_ archive: DiaryExport, phone: PhoneExtras.Backup? = nil, store: DiaryStore) async throws -> String {
+        // The backup read and a place to put it found before anything on the phone changes: a backup
+        // from a newer build, or no service to restore into, used to fail only after the phone's tags,
+        // favourites and Trash had already been merged.
+        let incoming = try archive.merged(into: Workspace())
+        let tracker = store.traktHoldsDiary ? nil : store.diaryFromTracker
+        guard store.traktHoldsDiary || tracker != nil else {
+            if let service = store.diaryService {
+                throw APIError.message("Restoring a backup isn’t available yet while \(service.name) holds your diary.")
+            }
+            throw APIError.message("Sign in to Trakt, MDBList or WeTrakr, or choose On this phone, to restore a backup.")
+        }
         // No server: what the service can't hold comes back onto the phone (merged, before the
         // service's part, so the rebuilt diary shows it).
         if store.phoneOnly { PhoneExtras.shared.restore(phone, archive: archive) }
-        if store.traktHoldsDiary {
-            return try await TraktDirectStore.shared.restore(try archive.merged(into: Workspace()), store: store)
-        }
-        if let tracker = store.diaryFromTracker {
-            return try await TrackerPreviewStore.shared.restore(tracker, try archive.merged(into: Workspace()), store: store)
-        }
-        if let service = store.diaryService {
-            throw APIError.message("Restoring a backup isn’t available yet while \(service.name) holds your diary.")
-        }
-        throw APIError.message("Sign in to Trakt, MDBList or WeTrakr, or choose On this phone, to restore a backup.")
+        if let tracker { return try await TrackerPreviewStore.shared.restore(tracker, incoming, store: store) }
+        return try await TraktDirectStore.shared.restore(incoming, store: store)
     }
     @discardableResult static func save(store: DiaryStore, label: String) async throws -> BackupsView.Summary {
         let body = try await snapshot(store: store, label: label)

@@ -54,6 +54,13 @@ import TwilDiaryCore
             return URL(string: address)!
         }
         var keysPageName: String { switch self { case .gemini: "Google AI Studio"; case .groq: "GroqCloud"; case .requesty: "Requesty" } }
+        var keyAdvice: String {
+            switch self {
+            case .gemini: "Get a free key at Google AI Studio and paste it here. Keys from other Google accounts share the load."
+            case .groq: "Get a free key at GroqCloud and paste it here. Groq answers when Gemini can’t."
+            case .requesty: "Get a key at Requesty and paste it here. Requesty answers when Gemini and Groq can’t."
+            }
+        }
         /// Where an OpenAI-style service's keys live in the Keychain, and its turn counter.
         var account: String { rawValue + ".apiKeys" }
         var rotation: String { rawValue + ".nextKey" }
@@ -716,7 +723,8 @@ struct GeminiKeySheet: View {
                         Text("Powers AI search and CineMind").font(.app(size: 13)).foregroundStyle(.secondary)
                     }
                 }
-                Text(service == .gemini ? "Get a free key at Google AI Studio and paste it here. Keys from other Google accounts share the load." : "Get a free key at GroqCloud and paste it here. Groq answers when Gemini can’t.")
+                // Each service its own words (Requesty's sheet told you to get a GroqCloud key).
+                Text(service.keyAdvice)
                     .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
                 Button("Open " + service.keysPageName) { openURL(service.keysPage) }
                     .font(.app(size: 15, weight: .semibold))

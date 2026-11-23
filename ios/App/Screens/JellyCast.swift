@@ -35,7 +35,7 @@ import GoogleCast
     /// The file (Jellyfin's media source) the TV plays, from its reports. The server keeps to a chosen
     /// audio or subtitle track only when the request names the file too; without it, it went back to the
     /// file's default audio (English) every time.
-    @ObservationIgnored private var mediaSourceID: String?
+    @ObservationIgnored private(set) var mediaSourceID: String?
     /// A track just chosen on the phone, and when: the TV's reports of the old one are passed over until
     /// it plays the new one (they set the menu back while the server made the new stream).
     @ObservationIgnored private var pendingAudio: (index: Int, at: Date)?
@@ -47,16 +47,28 @@ import GoogleCast
     @ObservationIgnored private var reportedAt = Date.now
     /// Something went wrong on the TV ("couldn't play this"), for the remote to show.
     var problem: String?
-    /// Where the phone's player was as casting began: the TV starts there.
-    @ObservationIgnored var handoff: (id: String, seconds: Double)?
+    /// Where the phone's player was as it closed, which version it played, and when: casting that video
+    /// within two minutes starts there (an older one isn't used: Jellyfin's own place is newer then).
+    @ObservationIgnored var handoff: (id: String, seconds: Double, source: String?, at: Date)?
+    /// A video chosen while the line to the TV wasn't open yet (it opens a moment after the TV is
+    /// picked, once Jellyfin's app has started on it): sent as soon as it is.
+    @ObservationIgnored private var waiting: (item: JellyfinClient.Item, seconds: Double, queue: [JellyfinClient.Item], source: String?)?
 
     @ObservationIgnored private var channel: JellyCastChannel?
     @ObservationIgnored private var server: TVFields?
+    /// How many episodes after the one played the TV is sent (the rest of a season, up to this: it stopped
+    /// after 20, and Cast messages have room for this many).
+    static let queueLength = 100
     /// The fields being made (the sign-in may take a moment): a second ask waits for the same one.
     @ObservationIgnored private var making: Task<TVFields?, Never>?
     /// What every message carries: the server (an address the TV can reach), the sign-in, this device.
     private struct TVFields: Sendable {
         let user: String, token: String, address: String, serverID: String, version: String
+        /// Whose sign-in this is (the server, the user and the phone's own sign-in to it).
+        let owner: String
+    }
+    private static func owner(_ client: JellyfinClient, user: String?) -> String {
+        client.base.absoluteString + "|" + (user ?? "") + "|" + String(client.key.hashValue)
     }
     private static let tvTokenKey = "tv-token", tvForKey = "jellyspace.cast.tvSignInFor"
     /// The diary (set as the app starts), and the video marked watched in it last.
@@ -82,19 +94,36 @@ import GoogleCast
 
     /// Plays this on the TV from a point (an episode with the rest of its season after it, so Next
     /// Episode and autoplay work there).
-    func play(_ item: JellyfinClient.Item, from seconds: Double, queue: [JellyfinClient.Item] = []) async {
+    /// `source`: the version of a film chosen on the phone (Jellyfin's media source); nil, its first.
+    func play(_ item: JellyfinClient.Item, from seconds: Double, queue: [JellyfinClient.Item] = [], source: String? = nil) async {
         guard connected, let client = JellySpace.client, let base = await serverFields(client) else { return }
         let serverID = base.serverID
         let stubs = ([item] + queue.filter { $0.Id != item.Id }).map { entry -> [String: Any] in
             ["Id": entry.Id, "ServerId": serverID, "Name": entry.Name ?? "", "Type": entry.kind, "MediaType": "Video", "IsFolder": false]
         }
-        send("PlayNow", options: ["items": stubs, "startPositionTicks": Int64(max(0, seconds) * 10_000_000), "startIndex": 0], base: base)
+        var options: [String: Any] = ["items": stubs, "startPositionTicks": Int64(max(0, seconds) * 10_000_000), "startIndex": 0]
+        if let source { options["mediaSourceId"] = source }
+        // Only playing once the TV has it: a message sent before its line was open went nowhere, yet the
+        // video counted as playing (the phone stopped, the TV stayed on its pictures, and opening the
+        // remote again didn't send it, the video being "on" already). Now it waits for the line.
+        guard send("PlayNow", options: options, base: base) else {
+            waiting = (item, seconds, queue, source)
+            let chosen = item.Id
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(20))
+                guard let self, self.waiting?.item.Id == chosen else { return }
+                self.waiting = nil
+                self.problem = "The TV didn’t answer. Try casting again."
+            }
+            return
+        }
+        waiting = nil
         itemID = item.Id
         title = item.kind == "Episode" ? (item.Name ?? "") : (item.Name ?? "")
         seriesName = item.SeriesName
         seriesID = item.SeriesId
         sent = [item] + queue.filter { $0.Id != item.Id }
-        audioTrack = nil; subtitleTrack = nil; mediaSourceID = nil; pendingAudio = nil; pendingSubtitle = nil
+        audioTrack = nil; subtitleTrack = nil; mediaSourceID = source; pendingAudio = nil; pendingSubtitle = nil
         duration = item.RunTimeTicks.map { Double($0) / 10_000_000 } ?? 0
         reported = seconds; reportedAt = .now; paused = false
         refreshNowPlaying()
@@ -161,7 +190,7 @@ import GoogleCast
             if item.kind == "Episode", let series = item.SeriesId, let season = item.SeasonId,
                let episodes = try? await client.episodes(of: series, season: season, user: await JellyfinUser.id(client)),
                let at = episodes.firstIndex(where: { $0.Id == id }) {
-                items += episodes[(at + 1)...].prefix(20)
+                items += episodes[(at + 1)...].prefix(Self.queueLength)
             }
         }
         let stubs = items.map { entry -> [String: Any] in
@@ -197,19 +226,46 @@ import GoogleCast
             send(name, options: options, base: base)
         }
     }
-    private func send(_ name: String, options: [String: Any], base: TVFields) {
+    /// True once the message has gone to the TV (false: its line isn't open, or the send failed).
+    @discardableResult private func send(_ name: String, options: [String: Any], base: TVFields) -> Bool {
         var message: [String: Any] = ["userId": base.user, "deviceId": JellyDevice.id, "accessToken": base.token, "serverAddress": base.address,
                                       "serverId": base.serverID, "serverVersion": base.version]
         message["command"] = name
         message["options"] = options
         message["receiverName"] = deviceName ?? ""
-        guard let data = try? JSONSerialization.data(withJSONObject: message), let text = String(data: data, encoding: .utf8) else { return }
-        channel?.sendTextMessage(text, error: nil)
+        guard let channel, channel.isConnected, let data = try? JSONSerialization.data(withJSONObject: message),
+              let text = String(data: data, encoding: .utf8) else { return false }
+        return channel.sendTextMessage(text, error: nil)
+    }
+    /// The line to the TV opened: a video chosen before it goes now.
+    fileprivate func channelOpened() {
+        Task { [self] in
+            // The introduction sent as the TV was picked may have gone before the line opened.
+            if let client = JellySpace.client, let base = await serverFields(client) { send("Identify", options: [:], base: base) }
+            if let waiting { await play(waiting.item, from: waiting.seconds, queue: waiting.queue, source: waiting.source) }
+        }
+    }
+    /// Whether the TV has an episode after the one it plays, from what it was sent (nil: not known, as
+    /// after the app opened again).
+    var hasQueuedNext: Bool? {
+        guard let id = itemID, let at = sent.firstIndex(where: { $0.Id == id }) else { return nil }
+        return at + 1 < sent.count
     }
 
     /// What every message carries. Made once a session.
     private func serverFields(_ client: JellyfinClient) async -> TVFields? {
-        if let server { return server }
+        if let server {
+            if server.owner == Self.owner(client, user: await JellyfinUser.id(client)) { return server }
+            // Signed in to Jellyfin as someone else (or to another server) since the TV was signed in: it
+            // went on getting the earlier account's sign-in. What it plays was that account's, so casting
+            // stops; the TV is signed in afresh the next time.
+            self.server = nil
+            if itemID != nil {
+                problem = "Casting stopped: you’re signed in to Jellyfin as someone else now."
+                GCKCastContext.sharedInstance().sessionManager.endSessionAndStopCasting(true)
+                return nil
+            }
+        }
         if let making { return await making.value }
         let task = Task { await self.makeFields(client) }
         making = task
@@ -237,7 +293,8 @@ import GoogleCast
             address = local
         }
         if address.hasSuffix("/") { address.removeLast() }
-        let fields = TVFields(user: user, token: token, address: address, serverID: info?.Id ?? "", version: info?.Version ?? "")
+        let fields = TVFields(user: user, token: token, address: address, serverID: info?.Id ?? "", version: info?.Version ?? "",
+                              owner: Self.owner(client, user: user))
         server = fields
         return fields
     }
@@ -278,6 +335,7 @@ import GoogleCast
         deviceName = nil; itemID = nil; title = ""; seriesName = nil; seriesID = nil; duration = 0; paused = false; reported = 0
         channel = nil; server = nil; making = nil
         audioTrack = nil; subtitleTrack = nil; sent = []; mediaSourceID = nil; pendingAudio = nil; pendingSubtitle = nil
+        waiting = nil
         nowPlaying.end()
     }
     /// The Now Playing card follows what the TV plays (see JellyCastNowPlaying), and goes once nothing does.
@@ -393,6 +451,9 @@ extension JellyCast: @preconcurrency GCKSessionManagerListener {
 final class JellyCastChannel: GCKCastChannel {
     override func didReceiveTextMessage(_ message: String) {
         MainActor.assumeIsolated { JellyCast.shared.receive(message) }
+    }
+    override func didConnect() {
+        MainActor.assumeIsolated { JellyCast.shared.channelOpened() }
     }
 }
 
@@ -522,25 +583,47 @@ struct JellyCastRemote: View {
         let cast = JellyCast.shared
         guard let playback, cast.itemID != playback.id, let client = JellySpace.client else { return }
         let user = await JellyfinUser.id(client)
-        var seconds = 0.0
-        if let handoff = cast.handoff, handoff.id == playback.id {
-            seconds = handoff.seconds
-        } else if let user, let data = try? await client.userData(playback.id, user: user), let ticks = data.PlaybackPositionTicks {
-            seconds = Double(ticks) / 10_000_000
-        }
-        var queue: [JellyfinClient.Item] = []
+        var seconds = 0.0, source = playback.source
+        // The phone's player just closed on this video: there, in the version it played. Kept only for a
+        // couple of minutes and used once: an old one (stopped at 10 minutes, watched on elsewhere since)
+        // put the TV back at 10 minutes over Jellyfin's newer place.
+        var handoff = cast.handoff
+        if let found = handoff, found.id != playback.id || Date.now.timeIntervalSince(found.at) >= 120 { handoff = nil }
+        cast.handoff = nil
         let item = playback.item
-        if item.kind == "Episode", let series = item.SeriesId, let season = item.SeasonId,
-           let episodes = try? await client.episodes(of: series, season: season, user: user),
-           let at = episodes.firstIndex(where: { $0.Id == item.Id }) {
-            queue = Array(episodes[(at + 1)...].prefix(20))
+        // Where you stopped (Settings → JellySpace → Resume; off, the start) and the rest of the season,
+        // asked for together: one waited for the other before the TV could start.
+        let useSaved = handoff == nil && (UserDefaults.standard.object(forKey: JellyPrefs.resumeKey) as? Bool ?? true)
+        let id = playback.id
+        async let saved = Self.resumePoint(id, client: client, user: user, wanted: useSaved)
+        async let following = Self.following(item, client: client, user: user)
+        if let handoff {
+            seconds = handoff.seconds
+            source = handoff.source ?? source
+        } else if let point = await saved {
+            seconds = point
         }
+        let queue = await following
         hasNext = !queue.isEmpty
-        await cast.play(item, from: seconds, queue: queue)
+        await cast.play(item, from: seconds, queue: queue, source: source)
+    }
+    /// Where you stopped this video on Jellyfin (nil: not asked for, or nothing saved).
+    private static func resumePoint(_ id: String, client: JellyfinClient, user: String?, wanted: Bool) async -> Double? {
+        guard wanted, let user, let data = try? await client.userData(id, user: user), let ticks = data.PlaybackPositionTicks else { return nil }
+        return Double(ticks) / 10_000_000
+    }
+    /// An episode's followers in its season (the TV's queue, for Next Episode and autoplay there).
+    private static func following(_ item: JellyfinClient.Item, client: JellyfinClient, user: String?) async -> [JellyfinClient.Item] {
+        guard item.kind == "Episode", let series = item.SeriesId, let season = item.SeasonId,
+              let episodes = try? await client.episodes(of: series, season: season, user: user),
+              let at = episodes.firstIndex(where: { $0.Id == item.Id }) else { return [] }
+        return Array(episodes[(at + 1)...].prefix(JellyCast.queueLength))
     }
     /// Whether the TV has an episode after the one it plays now (it was sent the rest of the season): Next
     /// Episode was missing when the remote was opened from the casting bar, and stayed after the last one.
     private func findNext() async {
+        // From what the TV was sent, when that's known (after its last queued episode there's no next).
+        if let queued = JellyCast.shared.hasQueuedNext { hasNext = queued; return }
         guard let client = JellySpace.client, let id = JellyCast.shared.itemID else { return }
         let user = await JellyfinUser.id(client)
         guard let item = try? await client.item(id), item.kind == "Episode", let series = item.SeriesId, let season = item.SeasonId,
@@ -552,7 +635,10 @@ struct JellyCastRemote: View {
     private func loadTracks() async {
         guard let client = JellySpace.client, let id = JellyCast.shared.itemID ?? playback?.id else { return }
         let user = await JellyfinUser.id(client)
-        guard let info = try? await client.playerInfo(id, user: user), let streams = info.MediaSources?.first?.MediaStreams else { return }
+        // The tracks of the version the TV plays (the menu described the first version's, whatever played).
+        let source = JellyCast.shared.mediaSourceID
+        guard let info = try? await client.playerInfo(id, user: user),
+              let streams = (info.MediaSources?.first { $0.Id == source } ?? info.MediaSources?.first)?.MediaStreams else { return }
         audio = streams.filter { $0.kind == "Audio" }.map { Track(id: $0.Index, name: $0.DisplayTitle ?? $0.Language ?? "Audio \($0.Index)") }
         subtitles = streams.filter { $0.kind == "Subtitle" }.map {
             Track(id: $0.Index, name: $0.DisplayTitle ?? $0.Language ?? "Subtitles \($0.Index)", picture: Self.pictureSubtitles.contains(($0.Codec ?? "").lowercased()))

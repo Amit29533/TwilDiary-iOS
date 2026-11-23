@@ -196,6 +196,12 @@ struct HomeView: View {
                 }
         }
     }
+    /// The titles a swipe either way reaches from this one (the carousel goes round).
+    private static func neighbours(of current: MediaTitle, in titles: [MediaTitle]) -> [MediaTitle] {
+        guard titles.count > 1, let at = titles.firstIndex(where: { $0.id == current.id }) else { return [] }
+        let next = titles[(at + 1) % titles.count], previous = titles[(at - 1 + titles.count) % titles.count]
+        return next.id == previous.id ? [next] : [next, previous]
+    }
     /// True full screen: the whole header scrolls away with the artwork.
     private func header(overArtwork: Bool) -> some View { PageHeader(name: "TwilDiary", overArtwork: overArtwork) }
     /// The selected title's backdrop fills the top of the page, under the status bar and header,
@@ -217,10 +223,13 @@ struct HomeView: View {
                     LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
                                            .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
                 })
-                .task(id: titles.map { heroArtwork($0) ?? "" } + [String(Int(proxy.size.width))]) {
+                // The backdrops either side of the one showing (a swipe either way), ready ahead; again as you
+                // swipe. Every watching title's was decoded at once: thirty full-width pictures, more than
+                // the picture cache holds, so it kept pushing out its own.
+                .task(id: Self.neighbours(of: current, in: titles).map { heroArtwork($0) ?? "" } + [String(Int(proxy.size.width))]) {
                     // The same size Artwork asks for (its frame here), so each is already decoded.
                     let pixels = Double(max(proxy.size.width, proxy.size.height + Self.artLift) * displayScale)
-                    for title in titles where title.id != current.id {
+                    for title in Self.neighbours(of: current, in: titles) {
                         guard !Task.isCancelled else { return }
                         if let request = PublicArtworkRequest(path: heroArtwork(title), pixels: pixels) {
                             _ = await PublicArtworkCache.shared.image(request)

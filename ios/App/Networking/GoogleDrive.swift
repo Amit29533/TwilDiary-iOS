@@ -68,13 +68,21 @@ import TwilDiaryCore
         UserDefaults.standard.set(true, forKey: connectedKey)
         return true
     }
-    /// Signs out (and Google forgets TwilDiary's access); `deleteBackup` removes the Drive copy first.
-    static func signOut(deleteBackup: Bool) async {
+    /// Signs out (and Google forgets TwilDiary's access); `deleteBackup` removes every Drive copy first.
+    /// One that can't be found or deleted (offline, Google refusing) stops it with the connection kept, so
+    /// it can be tried again: it used to sign out anyway and say the backup was deleted, leaving it in
+    /// Drive with no way back to it from the app. One already gone counts as deleted.
+    static func signOut(deleteBackup: Bool) async throws {
         if deleteBackup {
-            for name in [fileName, PhoneExtras.driveName] {
-                if let file = try? await latest(name) { _ = try? await call("DELETE", "https://www.googleapis.com/drive/v3/files/" + file.id) }
+            let files = try await ownFiles()
+            var failed = 0
+            for id in files {
+                do { _ = try await call("DELETE", "https://www.googleapis.com/drive/v3/files/" + id) } catch { failed += 1 }
             }
-            for copy in (try? await copies()) ?? [] { _ = try? await call("DELETE", "https://www.googleapis.com/drive/v3/files/" + copy.file.id) }
+            if failed > 0 {
+                throw APIError.message((failed == files.count ? "The backup couldn’t be deleted" : "Part of the backup couldn’t be deleted")
+                                       + " from Google Drive. Drive is still connected, so you can try again.")
+            }
         }
         if let refresh = try? KeychainProviderSecretStore().readSecret(for: refreshAccount) {
             var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/revoke")!)
@@ -112,13 +120,17 @@ import TwilDiaryCore
             throw APIError.message("Connect Google Drive first, in Sync & backup.")
         }
         let reply = try await token(["client_id": clientID, "grant_type": "refresh_token", "refresh_token": refresh])
+        // Google may send a new refresh token with the renewal: kept, as the old one can stop working.
+        if let rotated = reply.refresh, !rotated.isEmpty, rotated != refresh {
+            _ = KeychainProviderSecretStore().writeSecret(rotated, for: refreshAccount)
+        }
         access = (reply.access, reply.until)
         return reply.access
     }
 
     // MARK: Drive
 
-    private static func call(_ method: String, _ url: String, body: Data? = nil, type: String? = nil) async throws -> Data {
+    private static func call(_ method: String, _ url: String, body: Data? = nil, type: String? = nil, renewed: Bool = false) async throws -> Data {
         var request = URLRequest(url: URL(string: url)!, timeoutInterval: 60)
         request.httpMethod = method
         request.httpBody = body
@@ -126,6 +138,12 @@ import TwilDiaryCore
         request.setValue("Bearer " + (try await accessToken()), forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        // The access token was ended early (revoked, or the clock off): renewed and asked once more,
+        // instead of every request failing until the hour it was given for was up.
+        if status == 401, !renewed {
+            access = nil
+            return try await call(method, url, body: body, type: type, renewed: true)
+        }
         guard (200..<300).contains(status) || (method == "DELETE" && status == 404) else {
             throw APIError.message("Google Drive answered HTTP \(status).")
         }
@@ -135,7 +153,7 @@ import TwilDiaryCore
     /// TwilDiary's backup in the app folder, if there is one.
     static func latest(_ name: String = fileName) async throws -> File? {
         var list = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
-        list.queryItems = [URLQueryItem(name: "spaces", value: "appDataFolder"), URLQueryItem(name: "q", value: "name = '\(name)'"),
+        list.queryItems = [URLQueryItem(name: "spaces", value: "appDataFolder"), URLQueryItem(name: "q", value: "name = '\(name)' and trashed = false"),
                            URLQueryItem(name: "fields", value: "files(id,modifiedTime,size)"), URLQueryItem(name: "orderBy", value: "modifiedTime desc")]
         let data = try await call("GET", list.url!.absoluteString)
         guard let first = (((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["files"] as? [[String: Any]])?.first,
@@ -161,7 +179,19 @@ import TwilDiaryCore
         return packed.count
     }
     /// Saves a file in the app folder, replacing the copy there (`file`, when already looked up).
+    /// One upload at a time: two at once (an automatic backup and Back up now, say) both found no file
+    /// and both made one, leaving two backups of the same name.
+    private static var lastUpload: Task<Void, Never>?
     static func put(_ data: Data, name: String, file: File? = nil) async throws {
+        let previous = lastUpload
+        let mine = Task { () -> Result<Void, Error> in
+            _ = await previous?.value
+            do { try await upload(data, name: name, file: file); return .success(()) } catch { return .failure(error) }
+        }
+        lastUpload = Task { _ = await mine.value }
+        try await mine.value.get()
+    }
+    private static func upload(_ data: Data, name: String, file: File?) async throws {
         var existing = file
         if existing == nil { existing = try await latest(name) }
         if let existing {
@@ -185,6 +215,24 @@ import TwilDiaryCore
     nonisolated static func copyName(_ day: String) -> String { "twildiary_backup_v1." + day + ".json.zlib" }
     struct Copy: Sendable { let name: String; let file: File }
     /// The older copies, newest first.
+    /// Every file TwilDiary keeps in its Drive folder: the backup, its older copies and the phone's extras
+    /// (all pages of the list).
+    private static func ownFiles() async throws -> [String] {
+        var ids: [String] = [], page: String?
+        repeat {
+            var list = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
+            list.queryItems = [URLQueryItem(name: "spaces", value: "appDataFolder"), URLQueryItem(name: "pageSize", value: "1000"),
+                               URLQueryItem(name: "fields", value: "nextPageToken,files(id,name)")] + (page.map { [URLQueryItem(name: "pageToken", value: $0)] } ?? [])
+            let data = try await call("GET", list.url!.absoluteString)
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw APIError.message("Google Drive’s list couldn’t be read.") }
+            for file in object["files"] as? [[String: Any]] ?? [] {
+                guard let id = file["id"] as? String, let name = file["name"] as? String else { continue }
+                if name == fileName || name == PhoneExtras.driveName || (name.hasPrefix(copyStart) && name.hasSuffix(copyEnd)) { ids.append(id) }
+            }
+            page = object["nextPageToken"] as? String
+        } while page != nil
+        return ids
+    }
     static func copies() async throws -> [Copy] {
         var list = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
         list.queryItems = [URLQueryItem(name: "spaces", value: "appDataFolder"), URLQueryItem(name: "pageSize", value: "100"),
@@ -270,9 +318,9 @@ struct GoogleDriveRow: View {
                         }
                         Button("Restore from Drive", systemImage: "arrow.counterclockwise") { confirmRestore = true }
                         Divider()
-                        Button("Disconnect", systemImage: "xmark.circle") { run("Disconnecting…") { await GoogleDrive.signOut(deleteBackup: false); notice = "Google Drive disconnected. Your backup stays in Drive." } }
+                        Button("Disconnect", systemImage: "xmark.circle") { run("Disconnecting…") { try await GoogleDrive.signOut(deleteBackup: false); notice = "Google Drive disconnected. Your backup stays in Drive." } }
                         Button("Disconnect and delete the backup", systemImage: "trash", role: .destructive) {
-                            run("Deleting…") { await GoogleDrive.signOut(deleteBackup: true); notice = "Google Drive disconnected and the backup deleted." }
+                            run("Deleting…") { try await GoogleDrive.signOut(deleteBackup: true); notice = "Google Drive disconnected and the backup deleted." }
                         }
                     } label: {
                         Image(systemName: "ellipsis").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.chipText)

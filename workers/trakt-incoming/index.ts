@@ -24,8 +24,10 @@ export default {
       console.error('Incoming watch check unavailable; retained work will retry.');
       throw new Error('Incoming watch check failed');
     } finally {
-      // An imported watch or prepared metadata must reach the app on its next resume.
-      if (!unchanged.has(state)) await bumpWorkspaceRevision(env.DB);
+      // An imported watch or prepared metadata must reach the app on its next resume. A tick that
+      // failed isn't counted as a change (it made every app re-read each time); what it did write
+      // goes out with the next tick that succeeds.
+      if (state !== 'failed' && !unchanged.has(state)) await bumpWorkspaceRevision(env.DB);
     }
   }
 };

@@ -149,24 +149,38 @@ export interface ApiKeyStatus {
   source: 'saved' | 'server' | 'missing';
   hint: string | null;
   updatedAt: string | null;
+  /** Saved, but under another encryption key, so not in use (save it again). */
+  unreadable?: true;
 }
 /** What each key is and where it comes from; never more than its last four characters. */
 /** Reads the table itself rather than the cached keys, so a save shows at once on any isolate. */
 export async function listKeys(db: D1Database, env: KeyedBindings): Promise<ApiKeyStatus[]> {
   const rows = await db
-    .prepare('SELECT name,hint,updated_at AS updatedAt FROM api_keys')
-    .all<{ name: string; hint: string; updatedAt: string }>();
-  const saved = new Map(rows.results.map((row) => [row.name, row]));
+    .prepare('SELECT name,hint,updated_at AS updatedAt,ciphertext FROM api_keys')
+    .all<{ name: string; hint: string; updatedAt: string; ciphertext: string }>();
   const base = env.BASE_BINDINGS ?? env;
+  // A saved key counts as saved only when it opens: one under another encryption key is ignored
+  // where keys are used (savedValues), yet it was listed as "saved", hiding that the server's
+  // own key (or none) was in use.
+  const opened = new Set<string>();
+  for (const row of rows.results)
+    if (isApiKeyName(row.name))
+      await open(row.name, row.ciphertext, base.TRAKT_TOKEN_KEY).then(
+        () => opened.add(row.name),
+        () => undefined
+      );
+  const saved = new Map(rows.results.map((row) => [row.name, row]));
   return (Object.keys(API_KEYS) as ApiKeyName[]).map((name) => {
-    const row = saved.get(name),
+    const stored = saved.get(name),
+      row = stored && opened.has(name) ? stored : undefined,
       value = base[name];
     return {
       name,
       ...API_KEYS[name],
       source: row ? 'saved' : value ? 'server' : 'missing',
       hint: row ? row.hint : value ? hint(value) : null,
-      updatedAt: row?.updatedAt ?? null
+      updatedAt: row?.updatedAt ?? null,
+      ...(stored && !row ? { unreadable: true as const } : {})
     };
   });
 }

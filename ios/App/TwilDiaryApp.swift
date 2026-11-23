@@ -314,9 +314,18 @@ struct RootView: View {
             // JellySpace's top poster ready in memory (once launch is done), so its first open isn't black.
             .task { try? await Task.sleep(for: .seconds(3)); await JellyHeroWarmup.warm() }
             // JellySpace's Face ID lock: covered while the app is away, locked again after a while.
-            .onChange(of: scenePhase) { _, phase in JellyFaceLock.shared.phase(phase) }
+            .onChange(of: scenePhase) { _, phase in
+                JellyFaceLock.shared.phase(phase)
+                // Going away: the diary on this phone and every save still waiting are written first.
+                if phase == .background {
+                    TraktDirectStore.shared.saveIfUnsaved()
+                    BackgroundFiles.finishInBackground()
+                }
+            }
             .task(id: scenePhase) {
                 if scenePhase == .active {
+                    // The diary on this phone, read again if it couldn't be (started while the phone was locked).
+                    if TraktDirectStore.shared.reloadIfUnread() { store.applyDiarySource() }
                     // The anime map, weekly on Wi-Fi, for Simkl's and AniList's syncs (in the background).
                     if SimklAccount.shared.signedIn || AniListSyncAccount.shared.signedIn { Task { await AnimeMapStore.shared.refreshIfNeeded() } }
                     await store.refreshOnForeground(); await store.resumeTraktOnForeground()

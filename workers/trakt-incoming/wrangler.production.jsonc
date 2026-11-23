@@ -9,6 +9,9 @@
   // Phase 4c: the app writes to Trakt itself, so the every-minute import is off. To turn it
   // back on, restore ["* * * * *"] and deploy this worker again.
   "triggers": { "crons": [] },
+  // The same as the main Worker's: while a service holds the diary, the import doesn't write
+  // to the server's read-only copy even if the schedule is turned back on.
+  "vars": { "DIARY_RECORD": "trakt" },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "twildiary-v2",

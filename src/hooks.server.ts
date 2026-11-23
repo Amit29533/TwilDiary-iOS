@@ -52,7 +52,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       event.locals.tmdbTransport = (await import('../tooling/local-tmdb-fetch.ts')).localTmdbFetch;
       event.locals.bindings = await withSavedKeys(cloudflareEnv);
       const response = await resolve(event);
-      if (changesDiary(event.request.method, event.url.pathname))
+      if (response.ok && changesDiary(event.request.method, event.url.pathname))
         await bumpWorkspaceRevision(cloudflareEnv.DB);
       response.headers.set('Cache-Control', 'private, no-store');
       response.headers.set('X-Content-Type-Options', 'nosniff');
@@ -119,7 +119,8 @@ export const handle: Handle = async ({ event, resolve }) => {
           }
         });
       const body =
-        method === 'PATCH' && /^\/api\/titles\/[^/]+$/.test(path)
+        (method === 'PATCH' && /^\/api\/titles\/[^/]+$/.test(path)) ||
+        (method === 'POST' && path === '/api/titles/bulk')
           ? await event.request.clone().json().catch(() => undefined)
           : undefined;
       const refusal = recordRefusal(record, method, path, body);
@@ -137,8 +138,9 @@ export const handle: Handle = async ({ event, resolve }) => {
         );
     }
     const response = await resolve(event);
-    // After the write has finished, so a resumed app re-reads a diary that already has it.
-    if (changesDiary(event.request.method, event.url.pathname))
+    // After the write has finished, so a resumed app re-reads a diary that already has it. Only
+    // after one that worked: a refused or failed write changed nothing, yet made every app re-read.
+    if (response.ok && changesDiary(event.request.method, event.url.pathname))
       await bumpWorkspaceRevision(event.locals.bindings?.DB);
     response.headers.set('Cache-Control', 'private, no-store');
     if (!response.headers.has('Referrer-Policy'))

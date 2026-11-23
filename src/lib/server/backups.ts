@@ -102,7 +102,7 @@ export async function saveBackup(
       ),
     db
       .prepare(
-        'DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY created_at DESC LIMIT ?)'
+        'DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY created_at DESC, id DESC LIMIT ?)'
       )
       .bind(BACKUP_LIMIT)
   ]);
@@ -112,7 +112,7 @@ export async function saveBackup(
 export async function listBackups(db: D1Database): Promise<BackupSummary[]> {
   const rows = await db
     .prepare(
-      'SELECT id,created_at AS createdAt,label,titles,watches,size_bytes AS sizeBytes FROM backups ORDER BY created_at DESC LIMIT ?'
+      'SELECT id,created_at AS createdAt,label,titles,watches,size_bytes AS sizeBytes FROM backups ORDER BY created_at DESC, id DESC LIMIT ?'
     )
     .bind(BACKUP_LIMIT)
     .all<BackupSummary>();

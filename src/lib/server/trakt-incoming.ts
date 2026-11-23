@@ -1,3 +1,4 @@
+import { diaryRecord } from './diary-record.ts';
 /** Small incoming-only scheduler. Never invoke the reviewed full merge in Cron. */
 import type { D1Database } from '@cloudflare/workers-types';
 import { database } from './db/index.ts';
@@ -253,6 +254,9 @@ export async function tickIncoming(
   env: ServerBindings,
   options: { transport?: typeof fetch; tmdb?: TmdbClient; now?: () => number } = {}
 ) {
+  // A service holds the diary: the server's copy is kept read-only, and the import mustn't write to
+  // it either (the web route already refuses; this scheduled path didn't check).
+  if (diaryRecord(env) !== 'server') return { state: 'idle' as const };
   const clock = options.now ?? Date.now,
     started = clock();
   const lease = crypto.randomUUID();

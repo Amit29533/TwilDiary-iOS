@@ -446,8 +446,12 @@ struct CatalogSearchView: View {
     private func includesCategory(_ category: String) -> Bool {
         kind.includes(category == "movie" || category == "anime-movie" ? .movie : .tv, anime: category.hasPrefix("anime"))
     }
+    /// Once per query and diary change: read five times a draw (the count, the grid, More, the
+    /// categories), each read went through every title in the library again as you typed.
     private var localMatches: [SearchLibraryTitle] {
-        DiarySearchTools.merging(DiarySearchTools.matches(store.workspace, query: normalized), activeScope == searchScope ? identified : [])
+        let query = normalized
+        let found = store.memoized("search.local:" + query) { DiarySearchTools.matches(store.workspace, query: query) }
+        return DiarySearchTools.merging(found, activeScope == searchScope ? identified : [])
     }
     private var visibleOnline: [CatalogItem] { activeScope == searchScope ? results : [] }
     /// The universal search starts with a few of each; "More" expands in place.

@@ -59,7 +59,8 @@ struct LibraryView: View {
         }
         .background(ThemeStore.current.native ? ThemeStore.current.canvas : Color(themed: "#0e0d13")).diaryScreenBackground()
             .safeAreaInset(edge: .bottom) { if selecting { selectionBar.padding(.horizontal, 16).padding(.bottom, 8) } }
-            .task(id: collection.map(\.id).sorted().joined(separator: ",") + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
+            // The titles' ids joined once per diary change (they were sorted and joined on every draw).
+            .task(id: store.memoized("library.ratingIDs") { collection.map(\.id).sorted().joined(separator: ",") } + ratingSource.rawValue + String(store.communityRatings.retryRound)) { await store.loadPublicRatings(collection, source: ratingSource) }
             .onChange(of: router.libraryRevision) { _, _ in applyShortcut() }
             .onAppear { initializeStorage(); applyShortcut() }
             // At home, the Jellyfin list is read again now and then; away, the saved one stays.
@@ -559,9 +560,14 @@ struct LibraryView: View {
     private var jellyfinExtras: [JellyfinEntry] {
         status == "jellyfin" && !selecting ? extras(genres: genres, drive: drive, favorites: favoritesOnly) : []
     }
+    /// Matched against the whole Jellyfin list once per change of either list (and these filters): it
+    /// was matched on every draw, twice with the Jellyfin chip chosen (its count and its titles).
     private func extras(genres: Set<String>, drive: String, favorites: Bool) -> [JellyfinEntry] {
         guard tag.isEmpty else { return [] }
-        return jellyfin.extras(diary: collection, category: categoryKey, genres: genres, disk: diskKey(drive), favorites: favorites, sort: sort)
+        let disk = diskKey(drive), category = categoryKey, order = sort
+        let key = ["library.jellyfin", String(jellyfin.revision), category, genres.sorted().joined(separator: ","), disk, String(favorites), String(describing: order)]
+            .joined(separator: "|")
+        return store.memoized(key) { jellyfin.extras(diary: collection, category: category, genres: genres, disk: disk, favorites: favorites, sort: order) }
     }
     /// Two rows of the grid, the last place kept for "See all".
     private var overviewCount: Int { posterSize.columns * 2 - 1 }

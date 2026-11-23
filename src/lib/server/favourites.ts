@@ -80,12 +80,13 @@ export async function saveFavourite(
     subtitle: text(input.subtitle, 'subtitle', 200),
     savedAt: savedAt(input.savedAt, now)
   };
-  const count = await db.prepare('SELECT count(*) AS n FROM favourites').first<number>('n');
-  if ((count ?? 0) >= MAX) invalid('Favourites are full');
   // Saving again keeps the original date, so re-hearting from another device doesn't reorder.
-  await db
+  // The cap counts new favourites only, in the same statement: one already saved still updates at
+  // 2,000 (it was refused, so a retry of a saved favourite looked like a failure), and two new ones
+  // at once can't both pass a count taken before either went in.
+  const result = await db
     .prepare(
-      'INSERT INTO favourites(kind,ref,name,image,subtitle,saved_at) VALUES (?,?,?,?,?,?) ON CONFLICT(kind,ref) DO UPDATE SET name=excluded.name,image=excluded.image,subtitle=excluded.subtitle'
+      'INSERT INTO favourites(kind,ref,name,image,subtitle,saved_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM favourites WHERE kind=? AND ref=?) OR (SELECT count(*) FROM favourites) < ? ON CONFLICT(kind,ref) DO UPDATE SET name=excluded.name,image=excluded.image,subtitle=excluded.subtitle'
     )
     .bind(
       favourite.kind,
@@ -93,9 +94,13 @@ export async function saveFavourite(
       favourite.name,
       favourite.image,
       favourite.subtitle,
-      favourite.savedAt
+      favourite.savedAt,
+      favourite.kind,
+      favourite.ref,
+      MAX
     )
     .run();
+  if (!result.meta?.changes) invalid('Favourites are full');
   return { favourite };
 }
 export async function removeFavourite(db: D1Database, key: string | undefined) {

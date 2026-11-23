@@ -23,6 +23,9 @@ struct SimklJob: Codable, Equatable, Identifiable, Sendable {
     var list: String?
     var attempts = 0
     var lastError: String?
+    /// In a request that's been sent (set as it goes, kept after, whatever came back): it may be on Simkl
+    /// already, so an Undo can't just take it off the queue any more; the undo is sent after it instead.
+    var reserved: Bool?
     var notBefore: Date?
     /// Already placed by air date (only tried once).
     var placedByDate = false
@@ -73,7 +76,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
 
     mutating func add(_ job: SimklJob) {
         // Only a job that hasn't been tried can be cancelled: a tried one may already be on Simkl.
-        func untried(_ other: SimklJob) -> Bool { other.attempts == 0 && other.lastError == nil }
+        func untried(_ other: SimklJob) -> Bool { other.attempts == 0 && other.lastError == nil && other.reserved != true }
         switch job.kind {
         case .watch:
             if let index = jobs.lastIndex(where: { $0.kind == .unwatch && $0.itemKey == job.itemKey && untried($0) }) { jobs.remove(at: index); return }
@@ -269,6 +272,12 @@ struct SimklQueue: Codable, Equatable, Sendable {
             guard let token = await SimklAccount.shared.token(session: session) else { SimklAccount.shared.signInLapsed(); return }
             if done == 0 { live.updateForProviderBatch(provider: .simkl, completed: 0, total: total) }
             let before = queue.jobs.count
+            // Reserved before the first wait: an Undo made while this request is on its way took the watch
+            // off the queue as "not tried" and dropped its own unwatch, then the request still put the
+            // watch on Simkl, leaving it watched there with nothing left to send.
+            let goingOut = Set(batch.map(\.id))
+            for index in queue.jobs.indices where goingOut.contains(queue.jobs[index].id) { queue.jobs[index].reserved = true }
+            save()
             let carryOn = await send(batch, api: SimklAPI(token: token, session: session))
             save()
             done += max(0, before - queue.jobs.count)

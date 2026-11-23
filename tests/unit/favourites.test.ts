@@ -78,3 +78,18 @@ test('favourites accept only known kinds, sane names and TMDB or AniList artwork
     'favourites never force a diary re-download'
   );
 });
+
+test('a full favourites list still updates a saved one and refuses only a new one', async (t) => {
+  const f = d1Fixture();
+  t.after(f.close);
+  const insert = f.sqlite.prepare('INSERT INTO favourites(kind,ref,name,image,subtitle,saved_at) VALUES (?,?,?,?,?,?)');
+  for (let ref = 1; ref <= 2000; ref++) insert.run('cast', ref, 'Person ' + ref, null, null, now.toISOString());
+  const { favourite } = await saveFavourite(f.binding, 'cast:7', { name: 'Renamed' }, now);
+  assert.equal(favourite.name, 'Renamed');
+  assert.equal(f.sqlite.prepare("SELECT name FROM favourites WHERE kind='cast' AND ref=7").get()!.name, 'Renamed');
+  await assert.rejects(
+    () => saveFavourite(f.binding, 'cast:2001', { name: 'New' }, now),
+    (e: unknown) => e instanceof ApiError && e.status === 400 && /full/.test(e.message)
+  );
+  assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM favourites').get()!.n, 2000);
+});

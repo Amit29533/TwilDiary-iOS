@@ -82,6 +82,11 @@ export function recordRefusal(
     path === '/api/workspace/import'
   )
     return frozen;
+  // Purging titles for good: it deletes their watches and ratings with them, the backup this
+  // copy is kept as. (Trash, restore and status stay writable: nothing is lost by them.)
+  if (method === 'POST' && path === '/api/titles/bulk') {
+    if (body && typeof body === 'object' && !Array.isArray(body) && (body as { action?: unknown }).action === 'purge') return frozen;
+  }
   // Ratings on a title. Status stays writable: the server keeps what the service can't
   // (a dropped movie on Trakt or MDBList, for instance).
   if (method === 'PATCH' && /^\/api\/titles\/[^/]+$/.test(path)) {

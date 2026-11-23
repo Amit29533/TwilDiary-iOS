@@ -128,6 +128,11 @@ final class JellyMPVFeed: @unchecked Sendable {
     private(set) var cannotOpen = false
 
     private var handle: JellyMPVHandle?
+    /// Let go of without stop() (the player torn down another way): mpv is told to quit all the same, so
+    /// its thread, handle and layer don't live on (the event thread frees mpv once it has quit).
+    deinit {
+        if let handle { Self.calls.async { mpv_command_string(handle.raw, "quit") } }
+    }
     private var loaded = false, paused = false, ended = false
     private var log: [String] = []
     /// A file asked for before the picture was up; loaded once it is.
@@ -411,7 +416,15 @@ final class JellyMPVFeed: @unchecked Sendable {
         decoderResets += 1
         guard decoderResets <= Self.maxDecoderResets else { return }
         set("hwdec", "no")
-        if decoderResets < Self.maxDecoderResets { set("hwdec", hardwareDecoder) }
+        // Back to VideoToolbox a moment later: set straight after "no", mpv can take the two changes
+        // together and never build the new decoder.
+        if decoderResets < Self.maxDecoderResets {
+            let hardware = hardwareDecoder
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                self?.set("hwdec", hardware)
+            }
+        }
     }
 
     /// Fallback fonts for the subtitles, from the app (Noto: Latin, Greek and Cyrillic, Arabic,
@@ -785,13 +798,6 @@ final class JellyMPVFeed: @unchecked Sendable {
 final class JellyMPVStream: @unchecked Sendable {
     static let scheme = "jellyfin://"
     private static let chunk: Int64 = 4 << 20
-    private static let session: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 30
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.urlCache = nil
-        return URLSession(configuration: configuration)
-    }()
 
     private let url: URL
     private var position: Int64 = 0
@@ -891,29 +897,29 @@ final class JellyMPVStream: @unchecked Sendable {
         if isCancelled { return .refused }
         var request = URLRequest(url: url)
         if !whole { request.setValue("bytes=\(start)-\(start + Self.chunk - 1)", forHTTPHeaderField: "Range") }
-        let done = DispatchSemaphore(value: 0)
-        let result = JellyMPVFetch()
-        let task = Self.session.dataTask(with: request) { data, response, error in
-            result.data = data
-            result.response = response as? HTTPURLResponse
-            result.failed = error != nil
-            done.signal()
-        }
-        lock.lock(); self.task = task; lock.unlock()
-        task.resume()
-        done.wait()
+        // A range is the piece asked for and no more; a subtitle file comes whole (a few MB at most).
+        let result = JellyMPVFetch(range: !whole, limit: whole ? 32 << 20 : Int(Self.chunk) + 65_536)
+        let task = JellyMPVLoader.shared.start(request, result)
+        // A cancel that came between the check above and this was missed (there was no task to cancel
+        // yet), and the reader waited out the whole request: applied now.
+        lock.lock(); self.task = task; let late = cancelled; lock.unlock()
+        if late { task.cancel() }
+        result.done.wait()
         lock.lock(); self.task = nil; lock.unlock()
         guard let response = result.response, !result.failed else { return .dropped }
         // Busy, or restarting behind a proxy: worth asking again.
         if [408, 429, 502, 503, 504].contains(response.statusCode) { return .dropped }
+        // More than was asked for (stopped as it came): not a piece to play from.
+        if result.oversized { return .refused }
+        let body: Data? = result.data
         if whole {
-            guard (200..<300).contains(response.statusCode), let data = result.data else { return .refused }
+            guard (200..<300).contains(response.statusCode), let data = body else { return .refused }
             length = Int64(data.count)
             // All of it is the first piece; nothing follows it.
             return .piece(start == 0 ? data : Data())
         }
-        // Only a range answer: a server sending the whole file at once would fill the memory.
-        guard response.statusCode == 206, let data = result.data else {
+        // Only a range answer (anything else was stopped at its headers, see JellyMPVLoader).
+        guard response.statusCode == 206, let data = body else {
             return response.statusCode == 416 ? .piece(Data()) : .refused
         }
         if let range = response.value(forHTTPHeaderField: "Content-Range"), let total = range.split(separator: "/").last.flatMap({ Int64($0) }) {
@@ -923,11 +929,71 @@ final class JellyMPVStream: @unchecked Sendable {
     }
 }
 
-/// One answer from the server, handed from URLSession's thread to the reading one.
+/// One answer from the server, handed from URLSession's thread to the reading one (which waits on
+/// `done`).
 private final class JellyMPVFetch: @unchecked Sendable {
-    var data: Data?
+    /// A range was asked for: only a 206 is let in.
+    let range: Bool
+    /// The most bytes it may bring.
+    let limit: Int
+    var data = Data()
     var response: HTTPURLResponse?
     var failed = false
+    /// Stopped at its headers (not a range answer) or as it passed `limit`.
+    var stopped = false
+    var oversized = false
+    let done = DispatchSemaphore(value: 0)
+    init(range: Bool, limit: Int) { self.range = range; self.limit = limit }
+}
+
+/// The reader's requests, checked as their answers come instead of once they've arrived whole. A range
+/// asked for and answered with anything but 206 (a server or proxy sending the whole movie with 200) is
+/// cancelled at its headers, and no answer may grow past what was asked for: the 4 MB request used to
+/// take the whole file into memory before its status was looked at.
+private final class JellyMPVLoader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    static let shared = JellyMPVLoader()
+    private(set) var session: URLSession!
+    private let lock = NSLock()
+    private var fetches: [Int: JellyMPVFetch] = [:]
+
+    private override init() {
+        super.init()
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCache = nil
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }
+    func start(_ request: URLRequest, _ fetch: JellyMPVFetch) -> URLSessionDataTask {
+        let task = session.dataTask(with: request)
+        lock.withLock { fetches[task.taskIdentifier] = fetch }
+        task.resume()
+        return task
+    }
+    private func fetch(for task: URLSessionTask) -> JellyMPVFetch? { lock.withLock { fetches[task.taskIdentifier] } }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse) async -> URLSession.ResponseDisposition {
+        guard let fetch = fetch(for: dataTask) else { return .cancel }
+        let http = response as? HTTPURLResponse
+        fetch.response = http
+        let promised = response.expectedContentLength
+        if fetch.range, http?.statusCode != 206 { fetch.stopped = true; return .cancel }
+        if promised > Int64(fetch.limit) { fetch.stopped = true; fetch.oversized = true; return .cancel }
+        return .allow
+    }
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let fetch = fetch(for: dataTask) else { return }
+        fetch.data.append(data)
+        if fetch.data.count > fetch.limit {
+            fetch.stopped = true; fetch.oversized = true
+            dataTask.cancel()
+        }
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        guard let fetch = lock.withLock({ fetches.removeValue(forKey: task.taskIdentifier) }) else { return }
+        fetch.failed = error != nil && !fetch.stopped
+        fetch.done.signal()
+    }
 }
 
 /// Holds the screen at a refresh rate while smooth motion is on (a display link asking for it; the
@@ -940,6 +1006,7 @@ private final class JellyMPVFetch: @unchecked Sendable {
         link?.invalidate()
         link = nil
         guard rate > 0 else { return }
+        target.owner = self
         let link = CADisplayLink(target: target, selector: #selector(JellyRefreshTarget.tick(_:)))
         let hz = Float(rate)
         link.preferredFrameRateRange = CAFrameRateRange(minimum: hz, maximum: hz, preferred: hz)
@@ -948,7 +1015,10 @@ private final class JellyMPVFetch: @unchecked Sendable {
     }
 }
 private final class JellyRefreshTarget: NSObject {
-    @objc func tick(_ link: CADisplayLink) {}
+    /// The holder: once it's gone without letting the rate go (a player torn down another way), the
+    /// link ends itself, instead of holding the screen at 120 Hz for as long as the app ran.
+    weak var owner: JellyRefreshRate?
+    @objc func tick(_ link: CADisplayLink) { if owner == nil { link.invalidate() } }
 }
 
 /// The Metal layer mpv draws into. MoltenVK sets a 1×1 drawable to finish a presentation early, which

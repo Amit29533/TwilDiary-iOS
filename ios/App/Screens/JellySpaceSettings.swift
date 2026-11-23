@@ -755,10 +755,13 @@ private struct JellyPrivacyGroup: View {
     @AppStorage(JellyPrefs.faceLockKey) private var on = false
     @AppStorage(JellyPrefs.faceLockAfterKey) private var after = 0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @State private var needsPasscode = false
 
     var body: some View {
         SettingsGroup(label: "Privacy") {
             JellySettingsRows.toggle("Face ID lock", Binding(get: { on }, set: { value in
+                // Not on a phone without a passcode: the lock would have nothing to check against.
+                if value, !JellyFaceLock.available { needsPasscode = true; return }
                 // Turned on here, it starts unlocked: it locks the next time the app is away.
                 if value { JellyFaceLock.shared.turnedOn(); on = true; return }
                 Task { if await JellyFaceLock.shared.confirm("Turn off the Face ID lock") { on = false } }
@@ -769,6 +772,9 @@ private struct JellyPrivacyGroup: View {
             }
         }
         JellyDecoderNote(text: "Face ID (or your passcode) each time you open JellySpace, and again when you come back to the app after the time above. Hidden in the app switcher.")
+            .alert("Set a passcode first", isPresented: $needsPasscode) {
+                Button("OK", role: .cancel) {}
+            } message: { Text("The lock uses Face ID or your iPhone’s passcode. Turn on a passcode in iOS Settings → Face ID & Passcode, then try again.") }
     }
 }
 

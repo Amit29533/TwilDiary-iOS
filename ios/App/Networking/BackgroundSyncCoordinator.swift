@@ -190,13 +190,36 @@ import BackgroundTasks
             if !Task.isCancelled { await ServerBackups.runIfDue(store: store) }
             if !Task.isCancelled { await GoogleDrive.runIfDue(store: store) }
         }
+        // Told the time is up: the work is stopped and the task said done at once. It was said done only
+        // once the work had unwound, and a request slow to notice the cancel kept iOS waiting past its
+        // limit, which ends the app.
+        let finisher = BackgroundTaskFinisher(task)
         task.expirationHandler = {
             work.cancel()
             Task { @MainActor in store.suspendTraktForBackground() }
+            finisher.finish(success: false)
         }
         await work.value
-        task.setTaskCompleted(success: !work.isCancelled && !store.hasWaitingEdits)
+        finisher.finish(success: !work.isCancelled && !store.hasWaitingEdits)
         scheduleBackgroundTasks(hasPendingOutbox: store.hasWaitingEdits)
     }
     #endif
 }
+
+#if canImport(BackgroundTasks)
+/// Says a background task is done exactly once, from the end of its work or from iOS's "time's up",
+/// whichever comes first (`setTaskCompleted` twice, or never, is what iOS punishes).
+final class BackgroundTaskFinisher: @unchecked Sendable {
+    private let task: BGTask
+    private let lock = NSLock()
+    private var done = false
+    init(_ task: BGTask) { self.task = task }
+    func finish(success: Bool) {
+        let first = lock.withLock { () -> Bool in
+            defer { done = true }
+            return !done
+        }
+        if first { task.setTaskCompleted(success: success) }
+    }
+}
+#endif

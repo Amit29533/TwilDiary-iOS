@@ -40,11 +40,12 @@ export const POST: RequestHandler = async (event) => {
   const env = event.locals.bindings ?? event.platform?.env;
   const secure = event.url.protocol === 'https:';
   try {
-    await consumeSignInAttempt(env, event.request.headers.get('CF-Connecting-IP') ?? 'unknown');
+    // The request's shape first: a malformed one is refused without spending an attempt.
     const raw = await readJson(event.request);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       throw new ApiError(400, 'invalid_input', 'Provide sign-in credentials as a JSON object.');
     }
+    await consumeSignInAttempt(env, event.request.headers.get('CF-Connecting-IP') ?? 'unknown');
     const body = raw as Record<string, unknown>;
     const method = typeof body.method === 'string' ? body.method.trim().toLowerCase() : '';
 
@@ -162,10 +163,13 @@ export const POST: RequestHandler = async (event) => {
           'Connect Trakt to your diary first before signing in with Trakt.'
         );
       }
+      // The Trakt app your diary is connected with (else the server's own) first: a client ID sent
+      // with the request came first, so any other Trakt app's ID and a token it held for your
+      // account could sign in as you. One sent is used only when the server knows none.
       const clientId =
-        (typeof body.clientId === 'string' ? body.clientId.trim() : '') ||
-        env?.TRAKT_CLIENT_ID?.trim() ||
         connected.clientId?.trim() ||
+        env?.TRAKT_CLIENT_ID?.trim() ||
+        (typeof body.clientId === 'string' ? body.clientId.trim() : '') ||
         '';
       if (!clientId) {
         throw new ApiError(

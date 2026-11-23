@@ -31,13 +31,15 @@ extension DiaryStore {
             PhoneExtras.shared.restore(nil, archive: DiaryExport(workspace: Workspace(titles: titles, locations: locations)))
             struct Page: Decodable { let items: [Remote] }
             struct Remote: Decodable { let kind: String; let ref: Int; let name: String; let image: String?; let subtitle: String?; let savedAt: String }
-            if let data = try? await PhoneServerSync.shared.send("/api/favourites", method: "GET", store: store),
-               let page = try? JSONDecoder().decode(Page.self, from: data) {
-                FavouritesStore.shared.merge(page.items.compactMap { remote in
-                    Favourite.Kind(rawValue: remote.kind).map { Favourite(kind: $0, ref: remote.ref, name: remote.name, image: remote.image, subtitle: remote.subtitle,
-                                                                          savedAt: DiaryDate.parse(remote.savedAt) ?? .distantPast) }
-                })
-            }
+            // Favourites too before it counts as done: a failure here used to be passed over and the move
+            // marked done anyway, so they were never brought over. Tried again next launch (the titles and
+            // folders merge again harmlessly: what's on the phone wins).
+            let data = try await PhoneServerSync.shared.send("/api/favourites", method: "GET", store: store)
+            let page = try JSONDecoder().decode(Page.self, from: data)
+            FavouritesStore.shared.merge(page.items.compactMap { remote in
+                Favourite.Kind(rawValue: remote.kind).map { Favourite(kind: $0, ref: remote.ref, name: remote.name, image: remote.image, subtitle: remote.subtitle,
+                                                                      savedAt: DiaryDate.parse(remote.savedAt) ?? .distantPast) }
+            })
             UserDefaults.standard.set(true, forKey: doneKey)
             store.applyDiarySource()
         } catch {

@@ -283,6 +283,11 @@ struct JellyPlayerView: View {
             .onChange(of: activeSubtitle) { _, id in translator.reset(language: subtitleTracks.first { $0.id == id }?.language) }
             .onChange(of: current.id) { _, _ in translator.reset(language: nil) }
             .onChange(of: translator.translating) { _, on in translationChanged(on) }
+            // Locked again (back after the time chosen): the video stops behind the cover instead of
+            // playing on, sound and all, until Face ID.
+            .onChange(of: JellyFaceLock.shared.unlocked) { _, open in
+                if !open, UserDefaults.standard.bool(forKey: JellyPrefs.faceLockKey) { enginePause() }
+            }
             .onChange(of: appDrawsMPVSubtitles, initial: true) { _, drawn in mpv.setTextHidden(drawn, look: subtitleLook) }
             .onChange(of: translator.problem) { _, text in if let text { show(text) } }
             // mpv reads its lines out as text only while a translation language is chosen.
@@ -474,7 +479,7 @@ struct JellyPlayerView: View {
             report("stop")
             savePlace()
             // Where it was, so a Chromecast taking over starts there.
-            JellyCast.shared.handoff = (current.id, exactTime)
+            JellyCast.shared.handoff = (current.id, exactTime, current.source, .now)
             engine?.stop()
             mpv.stop()
             heavy.system.end()

@@ -328,6 +328,9 @@ enum DeviceCodePollStatus: Equatable, Sendable {
         let (data, status) = try await postForm(endpoints.token, ProviderDeviceSignIn.refreshBody(clientId: clientId, refreshToken: refreshToken))
         switch ProviderDeviceSignIn.decodePoll(status: status, data: data) {
         case .authorized(let tokens): return tokens
+        // Refused (the sign-in revoked or expired): ended, so you're asked to sign in again, as for
+        // Trakt, Simkl and WeTrakr. It was taken for a passing failure and tried again and again.
+        case .failed(let message) where status == 400 || status == 401: throw ProviderRenewalError.signInEnded(message)
         case .failed(let message): throw APIError.message(message)
         default: throw APIError.message("The service didn’t renew the sign-in (HTTP \(status)).")
         }

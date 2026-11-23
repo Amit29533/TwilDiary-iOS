@@ -34,3 +34,6 @@ jobs:
         run: npm test
       - name: Compile the existing Cloudflare backend without deploying
         run: npm run build
+      # Needs the build's output (the compiled service worker and offline shell), so it runs after it.
+      - name: Test the compiled service worker's offline runtime
+        run: npm run test:pwa

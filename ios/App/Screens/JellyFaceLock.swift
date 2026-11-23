@@ -9,6 +9,10 @@ import LocalAuthentication
     static let shared = JellyFaceLock()
 
     private(set) var unlocked = false
+    /// The phone has no passcode (nor Face ID) to check against: the lock stays shut and says so.
+    private(set) var unavailable = false
+    /// Whether the phone can check it's you (a passcode is set; Face ID is offered on top).
+    static var available: Bool { LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) }
     /// The app isn't in front (covered for the app switcher).
     private(set) var covered = false
     @ObservationIgnored private var leftAt: Date?
@@ -23,8 +27,10 @@ import LocalAuthentication
         defer { asking = false }
         let context = LAContext()
         var problem: NSError?
-        // No passcode on the phone: there's nothing to check against.
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &problem) else { unlocked = true; return }
+        // No passcode on the phone: nothing to check against. It used to open then, so the switch showed a
+        // lock that let anyone in; now it stays shut and the cover says how to go on.
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &problem) else { unavailable = true; return }
+        unavailable = false
         if (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock JellySpace")) == true {
             unlocked = true
         }
@@ -43,7 +49,8 @@ import LocalAuthentication
     func enter() async -> Bool {
         guard enabled, !unlocked else { return true }
         await unlock()
-        return unlocked
+        // No passcode to unlock with: the page opens behind its cover, which offers to turn the lock off.
+        return unlocked || unavailable
     }
     /// Left JellySpace: the next time in, Face ID first.
     func relock() { if enabled { unlocked = false } }
@@ -98,11 +105,28 @@ private struct JellyFaceLockCover: ViewModifier {
 
     func body(content: Content) -> some View {
         let lock = JellyFaceLock.shared
-        content.overlay {
+        let shut = on && (!lock.unlocked || lock.covered)
+        // What's behind the cover can't be reached (VoiceOver read it out) or touched while it's shut.
+        content.accessibilityHidden(shut).allowsHitTesting(!shut).overlay {
             if on && (!lock.unlocked || lock.covered) {
                 ZStack {
                     Rectangle().fill(.ultraThickMaterial).ignoresSafeArea()
-                    if !lock.covered {
+                    if !lock.covered && lock.unavailable {
+                        // No passcode to unlock with: set one, or turn the lock off here (the settings it's
+                        // turned off in are behind it too). Nothing to check before that: there's no passcode.
+                        VStack(spacing: 12) {
+                            Image(systemName: "lock.slash").font(.app(size: 42, weight: .light)).foregroundStyle(HomeStyle.primary)
+                            Text("No passcode on this iPhone").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            Text("The lock needs a passcode. Set one in iOS Settings, or turn the lock off.")
+                                .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center).padding(.horizontal, 36)
+                            Button { Task { await lock.unlock() } } label: {
+                                Text("Try again").font(.app(size: 15, weight: .semibold)).padding(.horizontal, 22).frame(height: 40)
+                            }
+                            .buttonStyle(.borderedProminent).padding(.top, 4)
+                            Button("Turn the lock off") { on = false }
+                                .font(.app(size: 15, weight: .semibold)).accessibilityIdentifier("jellyspace-face-lock-off")
+                        }
+                    } else if !lock.covered {
                         VStack(spacing: 16) {
                             Image(systemName: "faceid").font(.app(size: 46, weight: .light)).foregroundStyle(HomeStyle.primary)
                             Text("JellySpace is locked").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary)

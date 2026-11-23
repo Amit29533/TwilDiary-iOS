@@ -187,7 +187,7 @@ export async function flushWebProviderOutbox(
   const existing = providerFlights.get(storage);
   if (existing) return existing;
   const transport = options.transport ?? fetch;
-  const work = (async () => {
+  const run = async () => {
     const settings = options.settings ?? readProviderConnectionSettings(storage);
     let flushedEntries = 0;
     const errors: Record<string, string> = {};
@@ -307,7 +307,13 @@ export async function flushWebProviderOutbox(
       }
     }
     return { flushedEntries, errors };
-  })();
+  };
+  // One tab at a time: the in-tab guard above can't see another tab, and two tabs sharing this
+  // queue could both claim the same change (or write over each other's update to it). The browser's
+  // Web Locks queue the second tab's flush behind the first, which then reads what the first left.
+  const locks =
+    !options.storage && typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  const work = locks ? locks.request('twildiary-provider-outbox', run) : run();
   providerFlights.set(storage, work);
   try {
     return await work;

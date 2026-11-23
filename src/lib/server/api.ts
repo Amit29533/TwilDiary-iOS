@@ -28,6 +28,9 @@ export interface ServerBindings {
   DIARY_ACCESS_TOKEN?: string;
   DIARY_OWNER_EMAIL?: string;
   DIARY_OWNER_PASSCODE?: string;
+  /** Which service holds the diary ("trakt", "simkl", "mdblist"); unset, the server (see diary-record). */
+  DIARY_RECORD?: string;
+  DIARY_RECORD_SINCE?: string;
   DIARY_AUTH_SECRET?: string;
   TRAKT_CLIENT_ID?: string;
   TRAKT_TOKEN_KEY?: string;

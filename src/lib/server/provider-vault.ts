@@ -34,6 +34,18 @@ async function deriveVaultKey(env: ServerBindings | undefined): Promise<CryptoKe
       'vault_unconfigured',
       'Configure an independent TRAKT_TOKEN_KEY or DIARY_AUTH_SECRET of at least 32 characters to encrypt the provider vault.'
     );
+  return keyFrom(secretSource);
+}
+/** Every secret the vault may have been written with: the one in use now first, then the other.
+ * The vault followed the session secret (DIARY_AUTH_SECRET, else TRAKT_TOKEN_KEY), so adding
+ * DIARY_AUTH_SECRET later made a vault written under TRAKT_TOKEN_KEY unreadable; it's read with
+ * either now and written again under the current one at its next save. */
+function vaultSecrets(env: ServerBindings | undefined): string[] {
+  const current = sessionSigningSecret(env);
+  const all = [current, env?.TRAKT_TOKEN_KEY?.trim(), env?.DIARY_AUTH_SECRET?.trim()];
+  return [...new Set(all.filter((secret): secret is string => !!secret && secret.length >= 32))];
+}
+async function keyFrom(secretSource: string): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secretSource),
@@ -84,20 +96,23 @@ export async function decryptVaultPayload(
 ): Promise<ProviderVaultPayload | null> {
   const [version, ivPart, dataPart, extra] = ciphertext.split('.');
   if (version !== 'v2' || !ivPart || !dataPart || extra !== undefined) return null;
-  try {
-    const key = await deriveVaultKey(env);
-    const iv = fromBase64Url(ivPart);
-    const data = fromBase64Url(dataPart);
-    const plainBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv as BufferSource, additionalData: VAULT_AAD },
-      key,
-      data as BufferSource
-    );
-    const parsed = JSON.parse(new TextDecoder().decode(plainBuffer));
-    return parsed && typeof parsed === 'object' ? (parsed as ProviderVaultPayload) : null;
-  } catch {
-    return null;
+  const secrets = vaultSecrets(env);
+  const iv = fromBase64Url(ivPart);
+  const data = fromBase64Url(dataPart);
+  for (const secret of secrets) {
+    try {
+      const plainBuffer = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv as BufferSource, additionalData: VAULT_AAD },
+        await keyFrom(secret),
+        data as BufferSource
+      );
+      const parsed = JSON.parse(new TextDecoder().decode(plainBuffer));
+      return parsed && typeof parsed === 'object' ? (parsed as ProviderVaultPayload) : null;
+    } catch {
+      // Not this secret: the next one.
+    }
   }
+  return null;
 }
 
 type EntryPatch = { [K in keyof VaultProviderEntry]?: VaultProviderEntry[K] | null };

@@ -69,14 +69,16 @@ export async function readWorkspaceRevision(
 /** Writes reach the diary only through /api write requests and the scheduled Trakt import. */
 export function changesDiary(method: string, path: string) {
   if (path === '/api/auth' || path.startsWith('/api/providers/vault')) return false;
-  // Settings → APIs writes (saving or testing a key), favourites and the Jellyfin list don't
-  // change the diary.
+  // Settings → APIs writes (saving or testing a key), favourites, the Jellyfin list, backups and
+  // the phone's extras don't change the diary.
   return (
     !['GET', 'HEAD', 'OPTIONS'].includes(method) &&
     path.startsWith('/api/') &&
     !path.startsWith('/api/settings/') &&
     !path.startsWith('/api/favourites') &&
-    !path.startsWith('/api/jellyfin/')
+    !path.startsWith('/api/jellyfin/') &&
+    !path.startsWith('/api/backups') &&
+    !path.startsWith('/api/phone-extras')
   );
 }
 

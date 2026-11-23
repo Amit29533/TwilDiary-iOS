@@ -2,30 +2,27 @@
 
 This is the complete native SwiftUI application and its existing Cloudflare backend,
 consolidated from [TwilDiary](https://github.com/Amit29533/TwilDiary). A fresh clone
-contains the native app, API/Worker source, incoming Trakt scheduler, all 17 D1
-migrations, tests, fixtures, design references, deployment tools and both CI pipelines.
+contains the native app, API/Worker source, incoming Trakt scheduler, all 28 D1
+migrations (through 0027), tests, fixtures, design references, deployment tools and both CI pipelines.
 No sibling checkout is required to build either the iOS client or backend.
 
 ## Current development and builds
 
-- `develop`: active unreleased development and manual Codemagic candidates.
-- `main`: complete consolidation snapshot, including the prepared native64 changes.
-  Native64 has not compiled/run on macOS yet; migration is not a stability claim.
-- Latest completed Codemagic build: **native62**, source `50134fc`. Its imported
-  unsigned iPhone IPA, SHA256 and test evidence are in the
-  [native62 prerelease](https://github.com/Amit29533/TwilDiary-iOS/releases/tag/native62-codemagic).
-  Its independent original GitHub iOS run failed; read its provenance before testing.
-- Native63failed its cold-quota Pause UI case. Native64and all outstanding phone
-  feedback remain in [PROGRESS.md](PROGRESS.md); the ten-step audit is in [ROADMAP.md](ROADMAP.md).
-- Both repositories' histories are preserved. The old root-level Swift project
-  is superseded by `ios/`; historical source is reachable from the
+- `build/all-latest`: current development, merged into `main` by pull request.
+- iPhone builds run on Namespace. A `namespace-ipa-<short sha>` tag builds the unsigned IPA and runs
+  the core package tests ([ios-namespace-ipa.yml](.github/workflows/ios-namespace-ipa.yml)); a
+  `namespace-check-<short sha>` tag runs the app's unit and UI checks
+  ([ios-namespace-checks.yml](.github/workflows/ios-namespace-checks.yml)). Each run keeps its IPA
+  and SHA256 as artifacts.
+- History: the Codemagic native62–native64 candidates and earlier phone feedback are in
+  [PROGRESS.md](PROGRESS.md) and [ROADMAP.md](ROADMAP.md). Both repositories' histories are
+  preserved; the old root-level Swift project is reachable from the
   `archive/pre-consolidation-ios` tag and the merge ancestry.
 
 ## Build the native application
 
-Windows has no Xcode. Use the manually started Codemagic candidate workflow, then
-independent GitHub verification of that **same SHA**. Build setup and provider
-connection requirements are in [CODEMAGIC.md](CODEMAGIC.md).
+Windows has no Xcode. Use the Namespace tags above (Codemagic remains available; its setup and
+provider connection requirements are in [CODEMAGIC.md](CODEMAGIC.md)).
 
 On a Mac with the pinned Xcode26.6/iOS26.5 toolchain:
 
@@ -62,8 +59,8 @@ fixture-backed tests and must never be committed. See
 `wrangler.production.jsonc` and `workers/trakt-incoming/wrangler.production.jsonc`
 identify the **existing** hosted D1/Workers. The consolidation creates no database,
 clones no hosted data, changes no Access policy, deploys nothing and copies no
-credentials. All migration SQL and metadata are present through0016. The tested
-0014–0016rollout is still pending on hosted D1; follow
+credentials. All migration SQL and metadata are present through 0027. Which of them
+hosted D1 has applied is checked there, not assumed from this list; follow
 [the rollout runbook](ios/docs/BACKEND-ROLLOUT.md). Keep this project on Free and
 verify actual account usage; local test results do not certify production costs.
 

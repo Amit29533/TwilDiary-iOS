@@ -2,7 +2,9 @@ import type { ServerBindings } from './api.ts';
 import { ApiError } from './api.ts';
 
 // Persisted, atomic counters survive Worker restarts. Never store raw IP addresses.
-// The global bucket also bounds distributed guessing of this single-owner diary.
+// The global bucket also bounds distributed guessing of this single-owner diary. An address is
+// counted (and refused past 10) before the global budget is spent: one address sending a hundred
+// bad requests used to spend the whole budget and lock the owner out from everywhere.
 export async function consumeSignInAttempt(
   env: ServerBindings | undefined,
   address: string,
@@ -22,41 +24,27 @@ export async function consumeSignInAttempt(
   );
   const digest = Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
   const expiresAt = (bucket + 1) * windowSeconds;
+  const limited = () =>
+    new ApiError(429, 'sign_in_limited', 'Too many sign-in attempts. Try again in 15 minutes.');
+  const count =
+    'INSERT INTO auth_attempts (id, attempts, expires_at) VALUES (?, 1, ?) ON CONFLICT(id) DO UPDATE SET attempts = MIN(attempts + 1, 1001) RETURNING attempts';
+  const owner = `owner:${bucket}`;
   try {
     const results = await env.DB.batch([
       env.DB.prepare('DELETE FROM auth_attempts WHERE expires_at <= ?').bind(
         Math.floor(now / 1000)
       ),
-      ...[`owner:${bucket}`].map((key) =>
-        env
-          .DB!.prepare(
-            'INSERT INTO auth_attempts (id, attempts, expires_at) VALUES (?, 1, ?) ON CONFLICT(id) DO UPDATE SET attempts = MIN(attempts + 1, 1001) RETURNING attempts'
-          )
-          .bind(key, expiresAt)
-      )
+      env.DB.prepare('SELECT attempts FROM auth_attempts WHERE id = ?').bind(owner)
     ]);
-    const total = Number((results[1]?.results[0] as { attempts?: number } | undefined)?.attempts);
-    if (!Number.isFinite(total)) throw new Error('Missing attempt receipt');
+    const spent = Number((results[1]?.results[0] as { attempts?: number } | undefined)?.attempts ?? 0);
     // Once the global budget is exhausted do not create more per-address rows.
-    if (total > 100) {
-      throw new ApiError(
-        429,
-        'sign_in_limited',
-        'Too many sign-in attempts. Try again in 15 minutes.'
-      );
-    }
-    const row = await env.DB.prepare(
-      'INSERT INTO auth_attempts (id, attempts, expires_at) VALUES (?, 1, ?) ON CONFLICT(id) DO UPDATE SET attempts = MIN(attempts + 1, 1001) RETURNING attempts'
-    )
-      .bind(`ip:${digest}:${bucket}`, expiresAt)
-      .first<{ attempts: number }>();
+    if (spent >= 100) throw limited();
+    const row = await env.DB.prepare(count).bind(`ip:${digest}:${bucket}`, expiresAt).first<{ attempts: number }>();
     if (!row || !Number.isFinite(row.attempts)) throw new Error('Missing address receipt');
-    if (row.attempts > 10)
-      throw new ApiError(
-        429,
-        'sign_in_limited',
-        'Too many sign-in attempts. Try again in 15 minutes.'
-      );
+    if (row.attempts > 10) throw limited();
+    const total = await env.DB.prepare(count).bind(owner, expiresAt).first<{ attempts: number }>();
+    if (!total || !Number.isFinite(total.attempts)) throw new Error('Missing attempt receipt');
+    if (total.attempts > 100) throw limited();
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
