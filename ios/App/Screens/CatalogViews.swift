@@ -886,7 +886,10 @@ struct TilesPlaceholder: View {
             }
         }
         .redacted(reason: .placeholder)
-        .frame(maxWidth: .infinity, alignment: .leading).clipped()
+        // minWidth 0: four tiles are wider than the phone, and without it the frame took their width, so
+        // the whole page grew wider than the screen (the summary and buttons ran off its edge) until the
+        // real row came. Now it's the page's width, the tiles cut off at the edge.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
         .accessibilityElement(children: .ignore).accessibilityLabel(label)
     }
 }

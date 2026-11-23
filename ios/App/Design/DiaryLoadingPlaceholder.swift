@@ -94,7 +94,9 @@ struct DiaryLoadingPlaceholder: View {
         HStack(alignment: .top, spacing: 12) {
             ForEach(0..<3, id: \.self) { _ in poster.frame(width: 128) }
             Spacer(minLength: 0)
-        }.frame(maxWidth: .infinity, alignment: .leading).clipped()
+        // minWidth 0: three posters are wider than the phone's column; without it the shelf took their
+        // width and stretched the page past the screen while it loaded.
+        }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
     }
 
     private var profile: some View {
