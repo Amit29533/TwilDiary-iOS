@@ -481,9 +481,14 @@ struct JellyCastRemote: View {
                             if kind == "Audio" {
                                 JellyCast.shared.setAudio(index)
                             } else {
-                                // From or to a picture subtitle, the video is sent again (the server burns it in).
+                                // The TV switches a text subtitle itself only off, or between the ones it was sent
+                                // with the video: it's sent them only when a subtitle was on as the video loaded, so
+                                // turning one on from off did nothing. Those, and any picture subtitle (the server
+                                // burns it in), send the video again with it.
                                 let picture = { (id: Int?) in subtitles.first { $0.id == id }?.picture ?? false }
-                                JellyCast.shared.setSubtitle(index, restarting: picture(index) || picture(cast.subtitleTrack))
+                                let current = cast.subtitleTrack
+                                let inPlace = !picture(index) && !picture(current) && (index == -1 || (current ?? -1) >= 0)
+                                JellyCast.shared.setSubtitle(index, restarting: !inPlace)
                             }
                         }
                         .equatable()
