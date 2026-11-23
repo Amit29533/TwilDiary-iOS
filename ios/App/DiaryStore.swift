@@ -1254,7 +1254,8 @@ import TwilDiaryCore
                 ?? self.latestServiceEvent(titleID: title.id, any: true)
             guard let event else { throw APIError.message("There’s no watch to remove.") }
             // The watch just logged on a Planned title: Planned again, as its Undo leaves it.
-            let replan = self.takePlannedBefore(title.id, at: event.watchedAt) ? self.title(title.id) : nil
+            let planned = event.watchedAt.map { self.takePlannedBefore(title.id, at: $0) } ?? false
+            let replan = planned ? self.title(title.id) : nil
             try await self.serviceRemoveWatches([event])
             if let replan { try await self.servicePatch(replan, values: ["status": "planned"], keepPlays: true) }
         }
