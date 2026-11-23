@@ -32,6 +32,16 @@ import GoogleCast
     private(set) var subtitleTrack: Int?
     /// What was sent to the TV: the video and the episodes after it (for sending it again, see restart).
     @ObservationIgnored private var sent: [JellyfinClient.Item] = []
+    /// The file (Jellyfin's media source) the TV plays, from its reports. The server keeps to a chosen
+    /// audio or subtitle track only when the request names the file too; without it, it went back to the
+    /// file's default audio (English) every time.
+    @ObservationIgnored private var mediaSourceID: String?
+    /// A track just chosen on the phone, and when: the TV's reports of the old one are passed over until
+    /// it plays the new one (they set the menu back while the server made the new stream).
+    @ObservationIgnored private var pendingAudio: (index: Int, at: Date)?
+    @ObservationIgnored private var pendingSubtitle: (index: Int, at: Date)?
+    /// The lock screen's, Control Center's and the Dynamic Island's card while a video casts.
+    private let nowPlaying = JellyCastNowPlaying()
     /// The last position the TV reported, and when (the time between is counted on the phone).
     private(set) var reported: Double = 0
     @ObservationIgnored private var reportedAt = Date.now
@@ -84,9 +94,10 @@ import GoogleCast
         seriesName = item.SeriesName
         seriesID = item.SeriesId
         sent = [item] + queue.filter { $0.Id != item.Id }
-        audioTrack = nil; subtitleTrack = nil
+        audioTrack = nil; subtitleTrack = nil; mediaSourceID = nil; pendingAudio = nil; pendingSubtitle = nil
         duration = item.RunTimeTicks.map { Double($0) / 10_000_000 } ?? 0
         reported = seconds; reportedAt = .now; paused = false
+        refreshNowPlaying()
     }
     func togglePause() {
         if let media {
@@ -96,6 +107,7 @@ import GoogleCast
         }
         reported = position(); reportedAt = .now
         paused.toggle()
+        refreshNowPlaying()
     }
     func seek(to seconds: Double) {
         let target = max(0, seconds)
@@ -108,6 +120,7 @@ import GoogleCast
             command("Seek", options: ["position": target])
         }
         reported = target; reportedAt = .now
+        refreshNowPlaying()
     }
     /// Google's own media channel to the TV's player, once it plays something: pause, play and seek go
     /// there (every Cast receiver takes them, Jellyfin's included, and answers at once). Jellyfin's own
@@ -121,13 +134,13 @@ import GoogleCast
     /// A Jellyfin stream index (its MediaStreams' Index); -1 turns subtitles off.
     /// Another audio track: the video sent again from where it is, with it (see restart).
     func setAudio(_ index: Int) {
-        audioTrack = index
+        audioTrack = index; pendingAudio = (index, .now)
         Task { await restart() }
     }
     /// Another subtitle track (-1 off). A text one the TV lays over the picture as it plays; a picture one
     /// (PGS, DVD) the server burns into the video, so that goes the way of an audio change (`restarting`).
     func setSubtitle(_ index: Int, restarting: Bool) {
-        subtitleTrack = index
+        subtitleTrack = index; pendingSubtitle = (index, .now)
         if restarting { Task { await restart() } } else { command("SetSubtitleStreamIndex", options: ["index": index]) }
     }
     /// The video sent to the TV again from where it is, with the chosen tracks, as a new cast starts it.
@@ -154,8 +167,14 @@ import GoogleCast
         let stubs = items.map { entry -> [String: Any] in
             ["Id": entry.Id, "ServerId": base.serverID, "Name": entry.Name ?? "", "Type": entry.kind, "MediaType": "Video", "IsFolder": false]
         }
+        // The file named with the tracks (see mediaSourceID): the one the TV reported, else the video's
+        // first version, else the video itself (a single-version video's file has its id).
+        var source = mediaSourceID
+        if source == nil, let info = try? await client.playerInfo(id, user: await JellyfinUser.id(client)) { source = info.MediaSources?.first?.Id }
+        guard connected, itemID == id else { return }
         let at = position()
-        var options: [String: Any] = ["items": stubs, "startPositionTicks": Int64(at * 10_000_000), "startIndex": 0]
+        var options: [String: Any] = ["items": stubs, "startPositionTicks": Int64(at * 10_000_000), "startIndex": 0,
+                                      "mediaSourceId": source ?? id]
         if let audioTrack { options["audioStreamIndex"] = audioTrack }
         if let subtitleTrack { options["subtitleStreamIndex"] = subtitleTrack }
         send("PlayNow", options: options, base: base)
@@ -258,12 +277,42 @@ import GoogleCast
     fileprivate func detach() {
         deviceName = nil; itemID = nil; title = ""; seriesName = nil; seriesID = nil; duration = 0; paused = false; reported = 0
         channel = nil; server = nil; making = nil
-        audioTrack = nil; subtitleTrack = nil; sent = []
+        audioTrack = nil; subtitleTrack = nil; sent = []; mediaSourceID = nil; pendingAudio = nil; pendingSubtitle = nil
+        nowPlaying.end()
+    }
+    /// The Now Playing card follows what the TV plays (see JellyCastNowPlaying), and goes once nothing does.
+    /// JellySpace's own music keeps the card while it plays.
+    private func refreshNowPlaying() {
+        guard connected, let id = itemID, let client = JellySpace.client else { nowPlaying.end(); return }
+        if !nowPlaying.active {
+            guard !JellyMusic.shared.playing else { return }
+            nowPlaying.begin(JellyCastNowPlaying.Actions(
+                play: { [weak self] play in
+                    guard let self else { return }
+                    if play == nil || play == self.paused { self.togglePause() }
+                },
+                seek: { [weak self] in self?.seek(to: $0) },
+                position: { [weak self] in self?.position() ?? 0 },
+                next: { [weak self] in self?.next() }))
+        }
+        nowPlaying.update(.init(title: title.isEmpty ? (seriesName ?? "Casting") : title,
+                                subtitle: [seriesName, deviceName].compactMap { $0 }.joined(separator: " · "),
+                                duration: duration, position: position(), paused: paused,
+                                artwork: JellyfinClient.imageURL(base: client.base, item: seriesID ?? id, type: "Primary", tag: nil, width: 600)))
+    }
+    /// Whether a track the TV reports is taken: not while one just chosen on the phone isn't playing yet
+    /// (for up to two minutes, as the server makes the new stream).
+    private static func takes(_ reported: Int, pending: inout (index: Int, at: Date)?) -> Bool {
+        guard let chosen = pending else { return true }
+        guard reported == chosen.index || Date.now.timeIntervalSince(chosen.at) > 120 else { return false }
+        pending = nil
+        return true
     }
     /// A message from the TV: what it's playing, where, paused or not; or what went wrong.
     fileprivate func receive(_ text: String) {
         guard let data = text.data(using: .utf8), let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = message["type"] as? String else { return }
+        defer { refreshNowPlaying() }
         switch type {
         case "playbackstart", "playbackprogress":
             guard let state = message["data"] as? [String: Any] else { return }
@@ -276,8 +325,9 @@ import GoogleCast
                 if let ticks = (item["RunTimeTicks"] as? NSNumber)?.doubleValue, ticks > 0 { duration = ticks / 10_000_000 }
             }
             if let play = state["PlayState"] as? [String: Any] {
-                if let audio = (play["AudioStreamIndex"] as? NSNumber)?.intValue { audioTrack = audio }
-                if let subtitle = (play["SubtitleStreamIndex"] as? NSNumber)?.intValue { subtitleTrack = subtitle }
+                if let source = play["MediaSourceId"] as? String, !source.isEmpty { mediaSourceID = source }
+                if let audio = (play["AudioStreamIndex"] as? NSNumber)?.intValue, Self.takes(audio, pending: &pendingAudio) { audioTrack = audio }
+                if let subtitle = (play["SubtitleStreamIndex"] as? NSNumber)?.intValue, Self.takes(subtitle, pending: &pendingSubtitle) { subtitleTrack = subtitle }
                 if let ticks = (play["PositionTicks"] as? NSNumber)?.doubleValue { reported = ticks / 10_000_000; reportedAt = .now }
                 if let isPaused = play["IsPaused"] as? Bool { paused = isPaused }
             }
