@@ -52,6 +52,8 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if watching.isEmpty || !showContinue { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: Gap.section) {
+                    // A saved clip waiting for you to pick its title (nothing shows otherwise).
+                    HomeClipNudge()
                     // Your order and choice of sections (Settings → Customise).
                     ForEach(HomeSection.layout(homeLayout).visible.compactMap(HomeSection.init(rawValue:))) { section in
                         homeSection(section, overview: overview, recent: recent, now: now)

@@ -74,6 +74,8 @@ struct TitleDetailView: View {
                                 JellyPlayButton(title: title)
                                 progressPanel(title).padding(.top, -8)
                                 if let extras { TitleTagsSection(keywords: extras.keywords, kind: title.isSeries ? .tv : .movie) }
+                                // Clips you shared to TwilDiary and kept with this title.
+                                if let tmdb = title.tmdbId { TitleClipsShelf(tmdbID: tmdb, tv: title.isSeries) }
                                 if title.isSeries { SeasonCardsSection(title: title) }
                                 if title.isSeries { episodeSection(title).id("episodes") }
                                 if title.isSeries, let tmdbId = title.tmdbId {

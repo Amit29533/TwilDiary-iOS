@@ -365,9 +365,10 @@ import TwilDiaryCore
     /// are resting (a used-up limit until it resets, a busy service for a moment, a refused key
     /// for a few hours) are skipped, so the question goes straight to one that works; each route
     /// is asked at most once. With everything resting, the one back soonest is tried anyway.
-    static func generate(_ body: [String: Any], key: String, retried: Bool = false) async throws -> Data {
-        let all = routes(advancing: true)
-        guard !all.isEmpty else { throw APIError.message("Add a Gemini, Groq or Requesty key on the APIs page.") }
+    /// `geminiOnly`: a question with pictures in it (Saved clips' frames); Groq and Requesty take text only.
+    static func generate(_ body: [String: Any], key: String, retried: Bool = false, geminiOnly: Bool = false) async throws -> Data {
+        let all = routes(advancing: true).filter { !geminiOnly || $0.service == .gemini }
+        guard !all.isEmpty else { throw APIError.message(geminiOnly ? "Add a Gemini key on the APIs page." : "Add a Gemini, Groq or Requesty key on the APIs page.") }
         let now = resting
         var order = all.filter { now[$0.id] == nil }
         if order.isEmpty, let soonest = all.min(by: { (now[$0.id] ?? .distantPast) < (now[$1.id] ?? .distantPast) }) { order = [soonest] }

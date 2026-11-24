@@ -612,6 +612,8 @@ struct CatalogDetailView: View {
                             }
                         }
                         if let extras, !extras.keywords.isEmpty { TitleTagsSection(keywords: extras.keywords, kind: route.kind) }
+                        // Clips you shared to TwilDiary and kept with this title.
+                        TitleClipsShelf(tmdbID: route.id, tv: route.kind == .tv)
                         if route.kind == .tv { CatalogSeasonPreview(route: route, details: details.details, imdbID: details.details.imdbId ?? extras?.imdbId, store: store) }
                         CastAndRelated(route: route, sourceTitle: details.details.name, awardsIMDbID: details.details.imdbId ?? extras?.imdbId,
                                        characters: animated ? (details.details.year, route.kind == .movie) : nil,

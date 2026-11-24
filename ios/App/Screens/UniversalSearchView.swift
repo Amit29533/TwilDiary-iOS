@@ -51,6 +51,8 @@ struct SearchLandingView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: Gap.section) {
+            // Reels and videos shared to TwilDiary, named (or waiting for you to pick the title).
+            if kind == .all { SavedClipsSection() }
             RecentlyViewedShelf()
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {

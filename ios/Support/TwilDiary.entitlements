@@ -7,5 +7,10 @@
 	     when its certificate allows. -->
 	<key>com.apple.developer.usernotifications.communication</key>
 	<true/>
+	<!-- Saved clips: the share sheet writes them where the app reads them. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.amit29533.TwilDiary</string>
+	</array>
 </dict>
 </plist>

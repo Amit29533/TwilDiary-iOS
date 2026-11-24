@@ -39,10 +39,14 @@ targets:
       - path: App/Resources/TitleAwards.sqlite
         buildPhase: resources
       - path: Shared
+      - path: ClipShared
       - path: App/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
       - target: TwilDiaryWidgets
+        embed: true
+      # Saved clips: TwilDiary in other apps' share sheets.
+      - target: TwilDiaryShare
         embed: true
       - sdk: AppIntents.framework
       - package: TwilDiaryCore
@@ -107,6 +111,27 @@ targets:
         CURRENT_PROJECT_VERSION: '67'
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Support/Widgets-Info.plist
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        TARGETED_DEVICE_FAMILY: '1'
+  # Share a reel, a video or a link to TwilDiary: it's saved as a clip for the app to identify.
+  TwilDiaryShare:
+    type: app-extension
+    platform: iOS
+    sources: [ShareExtension, ClipShared]
+    dependencies:
+      - sdk: UniformTypeIdentifiers.framework
+      - sdk: AVFoundation.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amit29533.TwilDiary.share
+        MARKETING_VERSION: '2.0.0'
+        CURRENT_PROJECT_VERSION: '67'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Support/Share-Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: TwilDiary
+        TWILDIARY_TMDB_KEY: ''
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
         TARGETED_DEVICE_FAMILY: '1'
