@@ -2,7 +2,7 @@ import SwiftUI
 import Observation
 import TwilDiaryCore
 
-/// Design Lab (owner's request, Nov 2026): Settings → Appearance → Design Lab. The redrawn Home,
+/// Design Lab (owner's request, Nov 2026): Settings → Design Lab. The redrawn Home,
 /// Glance, title, person and Known for pages, piece by piece, in any theme. Each piece checks
 /// `Studio.on(_:)`; the whole-app feel (press, rating badge, corners, layout switches) reads the
 /// lab's other settings. "Original" is the app as it was; "Studio" turns every redrawn piece on.
@@ -452,27 +452,22 @@ enum StudioPeople {
 
 // MARK: - Settings pages
 
-/// Appearance's row into Design Lab, with the starting point it's on.
-struct DesignLabLink: View {
-    @State private var lab = StudioLab.shared
-    var body: some View {
-        SettingsGroup {
-            NavigationLink { DesignLabView() } label: {
-                HStack(spacing: 12) {
-                    SettingsTile(symbol: "slider.horizontal.3")
-                    Text("Design Lab").font(.app(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(lab.preset.title).font(.app(size: 17)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                    Image(systemName: "chevron.right").font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
-                }.settingsRowFrame().contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("settings-design-lab")
-        }
+/// The parts of the app still to be redrawn: listed in Design Lab so it's clear what's coming.
+enum DesignLabUpcoming: String, CaseIterable, Identifiable {
+    case library = "Library", search = "Search", explore = "Explore", statistics = "Statistics", calendar = "Calendar and history"
+    var id: Self { self }
+    var symbol: String {
+        switch self { case .library: "books.vertical.fill"; case .search: "magnifyingglass"; case .explore: "safari.fill"; case .statistics: "chart.bar.fill"; case .calendar: "calendar" }
+    }
+    var tile: Color {
+        switch self { case .library: Color(uiColor: .systemGreen); case .search: Color(uiColor: .systemIndigo); case .explore: Color(uiColor: .systemOrange); case .statistics: Color(uiColor: .systemPink); case .calendar: Color(uiColor: .systemBlue) }
     }
 }
 
-/// Settings → Appearance → Design Lab: the starting point, the areas, and the whole app's feel.
+/// Settings → Design Lab: the starting point, the areas, and the whole app's feel.
 struct DesignLabView: View {
     @State private var lab = StudioLab.shared
+    @AppStorage(Haptics.key) private var haptics = true
     var body: some View {
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 20) {
@@ -485,7 +480,7 @@ struct DesignLabView: View {
                                      : lab.preset == .studio ? "Every redrawn piece is on. Change anything and it becomes Custom."
                                      : "The app as it was. Pick Studio to turn every redrawn piece on.")
                 }
-                SettingsGroup(label: "Areas") {
+                SettingsGroup(label: "Redrawn") {
                     ForEach(Array(StudioChange.Area.pages.enumerated()), id: \.element) { index, area in
                         if index > 0 { SettingsDivider() }
                         NavigationLink { DesignLabAreaView(area: area) } label: {
@@ -499,6 +494,19 @@ struct DesignLabView: View {
                                 Image(systemName: "chevron.right").font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
                             }.settingsRowFrame().contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("design-lab-area-" + area.rawValue.lowercased().replacingOccurrences(of: " ", with: "-"))
+                    }
+                }
+                SettingsGroup(label: "Next to redraw") {
+                    ForEach(Array(DesignLabUpcoming.allCases.enumerated()), id: \.element) { index, part in
+                        if index > 0 { SettingsDivider() }
+                        HStack(spacing: 12) {
+                            Image(systemName: part.symbol).font(.app(size: 15, weight: .semibold)).foregroundStyle(.white)
+                                .frame(width: 30, height: 30).background(part.tile.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            Text(part.rawValue).font(.app(size: 17)).foregroundStyle(HomeStyle.secondary)
+                            Spacer(minLength: 8)
+                            Text("Soon").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                                .padding(.horizontal, 8).frame(height: 22).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                        }.settingsRowFrame().accessibilityElement(children: .combine).accessibilityLabel(part.rawValue + ", coming soon")
                     }
                 }
                 SettingsGroup(label: "Feel") {
@@ -515,6 +523,12 @@ struct DesignLabView: View {
                                     selection: Binding(get: { lab.corners }, set: { lab.setCorners($0) }))
                     SettingsDivider()
                     DesignLabToggleChoice(change: .layoutSwitch, lab: lab)
+                    SettingsDivider()
+                    // Haptics (moved here from the Theme page): the little taps when you mark, add,
+                    // switch tabs and trace the rating chart. Turning them on answers with one.
+                    Toggle(isOn: $haptics) { SettingsRowTitle("Haptics", "Little taps when you mark, add and switch") }
+                        .tint(Color(uiColor: .systemGreen)).settingsRowFrame().accessibilityIdentifier("settings-haptics")
+                        .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }
                 }
                 SettingsFootnote(text: "Changes instantly · saved on this iPhone")
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)

@@ -4,7 +4,6 @@ import SwiftUI
 struct AppearanceView: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
-    @AppStorage(Haptics.key) private var haptics = true
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 2)
 
     var body: some View {
@@ -21,7 +20,7 @@ struct AppearanceView: View {
                     }
                 }
                 if theme.palette.native {
-                    // Native's (and Studio's) light or dark: follow the iPhone, or always one (as Apple's apps offer).
+                    // Native's light or dark: follow the iPhone, or always one (as Apple's apps offer).
                     VStack(alignment: .leading, spacing: 8) {
                         Text("APPEARANCE").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).padding(.leading, 16)
                         NativeSegmentedControl(segments: NativeAppearance.allCases.map { NativeSegment(value: $0, title: $0.title, id: "native-appearance-" + $0.rawValue) },
@@ -29,24 +28,10 @@ struct AppearanceView: View {
                         SettingsFootnote(text: nativeAppearance == .automatic ? "Follows your iPhone’s light or dark setting." : "Always \(nativeAppearance.rawValue), whatever your iPhone is set to.")
                     }.transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                // Haptics: the little taps when you mark, add, switch tabs and trace the rating chart.
-                SettingsGroup(label: "Feel") {
-                    HStack(spacing: ThemeStore.current.native ? 12 : 14) {
-                        SettingsTile(symbol: "iphone.radiowaves.left.and.right")
-                        Text("Haptics").font(.app(size: ThemeStore.current.native ? 17 : 15, weight: ThemeStore.current.native ? .regular : .semibold))
-                            .foregroundStyle(HomeStyle.primary).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Toggle("", isOn: $haptics).labelsHidden().tint(ThemeStore.current.native ? Color(uiColor: .systemGreen) : theme.accent)
-                    }.padding(.horizontal, 15).frame(minHeight: ThemeStore.current.native ? 52 : 56)
-                        .accessibilityElement(children: .combine).accessibilityIdentifier("settings-haptics")
-                        // Turning them on answers with one, so you feel what you chose.
-                        .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }
-                }
-                // Design Lab: how each part of the app looks, in any theme (its own page).
-                DesignLabLink()
+                // Haptics moved to Design Lab → Feel; Design Lab has its own row in Settings.
                 SettingsFootnote(text: "Changes instantly · saved on this iPhone")
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
-        }.diaryScreenBackground().diaryPageNavigation("Appearance")
+        }.diaryScreenBackground().diaryPageNavigation("Theme")
     }
 }
 

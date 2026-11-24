@@ -11,9 +11,6 @@ struct CustomiseView: View {
     @AppStorage(ExploreRow.key) private var exploreText = ""
     @AppStorage(TabLayout.key) private var tabText = ""
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
-    @AppStorage(PosterSize.ratingKey) private var showsRating = true
-    @AppStorage(PosterSize.captionKey) private var showsCaption = true
     @State private var confirmReset = false
     /// The title bar's feathered backdrop, as on every other settings page (EdgeToEdgeScroll):
     /// without it the rows scrolled under "Customise" and the back button.
@@ -62,16 +59,7 @@ struct CustomiseView: View {
                 .onMove { from, to in var next = tabs; next.order.move(fromOffsets: from, toOffset: to); tabText = next.text }
             } header: { sectionHeader("Tab bar") }.listRowBackground(rowBackground)
 
-            Section {
-                Picker("Poster size", selection: $posterSize) {
-                    ForEach(PosterSize.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented).accessibilityIdentifier("customise-poster-size")
-                Toggle(isOn: $showsRating) { label("Rating on posters", symbol: "star", hidden: !showsRating) }
-                    .accessibilityIdentifier("customise-poster-rating")
-                Toggle(isOn: $showsCaption) { label("Name under posters", symbol: "textformat", hidden: !showsCaption) }
-                    .accessibilityIdentifier("customise-poster-caption")
-            } header: { sectionHeader("Posters") }.listRowBackground(rowBackground)
-
+            // Posters have their own page now (Settings → Posters).
             Section {
                 Button("Back to the original layout", role: .destructive) { confirmReset = true }
                     .accessibilityIdentifier("customise-reset")
@@ -90,11 +78,10 @@ struct CustomiseView: View {
             }.allowsHitTesting(false)
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .diaryScreenBackground().diaryPageNavigation("Customise")
+        .diaryScreenBackground().diaryPageNavigation("Layout")
         .confirmationDialog("Back to the original layout?", isPresented: $confirmReset, titleVisibility: .visible) {
-            Button("Reset Home, Explore, tabs and posters", role: .destructive) {
+            Button("Reset Home, Explore and tabs", role: .destructive) {
                 homeText = ""; exploreText = ""; tabText = ""; showContinue = true
-                posterSize = .regular; showsRating = true; showsCaption = true
                 Haptics.play(.success)
             }
         }
@@ -133,5 +120,32 @@ struct CustomiseView: View {
         var next = layout
         if next.hidden.contains(id) { next.hidden.remove(id) } else { next.hidden.insert(id) }
         return next
+    }
+}
+
+/// Settings → Posters (split out of Layout): how posters look across the app.
+struct PosterSettingsView: View {
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @AppStorage(PosterSize.ratingKey) private var showsRating = true
+    @AppStorage(PosterSize.captionKey) private var showsCaption = true
+    var body: some View {
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 20) {
+                SettingsIntro(eyebrow: "Posters", text: "How posters look across the app.")
+                SettingsGroup(label: "Size") {
+                    Picker("Poster size", selection: $posterSize) {
+                        ForEach(PosterSize.allCases) { Text($0.title).tag($0) }
+                    }.pickerStyle(.segmented).padding(14).accessibilityIdentifier("customise-poster-size")
+                }
+                SettingsGroup(label: "On each poster") {
+                    Toggle(isOn: $showsRating) { SettingsRowTitle("Rating", "The community score on the poster") }
+                        .settingsRowFrame().accessibilityIdentifier("customise-poster-rating")
+                    SettingsDivider()
+                    Toggle(isOn: $showsCaption) { SettingsRowTitle("Name under posters", "The title and a line of details") }
+                        .settingsRowFrame().accessibilityIdentifier("customise-poster-caption")
+                }
+                SettingsFootnote(text: "Where the rating sits, corners and caption spacing are in Design Lab.")
+            }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
+        }.diaryScreenBackground().diaryPageNavigation("Posters")
     }
 }

@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
     @AppStorage(TabLayout.key) private var tabText = ""
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -35,37 +36,9 @@ struct SettingsView: View {
                         }.padding(15).modifier(SettingsCard()).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("settings-personal-profile")
                     diaryCard
-                    settingsSection("LIBRARY") {
-                        HStack(spacing: 12) {
-                            tile("star.fill", .purple)
-                            SettingsRowTitle("Public ratings", "Community scores, not your rating")
-                            Spacer(minLength: 0)
-                            Menu { Picker("Library ratings", selection: $ratingSource) { ForEach(PublicRatingSource.allCases) { Text($0.label).tag($0) } } }
-                                label: { FilterPill(label: ratingSource.label) }.fixedSize().accessibilityLabel("Library ratings").accessibilityValue(ratingSource.label).accessibilityIdentifier("settings-rating-source")
-                        }.settingsRowFrame()
-                        divider
-                        NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
-                        divider
-                        NavigationLink(value: AppDestination.jellyspaceSettings) {
-                            settingsRow(leading: jellyfinTile, "JellySpace", subtitle: nil, value: nil, disclosure: true, padded: true)
-                        }.accessibilityIdentifier("settings-jellyspace")
-                        divider
-                        NavigationLink(value: AppDestination.trash) { settingsRow("trash.fill", .red, "Trash", value: trashCount == 0 ? "Empty" : String(trashCount), disclosure: true) }
-                    }
-                    settingsSection("TRACKING") {
-                        HStack(spacing: 12) {
-                            tile("eye.slash.fill", .indigo)
-                            Toggle(isOn: $hideSpoilers) {
-                                SettingsRowTitle("Hide spoilers", "Names and stills until watched")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }.tint(theme.accent)
-                        }.frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame()
-                        divider
-                        NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
-                        divider
-                        NavigationLink(value: AppDestination.calendar) { settingsRow("calendar", .indigo, "Airing calendar", subtitle: "Upcoming and catch-up episodes", disclosure: true) }.accessibilityIdentifier("settings-calendar")
-                    }
-                    settingsSection("APPEARANCE") {
+                    // Owner's reorganisation (Nov 2026): how it looks; your library and tracking;
+                    // shortcuts to screens; sync and data; then general settings.
+                    settingsSection("LOOK AND LAYOUT") {
                         NavigationLink(value: AppDestination.appearance) {
                             VStack(alignment: .leading, spacing: 8) {
                                 settingsRow("paintpalette.fill", .pink, "Theme", value: theme.name, disclosure: true, padded: false)
@@ -79,9 +52,62 @@ struct SettingsView: View {
                             }.padding(.horizontal, 15).padding(.vertical, 12)
                         }.accessibilityIdentifier("settings-theme")
                         divider
+                        // Design Lab: how each part of the app looks, in any theme.
+                        NavigationLink { DesignLabView() } label: {
+                            settingsRow("slider.horizontal.3", .teal, "Design Lab", subtitle: "How each part of the app looks", value: StudioLab.shared.preset.title, disclosure: true)
+                        }.accessibilityIdentifier("settings-design-lab")
+                        divider
                         NavigationLink(value: CustomiseRoute()) {
-                            settingsRow("slider.horizontal.3", .purple, "Customise", subtitle: "Home, Explore, tabs and posters", disclosure: true)
+                            settingsRow("rectangle.3.group", .indigo, "Layout", subtitle: "Home, Explore and tabs", disclosure: true)
                         }.accessibilityIdentifier("settings-customise")
+                        divider
+                        NavigationLink { PosterSettingsView() } label: {
+                            settingsRow("photo.on.rectangle", .orange, "Posters", subtitle: "Size, rating and name", value: posterSize.title, disclosure: true)
+                        }.accessibilityIdentifier("settings-posters")
+                    }
+                    settingsSection("LIBRARY AND TRACKING") {
+                        HStack(spacing: 12) {
+                            tile("star.fill", .purple)
+                            SettingsRowTitle("Public ratings", "Community scores, not your rating")
+                            Spacer(minLength: 0)
+                            Menu { Picker("Library ratings", selection: $ratingSource) { ForEach(PublicRatingSource.allCases) { Text($0.label).tag($0) } } }
+                                label: { FilterPill(label: ratingSource.label) }.fixedSize().accessibilityLabel("Library ratings").accessibilityValue(ratingSource.label).accessibilityIdentifier("settings-rating-source")
+                        }.settingsRowFrame()
+                        divider
+                        HStack(spacing: 12) {
+                            tile("eye.slash.fill", .indigo)
+                            Toggle(isOn: $hideSpoilers) {
+                                SettingsRowTitle("Hide spoilers", "Names and stills until watched")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }.tint(theme.accent)
+                        }.frame(maxWidth: .infinity, alignment: .leading).settingsRowFrame()
+                        divider
+                        NavigationLink(value: AppDestination.files) { settingsRow("externaldrive.fill", .green, "Files & drives", value: driveCount == 0 ? nil : String(driveCount), disclosure: true) }.accessibilityIdentifier("settings-files")
+                        divider
+                        NavigationLink(value: AppDestination.jellyspaceSettings) {
+                            settingsRow(leading: jellyfinTile, "JellySpace", subtitle: nil, value: nil, disclosure: true, padded: true)
+                        }.accessibilityIdentifier("settings-jellyspace")
+                        divider
+                        NavigationLink(value: AppDestination.trash) { settingsRow("trash.fill", .red, "Trash", value: trashCount == 0 ? "Empty" : String(trashCount), disclosure: true) }
+                    }
+                    settingsSection("SHORTCUTS") {
+                        NavigationLink(value: AppDestination.history) { settingsRow("clock.arrow.circlepath", .blue, "Watch history", subtitle: "Recently watched, dates and filters", disclosure: true) }.accessibilityIdentifier("settings-history")
+                        divider
+                        NavigationLink(value: AppDestination.calendar) { settingsRow("calendar", .indigo, "Airing calendar", subtitle: "Upcoming and catch-up episodes", disclosure: true) }.accessibilityIdentifier("settings-calendar")
+                    }
+                    settingsSection("SYNC AND DATA") {
+                        NavigationLink(value: AppDestination.connections) {
+                            settingsRow("link", .purple, "Connections", subtitle: "Trakt, MDBList, WeTrakr, AniList and more", value: connectionsSummary, disclosure: true)
+                        }.accessibilityIdentifier("settings-connections")
+                        divider
+                        NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync and backups", disclosure: true) }.accessibilityIdentifier("settings-backups")
+                        divider
+                        Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress and notes", disclosure: true) }
+                        divider
+                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "From a TwilDiary backup (.json)", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
+                    }
+                    settingsSection("GENERAL") {
+                        NavigationLink(value: AppDestination.notifications) { settingsRow("bell.badge.fill", .red, "Notifications", subtitle: "New episodes and releases", disclosure: true) }.accessibilityIdentifier("settings-notifications")
                         divider
                         HStack(spacing: 12) {
                             tile("rectangle.portrait.and.arrow.forward", .orange)
@@ -91,25 +117,12 @@ struct SettingsView: View {
                                 label: { FilterPill(label: launchTab.label) }.fixedSize().accessibilityLabel("Opens on").accessibilityValue(launchTab.label).accessibilityIdentifier("settings-launch-tab")
                         }.settingsRowFrame()
                         divider
-                        settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
+                        NavigationLink(value: AppDestination.languageRegion) { settingsRow("character.bubble.fill", .blue, "Language & region", value: languageRegionSummary, disclosure: true) }
+                            .accessibilityIdentifier("settings-language-region")
                         divider
                         settingsRow("globe.asia.australia.fill", .cyan, "Time zone", value: TimeZone.current.identifier.replacingOccurrences(of: "_", with: " "))
                         divider
-                        NavigationLink(value: AppDestination.languageRegion) { settingsRow("character.bubble.fill", .blue, "Language & region", value: languageRegionSummary, disclosure: true) }
-                            .accessibilityIdentifier("settings-language-region")
-                    }
-                    settingsSection("CONNECTIONS AND DATA") {
-                        NavigationLink(value: AppDestination.connections) {
-                            settingsRow("link", .purple, "Connections", subtitle: "Trakt, MDBList, WeTrakr, AniList and more", value: connectionsSummary, disclosure: true)
-                        }.accessibilityIdentifier("settings-connections")
-                        divider
-                        Button { exportDiary() } label: { settingsRow("square.and.arrow.up.fill", .mint, "Export diary", subtitle: "Titles, progress and notes", disclosure: true) }
-                        divider
-                        Button { showImport = true } label: { settingsRow("square.and.arrow.down.fill", .mint, "Import diary", subtitle: "From a TwilDiary backup (.json)", value: backupNotice, disclosure: true) }.accessibilityIdentifier("settings-import-diary")
-                        divider
-                        NavigationLink(value: AppDestination.syncBackup) { settingsRow("archivebox.fill", .teal, "Sync & backup", subtitle: "Background sync and backups", disclosure: true) }.accessibilityIdentifier("settings-backups")
-                        divider
-                        NavigationLink(value: AppDestination.notifications) { settingsRow("bell.badge.fill", .red, "Notifications", subtitle: "New episodes and releases", disclosure: true) }.accessibilityIdentifier("settings-notifications")
+                        settingsRow("circle.dotted.circle", .teal, "Reduce motion", value: reduceMotion ? "On · device" : "Follows device")
                     }
                     VStack(spacing: 10) {
                         NavigationLink(value: AppDestination.about) {
