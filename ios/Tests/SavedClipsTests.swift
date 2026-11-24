@@ -96,7 +96,7 @@ final class SavedClipsTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         var older = SavedClip(kind: .link, url: "https://youtu.be/a", source: "YouTube")
-        older.created = Date(timeIntervalSince1970: 1_800_000_000)
+        older.created = Date(timeIntervalSince1970: 1_700_000_000)   // November 2023
         let newer = SavedClip(kind: .text, text: "#vivant")
         XCTAssertTrue(ClipStore.add(older, to: folder))
         XCTAssertTrue(ClipStore.add(newer, to: folder))
