@@ -98,8 +98,13 @@ struct ClipLink: View {
 /// Search's Saved clips: the newest few, and the way to all of them (and to adding one).
 struct SavedClipsSection: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var inbox = ClipInbox.shared
     @State private var picking: SavedClip?
+    /// The clipboard holds a link (checked without reading it, so iOS asks nothing).
+    @State private var linkCopied = false
+    /// The clipboard's version last pasted here, so the same link isn't offered twice.
+    @AppStorage(ClipInbox.pastedKey) private var pastedChange = -1
     var body: some View {
         let clips = inbox.clips
         VStack(alignment: .leading, spacing: Gap.heading) {
@@ -109,6 +114,19 @@ struct SavedClipsSection: View {
                 Spacer(minLength: 0)
                 SectionMoreLink(label: "All saved clips", value: AppDestination.savedClips, identifier: "search-saved-clips")
             }.frame(minHeight: Gap.headingRow)
+            // A link the share sheet copied (an install without the shared folder), or one you
+            // copied yourself: one tap adds it.
+            if linkCopied && UIPasteboard.general.changeCount != pastedChange {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.on.clipboard").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                        .frame(width: 36, height: 36).background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Text("A copied link is ready to add").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                    Spacer(minLength: 0)
+                    PasteButton(payloadType: String.self) { [store] strings in
+                        Task { @MainActor in await ClipInbox.shared.add(pasted: strings.joined(separator: "\n"), store: store) }
+                    }.labelStyle(.iconOnly).buttonBorderShape(.capsule)
+                }.padding(12).cardSurface(18).accessibilityIdentifier("search-paste-clip")
+            }
             if clips.isEmpty {
                 // How clips get here, in one line (the page behind the chevron adds them too).
                 NavigationLink(value: AppDestination.savedClips) {
@@ -129,7 +147,8 @@ struct SavedClipsSection: View {
                 }.cardSurface(18).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
-        .task { await inbox.process(store: store) }
+        .task { linkCopied = UIPasteboard.general.hasURLs; await inbox.process(store: store) }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { linkCopied = UIPasteboard.general.hasURLs } }
         .sheet(item: $picking) { clip in ClipPickView(clipID: clip.id) }
     }
 }

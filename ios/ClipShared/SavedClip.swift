@@ -70,11 +70,43 @@ struct SavedClip: Codable, Identifiable, Sendable, Equatable {
 enum ClipStore {
     static let group = "group.com.amit29533.TwilDiary"
 
+    /// The app groups this install may have, most likely first. A sideloading tool can rename the
+    /// group: AltStore and SideStore list the new name under ALTAppGroups in the app's Info.plist,
+    /// and every tool leaves it in the signing profile inside the app; the built-in name is last.
+    /// The share sheet looks in its own bundle and in the app's around it.
+    static var groups: [String] {
+        let here = Bundle.main.bundleURL
+        let containing = here.pathExtension == "appex" ? Bundle(url: here.deletingLastPathComponent().deletingLastPathComponent()) : nil
+        var found: [String] = []
+        for bundle in [Bundle.main, containing].compactMap({ $0 }) {
+            found += (bundle.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]) ?? []
+            found += profileGroups(bundle.url(forResource: "embedded", withExtension: "mobileprovision"))
+        }
+        found.append(group)
+        var seen = Set<String>()
+        return found.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+    /// The app groups named in a signing profile (a signed plist: the XML between its markers).
+    static func profileGroups(_ profile: URL?) -> [String] {
+        guard let profile, let data = try? Data(contentsOf: profile) else { return [] }
+        return appGroups(inProfile: data)
+    }
+    static func appGroups(inProfile data: Data) -> [String] {
+        guard let start = data.range(of: Data("<?xml".utf8)), let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex),
+              let plist = try? PropertyListSerialization.propertyList(from: data.subdata(in: start.lowerBound..<end.upperBound), format: nil) as? [String: Any],
+              let entitlements = plist["Entitlements"] as? [String: Any] else { return [] }
+        return entitlements["com.apple.security.application-groups"] as? [String] ?? []
+    }
+
     /// The group's clips folder; nil when this install has no app group (the share sheet then
-    /// can't hand anything over).
+    /// hands a link over by copying it).
     static var sharedFolder: URL? {
-        guard let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return nil }
-        return prepared(base.appendingPathComponent("Clips", isDirectory: true))
+        for identifier in groups {
+            if let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier) {
+                return prepared(base.appendingPathComponent("Clips", isDirectory: true))
+            }
+        }
+        return nil
     }
     /// The folder the app uses: the group's, else its own.
     static var folder: URL? {

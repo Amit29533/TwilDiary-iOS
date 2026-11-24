@@ -367,18 +367,6 @@ enum StudioPeople {
 
 // MARK: - Settings pages
 
-/// The parts of the app still to be redrawn: listed in Design Lab so it's clear what's coming.
-enum DesignLabUpcoming: String, CaseIterable, Identifiable {
-    case search = "Search", explore = "Explore", calendar = "Calendar and history"
-    var id: Self { self }
-    var symbol: String {
-        switch self { case .search: "magnifyingglass"; case .explore: "safari.fill"; case .calendar: "calendar" }
-    }
-    var tile: Color {
-        switch self { case .search: Color(uiColor: .systemIndigo); case .explore: Color(uiColor: .systemOrange); case .calendar: Color(uiColor: .systemBlue) }
-    }
-}
-
 /// Settings → Design Lab: the starting point, the areas, and the whole app's feel.
 struct DesignLabView: View {
     @State private var lab = StudioLab.shared
@@ -409,19 +397,6 @@ struct DesignLabView: View {
                                 Image(systemName: "chevron.right").font(.app(size: 14, weight: .semibold)).foregroundStyle(Color(uiColor: .tertiaryLabel))
                             }.settingsRowFrame().contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("design-lab-area-" + area.rawValue.lowercased().replacingOccurrences(of: " ", with: "-"))
-                    }
-                }
-                SettingsGroup(label: "Next to redraw") {
-                    ForEach(Array(DesignLabUpcoming.allCases.enumerated()), id: \.element) { index, part in
-                        if index > 0 { SettingsDivider() }
-                        HStack(spacing: 12) {
-                            Image(systemName: part.symbol).font(.app(size: 15, weight: .semibold)).foregroundStyle(.white)
-                                .frame(width: 30, height: 30).background(part.tile.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            Text(part.rawValue).font(.app(size: 17)).foregroundStyle(HomeStyle.secondary)
-                            Spacer(minLength: 8)
-                            Text("Soon").font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
-                                .padding(.horizontal, 8).frame(height: 22).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                        }.settingsRowFrame().accessibilityElement(children: .combine).accessibilityLabel(part.rawValue + ", coming soon")
                     }
                 }
                 SettingsGroup(label: "Feel") {

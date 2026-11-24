@@ -27,7 +27,7 @@ final class ShareViewController: UIViewController {
 }
 
 @MainActor @Observable final class ShareModel {
-    enum Phase { case saving, saved, failed(String) }
+    enum Phase { case saving, saved, copied(String), failed(String) }
     var phase = Phase.saving
     var clip: SavedClip?
     var still: UIImage?
@@ -37,17 +37,18 @@ final class ShareViewController: UIViewController {
     /// Reads the shared items and saves one clip: a video or picture file if there is one, else the
     /// link, with any text that came along.
     func save(_ providers: [NSItemProvider], caption: String?) async {
-        guard let folder = ClipStore.sharedFolder else {
-            phase = .failed("This copy of TwilDiary can’t share its storage with the share sheet. Copy the link instead and paste it in TwilDiary: Search → Saved clips.")
-            return
-        }
-        var link: URL?, words = caption, file: String?, kind = SavedClip.Kind.text
+        // No shared folder (the sideloading tool dropped the app group): a link still gets to the
+        // app, copied for Saved clips' Paste; a video can't.
+        let folder = ClipStore.sharedFolder
+        var link: URL?, words = caption, file: String?, kind = SavedClip.Kind.text, media = false
         for provider in providers {
             if file == nil, provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-                file = await copyFile(provider, type: .movie, into: folder, ext: "mov")
+                media = true
+                if let folder { file = await copyFile(provider, type: .movie, into: folder, ext: "mov") }
                 if file != nil { kind = .video }
             } else if file == nil, provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                file = await copyFile(provider, type: .image, into: folder, ext: "jpg")
+                media = true
+                if let folder { file = await copyFile(provider, type: .image, into: folder, ext: "jpg") }
                 if file != nil { kind = .image }
             } else if link == nil, provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 link = await loadURL(provider)
@@ -57,6 +58,18 @@ final class ShareViewController: UIViewController {
                 let rest = text.replacingOccurrences(of: link?.absoluteString ?? "\u{0}", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !rest.isEmpty { words = [words, rest].compactMap { $0 }.joined(separator: "\n") }
             }
+        }
+        guard let folder else {
+            if let link {
+                UIPasteboard.general.string = [link.absoluteString, words].compactMap { $0 }.joined(separator: "\n")
+                phase = .copied("Link copied. Open TwilDiary and tap Paste in Search → Saved clips; it finds the title from there.")
+            } else if media {
+                phase = .failed("This copy of TwilDiary can’t take videos from the share sheet. Save the video to Photos, then add it in TwilDiary: Search → Saved clips → From Photos.")
+            } else {
+                phase = .failed("There was nothing here TwilDiary could save.")
+            }
+            await quickGuess(words)
+            return
         }
         if file == nil, link != nil { kind = .link }
         guard file != nil || link != nil || !(words ?? "").isEmpty else { phase = .failed("There was nothing here TwilDiary could save."); return }
@@ -141,6 +154,9 @@ struct ShareSheetView: View {
                     HStack(spacing: 10) { ProgressView(); Text("Saving…").foregroundStyle(.secondary) }.frame(maxWidth: .infinity, minHeight: 96)
                 case .failed(let message):
                     Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                case .copied(let message):
+                    Label(message, systemImage: "doc.on.clipboard").font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    if let guess = model.guess { guessRow(guess) }
                 case .saved:
                     if let clip = model.clip { clipCard(clip) }
                     Label("Saved to your clips", systemImage: "checkmark.circle.fill").font(.body.weight(.semibold))

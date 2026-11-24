@@ -105,6 +105,19 @@ final class SavedClipsTests: XCTestCase {
         XCTAssertEqual(loaded.last?.url, "https://youtu.be/a")
     }
 
+    func testARenamedAppGroupIsReadFromTheSigningProfile() {
+        // A signing profile is a signed plist: binary bytes around the XML.
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Entitlements</key><dict>\
+        <key>com.apple.security.application-groups</key><array><string>group.com.amit29533.TwilDiary.ABCDE12345</string></array>\
+        </dict></dict></plist>
+        """
+        let profile = Data([0x30, 0x82, 0x01]) + Data(xml.utf8) + Data([0x00, 0xA0])
+        XCTAssertEqual(ClipStore.appGroups(inProfile: profile), ["group.com.amit29533.TwilDiary.ABCDE12345"])
+        XCTAssertTrue(ClipStore.appGroups(inProfile: Data("no plist".utf8)).isEmpty)
+        XCTAssertEqual(ClipStore.groups.last, ClipStore.group)
+    }
+
     func testPastedTextGivesItsLink() {
         XCTAssertEqual(ClipInbox.firstLink(in: "watch this https://www.tiktok.com/@a/video/1 so good"), "https://www.tiktok.com/@a/video/1")
         XCTAssertNil(ClipInbox.firstLink(in: "no link here"))
