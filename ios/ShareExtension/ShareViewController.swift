@@ -40,7 +40,9 @@ final class ShareViewController: UIViewController {
         // No shared folder (the sideloading tool dropped the app group): a link still gets to the
         // app, copied for Saved clips' Paste; a video can't.
         let folder = ClipStore.sharedFolder
-        var link: URL?, words = caption, file: String?, kind = SavedClip.Kind.text, media = false
+        var input = ClipShareInput()
+        input.add(text: caption)
+        var file: String?, kind = SavedClip.Kind.text, media = false
         for provider in providers {
             if file == nil, provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
                 media = true
@@ -50,15 +52,15 @@ final class ShareViewController: UIViewController {
                 media = true
                 if let folder { file = await copyFile(provider, type: .image, into: folder, ext: "jpg") }
                 if file != nil { kind = .image }
-            } else if link == nil, provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                link = await loadURL(provider)
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier), let text = await loadText(provider) {
-                // Some apps share the link as text, often with the caption around it.
-                if link == nil, let found = Self.firstLink(in: text) { link = found }
-                let rest = text.replacingOccurrences(of: link?.absoluteString ?? "\u{0}", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if !rest.isEmpty { words = [words, rest].compactMap { $0 }.joined(separator: "\n") }
+            }
+            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                input.add(url: await loadURL(provider))
+            }
+            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                input.add(text: await loadText(provider))
             }
         }
+        let (link, words) = input.resolved()
         guard let folder else {
             if let link {
                 UIPasteboard.general.string = [link.absoluteString, words].compactMap { $0 }.joined(separator: "\n")
@@ -83,7 +85,11 @@ final class ShareViewController: UIViewController {
             still = UIImage(contentsOfFile: folder.appendingPathComponent(file).path)
             clip.thumbnail = file
         }
-        guard ClipStore.add(clip, to: folder) else { phase = .failed("TwilDiary couldn’t save this clip."); return }
+        guard ClipStore.add(clip, to: folder) else {
+            ClipStore.removeFiles(of: clip, in: folder)
+            phase = .failed("TwilDiary couldn’t save this clip.")
+            return
+        }
         self.clip = clip
         phase = .saved
         await quickGuess(clip.text)
@@ -123,10 +129,7 @@ final class ShareViewController: UIViewController {
     nonisolated private static func copy(_ source: URL, to destination: URL) -> Bool {
         (try? FileManager.default.copyItem(at: source, to: destination)) != nil
     }
-    nonisolated static func firstLink(in text: String) -> URL? {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
-        return detector.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))?.url
-    }
+
     /// A frame from the start of the video, to show it by.
     nonisolated static func still(of video: URL) async -> UIImage? {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: video))

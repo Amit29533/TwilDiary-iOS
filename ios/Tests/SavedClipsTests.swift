@@ -15,6 +15,27 @@ final class SavedClipsTests: XCTestCase {
         XCTAssertEqual(ClipText.queries(caption: nil, pageTitle: "Vivant (2023) - Official Trailer | TBS").first, "Vivant")
     }
 
+    func testReelCaptionAndPreviewProvideTitleClues() {
+        XCTAssertEqual(ClipText.queries(caption: "Control Z"), ["Control Z"])
+        XCTAssertEqual(ClipText.queries(caption: "Show: Breaking Bad #edit").first, "Breaking Bad")
+        XCTAssertTrue(ClipText.queries(caption: nil, pageTitle: "Watch this scene #TheBear #fyp").contains("The Bear"))
+        XCTAssertFalse(ClipLinks.isInstagramPost(URL(string: "https://instagram.com.example.org/reel/123")!))
+        XCTAssertTrue(ClipLinks.isInstagramPost(URL(string: "https://www.instagram.com/reel/123")!))
+    }
+
+    func testReelWithSeriesYearRangeGivesCleanTitle() {
+        let caption = "Epicutz Editz on Instagram: Interesting Fact\n\n💖 Young Lady and Gentleman (2021–2022)\n\nThis heartwarming Korean drama follows…"
+        XCTAssertEqual(ClipText.queries(caption: nil, pageTitle: caption).first, "Young Lady and Gentleman")
+    }
+
+    func testPublicReelURLValidation() throws {
+        let url = try XCTUnwrap(URL(string: "https://www.instagram.com/reel/DZVDZkEzSHm/?igsh=example"))
+        XCTAssertEqual(PublicReel.shortcode(url), "DZVDZkEzSHm")
+        XCTAssertNil(PublicReel.shortcode(try XCTUnwrap(URL(string: "https://www.instagram.com/accounts/login/"))))
+        XCTAssertNil(PublicReel.mediaURL("https://cdninstagram.com.example.org/reel.mp4"))
+        XCTAssertNotNil(PublicReel.mediaURL("https://video.cdninstagram.com/reel.mp4"))
+    }
+
     func testTextOnScreenPrefersTitleCardsOverSubtitles() {
         let queries = ClipText.queries(caption: nil, screenLines: ["Where are you going?", "VIVANT", "I told you already."], limit: 3)
         XCTAssertEqual(queries.first, "VIVANT")
@@ -91,6 +112,82 @@ final class SavedClipsTests: XCTestCase {
         XCTAssertTrue(ClipGemini.decode("not json").isEmpty)
     }
 
+    func testSharedURLWinsOverCaptionRegardlessOfProviderOrder() throws {
+        let reel = try XCTUnwrap(URL(string: "https://www.instagram.com/reel/example/"))
+        let promo = "https://example.com/promo"
+        var input = ClipShareInput()
+        input.add(text: "Visit " + promo)
+        input.add(url: URL(fileURLWithPath: "/temporary/movie"))
+        XCTAssertEqual(input.resolved().0?.absoluteString, promo)
+        input.add(url: reel)
+        input.add(text: reel.absoluteString)
+        XCTAssertEqual(input.resolved().0, reel)
+        XCTAssertEqual(input.resolved().1, "Visit " + promo)
+    }
+
+    func testConcurrentAddsKeepAllClipsAndStaleUpdatesCannotResurrectDeletes() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = (0..<16).map { SavedClip(kind: .text, text: "clip " + String($0)) }
+        DispatchQueue.concurrentPerform(iterations: input.count) { i in
+            XCTAssertTrue(ClipStore.add(input[i], to: folder))
+        }
+        let saved = ClipStore.load(from: folder)
+        XCTAssertEqual(Set(saved.map(\.id)), Set(input.map(\.id)))
+        let old = try XCTUnwrap(saved.first)
+        var updated = old
+        updated.state = .identifying
+        try ClipStore.replace(old, with: updated, in: folder)
+        XCTAssertThrowsError(try ClipStore.replace(old, with: updated, in: folder))
+        try ClipStore.remove(old.id, in: folder)
+        XCTAssertThrowsError(try ClipStore.replace(updated, with: old, in: folder))
+    }
+
+    @MainActor func testRetryRunsAfterAnotherClipAlreadyStarted() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var first = SavedClip(kind: .text, text: "First")
+        first.created = Date(timeIntervalSince1970: 1000)
+        var second = SavedClip(kind: .text, text: "Second")
+        second.created = Date(timeIntervalSince1970: 500)
+        XCTAssertTrue(ClipStore.add(first, to: folder))
+        XCTAssertTrue(ClipStore.add(second, to: folder))
+        var pauseSecond = true
+        var release: CheckedContinuation<Void, Never>?
+        var calls: [UUID] = []
+        let inbox = ClipInbox(folder: folder) { clip, _ in
+            calls.append(clip.id)
+            if clip.id == second.id, pauseSecond {
+                await withCheckedContinuation { release = $0 }
+            }
+            var result = clip
+            result.state = .notFound
+            return result
+        }
+        let store = DiaryStore()
+        let processing = Task { await inbox.process(store: store) }
+        let startDeadline = ContinuousClock.now + .seconds(5)
+        while release == nil, ContinuousClock.now < startDeadline { await Task.yield() }
+        pauseSecond = false
+        guard let release else {
+            XCTFail("The worker did not reach the second clip")
+            return
+        }
+        // Queue the retry before the suspended worker gets to resume.
+        let retry = Task { await inbox.retry(first.id, store: store) }
+        let deadline = ContinuousClock.now + .seconds(3)
+        while ContinuousClock.now < deadline, inbox.clips.first(where: { $0.id == first.id })?.state == .notFound {
+            await Task.yield()
+        }
+        XCTAssertEqual(inbox.clips.first(where: { $0.id == first.id })?.state, .waiting)
+        release.resume()
+        await processing.value
+        await retry.value
+        XCTAssertEqual(calls, [first.id, second.id, first.id])
+    }
+
     func testClipsAreKeptOnDiskNewestFirst() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("clips-test-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -103,6 +200,36 @@ final class SavedClipsTests: XCTestCase {
         let loaded = ClipStore.load(from: folder)
         XCTAssertEqual(loaded.map(\.id), [newer.id, older.id])
         XCTAssertEqual(loaded.last?.url, "https://youtu.be/a")
+    }
+
+    func testEvidenceStaysWithTheFailedReelAndQueuesItAgain() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let picked = folder.appendingPathComponent("picked.jpg")
+        try Data([1, 2, 3]).write(to: picked)
+        var reel = SavedClip(kind: .link, url: "https://www.instagram.com/reel/example/", source: "Instagram")
+        reel.state = .notFound
+        reel.attempts = 3
+        XCTAssertEqual(reel.evidenceSummary, "Link only")
+        XCTAssertTrue(ClipStore.add(reel, to: folder))
+        try ClipStore.attach(picked, video: false, to: reel.id, in: folder)
+        let clips = ClipStore.load(from: folder)
+        XCTAssertEqual(clips.count, 1)
+        let updated = try XCTUnwrap(clips.first)
+        XCTAssertEqual(updated.id, reel.id)
+        XCTAssertEqual(updated.url, reel.url)
+        XCTAssertEqual(updated.state, .waiting)
+        XCTAssertEqual(updated.attempts, 0)
+        let evidence = try XCTUnwrap(updated.attachments?.first)
+        let url = folder.appendingPathComponent(evidence.file)
+        XCTAssertEqual(try Data(contentsOf: url), Data([1, 2, 3]))
+        // A second picker returning after a retry started must leave no unattached file.
+        let before = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        XCTAssertThrowsError(try ClipStore.attach(picked, video: true, to: reel.id, in: folder))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted(), before)
+        ClipStore.removeFiles(of: updated, in: folder)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
     func testARenamedAppGroupIsReadFromTheSigningProfile() {

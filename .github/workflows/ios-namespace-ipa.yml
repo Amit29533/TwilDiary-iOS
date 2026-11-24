@@ -86,8 +86,9 @@ jobs:
           path: ios/.artifacts/logs
           retention-days: 7
 
-  # Alongside the IPA (never holding it back): the core calculations' tests.
+  # Tag-triggered builds package the IPA only.
   core-tests:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: namespace-profile-mac
     timeout-minutes: 30
     defaults:

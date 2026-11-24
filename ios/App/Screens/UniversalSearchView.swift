@@ -51,8 +51,6 @@ struct SearchLandingView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: Gap.section) {
-            // Reels and videos shared to TwilDiary, named (or waiting for you to pick the title).
-            if kind == .all { SavedClipsSection() }
             RecentlyViewedShelf()
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -100,6 +98,7 @@ struct SearchLandingView: View {
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
+            if kind == .all { SavedClipsSection() }
             SearchBrowseShelves(shows: shows, kind: kind, trendingPending: trendingPending)
         }.smoothChange(of: shows.isEmpty)
             .task(id: store.sessionRevision) {

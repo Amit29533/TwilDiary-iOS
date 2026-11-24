@@ -13,7 +13,7 @@ Done in the app when it opens (and when Search or Saved clips appears), never in
 
 1. **The words.** Quoted titles, a title before its year, hashtags (not tags like #fyp or #kdrama), and for TikTok and YouTube links the post's caption, account and thumbnail from their public oEmbed lookups. Instagram's lookup needs a Meta developer key, so an Instagram reel keeps only what the share handed over. Each becomes a TMDB search (`ClipText`, `ClipTMDB` in `ios/ClipShared/SavedClip.swift`).
 2. **The text on screen.** Four frames of a saved video (or the picture), read on the phone with Vision: title cards and credits.
-3. **Gemini.** When the words aren't enough and Settings allows it (the switch on the Saved clips page, `clips.gemini`): up to four frames, or a link's thumbnail, with the caption and the text on screen, sent to Gemini only (Groq and Requesty take text). Gemini names up to three titles with how sure it is; each is checked on TMDB.
+3. **Gemini.** When the words aren't enough and Settings allows it (the switch in Profile → Connections → Identify clips with Gemini, `clips.gemini`): up to four frames, or a link's thumbnail, with the caption and the text on screen, sent to Gemini only (Groq and Requesty take text). Gemini names up to three titles with how sure it is; each is checked on TMDB.
 
 The guesses merge (the same title found twice is surer) and the best three are kept (`ClipRanking`). A best guess at least 0.85 sure and 0.3 ahead of the next is taken as the title; otherwise the clip waits for you to pick.
 

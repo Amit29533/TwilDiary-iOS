@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import PhotosUI
+import CoreTransferable
 import UniformTypeIdentifiers
 import TwilDiaryCore
 
@@ -161,7 +162,6 @@ struct SavedClipsPage: View {
     @State private var picking: SavedClip?
     @State private var photo: PhotosPickerItem?
     @State private var importing = false
-    @AppStorage(ClipInbox.geminiKey) private var useGemini = true
     var body: some View {
         let clips = inbox.clips
         EdgeToEdgeScroll {
@@ -199,13 +199,6 @@ struct SavedClipsPage: View {
                         }
                     }.cardSurface(18).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $useGemini) {
-                        Text("Identify clips with Gemini").font(.app(size: 16)).foregroundStyle(HomeStyle.primary)
-                    }.tint(Color(uiColor: .systemGreen))
-                    Text("A few frames of a saved video (or a link’s thumbnail) go to Google Gemini to name the title, with your Gemini keys. Off: only the caption and the text on screen are used.")
-                        .font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).fixedSize(horizontal: false, vertical: true)
-                }.padding(14).cardSurface(18)
             }.padding(.horizontal, Gap.gutter).padding(.top, 8).padding(.bottom, 100)
         }
         .diaryScreenBackground().diaryPageNavigation("Saved clips")
@@ -225,6 +218,24 @@ struct SavedClipsPage: View {
     }
 }
 
+private struct ClipEvidenceFile: Transferable {
+    let url: URL
+    let video: Bool
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { try copy($0.file, video: true) }
+        FileRepresentation(importedContentType: .image) { try copy($0.file, video: false) }
+    }
+
+    private static func copy(_ source: URL, video: Bool) throws -> Self {
+        let ext = source.pathExtension.isEmpty ? (video ? "mov" : "jpg") : source.pathExtension
+        let name = UUID().uuidString + "." + ext
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        try FileManager.default.copyItem(at: source, to: url)
+        return Self(url: url, video: video)
+    }
+}
+
 // MARK: Pick the title
 
 /// "Which one is it?": the best guesses with posters and a match figure, or a search when none fit.
@@ -239,6 +250,8 @@ struct ClipPickView: View {
     @State private var query = ""
     @State private var results: [SavedClip.Candidate] = []
     @State private var working = false
+    @State private var evidence: PhotosPickerItem?
+    @State private var evidenceError: String?
     var body: some View {
         let clip = inbox.clips.first { $0.id == clipID }
         NavigationStack {
@@ -246,6 +259,27 @@ struct ClipPickView: View {
                 if let clip {
                     VStack(alignment: .leading, spacing: 0) {
                         header(clip)
+                        if clip.url != nil, clip.state == .notFound || clip.state == .needsPick {
+                            VStack(spacing: 8) {
+                                Text(clip.evidenceSummary).font(.footnote).foregroundStyle(.secondary)
+                                PhotosPicker(selection: $evidence, matching: .any(of: [.images, .videos])) {
+                                    Label("Add screenshot or video", systemImage: "photo.badge.plus")
+                                }.buttonStyle(.bordered)
+
+                            }.padding(.top, 12)
+                        }
+                        if let evidenceError { Text(evidenceError).font(.footnote).foregroundStyle(.secondary) }
+                        if clip.state == .notFound {
+                            if let hint = clip.identificationHint {
+                                Text(hint).font(.footnote).foregroundStyle(.secondary)
+                                    .padding(.horizontal, Gap.gutter).padding(.top, 12)
+                            }
+                            Button("Try identifying again") {
+                                Task { await inbox.retry(clip.id, store: store) }
+                            }.padding(.top, 12)
+                        } else if clip.state == .waiting || clip.state == .identifying {
+                            ProgressView("Identifying clip…").padding(.top, 12)
+                        }
                         let options = searching || clip.candidates.isEmpty ? results : clip.candidates
                         VStack(alignment: .leading, spacing: 2) {
                             Text(searching || clip.candidates.isEmpty ? "Find the title" : "Which one is it?").font(.app(size: 22, weight: .bold)).tracking(-0.22)
@@ -276,7 +310,7 @@ struct ClipPickView: View {
                             Button("None of these · Search") { searching = true; selected = nil }
                                 .font(.app(size: 14, weight: .semibold)).frame(maxWidth: .infinity).padding(.top, 14)
                         }
-                    }.padding(.bottom, 30)
+                    }.disabled(working).padding(.bottom, 30)
                 } else {
                     Text("This clip is gone.").foregroundStyle(.secondary).padding(40)
                 }
@@ -284,8 +318,39 @@ struct ClipPickView: View {
             .navigationTitle("Saved clip").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .onAppear { selected = clip?.candidates.first }
+            .onChange(of: evidence) { _, item in
+                guard let item else { return }
+                Task { await attach(item) }
+            }
+            .onChange(of: clip?.candidates) { _, choices in
+                if !searching { selected = choices?.first }
+            }
         }
     }
+    private func attach(_ item: PhotosPickerItem) async {
+        working = true
+        evidenceError = nil
+        defer { working = false; evidence = nil }
+        do {
+            guard let media = try await item.loadTransferable(type: ClipEvidenceFile.self) else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            defer { try? FileManager.default.removeItem(at: media.url) }
+            guard let folder = ClipStore.folder else { throw CocoaError(.fileWriteUnknown) }
+            let id = clipID
+            try await Task.detached(priority: .userInitiated) {
+                try ClipStore.attach(media.url, video: media.video, to: id, in: folder)
+            }.value
+            selected = nil
+            results = []
+            searching = false
+            query = ""
+            await inbox.process(store: store)
+        } catch {
+            evidenceError = "Couldn’t attach this item. Please try again."
+        }
+    }
+
     private func header(_ clip: SavedClip) -> some View {
         HStack(alignment: .top, spacing: 12) {
             ClipThumbnail(clip: clip, width: 80, height: 120)
@@ -326,10 +391,15 @@ struct ClipPickView: View {
     private func choose(_ clip: SavedClip, add: Bool) async {
         guard let selected else { return }
         working = true
-        await inbox.choose(selected, for: clip, addToPlanned: add, store: store)
-        working = false
-        Haptics.play(.success)
-        dismiss()
+        defer { working = false }
+        do {
+            try await inbox.choose(selected, for: clip, addToPlanned: add, store: store)
+            Haptics.play(.success)
+            dismiss()
+        } catch {
+            inbox.reload()
+            evidenceError = "Couldn’t save the title for this clip. Check its latest details and try again."
+        }
     }
 }
 

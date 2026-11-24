@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import AVFoundation
 import Vision
+import LinkPresentation
 import TwilDiaryCore
 
 /// Saved clips in the app (owner's request: share a reel, TwilDiary works out the title): the list,
@@ -11,12 +12,20 @@ import TwilDiaryCore
 @MainActor @Observable final class ClipInbox {
     static let shared = ClipInbox()
     private(set) var clips: [SavedClip] = []
-    private var running = false
+    private var worker: Task<Void, Never>?
     /// Settings: Gemini may look at a clip's frames (on unless turned off).
     static let geminiKey = "clips.gemini"
     static var geminiAllowed: Bool { UserDefaults.standard.object(forKey: geminiKey) as? Bool ?? true }
 
-    private init() { clips = ClipStore.load() }
+    private let folderOverride: URL?
+    private var folder: URL? { folderOverride ?? ClipStore.folder }
+    private let identify: @MainActor (SavedClip, DiaryStore) async -> SavedClip
+
+    init(folder: URL? = nil, identify: @escaping @MainActor (SavedClip, DiaryStore) async -> SavedClip = ClipIdentifier.identify) {
+        folderOverride = folder
+        self.identify = identify
+        clips = ClipStore.load(from: folder ?? ClipStore.folder)
+    }
 
     /// Clips waiting for you to pick their title.
     var toPick: [SavedClip] { clips.filter { $0.state == .needsPick } }
@@ -26,39 +35,63 @@ import TwilDiaryCore
     }
 
     func reload() {
-        let fresh = ClipStore.load()
+        let fresh = ClipStore.load(from: folder)
         if fresh != clips { clips = fresh }
     }
 
     /// Names every clip that's waiting (the share sheet saves them; the app does the work).
     func process(store: DiaryStore) async {
-        reload()
-        guard !running else { return }
-        running = true
-        defer { running = false }
-        // A clip left "identifying" (the app was closed mid-way) is tried again, at most three times.
-        for clip in clips where (clip.state == .waiting || clip.state == .identifying) && clip.attempts < 3 {
+        if let worker { await worker.value; return }
+        let task = Task { @MainActor in
+            await drain(store: store)
+        }
+        worker = task
+        await task.value
+    }
+
+    /// Re-read the durable queue after each result. A retry transitions the clip back to
+    /// waiting even if this worker already visited its ID earlier in the same run.
+    private func drain(store: DiaryStore) async {
+        defer { worker = nil }
+        while !Task.isCancelled {
+            reload()
+            guard let clip = clips.first(where: { $0.state == .waiting || $0.state == .identifying }) else { return }
             var working = clip
-            working.state = .identifying
-            save(working)
-            let named = await ClipIdentifier.identify(working, store: store)
-            guard !Task.isCancelled else { return }
-            save(named)
+            do {
+                if working.attempts >= 3 {
+                    working.state = .notFound
+                    working.identificationHint = "Identification was interrupted. Try identifying this clip again."
+                    try ClipStore.replace(clip, with: working, in: folder)
+                    continue
+                }
+                working.state = .identifying
+                working.attempts += 1
+                try ClipStore.replace(clip, with: working, in: folder)
+                reload()
+                let named = await identify(working, store)
+                try ClipStore.replace(working, with: named, in: folder)
+            } catch ClipStore.EditError.changed {
+                continue
+            } catch {
+                reload()
+                return
+            }
         }
     }
 
-    /// Writes one clip (newest list from the file first, so one the share sheet just added stays).
-    func save(_ clip: SavedClip) {
-        var all = ClipStore.load()
-        if let index = all.firstIndex(where: { $0.id == clip.id }) { all[index] = clip } else { all.insert(clip, at: 0) }
-        ClipStore.save(all)
-        clips = all.sorted { $0.created > $1.created }
+    func retry(_ id: UUID, store: DiaryStore) async {
+        guard let old = clips.first(where: { $0.id == id }), old.state == .notFound else { return }
+        var queued = old
+        queued.state = .waiting
+        queued.attempts = 0
+        do { try ClipStore.replace(old, with: queued, in: folder) } catch { reload(); return }
+        reload()
+        await process(store: store)
     }
+
     func remove(_ clip: SavedClip) {
-        ClipStore.removeFiles(of: clip)
-        let all = ClipStore.load().filter { $0.id != clip.id }
-        ClipStore.save(all)
-        clips = all
+        try? ClipStore.remove(clip.id, in: folder)
+        reload()
     }
 
     /// The clipboard's version last pasted (Search stops offering a link once it's added).
@@ -70,23 +103,26 @@ import TwilDiaryCore
         let link = Self.firstLink(in: text)
         let rest = text.replacingOccurrences(of: link ?? "\u{0}", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard link != nil || !rest.isEmpty else { return }
-        save(SavedClip(kind: link == nil ? .text : .link, url: link, text: rest.isEmpty ? nil : rest, source: ClipText.source(of: link)))
+        ClipStore.add(SavedClip(kind: link == nil ? .text : .link, url: link, text: rest.isEmpty ? nil : rest, source: ClipText.source(of: link)), to: folder)
         await process(store: store)
     }
     /// A video or picture picked from Photos.
     func add(media data: Data, video: Bool, store: DiaryStore) async {
-        guard let folder = ClipStore.folder else { return }
+        guard let folder else { return }
         let name = UUID().uuidString + (video ? ".mov" : ".jpg")
         guard (try? data.write(to: folder.appendingPathComponent(name))) != nil else { return }
         var clip = SavedClip(kind: video ? .video : .image, file: name, source: "Photos")
         if !video { clip.thumbnail = name }
-        save(clip)
+        guard ClipStore.add(clip, to: folder) else {
+            ClipStore.removeFiles(of: clip, in: folder)
+            return
+        }
         await process(store: store)
     }
 
     /// You picked the title: kept with the clip, and added to Planned when you asked (or already
     /// in your diary). Returns the diary title, if there is one.
-    @discardableResult func choose(_ candidate: SavedClip.Candidate, for clip: SavedClip, addToPlanned: Bool, store: DiaryStore) async -> String? {
+    @discardableResult func choose(_ candidate: SavedClip.Candidate, for clip: SavedClip, addToPlanned: Bool, store: DiaryStore) async throws -> String? {
         var updated = clip
         updated.chosen = candidate
         updated.state = .identified
@@ -99,7 +135,8 @@ import TwilDiaryCore
             }
         }
         updated.titleID = titleID
-        save(updated)
+        try ClipStore.replace(clip, with: updated, in: folder)
+        reload()
         return titleID
     }
 
@@ -117,14 +154,22 @@ import TwilDiaryCore
 @MainActor enum ClipIdentifier {
     static func identify(_ input: SavedClip, store: DiaryStore) async -> SavedClip {
         var clip = input
-        clip.attempts += 1
-        var pageTitle: String?
+        clip.identificationHint = nil
+        var pageTitle = clip.previewTitle
         // 1. A TikTok or YouTube post: its caption, account and thumbnail, from their public lookup.
         if let url = clip.url, let post = await ClipLinks.post(url) {
-            pageTitle = post.title
+            pageTitle = post.title ?? pageTitle
             if clip.author == nil { clip.author = post.author }
             if clip.thumbnail == nil, let picture = post.thumbnail, let data = await ClipLinks.download(picture), let folder = ClipStore.folder {
                 let name = clip.id.uuidString + "-thumb.jpg"
+                if (try? data.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
+            }
+        }
+        if let url = clip.url.flatMap(URL.init(string:)), ClipLinks.isInstagramPost(url),
+           let preview = await ClipLinks.instagramPreview(url) {
+            pageTitle = preview.title ?? pageTitle
+            if clip.thumbnail == nil, let data = preview.image, let folder = ClipStore.folder {
+                let name = clip.id.uuidString + "-preview.jpg"
                 if (try? data.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
             }
         }
@@ -137,11 +182,35 @@ import TwilDiaryCore
                 let name = clip.id.uuidString + "-still.jpg"
                 if (try? first.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
             }
-        } else if let still = ClipStore.url(clip.thumbnail), let data = try? Data(contentsOf: still) {
-            frames = [data]
+        } else if let still = ClipStore.url(clip.thumbnail) {
+            let reading = await ClipFrames.read(still, video: false)
+            frames = reading.frames; lines = reading.lines
         }
+        if clip.kind == .link, clip.attachments?.isEmpty != false,
+           let url = clip.url.flatMap(URL.init(string:)), ClipLinks.isInstagramPost(url) {
+            clip.sampledPublicVideo = false
+            let reel = await PublicReel.read(url)
+            pageTitle = reel.caption ?? pageTitle
+            if let video = reel.reading {
+                frames = video.frames
+                lines = video.lines + lines.filter { !video.lines.contains($0) }
+                clip.sampledPublicVideo = true
+            }
+        }
+        clip.previewTitle = pageTitle
+        // Prioritize the latest evidence within the existing four-frame Gemini budget.
+        var evidenceFrames: [Data] = [], evidenceLines: [String] = []
+        for item in (clip.attachments ?? []).reversed().prefix(4) {
+            guard let url = ClipStore.url(item.file) else { continue }
+            let reading = await ClipFrames.read(url, video: item.video)
+            evidenceFrames.append(contentsOf: reading.frames.prefix(4 - evidenceFrames.count))
+            for line in reading.lines where !evidenceLines.contains(line) { evidenceLines.append(line) }
+        }
+        frames = Array((evidenceFrames + frames).prefix(4))
+        lines = evidenceLines + lines.filter { !evidenceLines.contains($0) }
         guard let token = TMDBDirect.token(store) else {
             clip.state = .notFound
+            clip.identificationHint = "TMDB is unavailable. Check the TMDB key in Settings and try again."
             return clip
         }
         // 3. The words, then the text on screen, searched on TMDB.
@@ -176,6 +245,9 @@ import TwilDiaryCore
         }
         clip.candidates = Array(ranked.prefix(3))
         clip.state = ClipRanking.state(for: clip.candidates)
+        if clip.state == .notFound, clip.kind == .link, clip.attachments?.isEmpty != false, frames.isEmpty, (clip.text ?? "").isEmpty, pageTitle == nil {
+            clip.identificationHint = "Twil couldn’t read the video or find a caption or preview image. Add a screenshot or the video from Photos to identify the scene."
+        }
         clip.method = method
         if clip.state == .identified, let best = clip.candidates.first {
             clip.chosen = best
@@ -189,6 +261,36 @@ import TwilDiaryCore
 /// Instagram's needs a Meta developer key, so its posts keep only what the share handed over.
 enum ClipLinks {
     struct Post: Sendable { let title: String?; let author: String?; let thumbnail: URL? }
+
+    struct Preview: Sendable { let title: String?; let image: Data? }
+
+    static func isInstagramPost(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased(),
+              host == "instagram.com" || host.hasSuffix(".instagram.com") else { return false }
+        return true
+    }
+
+    static func instagramPreview(_ url: URL) async -> Preview? {
+        let provider = LPMetadataProvider()
+        provider.timeout = 10
+        defer { withExtendedLifetime(provider) {} }
+        return await withCheckedContinuation { continuation in
+            provider.startFetchingMetadata(for: url) { metadata, _ in
+                guard let metadata else { continuation.resume(returning: nil); return }
+                let title = metadata.title.flatMap { value -> String? in
+                    let boilerplate = ["instagram", "login", "log in", "login instagram", "instagram login"]
+                    return boilerplate.contains(ClipText.comparable(value)) ? nil : value
+                }
+                guard let image = metadata.imageProvider, image.canLoadObject(ofClass: UIImage.self) else {
+                    continuation.resume(returning: Preview(title: title, image: nil)); return
+                }
+                _ = image.loadObject(ofClass: UIImage.self) { object, _ in
+                    let thumbnail = (object as? UIImage)?.preparingThumbnail(of: CGSize(width: 768, height: 768))
+                    continuation.resume(returning: Preview(title: title, image: thumbnail?.jpegData(compressionQuality: 0.75)))
+                }
+            }
+        }
+    }
 
     static func post(_ link: String) async -> Post? {
         guard let source = ClipText.source(of: link), source == "TikTok" || source == "YouTube" else { return nil }
@@ -231,10 +333,12 @@ enum ClipFrames {
         } else if let picture = UIImage(contentsOfFile: file.path)?.cgImage {
             images = [picture]
         }
-        var frames: [Data] = [], lines: [String] = []
-        for image in images {
-            guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.7) else { continue }
-            frames.append(data)
+        return await recognize(images.compactMap { UIImage(cgImage: $0).jpegData(compressionQuality: 0.7) })
+    }
+
+    nonisolated static func recognize(_ frames: [Data]) async -> Reading {
+        var lines: [String] = []
+        for data in frames {
             var request = RecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true

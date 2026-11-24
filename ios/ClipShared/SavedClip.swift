@@ -44,7 +44,28 @@ struct SavedClip: Codable, Identifiable, Sendable, Equatable {
     /// How it was named: "caption", "text on screen", "Gemini".
     var method: String?
     /// How many times the app has tried to identify it.
+    var identificationHint: String?
     var attempts: Int
+
+    struct Attachment: Codable, Equatable, Sendable {
+        let file: String
+        let video: Bool
+    }
+    var attachments: [Attachment]?
+    var previewTitle: String?
+    var sampledPublicVideo: Bool?
+
+    var evidenceSummary: String {
+        var items: [String] = []
+        if url != nil { items.append("Link") }
+        if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text != url { items.append("Caption") }
+        if previewTitle != nil { items.append("Preview title") }
+        if kind == .link, thumbnail != nil { items.append("Preview image") }
+        if sampledPublicVideo == true { items.append("Reel frames") }
+        if file != nil { items.append(kind == .video ? "Video" : "Image") }
+        for attachment in attachments ?? [] { items.append(attachment.video ? "Attached video" : "Attached image") }
+        return items == ["Link"] ? "Link only" : items.joined(separator: " · ")
+    }
 
     init(kind: Kind, url: String? = nil, text: String? = nil, file: String? = nil, source: String? = nil) {
         id = UUID(); created = Date(); self.kind = kind; self.url = url; self.text = text; self.file = file
@@ -128,23 +149,77 @@ enum ClipStore {
         }
         return clips.sorted { $0.created > $1.created }
     }
-    /// Writes the list (coordinated, so the share sheet and the app don't overwrite each other).
-    @discardableResult static func save(_ clips: [SavedClip], to folder: URL? = folder) -> Bool {
-        guard let file = folder?.appendingPathComponent("clips.json"), let data = try? encoder.encode(clips) else { return false }
-        var saved = false
-        NSFileCoordinator().coordinate(writingItemAt: file, options: .forReplacing, error: nil) { url in
-            saved = (try? data.write(to: url, options: .atomic)) != nil
+    enum EditError: Error { case changed }
+
+    /// Coordinate the entire index edit across the app and share extension.
+    /// A missing index starts empty; an unreadable index must never be overwritten.
+    private static func edit<T>(in folder: URL?, _ change: @escaping (inout [SavedClip]) throws -> T) throws -> T {
+        guard let index = folder?.appendingPathComponent("clips.json") else { throw CocoaError(.fileWriteUnknown) }
+        var coordinationError: NSError?
+        var outcome: Result<T, Error> = .failure(CocoaError(.fileWriteUnknown))
+        NSFileCoordinator().coordinate(writingItemAt: index, options: .forReplacing, error: &coordinationError) { url in
+            outcome = Result {
+                var clips: [SavedClip]
+                do { clips = try decoder.decode([SavedClip].self, from: Data(contentsOf: url)) }
+                catch let error as CocoaError where error.code == .fileReadNoSuchFile { clips = [] }
+                let value = try change(&clips)
+                try encoder.encode(clips).write(to: url, options: .atomic)
+                return value
+            }
         }
-        return saved
+        if let coordinationError { throw coordinationError }
+        return try outcome.get()
     }
-    /// Adds one clip to the list already there.
+
     @discardableResult static func add(_ clip: SavedClip, to folder: URL? = folder) -> Bool {
-        guard let folder else { return false }
-        var clips = load(from: folder)
-        clips.removeAll { $0.id == clip.id }
-        clips.insert(clip, at: 0)
-        return save(clips, to: folder)
+        do {
+            try edit(in: folder) { clips in
+                guard !clips.contains(where: { $0.id == clip.id }) else { throw EditError.changed }
+                clips.insert(clip, at: 0)
+            }
+            return true
+        } catch { return false }
     }
+
+    /// A late identification result cannot overwrite evidence, a manual choice or a deletion.
+    static func replace(_ old: SavedClip, with new: SavedClip, in folder: URL? = folder) throws {
+        try edit(in: folder) { clips in
+            guard old.id == new.id, let index = clips.firstIndex(of: old) else { throw EditError.changed }
+            clips[index] = new
+        }
+    }
+
+    static func remove(_ id: UUID, in folder: URL? = folder) throws {
+        let removed = try edit(in: folder) { clips in
+            guard let index = clips.firstIndex(where: { $0.id == id }) else { throw EditError.changed }
+            return clips.remove(at: index)
+        }
+        removeFiles(of: removed, in: folder)
+    }
+    /// Append to an existing unresolved reel under a single coordinated index update.
+    static func attach(_ source: URL, video: Bool, to id: UUID, in folder: URL) throws {
+        let name = UUID().uuidString + "." + (source.pathExtension.isEmpty ? (video ? "mov" : "jpg") : source.pathExtension)
+        let destination = folder.appendingPathComponent(name)
+        try FileManager.default.copyItem(at: source, to: destination)
+        do {
+            try edit(in: folder) { clips in
+                guard let i = clips.firstIndex(where: { $0.id == id }), clips[i].url != nil,
+                      clips[i].state == .notFound || clips[i].state == .needsPick else {
+                    throw CocoaError(.userCancelled)
+                }
+                clips[i].attachments = (clips[i].attachments ?? []) + [.init(file: name, video: video)]
+                clips[i].state = .waiting
+                clips[i].attempts = 0
+                clips[i].candidates = []
+                clips[i].method = nil
+                clips[i].identificationHint = nil
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
+    }
+
     /// A saved file's full address.
     static func url(_ name: String?, in folder: URL? = folder) -> URL? {
         guard let name, !name.isEmpty, let folder else { return nil }
@@ -152,13 +227,40 @@ enum ClipStore {
     }
     /// Takes a clip's files away with it.
     static func removeFiles(of clip: SavedClip, in folder: URL? = folder) {
-        for name in [clip.file, clip.thumbnail].compactMap({ $0 }) {
+        for name in [clip.file, clip.thumbnail].compactMap({ $0 }) + (clip.attachments ?? []).map(\.file) {
             if let url = url(name, in: folder) { try? FileManager.default.removeItem(at: url) }
         }
     }
 
     private static var encoder: JSONEncoder { let value = JSONEncoder(); value.dateEncodingStrategy = .iso8601; return value }
     private static var decoder: JSONDecoder { let value = JSONDecoder(); value.dateDecodingStrategy = .iso8601; return value }
+}
+
+struct ClipShareInput {
+    private var explicitURL: URL?
+    private var parts: [String] = []
+
+    mutating func add(url: URL?) {
+        guard explicitURL == nil, let url, Self.isWebURL(url) else { return }
+        explicitURL = url
+    }
+    mutating func add(text: String?) {
+        guard let text, !text.isEmpty, !parts.contains(text) else { return }
+        parts.append(text)
+    }
+    private static func isWebURL(_ url: URL) -> Bool {
+        ["http", "https"].contains(url.scheme?.lowercased() ?? "") && url.host != nil
+    }
+    func resolved() -> (URL?, String?) {
+        let text = parts.joined(separator: "\n")
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let inferred = detector?.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            .compactMap(\.url).first(where: Self.isWebURL)
+        let link = explicitURL ?? inferred
+        let caption = (link.map { text.replacingOccurrences(of: $0.absoluteString, with: "") } ?? text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (link, caption.isEmpty ? nil : caption)
+    }
 }
 
 /// Reading a clip's words: where it's from, its hashtags, a title in quotes or before a year, a
@@ -189,11 +291,15 @@ enum ClipText {
             guard trimmed.count >= 2, trimmed.count <= 60, trimmed.contains(where: \.isLetter) else { return }
             if !found.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { found.append(trimmed) }
         }
-        let text = caption ?? ""
+        let text = [caption, pageTitle].compactMap { $0 }.joined(separator: "\n")
+        // Common caption format: "Movie: The Bear #edit".
+        for match in text.matches(of: #/(?im)^\s*(?:movie|film|show|series|drama|anime|title)(?: name)?\s*[:：]\s*([^\n#@|]{2,60})/#) {
+            keep(String(match.1))
+        }
         // A title in quotes ("Vivant", “Vivant”, 'Vivant').
         for match in text.matches(of: #/["“”'‘’]([^"“”'‘’\n]{2,60})["“”'‘’]/#) { keep(String(match.1)) }
         // A title before its year: "Vivant (2023)".
-        for match in text.matches(of: #/([A-Z0-9][^\n()#@]{1,58}?)\s*\((?:19|20)\d\d\)/#) { keep(String(match.1)) }
+        for match in text.matches(of: #/([A-Z0-9][^\n()#@]{1,58}?)\s*\((?:19|20)\d\d(?:\s*[-–—]\s*(?:(?:19|20)\d\d)?)?\)/#) { keep(String(match.1)) }
         // A video page's title before " - " or " | " ("Vivant (2023) - Official Trailer").
         if let page = pageTitle, let first = page.split(whereSeparator: { $0 == "|" || $0 == "–" || $0 == "—" }).first {
             let head = first.components(separatedBy: " - ").first ?? String(first)
@@ -204,6 +310,10 @@ enum ClipText {
             let tag = String(match.1)
             guard !noise.contains(tag.lowercased()) else { continue }
             keep(spaced(tag))
+        }
+        if let caption, !caption.contains(where: { "#@:/!?\n".contains($0) }),
+           caption.split(whereSeparator: { $0.isWhitespace }).count <= 6, found.isEmpty {
+            keep(caption)
         }
         // Lines read off the screen: a title card or credits (short lines with letters, not subtitles' sentences).
         let screen = screenLines.map { $0.trimmingCharacters(in: .whitespaces) }
