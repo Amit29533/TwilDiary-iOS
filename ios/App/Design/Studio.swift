@@ -6,7 +6,7 @@ import TwilDiaryCore
 /// kept as choices, in any theme; everything else from the redraws is simply how the app looks now.
 /// Each choice checks `Studio.on(_:)`; the rating badge, corners and Recommended's match are the
 /// lab's other settings. "Original" is the app as it was; "Studio" turns every choice on.
-/// (Studio was a theme for one build; `DesignLabMigration` moves anyone on it to Native + Studio.)
+/// (Studio was a theme for one build; `DesignLabMigration` moves anyone on it to Native with every choice on.)
 enum StudioChange: String, CaseIterable, Identifiable {
     // Home
     case homeHeader, heroTrack, groupedRecent
@@ -120,10 +120,13 @@ enum DesignLabKeys {
     static let badge = "designLab.badge"
     static let corners = "designLab.corners"
     static let match = "designLab.match"
+    /// Your Custom mix while Original is chosen.
+    static let savedOn = "designLab.saved.on", savedBadge = "designLab.saved.badge"
+    static let savedCorners = "designLab.saved.corners", savedMatch = "designLab.saved.match"
 }
 
-/// Studio was a theme for one build (Nov 2026). Anyone on it moves to Native with the Studio
-/// preset (and the switches they had turned off stay off), before the theme is first read.
+/// Studio was a theme for one build (Nov 2026). Anyone on it moves to Native with every choice
+/// on, a Custom mix (the switches they had turned off stay off), before the theme is first read.
 enum DesignLabMigration {
     static func run(_ defaults: UserDefaults = .standard) {
         guard defaults.string(forKey: "theme") == "studio" else { return }
@@ -146,10 +149,11 @@ enum DesignLabMigration {
     private(set) var corners: DesignCorners
     private(set) var match: DesignMatch
 
+    /// Original (every choice as it was) or Custom (your own mix). Owner's request: no Studio preset.
     enum Preset: String, CaseIterable, Identifiable {
-        case original, studio, custom
+        case original, custom
         var id: Self { self }
-        var title: String { switch self { case .original: "Original"; case .studio: "Studio"; case .custom: "Custom" } }
+        var title: String { switch self { case .original: "Original"; case .custom: "Custom" } }
     }
 
     private init() {
@@ -177,25 +181,30 @@ enum DesignLabMigration {
         return (changes.filter { isOn($0) }.count, changes.count)
     }
 
-    /// Original: every choice as it was. Studio: every choice on, badges top-left, the match in the
-    /// caption. Anything else is Custom.
+    /// Original: every choice as it was. Anything else is Custom.
     var preset: Preset {
-        let all = Set(StudioChange.allCases.map(\.rawValue))
-        if on.isEmpty, badge == .original, corners == .standard, match == .onPoster { return .original }
-        if on == all, badge == .topLeft, corners == .standard, match == .inCaption { return .studio }
-        return .custom
+        on.isEmpty && badge == .original && corners == .standard && match == .onPoster ? .original : .custom
     }
+    /// Your mix, kept when you pick Original, so picking Custom brings it back.
+    var hasSavedMix: Bool { UserDefaults.standard.object(forKey: DesignLabKeys.savedOn) != nil }
 
     func apply(_ preset: Preset) {
+        let defaults = UserDefaults.standard
         switch preset {
         case .original:
+            guard self.preset == .custom else { return }
+            defaults.set(on.sorted(), forKey: DesignLabKeys.savedOn)
+            defaults.set(badge.rawValue, forKey: DesignLabKeys.savedBadge)
+            defaults.set(corners.rawValue, forKey: DesignLabKeys.savedCorners)
+            defaults.set(match.rawValue, forKey: DesignLabKeys.savedMatch)
             on = []; badge = .original; corners = .standard; match = .onPoster
-        case .studio:
-            on = Set(StudioChange.allCases.map(\.rawValue)); badge = .topLeft; corners = .standard; match = .inCaption
         case .custom:
-            return
+            guard self.preset == .original, let saved = defaults.stringArray(forKey: DesignLabKeys.savedOn) else { return }
+            on = Set(saved)
+            badge = DesignBadge(rawValue: defaults.string(forKey: DesignLabKeys.savedBadge) ?? "") ?? .original
+            corners = DesignCorners(rawValue: defaults.string(forKey: DesignLabKeys.savedCorners) ?? "") ?? .standard
+            match = DesignMatch(rawValue: defaults.string(forKey: DesignLabKeys.savedMatch) ?? "") ?? .onPoster
         }
-        let defaults = UserDefaults.standard
         defaults.set(on.sorted(), forKey: DesignLabKeys.on)
         defaults.set(badge.rawValue, forKey: DesignLabKeys.badge)
         defaults.set(corners.rawValue, forKey: DesignLabKeys.corners)
@@ -379,9 +388,9 @@ struct DesignLabView: View {
                     DesignLabHeading(text: "Starting point")
                     NativeSegmentedControl(segments: StudioLab.Preset.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-preset-" + $0.rawValue) },
                                            selection: Binding(get: { lab.preset }, set: { lab.apply($0) }))
-                    SettingsFootnote(text: lab.preset == .custom ? "Your own mix. Pick Original or Studio to start again from one of them."
-                                     : lab.preset == .studio ? "Every choice is on. Change anything and it becomes Custom."
-                                     : "Every choice as it was. Pick Studio to turn them all on.")
+                    SettingsFootnote(text: lab.preset == .custom ? "Your own mix. Original shows the app as it was; Custom brings your mix back."
+                                     : lab.hasSavedMix ? "Every choice as it was. Custom brings your mix back."
+                                     : "Every choice as it was. Change any choice below to make your own mix.")
                 }
                 SettingsGroup(label: "Redrawn") {
                     ForEach(Array(StudioChange.Area.pages.enumerated()), id: \.element) { index, area in

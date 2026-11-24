@@ -156,13 +156,16 @@ final class ThemePaletteTests: XCTestCase {
             for change in StudioChange.allCases where saved.on.contains(change.rawValue) { lab.set(change, on: true) }
             lab.setBadge(saved.badge); lab.setCorners(saved.corners); lab.setMatch(saved.match)
         }
-        lab.apply(.studio)
-        XCTAssertEqual(lab.preset, .studio); XCTAssertTrue(StudioChange.allCases.allSatisfy { lab.isOn($0) })
-        XCTAssertEqual(lab.count(.home).on, lab.count(.home).of)
-        lab.set(.heroTrack, on: false)
-        XCTAssertEqual(lab.preset, .custom)
         lab.apply(.original)
         XCTAssertEqual(lab.preset, .original); XCTAssertFalse(StudioChange.allCases.contains { lab.isOn($0) })
+        lab.set(.heroTrack, on: true); lab.set(.glanceRows, on: true)
+        XCTAssertEqual(lab.preset, .custom); XCTAssertEqual(lab.count(.home).on, 1)
+        // Original keeps your mix; Custom brings it back.
+        lab.apply(.original)
+        XCTAssertEqual(lab.preset, .original); XCTAssertFalse(lab.isOn(.heroTrack))
+        lab.apply(.custom)
+        XCTAssertEqual(lab.preset, .custom); XCTAssertTrue(lab.isOn(.heroTrack)); XCTAssertTrue(lab.isOn(.glanceRows))
+        lab.apply(.original)
         lab.setCorners(.rounder)
         XCTAssertEqual(lab.preset, .custom); XCTAssertEqual(Studio.corner(16), 22)
     }
