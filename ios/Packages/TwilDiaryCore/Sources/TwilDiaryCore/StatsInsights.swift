@@ -79,7 +79,7 @@ public struct StatsInsights: Equatable, Sendable {
 
         struct Dated { let title: MediaTitle; let date: Date; let event: WatchEvent }
         let dated = events.compactMap { event -> Dated? in
-            guard let date = DiaryDate.parse(event.watchedAt), date <= now, let title = titles[event.titleId] else { return nil }
+            guard let date = DiaryDate.watched(event.watchedAt), date <= now, let title = titles[event.titleId] else { return nil }
             return Dated(title: title, date: date, event: event)
         }
         let thisMonth = calendar.dateComponents([.year, .month], from: now)

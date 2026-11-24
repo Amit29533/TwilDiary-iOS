@@ -7,17 +7,13 @@ import TwilDiaryCore
 enum Motion {
     static var spring: Animation { .snappy }
     static var press: Animation { .spring(duration: 0.3, bounce: 0.25) }
-    /// A press, going down or coming back up, as Design Lab's Press feel has it: Bouncy (the spring
-    /// above), Firm (a quick sink and a settle without bounce: a press isn't a flick) or Off.
-    @MainActor static func pressMotion(pressed: Bool) -> Animation? {
-        switch StudioLab.shared.press {
-        case .bouncy: press
-        case .firm: pressed ? .easeOut(duration: 0.15) : .spring(duration: 0.25, bounce: 0)
-        case .off: nil
-        }
+    /// A press, going down or coming back up: a quick sink and a settle without bounce (a press
+    /// isn't a flick, so it shouldn't overshoot). Owner's choice, now standard.
+    static func pressMotion(pressed: Bool) -> Animation? {
+        pressed ? .easeOut(duration: 0.15) : .spring(duration: 0.25, bounce: 0)
     }
-    /// How far a press sinks: `scale` normally, not at all with Press feel Off.
-    @MainActor static func pressScale(_ scale: CGFloat) -> CGFloat { StudioLab.shared.press == .off ? 1 : scale }
+    /// How far a press sinks.
+    static func pressScale(_ scale: CGFloat) -> CGFloat { scale }
     /// `nil` under Reduce Motion, so changes simply appear.
     static func spring(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : spring }
     /// Apple's "smooth" curve (no bounce) for content that arrives or changes: a list replacing its

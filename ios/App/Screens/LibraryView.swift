@@ -92,10 +92,12 @@ struct LibraryView: View {
             HStack(spacing: 8) {
                 ForEach(Self.statuses.filter { $0.0 != "all" }, id: \.0) { key, name in
                     let on = status == key
+                    // A status with nothing in it reads dimmer (it still opens).
+                    let empty = !on && (counts[key] ?? 0) == 0
                     Button { status = on ? "all" : key } label: {
                         HStack(spacing: 7) {
-                            Circle().fill(Self.statusDot(key)).frame(width: 8, height: 8)
-                            Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? HomeStyle.chipText : HomeStyle.primary)
+                            Circle().fill(Self.statusDot(key)).frame(width: 8, height: 8).opacity(empty ? 0.4 : 1)
+                            Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(on ? HomeStyle.chipText : empty ? HomeStyle.muted : HomeStyle.primary)
                             Text("\(counts[key] ?? 0)").font(.app(size: 13, weight: .semibold)).monospacedDigit()
                                 .foregroundStyle(on ? HomeStyle.chipText.opacity(0.8) : HomeStyle.secondary)
                         }.padding(.horizontal, 14).frame(height: 40)
@@ -246,10 +248,10 @@ struct LibraryView: View {
                         }
                     }
     }
-    /// With no filters, the grid opens as an overview: five titles and "+N See all", then the
-    /// genres as rows, each opening that genre.
+    /// With no filters, the grid opens as an overview: two rows of titles and a "See all N titles"
+    /// button, then the genres in one card, each opening that genre.
     private var showsOverview: Bool {
-        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && minScore == 0 && filtered.count > overviewCount + 1
+        !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && minScore == 0 && filtered.count > overviewCount
     }
     private var overview: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -261,38 +263,37 @@ struct LibraryView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
                 ForEach(filtered.prefix(overviewCount)) { title in poster(title) }
-                // Exactly a poster's size (same 2:3 box and corners as the cards beside it).
-                Button { expandedAll = true } label: {
-                    Color.clear.posterAspect()
-                        .overlay {
-                            VStack(spacing: 4) {
-                                Text("+\((filtered.count - overviewCount).formatted())").font(.app(size: 26, weight: .bold)).foregroundStyle(theme.accent)
-                                    .lineLimit(1).minimumScaleFactor(0.6)
-                                Text("See all").font(.app(size: 14)).foregroundStyle(.secondary).lineLimit(1)
-                            }.padding(.horizontal, 6)
-                        }
-                        .background(theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
-                }.buttonStyle(.springPress).accessibilityLabel("See all \(filtered.count) titles").accessibilityIdentifier("library-see-all")
             }
+            // A full-width button under the posters, as Glance's Show all (a "+344" tile among the
+            // posters read as one more title).
+            Button { expandedAll = true } label: {
+                Text("See all \(filtered.count.formatted()) titles").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, minHeight: 54).background(HomeStyle.card, in: Capsule())
+                    .overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline)).contentShape(Capsule())
+            }.buttonStyle(.springPress).accessibilityIdentifier("library-see-all")
             HStack {
                 Text("Browse by genre").font(.app(size: 22, weight: .bold)).tracking(-0.5).lineLimit(1)
                 Spacer()
                 SectionMoreButton(label: "All genres", identifier: "library-all-genres") { genreRows = true; list = false }
             }.padding(.top, 12)
-            ForEach(shelves.filter { $0.genre != "Without a genre" }) { shelf in
-                Button { genres = [shelf.genre] } label: {
-                    HStack {
-                        Text(shelf.genre).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink)
-                        Spacer()
-                        Text(shelf.titles.count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
-                            .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
-                        DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
-                    }.padding(.horizontal, 16).frame(minHeight: 60).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
-                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.08))).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("library-genre-row-" + shelf.genre)
-            }
+            // One card, a row per genre divided by inset hairlines (a card each read as separate buttons).
+            let rows = shelves.filter { $0.genre != "Without a genre" }
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, shelf in
+                    if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 16) }
+                    Button { genres = [shelf.genre] } label: {
+                        HStack {
+                            Text(shelf.genre).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.ink)
+                            Spacer()
+                            Text(shelf.titles.count.formatted()).font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                            DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary)
+                        }.padding(.horizontal, 16).frame(minHeight: 54).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityIdentifier("library-genre-row-" + shelf.genre)
+                }
+            }.background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(HomeStyle.outline(0.08)))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }.padding(.horizontal, 14)
     }
     private func ratingStatus(_ message: String) -> some View {
@@ -570,7 +571,7 @@ struct LibraryView: View {
         return store.memoized(key) { jellyfin.extras(diary: collection, category: category, genres: genres, disk: disk, favorites: favorites, sort: order) }
     }
     /// Two rows of the grid, the last place kept for "See all".
-    private var overviewCount: Int { posterSize.columns * 2 - 1 }
+    private var overviewCount: Int { posterSize.columns * 2 }
     private var categoryKey: String { category == .movies ? "movie" : category == .shows ? "show" : category == .anime ? "anime" : "all" }
     private func diskKey(_ drive: String) -> String {
         drive.isEmpty ? "all" : ["mapped", "unmapped"].contains(drive) || drive.hasPrefix("[") || drive.hasPrefix("drive:") ? drive : "drive:" + drive.uppercased()
@@ -734,8 +735,7 @@ struct GlanceView: View {
         let titles = watching.filter { category.includes($0) }
         let ordered = order(titles)
         // True full screen: the header and filters scroll with the cards; nothing stays pinned.
-        // Studio: just "Glance"; the count is on All right under it.
-        let header = PageHeader(name: "Glance", count: Studio.on(.glanceHeader) ? nil : "\(watching.count) watching")
+        let header = PageHeader(name: "Glance", count: "\(watching.count) watching")
         EdgeToEdgeScroll {
                 VStack(spacing: 0) {
                     header
@@ -757,13 +757,8 @@ struct GlanceView: View {
                                 .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                         }.accessibilityLabel("Order").accessibilityValue(sort.wrappedValue.label).accessibilityIdentifier("glance-sort")
                         Spacer(minLength: 0)
-                        if Studio.on(.layoutSwitch) {
-                            // Studio: one grey two-part switch; the chosen side is lighter, never blue.
-                            StudioLayoutSwitch(grid: $grid, identifier: "glance-layout")
-                        } else {
-                            layoutButton(grid: false, icon: "list.bullet")
-                            layoutButton(grid: true, icon: "square.grid.2x2")
-                        }
+                        // One grey two-part switch; the chosen side is lighter, never blue.
+                        StudioLayoutSwitch(grid: $grid, identifier: "glance-layout")
                     }.padding(.horizontal, 14).padding(.top, 6)
                 }
                 // The title you logged last (or first in the chosen order) gets the large card; the rest
@@ -771,8 +766,8 @@ struct GlanceView: View {
                 let started = store.memoized("glance.started") { Set(store.activeEvents.map(\.titleId)) }
                 let rest = Array(ordered.dropFirst())
                 let startedTitles = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
-                // Studio: a show whose season is done has nothing to continue; it moves to Caught up.
-                let caught = Studio.on(.glanceCaughtUp) ? startedTitles.filter { seasonDone($0) } : []
+                // A show whose season is done has nothing to continue; it moves to Caught up.
+                let caught = startedTitles.filter { seasonDone($0) }
                 let caughtIDs = Set(caught.map(\.id))
                 let continuing = caughtIDs.isEmpty ? startedTitles : startedTitles.filter { !caughtIDs.contains($0.id) }
                 VStack(alignment: .leading, spacing: 8) {
@@ -809,7 +804,7 @@ struct GlanceView: View {
     private var heroLabel: String {
         switch sort.wrappedValue { case .recentlyUpdated: "LAST WATCHED"; case .almostDone: "ALMOST DONE"; case .title: "WATCHING" }
     }
-    /// A list of cards. Studio's compact rows share one card, divided by inset hairlines.
+    /// A list of cards. Design Lab's compact rows share one card, divided by inset hairlines.
     @ViewBuilder private func rows(_ items: [MediaTitle]) -> some View {
         if Studio.on(.glanceRows) && !grid {
             LazyVStack(spacing: 0) {
@@ -831,17 +826,6 @@ struct GlanceView: View {
         return card.next == nil && card.progress.watched >= card.progress.total
     }
     /// One side of the list | grid switch: the chosen one sits on the accent tint.
-    private func layoutButton(grid value: Bool, icon: String) -> some View {
-        Button { withAnimation(.smooth(duration: 0.28)) { grid = value } } label: {
-            Image(systemName: icon).font(.app(size: 15, weight: .semibold))
-                .foregroundStyle(grid == value ? HomeStyle.chipText : HomeStyle.secondary)
-                .frame(width: 40, height: 40).background(grid == value ? HomeStyle.chip : .clear, in: Circle())
-                .frame(width: 44, height: 44).contentShape(Circle())
-        }.buttonStyle(.plain).accessibilityLabel(value ? "Show as grid" : "Show as list").accessibilityAddTraits(grid == value ? .isSelected : [])
-            // Both halves say which layout is showing now.
-            .accessibilityValue(grid ? "Grid" : "List")
-            .accessibilityIdentifier(value ? "glance-layout" : "glance-layout-list")
-    }
     private var sort: Binding<GlanceSort> {
         Binding(get: { GlanceSort(rawValue: sortRaw) ?? .recentlyUpdated }, set: { sortRaw = $0.rawValue })
     }

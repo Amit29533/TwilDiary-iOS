@@ -2,105 +2,67 @@ import SwiftUI
 import Observation
 import TwilDiaryCore
 
-/// Design Lab (owner's request, Nov 2026): Settings → Design Lab. The redrawn Home,
-/// Glance, title, person and Known for pages, piece by piece, in any theme. Each piece checks
-/// `Studio.on(_:)`; the whole-app feel (press, rating badge, corners, layout switches) reads the
-/// lab's other settings. "Original" is the app as it was; "Studio" turns every redrawn piece on.
+/// Design Lab (owner's request, Nov 2026): Settings → Design Lab. The redrawn pieces the owner
+/// kept as choices, in any theme; everything else from the redraws is simply how the app looks now.
+/// Each choice checks `Studio.on(_:)`; the rating badge, corners and Recommended's match are the
+/// lab's other settings. "Original" is the app as it was; "Studio" turns every choice on.
 /// (Studio was a theme for one build; `DesignLabMigration` moves anyone on it to Native + Studio.)
 enum StudioChange: String, CaseIterable, Identifiable {
     // Home
-    case homeHeader, heroLabel, heroTrack, heroDots, weekBar, posterCaptions, newEpisodeDate, groupedRecent
+    case homeHeader, heroTrack, groupedRecent
     // Glance
-    case glanceHeader, glanceFilters, lastWatchedLabel, lastWatchedTrack, glanceButtons, glanceRows, glanceCaughtUp
+    case lastWatchedTrack, glanceRows
     // Title page
-    case titleMeta, titleRatings, titleWatchButton, titleStatus, titleAwards, titleCompanies, parentalSeverity
+    case parentalSeverity
     // People
-    case personHero, personName, personFacts, personFrom, personAbout, personWatched, missingPoster, sectionCounts, knownForHeader, knownForRanking, shelfOrder
-    // Feel
-    case layoutSwitch
+    case personHero, personName
 
     var id: Self { self }
 
-    /// The lab's pages: an area of the app, or Feel (the whole app).
+    /// The lab's pages: an area of the app.
     enum Area: String, CaseIterable, Identifiable {
-        case home = "Home", glance = "Glance", title = "Title page", people = "People", feel = "Feel"
+        case home = "Home", glance = "Glance", title = "Title page", people = "People"
         var id: Self { self }
         var symbol: String {
-            switch self { case .home: "house.fill"; case .glance: "plus.circle.fill"; case .title: "film.fill"; case .people: "person.fill"; case .feel: "slider.horizontal.3" }
+            switch self { case .home: "house.fill"; case .glance: "plus.circle.fill"; case .title: "film.fill"; case .people: "person.fill" }
         }
         var tile: Color {
-            switch self { case .home: Color(uiColor: .systemBlue); case .glance: Color(uiColor: .systemTeal); case .title: Color(uiColor: .systemOrange); case .people: Color(uiColor: .systemPurple); case .feel: Color(uiColor: .systemGray) }
+            switch self { case .home: Color(uiColor: .systemBlue); case .glance: Color(uiColor: .systemTeal); case .title: Color(uiColor: .systemOrange); case .people: Color(uiColor: .systemPurple) }
         }
-        /// The areas with their own page (Feel sits on the lab's main page).
-        static var pages: [Area] { [.home, .glance, .title, .people] }
+        static var pages: [Area] { allCases }
     }
 
     var area: Area {
         switch self {
-        case .homeHeader, .heroLabel, .heroTrack, .heroDots, .weekBar, .posterCaptions, .newEpisodeDate, .groupedRecent: .home
-        case .glanceHeader, .glanceFilters, .lastWatchedLabel, .lastWatchedTrack, .glanceButtons, .glanceRows, .glanceCaughtUp: .glance
-        case .titleMeta, .titleRatings, .titleWatchButton, .titleStatus, .titleAwards, .titleCompanies, .parentalSeverity: .title
-        case .personHero, .personName, .personFacts, .personFrom, .personAbout, .personWatched, .missingPoster, .sectionCounts, .knownForHeader, .knownForRanking, .shelfOrder: .people
-        case .layoutSwitch: .feel
+        case .homeHeader, .heroTrack, .groupedRecent: .home
+        case .lastWatchedTrack, .glanceRows: .glance
+        case .parentalSeverity: .title
+        case .personHero, .personName: .people
         }
     }
 
     /// The heading it sits under on its area's page.
     var section: String {
         switch self {
-        case .homeHeader, .heroLabel, .heroTrack, .heroDots: "Hero"
-        case .weekBar: "This week"
-        case .posterCaptions: "Posters"
-        case .newEpisodeDate, .groupedRecent: "Lists"
-        case .glanceHeader, .glanceFilters: "Top of the page"
-        case .lastWatchedLabel, .lastWatchedTrack: "Last watched"
-        case .glanceButtons, .glanceRows, .glanceCaughtUp: "The list"
-        case .titleMeta, .titleRatings: "Header"
-        case .titleWatchButton, .titleStatus: "Your progress"
-        case .titleAwards, .titleCompanies, .parentalSeverity: "Further down"
-        case .personHero, .personName, .personFacts, .personFrom: "Header"
-        case .personAbout, .personWatched, .sectionCounts, .missingPoster: "Sections"
-        case .knownForHeader, .knownForRanking, .shelfOrder: "Known for and credits"
-        case .layoutSwitch: "Feel"
+        case .homeHeader, .heroTrack: "Hero"
+        case .groupedRecent: "Lists"
+        case .lastWatchedTrack: "Last watched"
+        case .glanceRows: "The list"
+        case .parentalSeverity: "Parental guide"
+        case .personHero, .personName: "Header"
         }
     }
 
     var title: String {
         switch self {
         case .homeHeader: "Logo"
-        case .heroLabel: "Text over the art"
         case .heroTrack: "Progress"
-        case .heroDots: "Page dots"
-        case .weekBar: "This week"
-        case .posterCaptions: "Captions"
-        case .newEpisodeDate: "New episodes date"
         case .groupedRecent: "Recently watched"
-        case .glanceHeader: "Header count"
-        case .glanceFilters: "Empty filters"
-        case .lastWatchedLabel: "Label"
         case .lastWatchedTrack: "Progress"
-        case .glanceButtons: "+ buttons"
         case .glanceRows: "Rows"
-        case .glanceCaughtUp: "Finished seasons"
-        case .titleMeta: "Age rating and genres"
-        case .titleRatings: "Ratings"
-        case .titleWatchButton: "Log a watch"
-        case .titleStatus: "Status numbers"
-        case .titleAwards: "Awards"
-        case .titleCompanies: "Missing logos"
-        case .parentalSeverity: "Parental guide colours"
+        case .parentalSeverity: "Colours"
         case .personHero: "Backdrop"
         case .personName: "Name"
-        case .personFacts: "Facts beside the photo"
-        case .personFrom: "From card"
-        case .personAbout: "About"
-        case .personWatched: "One or two watched"
-        case .missingPoster: "Missing posters"
-        case .sectionCounts: "Counts"
-        case .knownForHeader: "Known for page"
-        case .knownForRanking: "Known for order"
-        case .shelfOrder: "Shows and Movies order"
-        case .layoutSwitch: "Layout switches"
         }
     }
 
@@ -108,66 +70,25 @@ enum StudioChange: String, CaseIterable, Identifiable {
     var choices: (off: String, on: String) {
         switch self {
         case .homeHeader: ("Left", "Right")
-        case .heroLabel: ("Original", "Readable")
         case .heroTrack, .lastWatchedTrack: ("Bar", "Episode capsules")
-        case .heroDots: ("Hidden", "Shown")
-        case .weekBar: ("Three numbers", "Bar vs last week")
-        case .posterCaptions: ("Even gaps", "Tight")
-        case .newEpisodeDate: ("Pill", "On the episode line")
         case .groupedRecent: ("Separate cards", "One grouped card")
-        case .glanceHeader: ("Shown", "Hidden")
-        case .glanceFilters: ("Normal", "Dimmed")
-        case .lastWatchedLabel: ("Capitals", "Plain")
-        case .glanceButtons: ("Filled", "Tinted")
         case .glanceRows: ("Cards", "Compact")
-        case .glanceCaughtUp: ("In Continue", "Caught up")
-        case .titleMeta: ("Coloured chips", "Quiet")
-        case .titleRatings: ("Tiles", "One card")
-        case .titleWatchButton: ("Filled", "Tinted")
-        case .titleStatus: ("Bold", "Quiet")
-        case .titleAwards: ("Numbered", "Wins and nominations")
-        case .titleCompanies: ("Name", "Initials")
         case .parentalSeverity: ("By category", "By severity")
         case .personHero: ("Title art", "Own photo")
         case .personName: ("Two-tone", "White")
-        case .personFacts: ("Divided list", "Together")
-        case .personFrom: ("Original", "Quiet")
-        case .personAbout: ("Names first", "Bio first")
-        case .personWatched: ("Shelf", "Rows")
-        case .missingPoster: ("Placeholder", "Name tile")
-        case .sectionCounts: ("In the heading", "Pills")
-        case .knownForHeader: ("With picture", "Plain")
-        case .knownForRanking: ("Popularity", "Lead roles first")
-        case .shelfOrder: ("Newest first", "Released first")
-        case .layoutSwitch: ("Accent", "Grey")
         }
     }
 
     /// One line under the choice, where the two words need explaining.
     var note: String? {
         switch self {
-        case .heroLabel: "Readable: darker fades and a plain white label."
-        case .posterCaptions: "Tight: details right under the name; rows stay one height."
         case .glanceRows: "Compact: one card, smaller posters, the bar under the details."
-        case .glanceCaughtUp: "A show whose season is done moves out of Continue."
-        case .titleMeta: "Quiet: the age rating on the year line, genres in grey."
-        case .titleStatus: "Quiet: smaller grey numbers, with You and Community under the circles."
+        case .parentalSeverity: "By severity: amber for Moderate, red for Severe, the same in every row."
         case .personHero: "Own photo: blurred behind the name, so no other actor shows there."
         case .personName: "Two-tone shows the second name in the accent colour."
-        case .personFacts: "Together: smaller lines without dividers, so Born, Age and Birthplace usually all fit beside the photo."
-        case .knownForRanking: "Lead roles first: guest spots on big shows sink."
-        case .shelfOrder: "Released first: self appearances and unreleased titles go last."
         default: nil
         }
     }
-}
-
-/// How a press feels (cards, posters, buttons): today's springy bounce, a quick sink that settles
-/// without one, or no movement.
-enum DesignPress: String, CaseIterable, Identifiable {
-    case bouncy, firm, off
-    var id: Self { self }
-    var title: String { switch self { case .bouncy: "Bouncy"; case .firm: "Firm"; case .off: "Off" } }
 }
 
 /// Where a poster's rating badge sits: each place's own corner (as it was), all top-left, all
@@ -196,7 +117,6 @@ enum DesignMatch: String, CaseIterable, Identifiable {
 /// The lab's storage keys (plain strings, readable before the app's views exist).
 enum DesignLabKeys {
     static let on = "designLab.on"
-    static let press = "designLab.press"
     static let badge = "designLab.badge"
     static let corners = "designLab.corners"
     static let match = "designLab.match"
@@ -212,7 +132,6 @@ enum DesignLabMigration {
         // The name's colour was part of "personFacts" then; it's its own choice now.
         if off.contains("personFacts") { off.insert("personName") }
         defaults.set(StudioChange.allCases.map(\.rawValue).filter { !off.contains($0) }, forKey: DesignLabKeys.on)
-        defaults.set((off.contains("pressNoBounce") ? DesignPress.bouncy : .firm).rawValue, forKey: DesignLabKeys.press)
         defaults.set((off.contains("badgeTopLeft") ? DesignBadge.original : .topLeft).rawValue, forKey: DesignLabKeys.badge)
         defaults.set((off.contains("recommendedMatch") ? DesignMatch.onPoster : .inCaption).rawValue, forKey: DesignLabKeys.match)
         defaults.removeObject(forKey: "studio.lab.off")
@@ -223,7 +142,6 @@ enum DesignLabMigration {
 @MainActor @Observable final class StudioLab {
     static let shared = StudioLab()
     private(set) var on: Set<String>
-    private(set) var press: DesignPress
     private(set) var badge: DesignBadge
     private(set) var corners: DesignCorners
     private(set) var match: DesignMatch
@@ -238,7 +156,6 @@ enum DesignLabMigration {
         DesignLabMigration.run()
         let defaults = UserDefaults.standard
         on = Set(defaults.stringArray(forKey: DesignLabKeys.on) ?? [])
-        press = DesignPress(rawValue: defaults.string(forKey: DesignLabKeys.press) ?? "") ?? .bouncy
         badge = DesignBadge(rawValue: defaults.string(forKey: DesignLabKeys.badge) ?? "") ?? .original
         corners = DesignCorners(rawValue: defaults.string(forKey: DesignLabKeys.corners) ?? "") ?? .standard
         match = DesignMatch(rawValue: defaults.string(forKey: DesignLabKeys.match) ?? "") ?? .onPoster
@@ -250,7 +167,6 @@ enum DesignLabMigration {
         if value { on.insert(change.rawValue) } else { on.remove(change.rawValue) }
         UserDefaults.standard.set(on.sorted(), forKey: DesignLabKeys.on)
     }
-    func setPress(_ value: DesignPress) { press = value; UserDefaults.standard.set(value.rawValue, forKey: DesignLabKeys.press) }
     func setBadge(_ value: DesignBadge) { badge = value; UserDefaults.standard.set(value.rawValue, forKey: DesignLabKeys.badge) }
     func setCorners(_ value: DesignCorners) { corners = value; UserDefaults.standard.set(value.rawValue, forKey: DesignLabKeys.corners) }
     func setMatch(_ value: DesignMatch) { match = value; UserDefaults.standard.set(value.rawValue, forKey: DesignLabKeys.match) }
@@ -261,27 +177,26 @@ enum DesignLabMigration {
         return (changes.filter { isOn($0) }.count, changes.count)
     }
 
-    /// Original: everything as it was. Studio: every redrawn piece, firm presses, badges top-left,
-    /// the match in the caption. Anything else is Custom.
+    /// Original: every choice as it was. Studio: every choice on, badges top-left, the match in the
+    /// caption. Anything else is Custom.
     var preset: Preset {
         let all = Set(StudioChange.allCases.map(\.rawValue))
-        if on.isEmpty, press == .bouncy, badge == .original, corners == .standard, match == .onPoster { return .original }
-        if on == all, press == .firm, badge == .topLeft, corners == .standard, match == .inCaption { return .studio }
+        if on.isEmpty, badge == .original, corners == .standard, match == .onPoster { return .original }
+        if on == all, badge == .topLeft, corners == .standard, match == .inCaption { return .studio }
         return .custom
     }
 
     func apply(_ preset: Preset) {
         switch preset {
         case .original:
-            on = []; press = .bouncy; badge = .original; corners = .standard; match = .onPoster
+            on = []; badge = .original; corners = .standard; match = .onPoster
         case .studio:
-            on = Set(StudioChange.allCases.map(\.rawValue)); press = .firm; badge = .topLeft; corners = .standard; match = .inCaption
+            on = Set(StudioChange.allCases.map(\.rawValue)); badge = .topLeft; corners = .standard; match = .inCaption
         case .custom:
             return
         }
         let defaults = UserDefaults.standard
         defaults.set(on.sorted(), forKey: DesignLabKeys.on)
-        defaults.set(press.rawValue, forKey: DesignLabKeys.press)
         defaults.set(badge.rawValue, forKey: DesignLabKeys.badge)
         defaults.set(corners.rawValue, forKey: DesignLabKeys.corners)
         defaults.set(match.rawValue, forKey: DesignLabKeys.match)
@@ -313,12 +228,10 @@ enum Studio {
     }
 }
 
-/// The title page's watch button (Log a watch, Mark E3 watched): tinted when Design Lab says so, so
-/// Play stays the one filled button on the page; otherwise the app's own watch style.
+/// The title page's watch button (Log a watch, Mark E3 watched): tinted, so Play stays the one
+/// filled button on the page (owner's redraw, now standard).
 struct StudioWatchButtonStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        if Studio.on(.titleWatchButton) { content.buttonStyle(StudioTintedButtonStyle()) } else { content.buttonStyle(.diaryWatch) }
-    }
+    func body(content: Content) -> some View { content.buttonStyle(StudioTintedButtonStyle()) }
 }
 
 /// A tinted capsule: accent text on a faint accent fill, sinking a little when pressed.
@@ -454,13 +367,13 @@ enum StudioPeople {
 
 /// The parts of the app still to be redrawn: listed in Design Lab so it's clear what's coming.
 enum DesignLabUpcoming: String, CaseIterable, Identifiable {
-    case library = "Library", search = "Search", explore = "Explore", statistics = "Statistics", calendar = "Calendar and history"
+    case search = "Search", explore = "Explore", calendar = "Calendar and history"
     var id: Self { self }
     var symbol: String {
-        switch self { case .library: "books.vertical.fill"; case .search: "magnifyingglass"; case .explore: "safari.fill"; case .statistics: "chart.bar.fill"; case .calendar: "calendar" }
+        switch self { case .search: "magnifyingglass"; case .explore: "safari.fill"; case .calendar: "calendar" }
     }
     var tile: Color {
-        switch self { case .library: Color(uiColor: .systemGreen); case .search: Color(uiColor: .systemIndigo); case .explore: Color(uiColor: .systemOrange); case .statistics: Color(uiColor: .systemPink); case .calendar: Color(uiColor: .systemBlue) }
+        switch self { case .search: Color(uiColor: .systemIndigo); case .explore: Color(uiColor: .systemOrange); case .calendar: Color(uiColor: .systemBlue) }
     }
 }
 
@@ -477,8 +390,8 @@ struct DesignLabView: View {
                     NativeSegmentedControl(segments: StudioLab.Preset.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-preset-" + $0.rawValue) },
                                            selection: Binding(get: { lab.preset }, set: { lab.apply($0) }))
                     SettingsFootnote(text: lab.preset == .custom ? "Your own mix. Pick Original or Studio to start again from one of them."
-                                     : lab.preset == .studio ? "Every redrawn piece is on. Change anything and it becomes Custom."
-                                     : "The app as it was. Pick Studio to turn every redrawn piece on.")
+                                     : lab.preset == .studio ? "Every choice is on. Change anything and it becomes Custom."
+                                     : "Every choice as it was. Pick Studio to turn them all on.")
                 }
                 SettingsGroup(label: "Redrawn") {
                     ForEach(Array(StudioChange.Area.pages.enumerated()), id: \.element) { index, area in
@@ -510,10 +423,6 @@ struct DesignLabView: View {
                     }
                 }
                 SettingsGroup(label: "Feel") {
-                    DesignLabChoice(title: "Press feel", note: "Cards, posters and buttons when you press them.",
-                                    segments: DesignPress.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-press-" + $0.rawValue) },
-                                    selection: Binding(get: { lab.press }, set: { lab.setPress($0) }))
-                    SettingsDivider()
                     DesignLabChoice(title: "Rating badge", note: "As is: each place keeps its corner. Top or Bottom: every poster the same. Off: none.",
                                     segments: DesignBadge.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-badge-" + $0.rawValue) },
                                     selection: Binding(get: { lab.badge }, set: { lab.setBadge($0) }))
@@ -521,8 +430,6 @@ struct DesignLabView: View {
                     DesignLabChoice(title: "Corners", note: "Posters, and cards in Native.",
                                     segments: DesignCorners.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-corners-" + $0.rawValue) },
                                     selection: Binding(get: { lab.corners }, set: { lab.setCorners($0) }))
-                    SettingsDivider()
-                    DesignLabToggleChoice(change: .layoutSwitch, lab: lab)
                     SettingsDivider()
                     // Haptics (moved here from the Theme page): the little taps when you mark, add,
                     // switch tabs and trace the rating chart. Turning them on answers with one.
@@ -562,13 +469,14 @@ struct DesignLabAreaView: View {
                             if index > 0 { SettingsDivider() }
                             DesignLabToggleChoice(change: change, lab: lab)
                         }
-                        // Recommended's match has three choices of its own, under Home's posters.
-                        if area == .home && section.name == "Posters" {
-                            SettingsDivider()
-                            DesignLabChoice(title: "Recommended match", note: nil,
-                                            segments: DesignMatch.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-match-" + $0.rawValue) },
-                                            selection: Binding(get: { lab.match }, set: { lab.setMatch($0) }))
-                        }
+                    }
+                }
+                // Recommended's match has three choices of its own.
+                if area == .home {
+                    SettingsGroup(label: "Recommended") {
+                        DesignLabChoice(title: "Match", note: nil,
+                                        segments: DesignMatch.allCases.map { NativeSegment(value: $0, title: $0.title, id: "design-lab-match-" + $0.rawValue) },
+                                        selection: Binding(get: { lab.match }, set: { lab.setMatch($0) }))
                     }
                 }
                 SettingsFootnote(text: "Each choice changes that part of the app right away.")

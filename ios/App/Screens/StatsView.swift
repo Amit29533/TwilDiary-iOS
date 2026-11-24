@@ -173,7 +173,7 @@ struct StatsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     caption("Busiest day", size: 12)
                     Text(highlights.busiest.map { StatsHighlights.shortDate($0.date) + " · " + DiaryDate.duration($0.minutes) } ?? "None in this period")
-                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(highlights.busiest == nil ? Color.secondary : theme.accent)
+                        .font(.app(size: 15, weight: .semibold)).foregroundStyle(highlights.busiest == nil ? Color.secondary : HomeStyle.ink)
                 }
                 Spacer(minLength: 0)
                 if highlights.busiest != nil { DiaryIcon(name: "chevron-right", size: 13).foregroundStyle(.secondary) }
@@ -185,7 +185,7 @@ struct StatsView: View {
     }
     private func trendFigures(_ value: StatsOverview.Trend, highlights: StatsHighlights) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(DiaryDate.duration(value.minutes)).font(.app(size: 34, weight: .bold)).foregroundStyle(theme.accent).tracking(-1.4).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+            Text(DiaryDate.duration(value.minutes)).font(.app(size: 34, weight: .bold)).foregroundStyle(HomeStyle.ink).tracking(-1.4).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
             Text("avg \(DiaryDate.duration(Int(highlights.averageMinutes.rounded()))) / day").font(.app(size: 16)).foregroundStyle(.secondary)
             // Always one line (invisible when there is nothing to compare), so the card keeps its height.
             let difference = value.difference ?? 0
@@ -271,7 +271,7 @@ struct StatsView: View {
     private func bucketDetails(_ bucket: StatsOverview.Bucket) -> some View {
         let grouped = Dictionary(grouping: bucket.events, by: \.titleId)
         // Parse each watch date once, not inside every sort comparison.
-        let latest = grouped.mapValues { $0.compactMap { DiaryDate.parse($0.watchedAt) }.max() ?? .distantPast }
+        let latest = grouped.mapValues { $0.compactMap { DiaryDate.watched($0.watchedAt) }.max() ?? .distantPast }
         let ids = grouped.keys.sorted { a, b in (latest[a] ?? .distantPast) > (latest[b] ?? .distantPast) }
         return VStack(alignment: .leading, spacing: 12) {
             HStack { Text(bucket.description).font(.app(size: 15, weight: .bold)); Spacer(); Button("Close") { selectedBucket = nil }.font(.app(size: 13)) }
@@ -331,7 +331,7 @@ struct StatsView: View {
     }
     private var countActiveDays: (all: Int, elapsed: Int, year: Int) {
         let calendar = DiaryDate.calendar()
-        let days = Set(store.activeEvents.compactMap { DiaryDate.parse($0.watchedAt).map { calendar.startOfDay(for: $0) } })
+        let days = Set(store.activeEvents.compactMap { DiaryDate.watched($0.watchedAt).map { calendar.startOfDay(for: $0) } })
         guard let first = days.min() else { return (0, 0, 0) }
         let elapsed = (calendar.dateComponents([.day], from: first, to: calendar.startOfDay(for: clock)).day ?? 0) + 1
         let year = calendar.component(.year, from: clock)
@@ -343,7 +343,7 @@ struct StatsView: View {
     }
     private var firstMonth: Date {
         let calendar = DiaryDate.calendar()
-        let first = store.activeEvents.compactMap { DiaryDate.parse($0.watchedAt) }.min() ?? clock
+        let first = store.activeEvents.compactMap { DiaryDate.watched($0.watchedAt) }.min() ?? clock
         return calendar.date(from: calendar.dateComponents([.year, .month], from: first)) ?? first
     }
 
@@ -373,7 +373,7 @@ struct StatsView: View {
                     Image(systemName: "clock").font(.app(size: 18)).foregroundStyle(theme.accent).frame(width: 40, height: 40).background(theme.accent.opacity(0.14), in: Circle())
                     VStack(alignment: .leading, spacing: 1) {
                         caption("Planned runtime", size: 12)
-                        Text(DiaryDate.duration(value.plannedMinutes)).font(.app(size: 24, weight: .bold)).foregroundStyle(theme.accent).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                        Text(DiaryDate.duration(value.plannedMinutes)).font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     }
                     Spacer(minLength: 0)
                 }
@@ -465,22 +465,22 @@ private extension View {
     func statsPanel() -> some View { diaryPanel(padding: 18, radius: 22) }
 }
 
-/// The one range control: Today · 7D · 30D · 90D · 1Y · All.
+/// The one range control: Today · 7D · 30D · 90D · 1Y · All. The chosen range is a grey thumb
+/// (a filled blue pill competed with the chart, the one thing in blue).
 private struct StatsRangeSelector: View {
     @Binding var selection: Period
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let ranges: [Period] = [.today, .week, .month, .ninetyDays, .year, .all]
     var body: some View {
         // Segments are plain: a glass capsule per segment washed out the sliding accent
         // selection (native segmented controls keep one surface and one selection).
         HStack(spacing: 3) { ForEach(ranges) { range in
-            Button { selection = range } label: { Text(label(range)).font(.app(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? theme.ink : Color(themed: "#c5c0cf")).accessibilityAddTraits(selection == range ? .isSelected : [])
+            Button { selection = range } label: { Text(label(range)).font(.app(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 38).contentShape(Capsule()) }.buttonStyle(.plain).foregroundStyle(selection == range ? HomeStyle.primary : HomeStyle.secondary).accessibilityAddTraits(selection == range ? .isSelected : [])
         } }.frame(height: 38).background(alignment: .leading) {
             GeometryReader { geometry in
                 if let index = ranges.firstIndex(of: selection) {
                     let width = max(0, (geometry.size.width - CGFloat(ranges.count - 1) * 3) / CGFloat(ranges.count))
-                    Capsule().fill(theme.accent).frame(width: width, height: 38).offset(x: CGFloat(index) * (width + 3))
+                    Capsule().fill(Color(uiColor: .systemGray4)).frame(width: width, height: 38).offset(x: CGFloat(index) * (width + 3))
                 }
             }
         }.padding(3).background { DiaryControlSurface(shape: Capsule(), field: true) }

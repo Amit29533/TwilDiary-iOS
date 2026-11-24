@@ -457,13 +457,12 @@ struct ProfileAwards: View {
 }
 
 /// Where you came to this profile from (owner's request: one consistent row on actor, voice actor
-/// and character pages, in the facts card's style): FROM, the title, and the role when it's known
+/// and character pages, in the facts card's style): From, the title, and the role when it's known
 /// ("as Emma" with a Voice tag). Tapping goes back to that title.
 struct ProfileSourceRow: View {
     let title: String
     var role: String? = nil
     let action: () -> Void
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     /// "Emma (voice)" → "Emma" and a Voice tag.
     private var parts: (name: String, voice: Bool)? {
         guard let role = ProfileText.line(role) else { return nil }
@@ -472,26 +471,21 @@ struct ProfileSourceRow: View {
         return name.isEmpty ? nil : (name, voice)
     }
     var body: some View {
-        // Studio: a plain "From" label and grey tags (spaced capitals and blue read as buttons).
-        let quiet = Studio.on(.personFrom)
+        // A plain "From" label and grey tags (spaced capitals and blue read as buttons).
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: "play.rectangle").font(.app(size: 17, weight: .semibold)).foregroundStyle(quiet ? HomeStyle.secondary : theme.accent)
-                    .frame(width: 36, height: 36).background(quiet ? Color(uiColor: .tertiarySystemFill) : theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                Image(systemName: "play.rectangle").font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    .frame(width: 36, height: 36).background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    if quiet {
-                        Text("From").font(.app(size: 12, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-                    } else {
-                        Text("FROM").font(.app(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
-                    }
+                    Text("From").font(.app(size: 12, weight: .medium)).foregroundStyle(HomeStyle.secondary)
                     Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
                         .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     if let parts {
                         HStack(spacing: 6) {
                             Text("as " + parts.name).font(.caption).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(1)
                             if parts.voice {
-                                Text("Voice").font(.app(size: 10, weight: .semibold)).foregroundStyle(quiet ? HomeStyle.secondary : HomeStyle.chipText)
-                                    .padding(.horizontal, 6).padding(.vertical, 2).background(quiet ? Color(uiColor: .tertiarySystemFill) : HomeStyle.chip, in: Capsule())
+                                Text("Voice").font(.app(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                                    .padding(.horizontal, 6).padding(.vertical, 2).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
                             }
                         }
                     }

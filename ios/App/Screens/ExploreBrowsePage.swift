@@ -14,8 +14,6 @@ struct ExploreBrowseHeader: View {
     var accessory: AnyView? = nil
     /// A picture of the page's own across the top (an award ceremony's logo), in place of artwork.
     var banner: AnyView? = nil
-    /// No picture and no symbol: room for the bar, then the title (Studio's see-all pages).
-    var plain = false
     @State private var cover: String?
 
     static func artwork(in items: [CatalogItem]) -> String? {
@@ -25,9 +23,6 @@ struct ExploreBrowseHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if plain {
-                Color.clear.frame(height: 112).accessibilityHidden(true)
-            } else {
             ZStack {
                 LinearGradient(colors: [HomeStyle.chip, HomeStyle.card], startPoint: .topTrailing, endPoint: .bottomLeading)
                 if let banner {
@@ -46,16 +41,12 @@ struct ExploreBrowseHeader: View {
                                          .init(color: .white, location: 0.55),
                                          .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             .accessibilityHidden(true)
-            }
+            // The picture, then the title on its own (no symbol beside it) and its line underneath.
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .center, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if !plain {
-                            Group {
-                                if let emoji { Text(emoji) }
-                                else { Image(systemName: symbol).foregroundStyle(HomeStyle.chipText) }
-                            }.font(.title2).accessibilityHidden(true)
-                        }
+                        // A tag keeps its emoji (it is part of the tag); a symbol beside the title read as a button.
+                        if let emoji { Text(emoji).font(.title2).accessibilityHidden(true) }
                         Text(title).font(.title.bold()).foregroundStyle(HomeStyle.primary)
                             .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier(titleIdentifier ?? (emoji == nil ? "explore-browse-title" : "tag-results-title"))
@@ -89,8 +80,6 @@ struct ExploreBrowsePage<Content: View>: View {
     var titleIdentifier: String? = nil
     var accessory: AnyView? = nil
     var banner: AnyView? = nil
-    /// Studio's plain heading: no picture across the top and no symbol, just the title.
-    var plain = false
     @ViewBuilder let content: Content
     @State private var tileCover: String?
     @State private var header = CompactHeaderState()
@@ -99,7 +88,7 @@ struct ExploreBrowsePage<Content: View>: View {
         EdgeToEdgeScroll(artworkUnderBar: true) {
             VStack(alignment: .leading, spacing: 0) {
                 ExploreBrowseHeader(title: title, symbol: symbol, emoji: emoji, subtitle: subtitle,
-                                    artwork: plain ? nil : artwork ?? tileCover, titleIdentifier: titleIdentifier, accessory: accessory, banner: banner, plain: plain)
+                                    artwork: artwork ?? tileCover, titleIdentifier: titleIdentifier, accessory: accessory, banner: banner)
                     .id(title)
                     .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bottom in
                         header.update(ScrollLinkedBarTitle.progress(headingBottom: bottom))

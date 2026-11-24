@@ -45,7 +45,7 @@ struct StatsMonth {
         let titles = Dictionary(workspace.activeTitles.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         struct Dated { let title: MediaTitle; let date: Date; let episode: Bool }
         let all = workspace.activeEvents.compactMap { event -> Dated? in
-            guard let title = titles[event.titleId], let date = DiaryDate.parse(event.watchedAt) else { return nil }
+            guard let title = titles[event.titleId], let date = DiaryDate.watched(event.watchedAt) else { return nil }
             return Dated(title: title, date: date, episode: event.episodeId != nil)
         }
         let minutes: (Dated) -> Int = { max(0, $0.title.runtimeMinutes ?? 0) }
@@ -245,7 +245,7 @@ struct StatsYourDaysCard: View {
                 legend(Circle().strokeBorder(.white, lineWidth: 1.5), "Binge day")
             }.lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(month.watchedDays) of \(month.elapsed)").font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
+                Text("\(month.watchedDays) of \(month.elapsed)").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
                 Text("Days you watched").font(.app(size: 13)).foregroundStyle(.secondary)
             }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
                 .accessibilityElement(children: .combine)
@@ -276,22 +276,29 @@ struct StatsMonthHallOfFame: View {
     var body: some View {
         if month.biggest != nil || month.first != nil {
             StatsCard(title: "Hall of fame") {
-                if let day = month.biggest {
-                    NavigationLink(value: HistoryRoute(day: day.date)) {
-                        row("calendar-days", "Binge day", day.date.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
-                    }.buttonStyle(.plain)
-                }
-                if month.bestStreak > 0 { StatsStreakRow(days: month.bestStreak) }
-                if let first = month.first, let latest = month.latest {
-                    HStack(spacing: 10) {
-                        moment(first)
-                        VStack(spacing: 6) {
-                            let days = max(0, DiaryDate.calendar().dateComponents([.day], from: first.date, to: latest.date).day ?? 0)
-                            Text(days.counted("day", "days")).font(.app(size: 14, weight: .semibold)).foregroundStyle(theme.accent)
-                            HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
-                        }.frame(maxWidth: .infinity)
-                        moment(latest)
-                    }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                // One card, its rows divided by thin lines (a card each read as separate buttons).
+                StatsGroupedCard {
+                    if let day = month.biggest {
+                        NavigationLink(value: HistoryRoute(day: day.date)) {
+                            row("calendar-days", "Binge day", day.date.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
+                        }.buttonStyle(.plain)
+                    }
+                    if month.bestStreak > 0 {
+                        if month.biggest != nil { StatsGroupDivider(inset: 66) }
+                        StatsStreakRow(days: month.bestStreak)
+                    }
+                    if let first = month.first, let latest = month.latest {
+                        if month.biggest != nil || month.bestStreak > 0 { StatsGroupDivider() }
+                        HStack(spacing: 10) {
+                            moment(first)
+                            VStack(spacing: 6) {
+                                let days = max(0, DiaryDate.calendar().dateComponents([.day], from: first.date, to: latest.date).day ?? 0)
+                                Text(days.counted("day", "days")).font(.app(size: 14, weight: .semibold)).foregroundStyle(.secondary)
+                                HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
+                            }.frame(maxWidth: .infinity)
+                            moment(latest)
+                        }.padding(14)
+                    }
                 }
             }
         }
@@ -304,8 +311,8 @@ struct StatsMonthHallOfFame: View {
                 Text(detail).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink)
             }
             Spacer()
-            Text(value).font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
+            Text(value).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
+        }.padding(14).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsMonth.Moment) -> some View {
         NavigationLink(value: value.title.id) {
@@ -329,8 +336,8 @@ struct StatsStreakRow: View {
                 HStack(spacing: 3) { ForEach(0..<min(days, 14), id: \.self) { _ in Circle().fill(theme.accent).frame(width: 6, height: 6) } }
             }
             Spacer()
-            Text(days.counted("day", "days")).font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).accessibilityElement(children: .combine)
+            Text(days.counted("day", "days")).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
+        }.padding(14).accessibilityElement(children: .combine)
     }
 }
 
@@ -340,16 +347,12 @@ struct StatsStreakRow: View {
 /// same ranking Favourites uses; each opens their page.
 struct StatsFacesCard: View {
     @State private var voice = false
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         StatsCard {
             HStack {
                 Text("Faces of all time").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
                 Spacer()
-                HStack(spacing: 14) {
-                    Button("Cast") { voice = false }.foregroundStyle(voice ? Color.secondary : theme.accent)
-                    Button("Voice") { voice = true }.foregroundStyle(voice ? theme.accent : Color.secondary)
-                }.font(.app(size: 15, weight: .semibold)).buttonStyle(.plain)
+                StatsSmallSwitch(selection: $voice, first: "Cast", second: "Voice", label: "Faces")
             }
             MostWatchedCast(kind: voice ? .voice : .cast, heading: nil, round: true).id(voice)
         }

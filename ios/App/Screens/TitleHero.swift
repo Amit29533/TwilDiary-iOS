@@ -65,8 +65,8 @@ struct TitleHero<Ratings: View>: View {
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
                     HStack(spacing: 6) {
                         Text([year.map(String.init) ?? "—", category, runtimeText].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 12)).foregroundStyle(HomeStyle.dateChipText).fixedSize(horizontal: false, vertical: true)
-                        // Studio: the age rating as a small outlined badge on the year line.
-                        if Studio.on(.titleMeta), let rating = extras?.certification {
+                        // The age rating as a small outlined badge on the year line.
+                        if let rating = extras?.certification {
                             Text(rating).font(.app(size: 11, weight: .bold)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).fixedSize()
                                 .padding(.horizontal, 4).frame(height: 16)
                                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(HomeStyle.dateChipText.opacity(0.7), lineWidth: 1))

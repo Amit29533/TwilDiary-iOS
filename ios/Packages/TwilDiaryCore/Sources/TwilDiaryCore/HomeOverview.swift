@@ -36,7 +36,7 @@ public struct HomeOverview: Sendable {
         var unknown = 0, missing = 0
         var counts: [Date: Int] = [:], runtimes: [Date: Int] = [:]
         for event in active {
-            guard let date = DiaryDate.parse(event.watchedAt) else { unknown += 1; continue }
+            guard let date = DiaryDate.watched(event.watchedAt) else { unknown += 1; continue }
             let runtime = titles[event.titleId]?.runtimeMinutes ?? 0
             if runtime <= 0 { missing += 1 }
             let day = calendar.startOfDay(for: date)

@@ -27,15 +27,43 @@ struct StatsCard<Content: View>: View {
     }
 }
 
-/// Movies | Shows, as the Most played and Highest rated cards switch them.
+/// Movies | Shows, as the Most played and Highest rated cards switch them: a small segmented
+/// control, as Genre mix uses (blue and grey words didn't look tappable).
 struct KindSwitch: View {
     @Binding var shows: Bool
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        HStack(spacing: 14) {
-            Button("Movies") { shows = false }.foregroundStyle(shows ? Color.secondary : theme.accent)
-            Button("Shows") { shows = true }.foregroundStyle(shows ? theme.accent : Color.secondary)
-        }.font(.app(size: 15, weight: .semibold)).buttonStyle(.plain)
+        StatsSmallSwitch(selection: $shows, first: "Movies", second: "Shows", label: "Kind")
+    }
+}
+
+/// Two choices in a small segmented control, for a card's header.
+struct StatsSmallSwitch: View {
+    /// `false` is the first choice, `true` the second.
+    @Binding var selection: Bool
+    let first: String
+    let second: String
+    let label: String
+    var body: some View {
+        Picker(label, selection: $selection) { Text(first).tag(false); Text(second).tag(true) }
+            .pickerStyle(.segmented).labelsHidden().controlSize(.small).fixedSize()
+    }
+}
+
+/// Rows sharing one card, divided by `StatsGroupDivider`s.
+struct StatsGroupedCard<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// A thin line between rows of a `StatsGroupedCard`, inset to line up with the rows' text.
+struct StatsGroupDivider: View {
+    var inset: CGFloat = 14
+    var body: some View {
+        Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, inset)
     }
 }
 
@@ -73,11 +101,8 @@ struct StatsJourneyCard: View {
             HStack(spacing: 10) {
                 tile(insights.episodes, "episodes"); tile(insights.shows, "shows"); tile(insights.movies, "movies")
             }
-            // The dates bar only means something once there are watches.
+            // A small data line once there are watches (a full bar under it told you nothing).
             if coverage.total > 0 {
-                Capsule().fill(ink.opacity(0.12)).frame(height: 7)
-                    .overlay(alignment: .leading) { GeometryReader { proxy in Capsule().fill(theme.accent).frame(width: proxy.size.width * Double(coverage.percent) / 100) } }
-                    .accessibilityLabel("Watches with dates").accessibilityValue("\(coverage.percent)%")
                 HStack {
                     Text("\(coverage.dated.formatted()) watches dated")
                     Spacer(minLength: 6)
@@ -221,8 +246,11 @@ struct StatsSplitCard: View {
                         Text(showShare >= 0.5 ? "Shows" : "Movies").font(.app(size: 15)).foregroundStyle(.secondary)
                     }
                 }.frame(width: 170, height: 170).frame(maxWidth: .infinity).padding(.vertical, 6).accessibilityHidden(true)
-                row("Shows", theme.accent, showShare, insights.showMinutes)
-                row("Movies", Color(themed: "#f2b45a"), 1 - showShare, insights.movieMinutes)
+                StatsGroupedCard {
+                    row("Shows", theme.accent, showShare, insights.showMinutes)
+                    StatsGroupDivider(inset: 34)
+                    row("Movies", Color(themed: "#f2b45a"), 1 - showShare, insights.movieMinutes)
+                }
             }
         }
     }
@@ -232,7 +260,7 @@ struct StatsSplitCard: View {
             Text(label).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
             Spacer()
             Text("\(Int((share * 100).rounded()))% · \(longDuration(minutes))").font(.app(size: 14)).foregroundStyle(.secondary)
-        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14)).accessibilityElement(children: .combine)
+        }.padding(14).accessibilityElement(children: .combine)
     }
 }
 
@@ -248,7 +276,7 @@ struct StatsWhenCard: View {
                 HStack {
                     Text("Time of day").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
-                    if let hour = insights.peakHour { Text("Peaks around " + hourLabel(hour)).font(.app(size: 14)).foregroundStyle(theme.accent) }
+                    if let hour = insights.peakHour { Text("Peaks around " + hourLabel(hour)).font(.app(size: 14)).foregroundStyle(.secondary) }
                 }
                 Chart(Array(insights.hours.enumerated()), id: \.offset) { item in
                     AreaMark(x: .value("Hour", item.offset), y: .value("Plays", item.element)).interpolationMethod(.catmullRom)
@@ -260,7 +288,7 @@ struct StatsWhenCard: View {
                 HStack {
                     Text("Day of week").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                     Spacer()
-                    if let day = insights.peakWeekday { Text(Self.days[day] + "s lead").font(.app(size: 14)).foregroundStyle(theme.accent) }
+                    if let day = insights.peakWeekday { Text(Self.days[day] + "s lead").font(.app(size: 14)).foregroundStyle(.secondary) }
                 }.padding(.top, 6)
                 let most = max(1, insights.weekdays.max() ?? 1)
                 HStack(alignment: .bottom, spacing: 10) {
@@ -285,22 +313,28 @@ struct StatsHallOfFameCard: View {
     var body: some View {
         if insights.biggestDay != nil || insights.first != nil {
             StatsCard(title: "Hall of fame") {
-                if let day = insights.biggestDay {
-                    NavigationLink(value: HistoryRoute(day: day.day)) {
-                        row("calendar-days", "Binge day", day.day.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
-                    }.buttonStyle(.plain)
-                }
-                if longestStreak > 0 { StatsStreakRow(days: longestStreak) }
-                if let first = insights.first, let latest = insights.latest {
-                    HStack(spacing: 10) {
-                        moment(first)
-                        VStack(spacing: 6) {
-                            Text(span(first.date, latest.date)).font(.app(size: 14, weight: .semibold)).foregroundStyle(theme.accent)
-                            HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
-                        }.frame(maxWidth: .infinity)
-                        moment(latest)
-                    }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
-                        .accessibilityElement(children: .combine)
+                // One card, its rows divided by thin lines (a card each read as separate buttons).
+                StatsGroupedCard {
+                    if let day = insights.biggestDay {
+                        NavigationLink(value: HistoryRoute(day: day.day)) {
+                            row("calendar-days", "Binge day", day.day.formatted(.dateTime.day().month(.abbreviated).year()), longDuration(day.minutes))
+                        }.buttonStyle(.plain)
+                    }
+                    if longestStreak > 0 {
+                        if insights.biggestDay != nil { StatsGroupDivider(inset: 66) }
+                        StatsStreakRow(days: longestStreak)
+                    }
+                    if let first = insights.first, let latest = insights.latest {
+                        if insights.biggestDay != nil || longestStreak > 0 { StatsGroupDivider() }
+                        HStack(spacing: 10) {
+                            moment(first)
+                            VStack(spacing: 6) {
+                                Text(span(first.date, latest.date)).font(.app(size: 14, weight: .semibold)).foregroundStyle(.secondary)
+                                HStack(spacing: 0) { Circle().fill(theme.accent).frame(width: 8, height: 8); Rectangle().fill(theme.accent.opacity(0.5)).frame(height: 2); Circle().fill(theme.accent).frame(width: 8, height: 8) }
+                            }.frame(maxWidth: .infinity)
+                            moment(latest)
+                        }.padding(14).accessibilityElement(children: .combine)
+                    }
                 }
             }
         }
@@ -313,8 +347,8 @@ struct StatsHallOfFameCard: View {
                 if let detail { Text(detail).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.ink) }
             }
             Spacer()
-            Text(value).font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
-        }.padding(14).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle()).accessibilityElement(children: .combine)
+            Text(value).font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
+        }.padding(14).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsInsights.Moment) -> some View {
         NavigationLink(value: value.title.id) {
@@ -336,7 +370,6 @@ struct StatsHallOfFameCard: View {
 
 struct StatsMarathonsCard: View {
     let marathons: [StatsInsights.Marathon]
-    @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         if !marathons.isEmpty {
             StatsCard(title: "Longest marathons") {
@@ -350,7 +383,7 @@ struct StatsMarathonsCard: View {
                             }
                             Spacer()
                             VStack(spacing: 0) {
-                                Text("\(item.episodes)").font(.app(size: 24, weight: .bold)).foregroundStyle(theme.accent)
+                                Text("\(item.episodes)").font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.ink)
                                 Text("episodes").font(.app(size: 12)).foregroundStyle(.secondary)
                             }
                         }.padding(10).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16)).contentShape(Rectangle())
@@ -426,7 +459,7 @@ struct StatsRatingsCard: View {
     private func average(_ label: String, _ value: Double?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label).font(.app(size: 14)).foregroundStyle(.secondary)
-            Text(value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").font(.app(size: 22, weight: .bold)).foregroundStyle(theme.accent)
+            Text(value.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.ink)
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
     }
 }

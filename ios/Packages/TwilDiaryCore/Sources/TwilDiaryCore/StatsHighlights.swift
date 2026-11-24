@@ -36,7 +36,7 @@ public struct StatsHighlights: Equatable, Sendable {
         let titles = Dictionary(workspace.activeTitles.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         struct Play { let event: WatchEvent; let instant: Date; let day: String; let minutes: Int }
         let all = workspace.activeEvents.compactMap { event -> Play? in
-            guard let instant = DiaryDate.parse(event.watchedAt), let title = titles[event.titleId] else { return nil }
+            guard let instant = DiaryDate.watched(event.watchedAt), let title = titles[event.titleId] else { return nil }
             return Play(event: event, instant: instant, day: DiaryDate.day(instant, timeZone: timeZone), minutes: max(0, title.runtimeMinutes ?? 0))
         }.sorted { ($0.instant, $0.event.id) < ($1.instant, $1.event.id) }
         let inPeriod = all.filter { $0.day >= trend.start && $0.day <= trend.end }

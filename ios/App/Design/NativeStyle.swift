@@ -180,6 +180,8 @@ struct NativeSegment<Value: Hashable>: Identifiable {
     let title: String
     /// The accessibility identifier (UI tests find segments by it).
     let id: String
+    /// Nothing behind this choice (a filter with no results): its label reads dimmer; it still opens.
+    var dimmed = false
 }
 
 /// iOS 26's segmented control on Liquid Glass: the choices share one glass track and the chosen one
@@ -196,7 +198,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                 Button {
                     withAnimation(reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.22)) { selection = segment.value }
                 } label: {
-                    Text(segment.title).font(.app(size: 14, weight: on ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
+                    Text(segment.title).font(.app(size: 14, weight: on ? .semibold : .medium)).foregroundStyle(segment.dimmed && !on ? Color(uiColor: .tertiaryLabel) : Color(uiColor: .label))
                         .lineLimit(1).minimumScaleFactor(0.8).padding(.horizontal, 5).frame(maxWidth: .infinity, minHeight: 34)
                         .background {
                             if on {
@@ -219,12 +221,11 @@ struct NativeRoundGlass: View {
     var selected = false
     var size: CGFloat = 36
     var body: some View {
-        // Studio: layout buttons stay grey whichever layout is on (blue read as "something to do").
-        let lit = selected && !Studio.on(.layoutSwitch)
+        // Layout buttons stay grey whichever layout is on (blue read as "something to do").
         Image(systemName: system).font(.app(size: size * 0.4, weight: .semibold))
-            .foregroundStyle(lit ? Color.white : Color(uiColor: .label))
+            .foregroundStyle(Color(uiColor: .label))
             .frame(width: size, height: size)
-            .background(lit ? Color(uiColor: .systemBlue) : Color(uiColor: .tertiarySystemFill), in: Circle())
+            .background(Color(uiColor: .tertiarySystemFill), in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
     }
 }

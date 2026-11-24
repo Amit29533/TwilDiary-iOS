@@ -151,7 +151,7 @@ struct HistoryDay: Identifiable {
     static func group(_ entries: [HistoryEntry]) -> [HistoryDay] {
         var order: [String] = [], byDay: [String: [HistoryEntry]] = [:], labels: [String: String] = [:]
         for entry in entries {
-            let date = DiaryDate.parse(entry.event.watchedAt)
+            let date = DiaryDate.watched(entry.event.watchedAt)
             let key = date.map { DiaryDate.day($0) } ?? "unknown"
             if byDay[key] == nil {
                 order.append(key)

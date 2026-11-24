@@ -13,7 +13,7 @@ public struct ProfileMilestone: Identifiable, Equatable, Sendable {
         let today = DiaryDate.day(now, timeZone: timeZone)
         let events = workspace.activeEvents.filter { event in
             guard titles[event.titleId] != nil else { return false }
-            guard let date = DiaryDate.parse(event.watchedAt) else { return true }
+            guard let date = DiaryDate.watched(event.watchedAt) else { return true }
             return DiaryDate.day(date, timeZone: timeZone) <= today
         }
         let watched = Set(events.map(\.titleId)).compactMap { titles[$0] }

@@ -14,7 +14,7 @@ private func play(_ id: String, title: String, episode: String?, at: String) -> 
 }
 
 /// A three-episode Wednesday marathon, a movie watched twice (a rewatch) and a 2025 episode.
-private func workspace() throws -> Workspace {
+private func workspace(extra: [[String: Any]] = []) throws -> Workspace {
     let events = [
         play("s1", title: "show", episode: "e1", at: "2026-11-04T16:00:00.000Z"),
         play("s2", title: "show", episode: "e2", at: "2026-11-04T16:30:00.000Z"),
@@ -22,7 +22,7 @@ private func workspace() throws -> Workspace {
         play("m1", title: "film", episode: nil, at: "2026-10-02T21:00:00.000Z"),
         play("m2", title: "film", episode: nil, at: "2026-11-05T21:00:00.000Z"),
         play("o1", title: "old", episode: "o-e1", at: "2025-01-06T10:00:00.000Z")
-    ]
+    ] + extra
     let value: [String: Any] = ["titles": [title("show", category: "anime", runtime: 24, year: 2022, score: 8),
                                            title("film", category: "movie", runtime: 120, year: 2016, score: 10),
                                            title("old", category: "show", runtime: 45, year: 1999)],
@@ -58,4 +58,19 @@ private func workspace() throws -> Workspace {
     let empty = try JSONDecoder().decode(Workspace.self, from: Data(#"{"titles":[],"episodes":[],"events":[],"locations":[]}"#.utf8))
     let value = StatsInsights(workspace: empty)
     #expect(value.totalMinutes == 0 && value.perYear.isEmpty && value.biggestDay == nil && value.peakHour == nil && value.first == nil)
+}
+
+/// An import with no date writes 1 January 1970 (the computer's zero date); that watch is undated,
+/// so it is never the first watch, and Statistics counts it with the undated ones.
+@Test func aWatchOnTheZeroDateCountsAsUndated() throws {
+    let utc = try #require(TimeZone(identifier: "UTC"))
+    let now = try #require(DiaryDate.parse("2026-11-09T12:00:00.000Z"))
+    let diary = try workspace(extra: [play("z1", title: "film", episode: nil, at: "1970-01-01T00:00:00.000Z")])
+    #expect(DiaryDate.watched("1970-01-01T00:00:00.000Z") == nil && DiaryDate.parse("1970-01-01T00:00:00.000Z") != nil)
+    #expect(DiaryDate.watched("1970-01-01T05:30:00.000+05:30") == nil)
+    let insights = StatsInsights(workspace: diary, now: now, timeZone: utc)
+    #expect(insights.first?.title.id == "old")
+    #expect(insights.perYear.first?.year == 2025)
+    let overview = StatsOverview(workspace: diary, now: now, timeZone: utc)
+    #expect(overview.coverage.unknown == 1 && overview.coverage.dated == 6)
 }

@@ -44,7 +44,7 @@ struct CatalogGrid: View {
 struct CatalogPoster: View {
     let item: CatalogItem
     var profileTypography = false
-    /// Studio: the person's role on this title, joined to the year line.
+    /// The person's role on this title, joined to the year line.
     var role: String? = nil
     @Environment(DiaryStore.self) private var store
     private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
@@ -52,8 +52,8 @@ struct CatalogPoster: View {
         let score = PosterScores.score(for: item, store: store)
         VStack(alignment: .leading, spacing: 0) {
             Group {
-                if item.artwork == nil && Studio.on(.missingPoster) {
-                    // Studio: no poster: the name on a grey tile the size of one, not a placeholder that looks broken.
+                if item.artwork == nil {
+                    // No poster: the name on a grey tile the size of one, not a placeholder that looks broken.
                     Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         .lineLimit(4).minimumScaleFactor(0.8).padding(10)
                         .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(uiColor: .tertiarySystemFill))
@@ -68,31 +68,28 @@ struct CatalogPoster: View {
                 .wantsPosterScore(item, known: score, store: store)
             if !showsCaption {
                 EmptyView()
-            } else if Studio.on(.posterCaptions) {
-                // Studio: the name (up to two lines) and one details line right under it; a hidden copy
-                // keeps two lines' room below, so every card in a row is one height.
-                ZStack(alignment: .topLeading) {
-                    studioCaption(name: " ", reserve: true).hidden().accessibilityHidden(true)
-                    studioCaption(name: item.name, reserve: false)
-                }
             } else if profileTypography {
                 ProfileCardCaption(title: item.name).padding(.top, 8)
                 if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
             } else {
-                Text(item.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
-                Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.app(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
+                // The name (up to two lines) and one details line right under it; a hidden copy keeps
+                // two lines' room below, so every card in a row is one height.
+                ZStack(alignment: .topLeading) {
+                    caption(name: " ", reserve: true).hidden().accessibilityHidden(true)
+                    caption(name: item.name, reserve: false)
+                }
             }
         }.accessibilityElement(children: .combine)
     }
-    private func studioCaption(name: String, reserve: Bool) -> some View {
+    private func caption(name: String, reserve: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(2, reservesSpace: reserve)
                 .multilineTextAlignment(.leading).padding(.top, 8)
-            Text(studioDetails).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3)
+            Text(details).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3)
         }
     }
     /// "2008 · Marcus Pike", or the year alone.
-    private var studioDetails: String {
+    private var details: String {
         let details = [item.year.map(String.init), ProfileText.line(role), item.inLibraryId == nil || role != nil ? nil : "In library"].compactMap { $0 }.joined(separator: " · ")
         return details.isEmpty ? " " : details
     }
@@ -243,7 +240,8 @@ struct CatalogSearchView: View {
     @ViewBuilder private func kindChips(counts: [Kind: Int], total: Int) -> some View {
         if ThemeStore.current.native && !typeSize.isAccessibilitySize {
             NativeSegmentedControl(segments: Kind.allCases.map { item in
-                NativeSegment(value: item, title: item.rawValue + (ready ? count(item, counts: counts, total: total).map { " \($0)" } ?? "" : ""), id: "search-kind-" + item.rawValue.lowercased())
+                NativeSegment(value: item, title: item.rawValue + (ready ? count(item, counts: counts, total: total).map { " \($0)" } ?? "" : ""), id: "search-kind-" + item.rawValue.lowercased(),
+                              dimmed: ready && count(item, counts: counts, total: total) == 0)
             }, selection: $kind)
         } else {
             classicKindChips(counts: counts, total: total)
@@ -254,6 +252,8 @@ struct CatalogSearchView: View {
             HStack(spacing: 8) {
                 ForEach(Kind.allCases, id: \.self) { item in
                     let on = kind == item
+                    // A kind with no results reads dimmer (it still opens).
+                    let empty = !on && ready && count(item, counts: counts, total: total) == 0
                     Button { kind = item } label: {
                         HStack(spacing: 6) {
                             Text(item.rawValue)
@@ -261,7 +261,7 @@ struct CatalogSearchView: View {
                                 Text(count.formatted()).foregroundStyle(on ? ThemeStore.current.chipInk.opacity(0.7) : HomeStyle.secondary).monospacedDigit()
                             }
                         }.font(typeSize.isAccessibilitySize ? .subheadline.weight(.semibold) : .app(size: 15, weight: .semibold))
-                            .foregroundStyle(on ? ThemeStore.current.chipInk : HomeStyle.primary)
+                            .foregroundStyle(on ? ThemeStore.current.chipInk : empty ? HomeStyle.muted : HomeStyle.primary)
                             .padding(.horizontal, 15).padding(.vertical, typeSize.isAccessibilitySize ? 8 : 0).frame(minHeight: 40)
                             .background(on ? HomeStyle.chipText : HomeStyle.round, in: Capsule())
                             .overlay(Capsule().strokeBorder(on ? .clear : HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))

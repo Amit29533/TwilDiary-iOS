@@ -130,12 +130,12 @@ struct SeeAllLink<Value: Hashable>: View {
     }
 }
 
-/// A small rounded label: genres, age rating, status, network.
+/// A small rounded label: genres, status, network.
 struct MetaChip: View {
     let text: String
     /// Each kind of chip in its own colour (see `ChipTint`): text in it, a soft fill and edge.
     var tint: Color = HomeStyle.soft
-    /// Age rating, status and network: bolder than genres (design).
+    /// Status and network: bolder than genres (design).
     var fact = false
     var body: some View {
         let radius: CGFloat = fact ? 8 : 9
@@ -147,35 +147,12 @@ struct MetaChip: View {
     }
 }
 
-/// The chips' colours: a genre its own hue; an age rating by how grown-up it is (green for
-/// everyone, yellow, orange, red for adults); a status by what it means (green still going, blue
-/// coming, grey ended, red cancelled); a network in teal.
+/// The fact chips' colours: a status by what it means (green still going, blue coming, grey ended,
+/// red cancelled); a network in teal. Genres are one quiet grey.
 enum ChipTint {
     /// Native: the same meaning in the system colour of the hue, readable in light and dark mode.
     private static func tint(_ hex: String) -> Color { ThemeStore.current.native ? ThemePalette.native(hex: hex) : Color(webHex: hex) }
-    // These colours carry meaning (a genre's hue, how grown-up a rating is, what a status means),
-    // so they stay as they are in every theme.
-    static func genre(_ name: String) -> Color {
-        let hues: [String: String] = [
-            "action": "#ff8a65", "adventure": "#ffb454", "action & adventure": "#ff9a5c", "animation": "#ff7ad9",
-            "comedy": "#ffd166", "crime": "#ff6b81", "documentary": "#8bd3dd", "drama": "#8fb0ff", "family": "#9be89b",
-            "fantasy": "#c39bff", "history": "#d8b38a", "horror": "#ff5c5c", "kids": "#7ee8b8", "music": "#ff9ff3",
-            "mystery": "#a99bff", "news": "#9ec5ff", "reality": "#ffc6a8", "romance": "#ff8fab", "science fiction": "#5ad1ff",
-            "sci-fi & fantasy": "#7cc8ff", "soap": "#f7a8d0", "talk": "#a0e7e5", "thriller": "#ff9a4d", "tv movie": "#c0bccc",
-            "war": "#c9b98f", "war & politics": "#c2b280", "western": "#e0a96d", "anime": "#b9a6ff"
-        ]
-        if let hex = hues[name.lowercased()] { return tint(hex) }
-        let fallback = ["#8fb0ff", "#ff8fab", "#9be89b", "#ffd166", "#c39bff", "#5ad1ff", "#ffb454"]
-        return tint(fallback[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % fallback.count])
-    }
-    static func rating(_ value: String) -> Color {
-        let rating = value.uppercased()
-        if ["G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "ALL", "0", "6", "L", "AL", "TP"].contains(rating) { return tint("#6ee7a8") }
-        if ["PG", "TV-PG", "12", "12A", "PG-12", "PG12", "7", "7+", "10", "12+", "PG12+"].contains(rating) { return tint("#ffd166") }
-        if ["PG-13", "TV-14", "13", "13+", "14", "14+", "15", "15+", "16", "16+", "M", "R15", "R15+", "R-15", "R16"].contains(rating) { return tint("#ffa94d") }
-        if ["R", "NC-17", "TV-MA", "18", "18+", "19", "R18", "R18+", "R-18", "R21", "MA15+", "X"].contains(rating) { return tint("#ff6b6b") }
-        return tint("#c0bccc")
-    }
+    // These colours carry meaning (what a status means), so they stay as they are in every theme.
     static func status(_ raw: String?) -> Color {
         switch raw {
         case "Returning Series": tint("#6ee7a8")
@@ -187,9 +164,9 @@ enum ChipTint {
     static var network: Color { Color(themed: "#5ad1c4") }
 }
 
-/// Genres on one line, then age rating, status and network, all trimmed to fit (never wrapping).
-/// Each opens its titles: the genre's (of this kind, anime kept anime), the age rating's, the
-/// status's (shows), and the network's.
+/// Genres on one line, then status and network, all trimmed to fit (never wrapping). Each opens its
+/// titles: the genre's (of this kind, anime kept anime), the status's (shows), and the network's.
+/// The age rating is on the year line above.
 struct TitleMetaChips: View {
     let genres: [String]
     let extras: TitleExtras?
@@ -221,8 +198,8 @@ struct TitleMetaChips: View {
         HStack(spacing: 6) {
             ForEach(values, id: \.self) { genre in
                 NavigationLink(value: SearchLabResultsRoute(filters: genreFilters(genre))) {
-                    // Studio: genres in one quiet grey (their colours meant nothing).
-                    MetaChip(text: genre, tint: Studio.on(.titleMeta) ? HomeStyle.secondary : ChipTint.genre(genre))
+                    // Genres in one quiet grey (their colours meant nothing).
+                    MetaChip(text: genre, tint: HomeStyle.secondary)
                 }.buttonStyle(.springPress).accessibilityHint("Shows more \(genre) titles")
             }
         }.fixedSize()
@@ -236,15 +213,7 @@ struct TitleMetaChips: View {
     }
     private func facts(_ extras: TitleExtras) -> [Fact] {
         var result: [Fact] = []
-        // Studio: the age rating sits on the year line (TitleHero), not alone on a row of its own.
-        if let rating = extras.certification, !Studio.on(.titleMeta) {
-            // TMDB filters by US ratings only: another country's rating is shown, not linked.
-            let us = ["G", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA"].contains(rating.uppercased())
-            var filters = DiscoveryFilters(section: .genres)
-            filters.type = kind; filters.certification = rating; filters.label = rating
-            if anime { filters.language = "ja" }
-            result.append(Fact(id: "rating", text: rating, tint: ChipTint.rating(rating), search: us ? SearchLabResultsRoute(filters: filters) : nil))
-        }
+        // The age rating sits on the year line (TitleHero), not alone on a row of its own.
         if let label = extras.statusLabel {
             // Statuses are a shows' filter; a film's "Released" just says so.
             var route: SearchLabResultsRoute?
@@ -316,8 +285,8 @@ struct RatingBoxes: View {
     }
     var body: some View {
         let boxes = boxes
-        if !boxes.isEmpty, Studio.on(.titleRatings) {
-            // Studio: the scores share one card, divided by thin lines (four boxes read as four things to tap).
+        if !boxes.isEmpty {
+            // The scores share one card, divided by thin lines (four boxes read as four things to tap).
             HStack(spacing: 0) {
                 ForEach(Array(boxes.enumerated()), id: \.element.id) { index, box in
                     if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(width: 1 / 3, height: 24) }
@@ -332,23 +301,6 @@ struct RatingBoxes: View {
                         .accessibilityElement(children: .ignore).accessibilityLabel(RatingsStrip<EmptyView>.name(box.id) + " " + box.text)
                 }
             }.cardSurface(14).accessibilityIdentifier("title-rating-boxes")
-        } else if !boxes.isEmpty {
-            HStack(spacing: 8) {
-                ForEach(boxes) { box in
-                    // The source's own logo above its score; a source without one keeps its name.
-                    HStack(spacing: 6) {
-                        if let service = BrandLogo.service(forRatingSource: box.id) {
-                            BrandLogo(service: service, size: 20)
-                        } else {
-                            Text(box.label).font(.app(size: 9, weight: .bold)).foregroundStyle(box.color)
-                        }
-                        Text(box.text).font(.app(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
-                    }.frame(maxWidth: .infinity).frame(height: 46)
-                        .cardSurface(12)
-                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-                        .accessibilityElement(children: .ignore).accessibilityLabel(RatingsStrip<EmptyView>.name(box.id) + " " + box.text)
-                }
-            }.accessibilityIdentifier("title-rating-boxes")
         }
     }
     static func label(_ key: String) -> String {
@@ -395,13 +347,11 @@ struct RatingCircles: View {
     static func color(_ score: Double) -> Color {
         switch RatingTone(score: score) { case .low: Color(themed: "#ef5350"); case .mid: Color(themed: "#ffa726"); case .high: Color(themed: "#43c66b") }
     }
-    /// Studio: "You" and "Community" under the circles, so it's clear whose score each is.
+    /// "You" and "Community" under the circles, so it's clear whose score each is.
     private func captioned<Content: View>(_ caption: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 4) {
             content()
-            if Studio.on(.titleStatus) {
-                Text(caption).font(.app(size: 11)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize().accessibilityHidden(true)
-            }
+            Text(caption).font(.app(size: 11)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize().accessibilityHidden(true)
         }
     }
     var body: some View {
@@ -496,7 +446,7 @@ extension String {
 
 // MARK: Companies
 
-/// A company's own logo on a dark tile; its name in colour when TMDB has no logo.
+/// A company's own logo on a light tile; its initials on a grey disc when TMDB has no logo.
 struct CompanyLogo: View {
     let company: TitleCompany
     var body: some View {
@@ -505,15 +455,10 @@ struct CompanyLogo: View {
                 // The company's own logo, unchanged; many are black, so they sit on a light tile.
                 Artwork(path: logo, title: company.name, contentMode: .fit).padding(.horizontal, 18).padding(.vertical, 16)
                     .background(Color(themed: "#f2f1f5"), in: RoundedRectangle(cornerRadius: 16))
-            } else if Studio.on(.titleCompanies) {
-                // Studio: the initials on a grey disc (the full name in colour read as a link, and the
-                // name is written under the tile anyway).
-                Text(Self.initials(company.name)).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
-                    .frame(width: 48, height: 48).background(Color(uiColor: .tertiarySystemFill), in: Circle())
-                    .accessibilityHidden(true)
             } else {
-                Text(company.name).font(.app(size: 18, weight: .heavy)).foregroundStyle(Self.tint(company.name))
-                    .lineLimit(2).minimumScaleFactor(0.6).multilineTextAlignment(.center).padding(10)
+                // The initials on a grey disc (the full name in colour read as a link, and the name is
+                // written under the tile anyway).
+                Monogram(name: company.name)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 16))
@@ -528,9 +473,17 @@ struct CompanyLogo: View {
         let letters = (kept.isEmpty ? words : kept).prefix(2).compactMap { $0.first.map(String.init) }
         return letters.joined().uppercased()
     }
-    static func tint(_ name: String) -> Color {
-        let values = ["#6ee07a", "#ff9b4a", "#ff6b7d", "#5cc8ff", "#ffd54a", "#b48cff"]
-        return Color(themed: values[name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % values.count])
+}
+
+/// A name's initials on a grey disc, for a company, network or service that has no logo.
+struct Monogram: View {
+    let name: String
+    var size: CGFloat = 48
+    var body: some View {
+        Text(CompanyLogo.initials(name)).font(.app(size: size * 0.36, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .frame(width: size, height: size).background(Color(uiColor: .tertiarySystemFill), in: Circle())
+            .accessibilityHidden(true)
     }
 }
 

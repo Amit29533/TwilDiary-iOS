@@ -37,7 +37,7 @@ struct PersonProfilePage<Content: View>: View {
                     // The photo card with the name beside it, for everyone: a person TMDB knows no
                     // facts about (no birthday, birthplace…) used to get the older full-photo header.
                     let fit = ProfileHeroFit(width: geometry.size.width, name: name, nativeName: nativeName, role: role, facts: heroFacts,
-                                             largeText: dynamicType.isAccessibilitySize, compactFacts: Studio.on(.personFacts))
+                                             largeText: dynamicType.isAccessibilitySize)
                     cardHero(width: geometry.size.width, topInset: geometry.safeAreaInsets.top, fit: fit)
                     let below = heroFacts.indices.filter { !fit.beside.contains($0) }.map { heroFacts[$0] }
                     if !below.isEmpty {
@@ -106,13 +106,13 @@ struct PersonProfilePage<Content: View>: View {
                     Text(role).font(.app(size: 17)).foregroundStyle(.white.opacity(0.62)).lineLimit(1).padding(.top, 4)
                         .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
                 }
-                let compactFacts = Studio.on(.personFacts)
-                ForEach(Array(fit.beside.map { heroFacts[$0] }.enumerated()), id: \.element.id) { index, fact in
-                    if index > 0 && !compactFacts { Rectangle().fill(Color.primary.opacity(0.1)).frame(height: HomeStyle.hairline) }
-                    VStack(alignment: .leading, spacing: compactFacts ? 2 : 4) {
-                        HStack(spacing: 6) { Image(systemName: fact.icon).font(.app(size: compactFacts ? 11 : 12)); Text(fact.label) }.font(.app(size: compactFacts ? 13 : 14)).foregroundStyle(HomeStyle.secondary)
-                        Text(fact.value).font(.app(size: compactFacts ? 16 : 19, weight: compactFacts ? .semibold : .bold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
-                    }.padding(.vertical, compactFacts ? 6 : 9).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
+                // The facts sit together (16 pt values, no dividers), so Born, Age and Birthplace
+                // usually all fit beside the photo.
+                ForEach(fit.beside.map { heroFacts[$0] }) { fact in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) { Image(systemName: fact.icon).font(.app(size: 11)); Text(fact.label) }.font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(fact.value).font(.app(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(2).truncationMode(.tail).minimumScaleFactor(0.85)
+                    }.padding(.vertical, 6).accessibilityElement(children: .combine).accessibilityIdentifier(fact.id)
                 }.padding(.top, heroFacts.isEmpty ? 0 : 8)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }.padding(.horizontal, 14).padding(.top, topInset + 64).padding(.bottom, 8)
@@ -309,9 +309,9 @@ struct ProfileHeroFit {
     /// four; one too tall (a two-line value) is skipped for a shorter one after it, not the end.
     let beside: [Int]
     /// With accessibility text sizes every fact goes to the full-width card below, not the narrow column.
-    /// `compactFacts`: Studio's smaller fact lines (16 pt values, no dividers), so Born, Age and
-    /// Birthplace usually all fit beside the photo.
-    init(width: CGFloat, name: String, nativeName: String?, role: String?, facts: [ProfileFact], largeText: Bool = false, compactFacts: Bool = false) {
+    /// Fact lines are compact (16 pt values, no dividers), so Born, Age and Birthplace usually all
+    /// fit beside the photo.
+    init(width: CGFloat, name: String, nativeName: String?, role: String?, facts: [ProfileFact], largeText: Bool = false) {
         photoWidth = min(220, (width - 28) * 0.47)
         let column = max(120, width - 28 - photoWidth - 16)
         let photoHeight = photoWidth * 1.45
@@ -331,8 +331,8 @@ struct ProfileHeroFit {
         used += 8
         var chosen: [Int] = []
         for (index, fact) in facts.enumerated() where !largeText && chosen.count < 4 {
-            let valueLines = CGFloat(min(2, lines(fact.value, size: compactFacts ? 16 : 19)))
-            let height = compactFacts ? 15 + 2 + valueLines * 20 + 12 : 17 + 4 + valueLines * 23 + 18
+            let valueLines = CGFloat(min(2, lines(fact.value, size: 16)))
+            let height = 15 + 2 + valueLines * 20 + 12
             // The column fills the space beside the photo, and may run a little past its bottom;
             // a fact that would sit far below it goes to the card underneath instead.
             guard used + height <= photoHeight + 40 else { continue }

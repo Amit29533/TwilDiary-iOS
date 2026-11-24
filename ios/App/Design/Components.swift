@@ -200,8 +200,7 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
                 .nativeGlassCapsule(prominent: (prominent || bright) && !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
                 .opacity(enabled ? 1 : 0.45)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.pressScale(0.97) : 1)
-                // Design Lab's Press feel: Bouncy keeps this button's own spring; Firm and Off as everywhere else.
-                .animation(reduceMotion ? nil : StudioLab.shared.press == .bouncy ? Animation.spring(duration: 0.3, bounce: 0.35) : Motion.pressMotion(pressed: configuration.isPressed), value: configuration.isPressed)
+                .animation(reduceMotion ? nil : Motion.pressMotion(pressed: configuration.isPressed), value: configuration.isPressed)
         }
         private var classic: some View {
             let destructive = configuration.role == .destructive
@@ -693,8 +692,8 @@ struct CategoryPicker: View {
         return HStack(spacing: 0) {
             ForEach(LibraryCategory.allCases) { category in
                 let selected = shown == category
-                // Studio: a category with nothing in it reads dimmer before you tap it (it still opens).
-                let empty = !selected && counts?[category] == 0 && Studio.on(.glanceFilters)
+                // A category with nothing in it reads dimmer before you tap it (it still opens).
+                let empty = !selected && counts?[category] == 0
                 Button { choose(category) } label: {
                     HStack(spacing: 5) {
                         Text(category.rawValue)
@@ -732,8 +731,8 @@ struct CategoryPicker: View {
                             Text(count.formatted()).foregroundStyle(selected ? theme.ink.opacity(0.75) : HomeStyle.secondary).monospacedDigit()
                         }
                     }.font(.app(size: 15, weight: .semibold))
-                        // Design Lab: a category with nothing in it reads dimmer (it still opens).
-                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(themed: "#c5c0cf") : counts?[category] == 0 && Studio.on(.glanceFilters) ? HomeStyle.muted : HomeStyle.primary)
+                        // A category with nothing in it reads dimmer (it still opens).
+                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(themed: "#c5c0cf") : counts?[category] == 0 ? HomeStyle.muted : HomeStyle.primary)
                         .padding(.horizontal, counts == nil ? 16 : 14).frame(minHeight: 40)
                         .background {
                             if selected { Capsule().fill(theme.accent).matchedGeometryEffect(id: "category-pill", in: pill) }
@@ -847,8 +846,8 @@ struct ProgressCard: View {
                                 if compact { Color.clear }
                                 else if hero {
                                     Artwork(path: cardBackdrop, title: title.name).overlay(scrim)
-                                        // Studio: a darker fade under the text, so the label and title read on busy art.
-                                        .overlay { if Studio.on(.lastWatchedLabel) { LinearGradient(stops: [.init(color: .black.opacity(0), location: 0.25), .init(color: .black.opacity(0.78), location: 1)], startPoint: .top, endPoint: .bottom) } }
+                                        // A darker fade under the text, so the label and title read on busy art.
+                                        .overlay { LinearGradient(stops: [.init(color: .black.opacity(0), location: 0.25), .init(color: .black.opacity(0.78), location: 1)], startPoint: .top, endPoint: .bottom) }
                                 }
                                 else if ThemeStore.current.native || studioGroupedRow { Color.clear }
                                 else { Rectangle().fill(theme.field) }
@@ -874,19 +873,10 @@ struct ProgressCard: View {
         // the middle of the bar and its labels together.
         VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
-            Group {
-                if Studio.on(.heroLabel) {
-                    // Studio: a plain white label (the spaced lilac capitals were lost on bright art).
-                    Text("Continue watching").font(.app(size: 13, weight: .semibold)).tracking(0.4).foregroundStyle(.white.opacity(0.9))
-                        .frame(height: 16).padding(.bottom, 7)
-                } else if notStarted {
-                    Text("CONTINUE WATCHING").font(.app(size: 11, weight: .bold)).tracking(1.54).foregroundStyle(Color(themed: "#cdbbff"))
-                        .frame(height: 14).padding(.bottom, 6)
-                } else {
-                    Text("CONTINUE WATCHING").font(.app(size: 12, weight: .medium)).tracking(1.92).foregroundStyle(Color(themed: "#d8d4e6"))
-                        .frame(height: 16).padding(.bottom, 8)
-                }
-            }.shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
+            // A plain white label (the spaced lilac capitals were lost on bright art).
+            Text("Continue watching").font(.app(size: 13, weight: .semibold)).tracking(0.4).foregroundStyle(.white.opacity(0.9))
+                .frame(height: 16).padding(.bottom, 7)
+                .shadow(color: .black.opacity(0.5), radius: 6, y: 1).accessibilityLabel("Continue watching").accessibilityAddTraits(.isHeader)
             Button { openTitle() } label: {
                 Text(title.name).font(.app(size: 26, weight: .bold)).tracking(-0.52).foregroundStyle(Color(themed: "#f5f5f7"))
                     .lineLimit(3).multilineTextAlignment(.leading).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
@@ -1062,17 +1052,10 @@ struct ProgressCard: View {
     /// The backdrop fills the card and fades to black on the right; the lines sit over it, light.
     private var heroContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if Studio.on(.lastWatchedLabel) {
-                // Studio: sentence case, white, no spaced capitals (they were hard to read on busy art).
-                Text(Studio.sentenceCase(heroLabel))
-                    .font(.app(size: 13, weight: .semibold)).tracking(0.4).foregroundStyle(Color.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
-            } else {
-                Text(heroLabel).font(.app(size: 12, weight: .bold)).tracking(1.8)
-                    // Native: white on the artwork (the accent blue was lost on warm pictures).
-                    .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
-                    .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
-            }
+            // Sentence case, white, no spaced capitals (they were hard to read on busy art).
+            Text(Studio.sentenceCase(heroLabel))
+                .font(.app(size: 13, weight: .semibold)).tracking(0.4).foregroundStyle(Color.white.opacity(0.9))
+                .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             titleButton(size: 24, onArtwork: true).padding(.trailing, 8)
             nextLine(primary: .white, secondary: Color.white.opacity(0.8)).modifier(TextShadow(on: true)).padding(.top, 4)
@@ -1237,8 +1220,8 @@ struct ProgressCard: View {
             guard let next = card?.next else { return "Nothing left to mark" }
             return (starting ? "Start" : "Mark") + " episode \(next.number)"
         }()
-        // Studio: the rows' buttons are tinted, so the Last watched card's is the one filled button on screen.
-        let tinted = Studio.on(.glanceButtons) && !hero && !compact
+        // The rows' buttons are tinted, so the Last watched card's is the one filled button on screen.
+        let tinted = !hero && !compact
         let accent = Studio.accent
         return Button { Task { await markWatch() } } label: {
             actionIcon(.mark, symbol: symbol, size: starting ? 12 : 15).fontWeight(.bold)

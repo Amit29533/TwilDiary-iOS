@@ -30,7 +30,7 @@ public enum GlanceOverview {
         var latest: [String: GlanceActivity] = [:]
         for event in events where event.revokedAt == nil {
             guard let recorded = DiaryDate.parse(event.recordedAt) else { continue }
-            let activity = GlanceActivity(recorded: recorded, watched: DiaryDate.parse(event.watchedAt))
+            let activity = GlanceActivity(recorded: recorded, watched: DiaryDate.watched(event.watchedAt))
             if latest[event.titleId].map({ activity > $0 }) ?? true { latest[event.titleId] = activity }
         }
         return latest

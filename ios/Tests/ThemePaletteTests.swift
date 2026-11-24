@@ -133,13 +133,13 @@ final class ThemePaletteTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "design-lab-migration-test"))
         defaults.removePersistentDomain(forName: "design-lab-migration-test")
         defaults.set("studio", forKey: "theme")
-        defaults.set(["heroDots", "pressNoBounce"], forKey: "studio.lab.off")
+        defaults.set(["heroTrack", "personFacts"], forKey: "studio.lab.off")
         DesignLabMigration.run(defaults)
         XCTAssertEqual(defaults.string(forKey: "theme"), "native")
         let on = Set(defaults.stringArray(forKey: DesignLabKeys.on) ?? [])
-        XCTAssertFalse(on.contains("heroDots")); XCTAssertTrue(on.contains("weekBar")); XCTAssertEqual(on.count, StudioChange.allCases.count - 1)
-        // A switch that was turned off stays off in its new form.
-        XCTAssertEqual(defaults.string(forKey: DesignLabKeys.press), DesignPress.bouncy.rawValue)
+        // A switch that was turned off stays off (the name's colour was part of "personFacts").
+        XCTAssertFalse(on.contains("heroTrack")); XCTAssertFalse(on.contains("personName")); XCTAssertTrue(on.contains("homeHeader"))
+        XCTAssertEqual(on.count, StudioChange.allCases.count - 2)
         XCTAssertEqual(defaults.string(forKey: DesignLabKeys.badge), DesignBadge.topLeft.rawValue)
         XCTAssertNil(defaults.stringArray(forKey: "studio.lab.off"))
         // Any other theme is left alone.
@@ -150,16 +150,16 @@ final class ThemePaletteTests: XCTestCase {
 
     @MainActor func testDesignLabPresets() {
         let lab = StudioLab.shared
-        let saved = (on: lab.on, press: lab.press, badge: lab.badge, corners: lab.corners, match: lab.match)
+        let saved = (on: lab.on, badge: lab.badge, corners: lab.corners, match: lab.match)
         defer {
             lab.apply(.original)
             for change in StudioChange.allCases where saved.on.contains(change.rawValue) { lab.set(change, on: true) }
-            lab.setPress(saved.press); lab.setBadge(saved.badge); lab.setCorners(saved.corners); lab.setMatch(saved.match)
+            lab.setBadge(saved.badge); lab.setCorners(saved.corners); lab.setMatch(saved.match)
         }
         lab.apply(.studio)
         XCTAssertEqual(lab.preset, .studio); XCTAssertTrue(StudioChange.allCases.allSatisfy { lab.isOn($0) })
         XCTAssertEqual(lab.count(.home).on, lab.count(.home).of)
-        lab.set(.heroDots, on: false)
+        lab.set(.heroTrack, on: false)
         XCTAssertEqual(lab.preset, .custom)
         lab.apply(.original)
         XCTAssertEqual(lab.preset, .original); XCTAssertFalse(StudioChange.allCases.contains { lab.isOn($0) })

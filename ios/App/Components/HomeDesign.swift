@@ -66,9 +66,9 @@ struct HomeRoundIcon: View {
         } else { classic }
     }
     private var classic: some View {
-        // Design Lab's grey layout switches: never the accent tint, whichever layout is on.
+        // Layout switches stay grey whichever layout is on (never the accent tint).
         Image(systemName: system).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-            .frame(width: 36, height: 36).background(selected && !Studio.on(.layoutSwitch) ? HomeStyle.chip : HomeStyle.round, in: Circle())
+            .frame(width: 36, height: 36).background(HomeStyle.round, in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
     }
 }
@@ -105,12 +105,9 @@ struct HomeWeekCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The bars grow up from nothing the first time the card shows, as Apple's charts do.
     @State private var grown = false
+    /// Watch time large, Watches and Streak small on the right, one bar for this week with a mark at
+    /// last week's total, the days, and the empty-week line under a hairline (no box in the card).
     var body: some View {
-        if Studio.on(.weekBar) { studioBody } else { classicBody }
-    }
-    /// Studio: watch time large, Watches and Streak small on the right, one bar for this week with
-    /// a mark at last week's total, the days, and the empty-week line under a hairline (no box in the card).
-    private var studioBody: some View {
         let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
         let lastWeek = overview.lastWeekMinutes
         let scale = Double(max(overview.minutes, lastWeek, 1)) * 1.15
@@ -190,44 +187,6 @@ struct HomeWeekCard: View {
             }
         }
     }
-    private var classicBody: some View {
-        let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
-        return VStack(alignment: .leading, spacing: 0) {
-            // Three equal columns; the second and third start with a hairline and 15 pt of space.
-            HStack(alignment: .top, spacing: 0) {
-                metric(DiaryDate.duration(overview.minutes), "Watch time", accent: true).frame(maxWidth: .infinity, alignment: .leading)
-                metric(String(overview.watches), "Watches").padding(.leading, 15).frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
-                    .overlay(alignment: .leading) { Rectangle().fill(HomeStyle.cardBorder).frame(width: HomeStyle.hairline) }
-                metric("\(overview.streak) \(overview.streak == 1 ? "day" : "days")", "Streak").padding(.leading, 15).frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
-                    .overlay(alignment: .leading) { Rectangle().fill(HomeStyle.cardBorder).frame(width: HomeStyle.hairline) }
-            }
-            Rectangle().fill(HomeStyle.cardBorder).frame(height: 1).padding(.top, 14)
-            dayStrip(maximum: maximum).padding(.top, 15)
-            if overview.watches == 0 {
-                // Design: nothing this week yet, with last week's total as a chip.
-                HStack(spacing: 8) {
-                    Text("Nothing logged yet. Mark an episode to start a streak.").font(.app(size: 13)).foregroundStyle(HomeStyle.dateChipText)
-                        .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                    if overview.lastWeekMinutes > 0 {
-                        Text("Last week " + DiaryDate.duration(overview.lastWeekMinutes)).font(.app(size: 11, weight: .bold)).foregroundStyle(HomeStyle.chipText)
-                            .lineLimit(1).fixedSize().padding(.horizontal, 9).frame(height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 9))
-                    }
-                }.padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Color(themed: "#17142a"), in: RoundedRectangle(cornerRadius: 16)).padding(.top, 14)
-            }
-        }.padding(.horizontal, 17).padding(.top, 17).padding(.bottom, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .cardSurface(24)
-            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
-            .onAppear { grown = true }
-    }
-    private func metric(_ value: String, _ label: String, accent: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.app(size: 24, weight: .bold)).foregroundStyle(accent ? theme.accent : HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.7)
-                .contentTransition(.numericText()).animation(reduceMotion ? nil : .smooth, value: value)
-            Text(label).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
-        }.accessibilityElement(children: .combine)
-    }
 }
 
 /// A 128 × 192 poster with its name and one line under it; an optional badge sits on the poster.
@@ -253,19 +212,11 @@ struct HomePoster<Badge: View>: View {
                 .overlay(alignment: .bottomLeading) { badge }
                 .overlay(alignment: Studio.badgeCorner(.topLeading)) { if let score, score > 0 { PosterScoreBadge(score: score) } }
             if showsCaption {
-                if Studio.on(.posterCaptions) {
-                    // Studio: the details sit right under the name; the room for a second line goes
-                    // below them (a hidden copy holds it), so every card in a row is still one height.
-                    ZStack(alignment: .topLeading) {
-                        caption(name: " ", reserve: true).hidden().accessibilityHidden(true)
-                        caption(name: name, reserve: false)
-                    }
-                } else {
-                    // Two lines kept for every name, so each card in a row is the same height (a row
-                    // sized by one card no longer lets a taller one hang into the next section).
-                    Text(name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
-                        .multilineTextAlignment(.leading).padding(.top, 9)
-                    subtitleText.padding(.top, 4)
+                // The details sit right under the name; the room for a second line goes below them
+                // (a hidden copy holds it), so every card in a row is still one height.
+                ZStack(alignment: .topLeading) {
+                    caption(name: " ", reserve: true).hidden().accessibilityHidden(true)
+                    caption(name: name, reserve: false)
                 }
             }
         }.frame(width: width, alignment: .leading).accessibilityElement(children: .combine)
@@ -319,19 +270,12 @@ struct HomeNewEpisodeCard: View {
                 }
             VStack(alignment: .leading, spacing: 9) {
                 Text(item.title.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                HStack(spacing: Studio.on(.newEpisodeDate) ? 6 : 8) {
+                HStack(spacing: 6) {
                     Text("S\(item.episode.season) · E\(item.episode.number)").font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 9).frame(height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 8))
-                    if Studio.on(.newEpisodeDate) {
-                        // Studio: the date joins the episode line as plain text (no second pill).
-                        Text("· " + item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
-                        Spacer(minLength: 0)
-                    } else {
-                        Spacer(minLength: 0)
-                        Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                            .padding(.horizontal, 9).frame(height: 24).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-                    }
+                    // The date joins the episode line as plain text (no second pill).
+                    Text("· " + item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
                 }
             }.padding(.horizontal, 15).padding(.top, 13).padding(.bottom, 14)
         }.frame(width: 236, height: 211, alignment: .top)
@@ -411,13 +355,14 @@ struct HomeRecentCard: View {
                 .frame(width: 236, height: 133).clipped()
             VStack(alignment: .leading, spacing: 9) {
                 Text(group.title.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Text(group.episodeText).font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 9).frame(height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 8))
-                    Spacer(minLength: 0)
+                    // The date on the episode line, as on New episodes.
                     if let date = group.date {
-                        Text(date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                        Text("· " + date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     }
+                    Spacer(minLength: 0)
                 }
             }.padding(.horizontal, 15).padding(.top, 13).padding(.bottom, 14)
         }.frame(width: 236, height: 211, alignment: .top)

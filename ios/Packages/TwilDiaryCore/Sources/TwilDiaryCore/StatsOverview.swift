@@ -66,7 +66,7 @@ public struct StatsOverview: Codable, Equatable, Sendable {
         let titleMap = Dictionary(titles.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         struct Dated { let event: WatchEvent, day: Date, minutes: Int? }
         let dated = events.compactMap { event -> Dated? in
-            guard let instant = DiaryDate.parse(event.watchedAt), let title = titleMap[event.titleId] else { return nil }
+            guard let instant = DiaryDate.watched(event.watchedAt), let title = titleMap[event.titleId] else { return nil }
             return Dated(event: event, day: dayOf(instant), minutes: runtime(title))
         }
         let usable = dated.filter { $0.day <= today }

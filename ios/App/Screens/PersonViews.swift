@@ -50,13 +50,11 @@ struct PersonView: View {
                         watched
                         if let person {
                             let sections = store.personSections(person)
-                            // Studio's orderings (their own switches): lead roles first, released work first.
+                            // Lead roles first in Known for; released work before announced work in Shows and Movies.
                             let year = Calendar.current.component(.year, from: store.now)
-                            let knownFor = Studio.on(.knownForRanking) ? Array(StudioPeople.rankKnownFor(person.credits).prefix(12)) : sections.knownFor
-                            let released = Studio.on(.shelfOrder)
-                            shelf("Known for", person: person, kind: .knownFor, items: knownFor)
-                            shelf("Shows", person: person, kind: .shows, items: released ? StudioPeople.releasedFirst(sections.shows, currentYear: year) : sections.shows)
-                            shelf("Movies", person: person, kind: .movies, items: released ? StudioPeople.releasedFirst(sections.movies, currentYear: year) : sections.movies)
+                            shelf("Known for", person: person, kind: .knownFor, items: Array(StudioPeople.rankKnownFor(person.credits).prefix(12)))
+                            shelf("Shows", person: person, kind: .shows, items: StudioPeople.releasedFirst(sections.shows, currentYear: year))
+                            shelf("Movies", person: person, kind: .movies, items: StudioPeople.releasedFirst(sections.movies, currentYear: year))
                         }
                         if let actor, !actor.roles.isEmpty { roles(actor) }
                         if matching { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8).accessibilityIdentifier("person-matching") }
@@ -172,12 +170,10 @@ struct PersonView: View {
         let useTMDB = !tmdbProse.isEmpty && aniProse.count < min(160, tmdbProse.count)
         let biographyID = voiceFirst ? "voice-actor-biography" : "profile-biography"
         let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
-        // Studio: the biography first, then the other names.
-        let bioFirst = Studio.on(.personAbout)
+        // The biography first, then the other names.
         return VStack(alignment: .leading, spacing: 14) {
             Text("About").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
                 .accessibilityAddTraits(.isHeader).padding(.top, 6)
-            if !bioFirst { ProfileAliases(values: person?.aliases ?? [], excluding: aliases) }
             if let actor, let content {
                 ProfileAbout(content: content, excludingFacts: shownFacts,
                              additionalLinks: [ProfileWebsiteLink(url: URL(string: "https://anilist.co/staff/\(actor.id)")!, title: "AniList")].compactMap { $0 },
@@ -190,7 +186,7 @@ struct PersonView: View {
                     if !tmdbProse.isEmpty, let source = tmdb.source { ProfileSourceNote(source: source) }
                 }
             }
-            if bioFirst { ProfileAliases(values: person?.aliases ?? [], excluding: aliases) }
+            ProfileAliases(values: person?.aliases ?? [], excluding: aliases)
             // Awards the TMDB biography mentions, picked out of the prose.
             ProfileAwards(awards: ProfileFormattedBiography.awards(in: tmdbProse))
         }
@@ -203,10 +199,10 @@ struct PersonView: View {
         let tmdb = person.map { store.personSections($0).watched } ?? []
         if let person, !tmdb.isEmpty || actor == nil {
             VStack(alignment: .leading, spacing: 14) {
-                sectionHeading("Watched", count: Studio.on(.sectionCounts) && !tmdb.isEmpty ? tmdb.count : nil, route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
+                sectionHeading("Watched", count: tmdb.isEmpty ? nil : tmdb.count, route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
                 if tmdb.isEmpty { Text("No watches from these credits yet.").font(.subheadline).foregroundStyle(.secondary) }
-                else if tmdb.count <= 2 && Studio.on(.personWatched) {
-                    // Studio: one or two titles as rows (a shelf of one left a wide empty gap).
+                else if tmdb.count <= 2 {
+                    // One or two titles as rows (a shelf of one left a wide empty gap).
                     VStack(spacing: 0) {
                         ForEach(Array(tmdb.enumerated()), id: \.element.key) { index, item in
                             if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 76) }
@@ -222,11 +218,10 @@ struct PersonView: View {
     }
     @ViewBuilder private func shelf(_ label: String, person: PersonDetails, kind: PersonSection, items: [CatalogItem]) -> some View {
         if !items.isEmpty {
-            // Studio: the count as a grey pill beside the heading ("Shows 45" read as one word).
+            // The count as a grey pill beside the heading ("Shows 45" read as one word).
             let counted = kind == .shows || kind == .movies
-            let pill = counted && Studio.on(.sectionCounts)
             VStack(alignment: .leading, spacing: 14) {
-                sectionHeading(label + (counted && !pill ? " \(items.count)" : ""), count: pill ? items.count : nil, route: PersonFilmographyRoute(person: person.id, section: kind))
+                sectionHeading(label, count: counted ? items.count : nil, route: PersonFilmographyRoute(person: person.id, section: kind))
                 PersonCreditShelf(items: Array(items.prefix(12)))
             }
         }
@@ -256,8 +251,9 @@ struct PersonView: View {
         HStack(spacing: 10) {
             Text(label).font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).lineLimit(1)
             if let count {
+                // Never squeezed: a long heading truncates first, and the pill never runs under the > button.
                 Text(count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
-                    .padding(.horizontal, 9).frame(height: 24).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                    .lineLimit(1).fixedSize().padding(.horizontal, 9).frame(height: 24).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
             }
             Spacer(minLength: 4)
             SectionMoreLink(label: "View more " + label, value: route,
@@ -394,11 +390,9 @@ struct PersonCreditShelf: View {
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
-                        // Studio: the role joins the year line ("2008 · Marcus Pike"), so every caption is one height.
-                        let inline = Studio.on(.posterCaptions)
-                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item, profileTypography: true, role: inline ? role : nil).zoomSource(ZoomID.title(saved)) } }
-                        else { NavigationLink(value: item.route) { CatalogPoster(item: item, profileTypography: true, role: inline ? role : nil).zoomSource(ZoomID.catalog(item.route)) } }
-                        if !role.isEmpty && !inline { ProfileCardCaption(title: role, secondary: true) }
+                        // The role joins the year line ("2008 · Marcus Pike"), so every caption is one height.
+                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.title(saved)) } }
+                        else { NavigationLink(value: item.route) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.catalog(item.route)) } }
                     }.containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12).buttonStyle(.springPress).shelfTransition()
                 }
             }
@@ -417,23 +411,19 @@ struct PersonFilmographyView: View {
     init(route: PersonFilmographyRoute) { self.route = route; _filters = State(initialValue: PersonFilmographyFilters(section: route.section, onServer: route.onServer, watchedOnly: route.watchedOnly)) }
     var body: some View {
         let filtered = person.map { filters.applying(person: $0, workspace: store.workspace, section: route.section) } ?? []
-        // Studio's orderings, when the page is in its default order: lead roles first in Known for,
-        // released work first in Shows and Movies.
+        // In the page's default order: lead roles first in Known for, released work first in Shows and Movies.
         let year = Calendar.current.component(.year, from: store.now)
         let items: [CatalogItem] = {
-            if route.section == .knownFor && filters.sort == "popular" && Studio.on(.knownForRanking) { return StudioPeople.rankKnownFor(filtered) }
-            if (route.section == .shows || route.section == .movies) && filters.sort == "newest" && Studio.on(.shelfOrder) { return StudioPeople.releasedFirst(filtered, currentYear: year) }
+            if route.section == .knownFor && filters.sort == "popular" { return StudioPeople.rankKnownFor(filtered) }
+            if (route.section == .shows || route.section == .movies) && filters.sort == "newest" { return StudioPeople.releasedFirst(filtered, currentYear: year) }
             return filtered
         }()
-        // Studio: "Known for" with the person's name under it, no picture (the first title's art
-        // isn't the person's) and no icon.
-        let plain = route.section == .knownFor && Studio.on(.knownForHeader)
-        let accessory: AnyView = Studio.on(.layoutSwitch) ? AnyView(StudioLayoutSwitch(grid: $grid, identifier: "catalog-layout")) : AnyView(CollectionLayoutToggle(grid: $grid, collection: "catalog"))
-        // Explore's layout: a picture from the titles at the top, the heading, then the grid.
-        ExploreBrowsePage(title: plain ? route.section.label : heading, symbol: "person.crop.rectangle.stack",
-                          subtitle: plain ? person.map { "\($0.name) · \(items.count) \(items.count == 1 ? "title" : "titles")" } : nil,
-                          artwork: plain ? nil : ExploreBrowseHeader.artwork(in: items),
-                          titleIdentifier: "person-filmography-heading", accessory: accessory, plain: plain) {
+        // A picture from the titles at the top, then "Known for" with the person's name and the count
+        // under it, then the grid.
+        ExploreBrowsePage(title: section, symbol: "person.crop.rectangle.stack",
+                          subtitle: person.map { "\($0.name) · \(items.count) \(items.count == 1 ? "title" : "titles")" },
+                          artwork: ExploreBrowseHeader.artwork(in: items),
+                          titleIdentifier: "person-filmography-heading", accessory: AnyView(StudioLayoutSwitch(grid: $grid, identifier: "catalog-layout"))) {
             VStack(alignment: .leading, spacing: 16) {
                 if person != nil {
                     if let error = filters.error { Text(error).font(.app(size: 13)).foregroundStyle(.secondary) }
@@ -450,8 +440,8 @@ struct PersonFilmographyView: View {
         .scrollDismissesKeyboard(.interactively)
         .task(id: route) { await load() }.onChange(of: filters) { _, _ in shown = 40 }
     }
-    /// "Shriya Saran’s Known for".
-    private var heading: String { person.map { filters.heading(person: $0, section: route.section) } ?? route.section.label }
+    /// "Known for", "Watched" or "Titles on your server" (the name is on the line under it).
+    private var section: String { filters.watchedOnly ? "Watched" : route.section == .credits && filters.onServer ? "Titles on your server" : route.section.label }
     private func load() async {
         failure = nil
         do { let result = try await store.person(route.person); guard !Task.isCancelled else { return }; person = result.person }

@@ -24,7 +24,7 @@ struct HomeEpisodeCardModel {
         id = entry.id; name = entry.title.name
         artwork = entry.title.backdrop ?? entry.title.poster
         episode = entry.episode.map { "S\($0.season) · E\($0.number)" } ?? "Movie"
-        activity = .watched(date: DiaryDate.parse(entry.event.watchedAt), rewatched: entry.rewatched)
+        activity = .watched(date: DiaryDate.watched(entry.event.watchedAt), rewatched: entry.rewatched)
     }
     var status: String {
         switch activity {

@@ -204,6 +204,13 @@ public enum DiaryDate {
         guard let value, value.count >= 20, SeasonAdjustment.validDay(String(value.prefix(10))) else { return nil }
         return (try? fractional.parse(value)) ?? (try? wholeSeconds.parse(value))
     }
+    /// When a watch happened, for showing and counting it. A date on 1 January 1970 is the
+    /// computer's zero date, which an import writes when it has no date: that watch is undated
+    /// (Statistics showed it as "First watch: Jan 1970"). Sync matching keeps using `parse`.
+    public static func watched(_ value: String?) -> Date? {
+        guard let date = parse(value), abs(date.timeIntervalSince1970) >= 86_400 else { return nil }
+        return date
+    }
     public static func day(_ date: Date = .now, timeZone: TimeZone = .current) -> String {
         let parts = calendar(timeZone: timeZone).dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)

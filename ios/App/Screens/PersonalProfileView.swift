@@ -429,7 +429,7 @@ struct PersonalProfileView: View {
         let monday = calendar.date(byAdding: .day, value: -((calendar.component(.weekday, from: today) + 5) % 7), to: today) ?? today
         var minutes: [Date: Int] = [:]
         for event in store.activeEvents {
-            guard let date = DiaryDate.parse(event.watchedAt), date >= monday, let title = store.title(event.titleId) else { continue }
+            guard let date = DiaryDate.watched(event.watchedAt), date >= monday, let title = store.title(event.titleId) else { continue }
             minutes[calendar.startOfDay(for: date), default: 0] += max(0, title.runtimeMinutes ?? 0)
         }
         return (0..<7).compactMap { offset in calendar.date(byAdding: .day, value: offset, to: monday).map { ($0, minutes[$0] ?? 0) } }
@@ -605,7 +605,7 @@ enum OnThisDay {
         let dayOfMonth = calendar.component(.day, from: today)
         var byDay: [String: (date: Date, entries: [(Date, HistoryEntry)])] = [:]
         for entry in entries {
-            guard let watched = DiaryDate.parse(entry.event.watchedAt) else { continue }
+            guard let watched = DiaryDate.watched(entry.event.watchedAt) else { continue }
             let start = calendar.startOfDay(for: watched)
             guard start < today, calendar.component(.day, from: start) == dayOfMonth else { continue }
             byDay[DiaryDate.day(start), default: (start, [])].entries.append((watched, entry))
@@ -738,7 +738,7 @@ struct OnThisDayView: View {
             .accessibilityElement(children: .contain).accessibilityIdentifier("on-this-day-" + day.id)
     }
     private func row(_ entry: HistoryEntry) -> some View {
-        let watched = DiaryDate.parse(entry.event.watchedAt)
+        let watched = DiaryDate.watched(entry.event.watchedAt)
         let detail = entry.episode.map { episode in
             "S\(episode.season) · E\(episode.number)" + (episode.name.isEmpty || episode.name.hasPrefix("Episode ") ? "" : " · " + episode.name)
         } ?? [entry.title.categoryName, entry.title.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")

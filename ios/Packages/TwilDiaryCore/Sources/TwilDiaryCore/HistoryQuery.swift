@@ -45,7 +45,7 @@ public struct HistoryQuery: Equatable, Codable, Sendable {
         let dated = distinctRows(workspace.events).compactMap { event -> DatedEvent? in
             guard event.revokedAt == nil, let title = titles[event.titleId],
                   needle.isEmpty || title.name.precomposedStringWithCompatibilityMapping.lowercased().contains(needle) else { return nil }
-            let date = DiaryDate.parse(event.watchedAt)
+            let date = DiaryDate.watched(event.watchedAt)
             if unknownOnly && date != nil { return nil }
             if !from.isEmpty || !to.isEmpty {
                 guard let date else { return nil }
@@ -111,7 +111,7 @@ public struct RecentWatchGroup: Identifiable, Sendable {
     public var id: String { entries.first?.id ?? "" }
     public var title: MediaTitle { entries[0].title }
     /// The newest watch's date.
-    public var date: Date? { entries.lazy.compactMap { DiaryDate.parse($0.event.watchedAt) }.first }
+    public var date: Date? { entries.lazy.compactMap { DiaryDate.watched($0.event.watchedAt) }.first }
     public var count: Int { entries.count }
     public var episodeText: String {
         let episodes = entries.compactMap(\.episode)
