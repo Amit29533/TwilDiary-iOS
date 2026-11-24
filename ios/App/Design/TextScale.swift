@@ -10,9 +10,21 @@ enum TextScale {
     private static let factor = Mutex<CGFloat>(1)
     /// The scale now (1 at the default Text Size).
     static var current: CGFloat { factor.withLock { $0 } }
+    /// Settings → Text size: follow iPhone's Text Size (the default), or a size of your own
+    /// (owner's request: a slider).
+    static let followsKey = "textScale.followsSystem"
+    static let customKey = "textScale.custom"
+    /// Your own size: 80% to 140% of the size each font was written for.
+    static let customRange: ClosedRange<Double> = 0.8...1.4
     static func set(_ size: DynamicTypeSize) {
-        let value = Self.scale(size)
+        let value = Self.value(for: size, defaults: .standard)
         factor.withLock { $0 = value }
+    }
+    /// The scale for iPhone's Text Size, or your own size when you've set one.
+    static func value(for size: DynamicTypeSize, defaults: UserDefaults) -> CGFloat {
+        guard defaults.object(forKey: followsKey) as? Bool == false else { return scale(size) }
+        let custom = defaults.object(forKey: customKey) as? Double ?? 1
+        return CGFloat(min(customRange.upperBound, max(customRange.lowerBound, custom)))
     }
     static func scale(_ size: DynamicTypeSize) -> CGFloat {
         switch size {

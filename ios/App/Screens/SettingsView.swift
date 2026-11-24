@@ -12,6 +12,8 @@ struct SettingsView: View {
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
     @AppStorage(TabLayout.key) private var tabText = ""
     @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @AppStorage(TextScale.followsKey) private var textFollowsSystem = true
+    @AppStorage(TextScale.customKey) private var textCustom = 1.0
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -64,6 +66,13 @@ struct SettingsView: View {
                         NavigationLink { PosterSettingsView() } label: {
                             settingsRow("photo.on.rectangle", .orange, "Posters", subtitle: "Size, rating and name", value: posterSize.title, disclosure: true)
                         }.accessibilityIdentifier("settings-posters")
+                        divider
+                        // Text size: iPhone's, or your own on a slider. A route (not a pushed view), so the
+                        // page stays open while the app redraws at the new size.
+                        NavigationLink(value: AppDestination.textSize) {
+                            settingsRow("textformat.size", .blue, "Text size", subtitle: "Follow iPhone or set your own",
+                                        value: textFollowsSystem ? "iPhone" : TextSizeView.percent(textCustom), disclosure: true)
+                        }.accessibilityIdentifier("settings-text-size")
                     }
                     settingsSection("LIBRARY AND TRACKING") {
                         HStack(spacing: 12) {

@@ -109,7 +109,7 @@ enum AppTab: String, CaseIterable, Hashable {
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, jellyspaceSettings, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications, savedClips }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, jellyspaceSettings, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications, savedClips, textSize }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -203,6 +203,9 @@ struct RootView: View {
     @Environment(AppRouter.self) private var router
     /// iPhone's Text Size, which the app's fonts follow (TextScale).
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Settings → Text size: iPhone's, or your own (read here so a change redraws the app).
+    @AppStorage(TextScale.followsKey) private var textFollowsSystem = true
+    @AppStorage(TextScale.customKey) private var textCustom = 1.0
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -231,6 +234,9 @@ struct RootView: View {
     var body: some View {
         // Before anything inside is drawn (each screen's fonts read it), and again when it changes.
         let _ = TextScale.set(dynamicTypeSize)
+        // The text size, as a key: when it changes, each tab's page is built again once (the fonts
+        // are read as pages draw, so pages already open kept the old size). Navigation stays.
+        let textKey = textFollowsSystem ? "system:" + String(describing: dynamicTypeSize) : "custom:" + String(format: "%.2f", textCustom)
         @Bindable var router = router
         Group {
             if store.needsSignIn {
@@ -259,10 +265,10 @@ struct RootView: View {
             } else {
                 // Premiere marks the chosen tab in white on the glass bar, as streaming apps do; red stays for content.
                 NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme.palette.native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
-                               pageKey: theme.rawValue + ":" + nativeAppearance.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
+                               pageKey: theme.rawValue + ":" + nativeAppearance.rawValue + ":" + String(describing: scenePhase) + ":" + textKey, canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }, tabs: TabLayout.layout(tabLayout).visible.compactMap(AppTab.init(rawValue:))) { tab in
-                    AnyView(tabPage(tab).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance))
+                    AnyView(tabPage(tab).id(textKey).environment(store).environment(router).preferredColorScheme(theme.colorScheme(native: nativeAppearance))
                         .tint(theme.accent).buttonBorderShape(.capsule).environment(\.scenePhase, scenePhase))
                 }
                     // The tab controller fills the screen and hands pages the real insets: heroes
@@ -441,6 +447,7 @@ struct RootView: View {
                     case .syncBackup: SyncBackupView()
                     case .notifications: NotificationsSettingsView()
                     case .savedClips: SavedClipsPage()
+                    case .textSize: TextSizeView()
                     } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)
                 }
         }
