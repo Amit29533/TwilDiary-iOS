@@ -44,6 +44,19 @@ final class StudioPeopleTests: XCTestCase {
         XCTAssertEqual(CompanyLogo.initials("Studio"), "S")
     }
 
+    @MainActor func testEpisodeTrackSharesLongSeasonsOutOverSixteenCapsules() {
+        // Short seasons: a capsule per episode; longer ones: a few episodes to a capsule, never more than 16.
+        XCTAssertEqual(StudioEpisodeTrack.perCapsule(12), 1); XCTAssertEqual(StudioEpisodeTrack.perCapsule(16), 1)
+        XCTAssertEqual(StudioEpisodeTrack.perCapsule(24), 2); XCTAssertEqual(StudioEpisodeTrack.perCapsule(50), 4)
+        XCTAssertTrue(StudioEpisodeTrack.fits(1)); XCTAssertTrue(StudioEpisodeTrack.fits(1_000)); XCTAssertFalse(StudioEpisodeTrack.fits(0))
+        // 3 of 24 watched: the first capsule full, the second half, the third empty.
+        XCTAssertEqual(StudioEpisodeTrack.fill(0, watched: 3, total: 24), 1)
+        XCTAssertEqual(StudioEpisodeTrack.fill(1, watched: 3, total: 24), 0.5)
+        XCTAssertEqual(StudioEpisodeTrack.fill(2, watched: 3, total: 24), 0)
+        // A short last capsule (episodes 49–50 of 50) fills by its own two episodes.
+        XCTAssertEqual(StudioEpisodeTrack.fill(12, watched: 49, total: 50), 0.5)
+    }
+
     func testSentenceCase() {
         XCTAssertEqual(Studio.sentenceCase("LAST WATCHED"), "Last watched")
         XCTAssertEqual(Studio.sentenceCase(""), "")

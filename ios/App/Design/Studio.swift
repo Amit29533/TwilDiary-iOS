@@ -367,8 +367,11 @@ struct StudioLayoutSwitch: View {
     }
 }
 
-/// The episode track: one capsule per episode of a short season, the watched ones filled and the
-/// next one outlined. Marking an episode fills its capsule and the outline glides to the next.
+/// The episode track: capsules for the season, the watched ones filled and the next one outlined.
+/// Marking an episode fills its capsule and the outline glides to the next. Every season gets the
+/// same look (owner: a bar on some heroes and capsules on others looked broken): up to 16 episodes
+/// a capsule each; a longer season shares them out, a few episodes to a capsule, and the capsule
+/// you're part-way through fills part-way.
 struct StudioEpisodeTrack: View {
     let watched: Int
     let total: Int
@@ -378,18 +381,28 @@ struct StudioEpisodeTrack: View {
     var track: Color = .white.opacity(0.22)
     @Namespace private var outline
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Capsules stay readable up to 16 episodes; longer seasons keep the bar.
-    static func fits(_ total: Int) -> Bool { (1...16).contains(total) }
+    /// Any season whose episode count is known (an unknown count keeps the bar).
+    static func fits(_ total: Int) -> Bool { total >= 1 }
+    /// Episodes per capsule: one, or as many as keep the track to 16 capsules.
+    static func perCapsule(_ total: Int) -> Int { max(1, Int((Double(max(total, 1)) / 16).rounded(.up))) }
+    /// How much of capsule `index` is watched, 0…1.
+    static func fill(_ index: Int, watched: Int, total: Int) -> Double {
+        let per = perCapsule(total), start = index * per, size = min(per, max(total - start, 1))
+        return min(1, max(0, Double(watched - start) / Double(size)))
+    }
     var body: some View {
         let fill = tint ?? Studio.accent
-        HStack(spacing: 3) {
-            ForEach(0..<max(total, 1), id: \.self) { index in
+        let per = Self.perCapsule(total)
+        let count = max(1, Int((Double(max(total, 1)) / Double(per)).rounded(.up)))
+        let next = min(watched / per, count - 1)
+        HStack(spacing: count > 12 ? 2 : 3) {
+            ForEach(0..<count, id: \.self) { index in
                 Capsule().fill(track)
                     .overlay(alignment: .leading) {
-                        Capsule().fill(fill).scaleEffect(x: index < watched ? 1 : 0.001, anchor: .leading)
+                        Capsule().fill(fill).scaleEffect(x: max(0.001, Self.fill(index, watched: watched, total: total)), anchor: .leading)
                     }
                     .overlay {
-                        if showsNext && index == min(watched, total - 1) {
+                        if showsNext && watched < total && index == next {
                             Capsule().strokeBorder(fill, lineWidth: 1).matchedGeometryEffect(id: "next", in: outline)
                         }
                     }
