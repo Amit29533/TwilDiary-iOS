@@ -103,7 +103,7 @@ struct EpisodeStackIcon: View {
     var body: some View {
         Image(systemName: "square.stack").font(.app(size: 16, weight: .medium)).foregroundStyle(HomeStyle.secondary)
             .frame(width: 36, height: 36).background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .padding(.leading, 4).accessibilityHidden(true)
+            .accessibilityHidden(true)
     }
 }
 
@@ -445,7 +445,7 @@ struct EpisodesPage: View {
                     }
                     Spacer(minLength: 0)
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
-                }.padding(.horizontal, 8).padding(.vertical, 8).contentShape(Rectangle())
+                }.padding(.horizontal, 12).padding(.vertical, 10).contentShape(Rectangle())
                     .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
@@ -692,7 +692,7 @@ struct PreviewEpisodesPage: View {
                     }
                     Spacer(minLength: 0)
                     DiaryIcon(name: "chevron-down", size: 15).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 180 : 0))
-                }.padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
+                }.padding(.horizontal, 12).padding(.vertical, 10).contentShape(Rectangle())
                     .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 18))
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(HomeStyle.outline(0.07)))
             }.buttonStyle(.plain).accessibilityValue(open ? "Expanded" : "Collapsed").accessibilityIdentifier("episodes-group-" + key)
