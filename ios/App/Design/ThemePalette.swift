@@ -47,6 +47,8 @@ struct ThemePalette: Equatable, Sendable {
     /// Native: the app's own controls give way to the system's (switches, grouped settings with
     /// coloured tiles, Liquid Glass buttons, system colours, haptics on choices).
     var native = false
+    /// Studio: Native plus the redrawn pages (see `Studio`); each redrawn piece checks `Studio.on(_:)`.
+    var studio = false
 
     /// The app's own colours (the original themes).
     static let classic = ThemePalette(
@@ -90,6 +92,13 @@ struct ThemePalette: Equatable, Sendable {
         watchTop: Color(uiColor: .systemBlue), watchBottom: Color(uiColor: .systemBlue), watchInk: .white,
         canvas: Color(uiColor: .systemBackground), ambientArtwork: false, usesGlass: true, neutralizesViolet: false,
         followsSystemAppearance: true, native: true)
+
+    /// Studio (owner's request): Native's colours and controls, with the redrawn pages switched on.
+    static let studio: ThemePalette = {
+        var palette = ThemePalette.native
+        palette.studio = true
+        return palette
+    }()
 
     /// A cool neutral grey of lightness `dark` in dark mode and `light` in light mode.
     static func adaptive(dark: Double, light: Double, opacity: Double = 1) -> Color {

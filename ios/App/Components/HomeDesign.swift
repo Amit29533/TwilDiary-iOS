@@ -105,8 +105,93 @@ struct HomeWeekCard: View {
     /// The bars grow up from nothing the first time the card shows, as Apple's charts do.
     @State private var grown = false
     var body: some View {
+        if Studio.on(.weekBar) { studioBody } else { classicBody }
+    }
+    /// Studio: watch time large, Watches and Streak small on the right, one bar for this week with
+    /// a mark at last week's total, the days, and the empty-week line under a hairline (no box in the card).
+    private var studioBody: some View {
         let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
-        VStack(alignment: .leading, spacing: 0) {
+        let lastWeek = overview.lastWeekMinutes
+        let scale = Double(max(overview.minutes, lastWeek, 1)) * 1.15
+        let fill = Double(overview.minutes) / scale, tick = Double(lastWeek) / scale
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(DiaryDate.duration(overview.minutes)).font(.app(size: 36, weight: .bold)).tracking(-0.8).foregroundStyle(theme.accent)
+                        .lineLimit(1).minimumScaleFactor(0.7).contentTransition(.numericText()).animation(reduceMotion ? nil : .smooth, value: overview.minutes)
+                    Text("Watch time").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
+                }.accessibilityElement(children: .combine)
+                Spacer(minLength: 8)
+                HStack(spacing: 18) {
+                    smallMetric(String(overview.watches), "Watches")
+                    smallMetric("\(overview.streak) \(overview.streak == 1 ? "day" : "days")", "Streak")
+                }
+            }
+            if lastWeek > 0 || overview.minutes > 0 {
+                GeometryReader { proxy in
+                    let width = proxy.size.width
+                    ZStack(alignment: .topLeading) {
+                        Capsule().fill(HomeStyle.round).frame(height: 6)
+                        Capsule().fill(theme.accent).frame(width: max(overview.minutes > 0 ? 6 : 0, width * fill), height: 6)
+                            .animation(reduceMotion ? nil : .smooth(duration: 0.5), value: overview.minutes)
+                        if lastWeek > 0 {
+                            Capsule().fill(HomeStyle.secondary).frame(width: 2, height: 14).offset(x: width * tick - 1, y: -4)
+                            Text("Last week " + DiaryDate.duration(lastWeek)).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
+                                .frame(width: tick >= 0.5 ? width * tick : width, alignment: tick >= 0.5 ? .trailing : .leading)
+                                .offset(x: tick >= 0.5 ? 0 : width * tick, y: 16)
+                        }
+                    }
+                }.frame(height: 34).padding(.top, 16)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(lastWeek > 0 ? "\(DiaryDate.duration(overview.minutes)) this week, \(DiaryDate.duration(lastWeek)) last week" : "\(DiaryDate.duration(overview.minutes)) this week")
+            }
+            dayStrip(maximum: maximum).padding(.top, 12)
+            if overview.watches == 0 {
+                Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.top, 13)
+                Text("Nothing logged yet. Mark an episode to start a streak.").font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
+                    .lineLimit(2).padding(.top, 12)
+            }
+        }.padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardSurface(24)
+            .onAppear { grown = true }
+    }
+    private func smallMetric(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(value).font(.app(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                .contentTransition(.numericText()).animation(reduceMotion ? nil : .smooth, value: value)
+            Text(label).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
+        }.accessibilityElement(children: .combine)
+    }
+    /// The seven days: letter, date (today circled) and a small bar of that day's watching.
+    private func dayStrip(maximum: Int) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(overview.days.enumerated()), id: \.element.id) { order, day in
+                let today = DiaryDate.calendar().isDate(day.date, inSameDayAs: now)
+                NavigationLink(value: HistoryRoute(day: day.date)) {
+                    VStack(spacing: 0) {
+                        Text(day.date, format: .dateTime.weekday(.narrow)).font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.muted)
+                        Text(day.date, format: .dateTime.day()).font(.app(size: 14, weight: .semibold))
+                            .foregroundStyle(today ? HomeStyle.chipText : day.future ? HomeStyle.muted : HomeStyle.soft)
+                            .frame(width: 32, height: 32).background(today ? HomeStyle.chip : .clear, in: Circle())
+                            .padding(.top, 7).padding(.bottom, 6)
+                        RoundedRectangle(cornerRadius: 5).fill(HomeStyle.round).frame(width: 14, height: 22)
+                            .overlay(alignment: .bottom) {
+                                if day.minutes > 0 {
+                                    Rectangle().fill(theme.accent).frame(height: max(4, 22 * CGFloat(day.minutes) / CGFloat(maximum)))
+                                        .scaleEffect(y: grown || reduceMotion ? 1 : 0.001, anchor: .bottom)
+                                        .animation(reduceMotion ? nil : .spring(duration: 0.6, bounce: 0.25).delay(Double(order) * 0.05), value: grown)
+                                }
+                            }.clipShape(RoundedRectangle(cornerRadius: 5))
+                    }.frame(maxWidth: .infinity)
+                }.buttonStyle(.plain).disabled(day.future)
+                    .accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)), \(day.count) watches")
+            }
+        }
+    }
+    private var classicBody: some View {
+        let maximum = max(1, overview.days.map(\.minutes).max() ?? 0)
+        return VStack(alignment: .leading, spacing: 0) {
             // Three equal columns; the second and third start with a hairline and 15 pt of space.
             HStack(alignment: .top, spacing: 0) {
                 metric(DiaryDate.duration(overview.minutes), "Watch time", accent: true).frame(maxWidth: .infinity, alignment: .leading)
@@ -116,29 +201,7 @@ struct HomeWeekCard: View {
                     .overlay(alignment: .leading) { Rectangle().fill(HomeStyle.cardBorder).frame(width: HomeStyle.hairline) }
             }
             Rectangle().fill(HomeStyle.cardBorder).frame(height: 1).padding(.top, 14)
-            HStack(spacing: 0) {
-                ForEach(Array(overview.days.enumerated()), id: \.element.id) { order, day in
-                    let today = DiaryDate.calendar().isDate(day.date, inSameDayAs: now)
-                    NavigationLink(value: HistoryRoute(day: day.date)) {
-                        VStack(spacing: 0) {
-                            Text(day.date, format: .dateTime.weekday(.narrow)).font(.app(size: 11, weight: .semibold)).foregroundStyle(HomeStyle.muted)
-                            Text(day.date, format: .dateTime.day()).font(.app(size: 14, weight: .semibold))
-                                .foregroundStyle(today ? HomeStyle.chipText : day.future ? HomeStyle.muted : HomeStyle.soft)
-                                .frame(width: 32, height: 32).background(today ? HomeStyle.chip : .clear, in: Circle())
-                                .padding(.top, 7).padding(.bottom, 6)
-                            RoundedRectangle(cornerRadius: 5).fill(HomeStyle.round).frame(width: 14, height: 22)
-                                .overlay(alignment: .bottom) {
-                                    if day.minutes > 0 {
-                                        Rectangle().fill(theme.accent).frame(height: max(4, 22 * CGFloat(day.minutes) / CGFloat(maximum)))
-                                            .scaleEffect(y: grown || reduceMotion ? 1 : 0.001, anchor: .bottom)
-                                            .animation(reduceMotion ? nil : .spring(duration: 0.6, bounce: 0.25).delay(Double(order) * 0.05), value: grown)
-                                    }
-                                }.clipShape(RoundedRectangle(cornerRadius: 5))
-                        }.frame(maxWidth: .infinity)
-                    }.buttonStyle(.plain).disabled(day.future)
-                        .accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)), \(day.count) watches")
-                }
-            }.padding(.top, 15)
+            dayStrip(maximum: maximum).padding(.top, 15)
             if overview.watches == 0 {
                 // Design: nothing this week yet, with last week's total as a chip.
                 HStack(spacing: 8) {
@@ -174,6 +237,8 @@ struct HomePoster<Badge: View>: View {
     var initialsOnly = false
     /// The title's score, on the top corner (the bottom one is the row's own badge).
     var score: Double? = nil
+    /// Studio: Recommended's match, in green at the start of the caption (in place of the pill).
+    var match: Int? = nil
     @ViewBuilder var badge: Badge
     @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
@@ -185,19 +250,44 @@ struct HomePoster<Badge: View>: View {
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
                 .overlay(alignment: .topLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
-            // Two lines kept for every name, so each card in a row is the same height (a row
-            // sized by one card no longer lets a taller one hang into the next section).
             if showsCaption {
-                Text(name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
-                    .multilineTextAlignment(.leading).padding(.top, 9)
-                Text(subtitle).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1).padding(.top, 4)
+                if Studio.on(.posterCaptions) {
+                    // Studio: the details sit right under the name; the room for a second line goes
+                    // below them (a hidden copy holds it), so every card in a row is still one height.
+                    ZStack(alignment: .topLeading) {
+                        caption(name: " ", reserve: true).hidden().accessibilityHidden(true)
+                        caption(name: name, reserve: false)
+                    }
+                } else {
+                    // Two lines kept for every name, so each card in a row is the same height (a row
+                    // sized by one card no longer lets a taller one hang into the next section).
+                    Text(name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading).padding(.top, 9)
+                    subtitleText.padding(.top, 4)
+                }
             }
         }.frame(width: width, alignment: .leading).accessibilityElement(children: .combine)
+    }
+    private func caption(name: String, reserve: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2, reservesSpace: reserve)
+                .multilineTextAlignment(.leading).padding(.top, 9)
+            subtitleText.padding(.top, 3)
+        }
+    }
+    private var subtitleText: some View {
+        Group {
+            if let match {
+                Text("\(Text("\(match)% match").foregroundStyle(Color(uiColor: .systemGreen)))\(Text(subtitle.isEmpty ? "" : " · " + subtitle).foregroundStyle(HomeStyle.secondary))")
+            } else {
+                Text(subtitle).foregroundStyle(HomeStyle.secondary)
+            }
+        }.font(.app(size: 12)).lineLimit(1)
     }
 }
 extension HomePoster where Badge == EmptyView {
     init(artwork: String?, name: String, subtitle: String, initialsOnly: Bool = false, score: Double? = nil) {
-        self.artwork = artwork; self.name = name; self.subtitle = subtitle; self.initialsOnly = initialsOnly; self.score = score; self.badge = EmptyView()
+        self.artwork = artwork; self.name = name; self.subtitle = subtitle; self.initialsOnly = initialsOnly; self.score = score; self.match = nil; self.badge = EmptyView()
     }
 }
 
@@ -227,13 +317,19 @@ struct HomeNewEpisodeCard: View {
                 }
             VStack(alignment: .leading, spacing: 9) {
                 Text(item.title.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                HStack(spacing: 8) {
+                HStack(spacing: Studio.on(.newEpisodeDate) ? 6 : 8) {
                     Text("S\(item.episode.season) · E\(item.episode.number)").font(.app(size: 12, weight: .bold)).foregroundStyle(HomeStyle.chipText)
                         .padding(.horizontal, 9).frame(height: 24).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 8))
-                    Spacer(minLength: 0)
-                    Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-                        .padding(.horizontal, 9).frame(height: 24).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    if Studio.on(.newEpisodeDate) {
+                        // Studio: the date joins the episode line as plain text (no second pill).
+                        Text("· " + item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                    } else {
+                        Spacer(minLength: 0)
+                        Text(item.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 12, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
+                            .padding(.horizontal, 9).frame(height: 24).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    }
                 }
             }.padding(.horizontal, 15).padding(.top, 13).padding(.bottom, 14)
         }.frame(width: 236, height: 211, alignment: .top)
@@ -279,6 +375,27 @@ struct HomeRow: View {
             .cardSurface(20)
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
             .contentShape(RoundedRectangle(cornerRadius: 20))
+            .accessibilityElement(children: .combine)
+    }
+}
+
+/// Studio's Recently watched row (inside one shared card): a small still, the name, what was
+/// watched in grey ("Movie", "S0 · E1 to E4 · 3 episodes") and the date.
+struct StudioRecentRow: View {
+    let group: RecentWatchGroup
+    var body: some View {
+        HStack(spacing: 12) {
+            Artwork(path: group.title.backdrop ?? group.title.poster, title: group.title.name, initialsOnly: false)
+                .frame(width: 68, height: 42).clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title.name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                Text(([group.episodeText] + (group.count > 1 ? [group.count.counted("episode", "episodes")] : [])).joined(separator: " · "))
+                    .font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            if let date = group.date {
+                Text(date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+            }
+        }.padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
             .accessibilityElement(children: .combine)
     }
 }

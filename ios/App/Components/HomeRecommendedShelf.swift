@@ -55,9 +55,12 @@ struct HomeRecommendedShelf: View {
     private func card(_ item: CatalogItem) -> some View {
         let match = RecommendationMatch.percent(seedGenres: seed?.genres ?? [], genres: item.genres, rating: item.rating)
         let score = PosterScores.score(for: item, store: store)
+        // Studio: one badge per poster (the rating); the match moves into the caption, in green.
+        let inCaption = Studio.on(.recommendedMatch)
         return HomePoster(artwork: item.poster ?? CatalogTools.image(item.posterPath), name: item.name,
-                          subtitle: [item.year.map(String.init), kindName(item)].compactMap { $0 }.joined(separator: " · "), score: score) {
-            HomeMatchBadge(percent: match)
+                          subtitle: [item.year.map(String.init), kindName(item)].compactMap { $0 }.joined(separator: " · "), score: score,
+                          match: inCaption ? match : nil) {
+            if !inCaption { HomeMatchBadge(percent: match) }
         }.wantsPosterScore(item, known: score, store: store)
     }
     private func kindName(_ item: CatalogItem) -> String {

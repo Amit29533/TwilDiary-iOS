@@ -11,7 +11,7 @@ final class ThemePaletteTests: XCTestCase {
     }
 
     func testTheOriginalThemesKeepTheirColours() {
-        for theme in DiaryTheme.allCases where theme != .premiere && theme != .native {
+        for theme in DiaryTheme.allCases where theme != .premiere && !theme.palette.native {
             XCTAssertEqual(theme.palette, .classic, "\(theme) keeps the app's own colours")
         }
         XCTAssertEqual(DiaryTheme.premiere.palette, .premiere)
@@ -67,7 +67,7 @@ final class ThemePaletteTests: XCTestCase {
         XCTAssertEqual(DiaryTheme.native.palette, .native)
         XCTAssertTrue(ThemePalette.native.native); XCTAssertTrue(ThemePalette.native.followsSystemAppearance)
         XCTAssertNil(DiaryTheme.native.colorScheme)
-        for theme in DiaryTheme.allCases where theme != .native {
+        for theme in DiaryTheme.allCases where theme != .native && theme != .studio {
             XCTAssertEqual(theme.colorScheme, .dark, "\(theme) stays dark")
             XCTAssertFalse(theme.palette.native)
         }
@@ -113,8 +113,29 @@ final class ThemePaletteTests: XCTestCase {
         XCTAssertEqual(DiaryTheme.native.colorScheme(native: .light), .light)
         XCTAssertEqual(DiaryTheme.native.colorScheme(native: .dark), .dark)
         // The other themes stay dark whatever Native's choice is.
-        for theme in DiaryTheme.allCases where theme != .native {
+        for theme in DiaryTheme.allCases where theme != .native && theme != .studio {
             for appearance in NativeAppearance.allCases { XCTAssertEqual(theme.colorScheme(native: appearance), .dark, "\(theme)") }
         }
+    }
+
+    // MARK: Studio
+
+    func testStudioIsNativeWithTheRedrawnPagesOn() {
+        // Everything Native does still applies; only the Studio flag differs.
+        var withoutFlag = ThemePalette.studio; withoutFlag.studio = false
+        XCTAssertEqual(withoutFlag, .native)
+        XCTAssertTrue(ThemePalette.studio.studio); XCTAssertTrue(ThemePalette.studio.native)
+        XCTAssertFalse(ThemePalette.native.studio); XCTAssertFalse(ThemePalette.classic.studio); XCTAssertFalse(ThemePalette.premiere.studio)
+        XCTAssertEqual(DiaryTheme.studio.palette, .studio)
+        XCTAssertEqual(DiaryTheme.studio.colorScheme(native: .dark), .dark)
+        XCTAssertNil(DiaryTheme.studio.colorScheme(native: .automatic))
+    }
+
+    @MainActor func testEveryStudioChangeHasAGroupAndWords() {
+        for change in StudioChange.allCases {
+            XCTAssertFalse(change.title.isEmpty, change.rawValue); XCTAssertFalse(change.detail.isEmpty, change.rawValue)
+        }
+        // Each page's group lists something.
+        for group in StudioChange.Group.allCases { XCTAssertTrue(StudioChange.allCases.contains { $0.group == group }, group.rawValue) }
     }
 }

@@ -181,6 +181,15 @@ struct HomeView: View {
                                     }
                                 }
                             }.scrollIndicators(.hidden).scrollClipDisabled()
+                        } else if Studio.on(.groupedRecent) {
+                            // Studio: one card, rows divided by an inset hairline, smaller stills.
+                            VStack(spacing: 0) {
+                                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                                    if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 94) }
+                                    NavigationLink(value: group.title.id) { StudioRecentRow(group: group) }
+                                        .buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + group.id)
+                                }
+                            }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         } else {
                             VStack(spacing: 10) {
                                 ForEach(groups) { group in
@@ -219,9 +228,16 @@ struct HomeView: View {
             // status bar's height it is enlarged about 1.7x, so more of the picture shows.
             GeometryReader { proxy in
             PullStretchArt(content: Artwork(path: heroArtwork(current), title: current.name).overlay {
-                    // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
-                    LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
-                                           .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                    if Studio.on(.heroLabel) {
+                        // Studio: darker at the top (the title and status bar) and from the middle down
+                        // (the label, name and buttons), so white text reads on bright art.
+                        LinearGradient(stops: [.init(color: .black.opacity(0.6), location: 0), .init(color: .black.opacity(0), location: 0.3),
+                                               .init(color: .black.opacity(0.55), location: 0.55), .init(color: .black.opacity(0.85), location: 0.78), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                    } else {
+                        // Design scrim: 45 % black at the top, clear by 38 %, 50 % at 70 %, solid black at the bottom.
+                        LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .black.opacity(0), location: 0.38),
+                                               .init(color: .black.opacity(0.5), location: 0.7), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+                    }
                 })
                 // The backdrops either side of the one showing (a swipe either way), ready ahead; again as you
                 // swipe. Every watching title's was decoded at once: thirty full-width pictures, more than

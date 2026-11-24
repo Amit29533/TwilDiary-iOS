@@ -20,8 +20,8 @@ struct AppearanceView: View {
                             .accessibilityAddTraits(item == theme ? .isSelected : [])
                     }
                 }
-                if theme == .native {
-                    // Native's light or dark: follow the iPhone, or always one (as Apple's apps offer).
+                if theme.palette.native {
+                    // Native's (and Studio's) light or dark: follow the iPhone, or always one (as Apple's apps offer).
                     VStack(alignment: .leading, spacing: 8) {
                         Text("APPEARANCE").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).padding(.leading, 16)
                         NativeSegmentedControl(segments: NativeAppearance.allCases.map { NativeSegment(value: $0, title: $0.title, id: "native-appearance-" + $0.rawValue) },
@@ -43,6 +43,8 @@ struct AppearanceView: View {
                         .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }
                 }
                 SettingsFootnote(text: "Changes instantly · saved on this iPhone")
+                // Studio's switches: one per redrawn piece, so each can be tried on its own.
+                if theme == .studio { StudioDesignLab().transition(.opacity) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
         }.diaryScreenBackground().diaryPageNavigation("Appearance")
     }
@@ -54,7 +56,7 @@ private struct ThemeCard: View {
     /// Each theme's own ground, whichever theme is on screen; Native's is half light, half dark (it follows the iPhone).
     @ViewBuilder private var preview: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        if item == .native {
+        if item.palette.native {
             HStack(spacing: 0) { Color(white: 0.95); Color(white: 0.08) }.clipShape(shape)
                 .overlay(shape.strokeBorder(HomeStyle.outline(0.08)))
         } else {
@@ -70,7 +72,7 @@ private struct ThemeCard: View {
                     HStack(alignment: .top, spacing: 8) {
                         RoundedRectangle(cornerRadius: 9).fill(item.accent).frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 6) {
-                            Capsule().fill(item == .native ? Color.gray.opacity(0.5) : Color(webHex: "#3a3a46")).frame(width: 71, height: 5)
+                            Capsule().fill(item.palette.native ? Color.gray.opacity(0.5) : Color(webHex: "#3a3a46")).frame(width: 71, height: 5)
                             Capsule().fill(item.accent).frame(width: 45, height: 5)
                         }.padding(.top, 6)
                     }

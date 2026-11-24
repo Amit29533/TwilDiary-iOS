@@ -28,18 +28,27 @@ struct TitleAwardsSection: View {
                 // One card: a row per ceremony, its wins and other nominations as small counters.
                 NavigationLink(value: destination) {
                     VStack(alignment: .leading, spacing: 0) {
+                        // Studio: no place numbers (it isn't a ranking); the counts say what they are.
+                        let spelled = Studio.on(.titleAwards)
                         ForEach(Array(rows.prefix(5).enumerated()), id: \.element.ceremony) { index, row in
-                            if index > 0 { Divider().padding(.leading, 44) }
+                            if index > 0 { Divider().padding(.leading, spelled ? 14 : 44) }
                             HStack(spacing: 8) {
-                                // The row's place, as the ranked lists elsewhere.
-                                Text("\(index + 1).").font(.app(size: 15, weight: .bold)).monospacedDigit()
-                                    .foregroundStyle(index < 3 ? HomeStyle.chipText : HomeStyle.secondary)
-                                    .frame(width: 22, alignment: .leading)
+                                if !spelled {
+                                    // The row's place, as the ranked lists elsewhere.
+                                    Text("\(index + 1).").font(.app(size: 15, weight: .bold)).monospacedDigit()
+                                        .foregroundStyle(index < 3 ? HomeStyle.chipText : HomeStyle.secondary)
+                                        .frame(width: 22, alignment: .leading)
+                                }
                                 Text(row.ceremony).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                     .lineLimit(1).truncationMode(.tail)
                                 Spacer(minLength: 8)
-                                if row.wins > 0 { counter("trophy.fill", row.wins, tint: Color(themed: "#e7ca90")) }
-                                if row.nominations > 0 { counter("medal", row.nominations, tint: .secondary) }
+                                if spelled {
+                                    if row.wins > 0 { spelledCount("trophy", row.wins, "win", "wins", tint: Color(uiColor: .systemOrange)) }
+                                    if row.nominations > 0 { spelledCount("medal", row.nominations, "nomination", "nominations", tint: HomeStyle.secondary) }
+                                } else {
+                                    if row.wins > 0 { counter("trophy.fill", row.wins, tint: Color(themed: "#e7ca90")) }
+                                    if row.nominations > 0 { counter("medal", row.nominations, tint: .secondary) }
+                                }
                             }
                             .padding(.horizontal, 14).frame(minHeight: 44)
                             .accessibilityElement(children: .ignore)
@@ -62,6 +71,14 @@ struct TitleAwardsSection: View {
             rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: people, movie: movie))
         }
     }
+}
+
+/// Studio's count, spelled out: "🏆 1 win", "🎖 4 nominations".
+private func spelledCount(_ symbol: String, _ count: Int, _ one: String, _ many: String, tint: Color) -> some View {
+    HStack(spacing: 4) {
+        Image(systemName: symbol).font(.app(size: 12, weight: .semibold))
+        Text("\(count.formatted()) \(count == 1 ? one : many)").font(.app(size: 13, weight: .medium)).monospacedDigit()
+    }.foregroundStyle(tint).lineLimit(1).fixedSize()
 }
 
 /// A small counter: the icon and the number in a soft capsule.

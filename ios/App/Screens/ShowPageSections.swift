@@ -92,9 +92,11 @@ struct ParentalGuideSection: View {
 
     private func row(_ category: ParentsGuide.Category) -> some View {
         let style = Self.styles[category.id] ?? Style(name: category.id.capitalized, symbol: "circle", color: "#9a96a8")
-        let color = Color(themed: style.color)
+        // Studio: the colour says how strong it is (the same in every row), not which category it is.
+        let severity = Studio.on(.parentalSeverity)
+        let color = severity ? Self.severityColor(category.level) : Color(themed: style.color)
         return HStack(spacing: 10) {
-            Image(systemName: style.symbol).font(.app(size: 14, weight: .medium)).foregroundStyle(color).frame(width: 20)
+            Image(systemName: style.symbol).font(.app(size: 14, weight: .medium)).foregroundStyle(severity ? HomeStyle.secondary : color).frame(width: 20)
             Text(style.name).font(.app(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1).minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 3) {
@@ -106,6 +108,15 @@ struct ParentalGuideSection: View {
                 .lineLimit(1).frame(width: 60, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore).accessibilityLabel(style.name + ": " + category.levelName)
+    }
+    /// Studio's severity colours: grey for none, yellow mild, orange moderate, red severe.
+    private static func severityColor(_ level: Int) -> Color {
+        switch level {
+        case ...0: Color(uiColor: .systemGray)
+        case 1: Color(uiColor: .systemYellow)
+        case 2: Color(uiColor: .systemOrange)
+        default: Color(uiColor: .systemRed)
+        }
     }
 }
 
@@ -210,7 +221,8 @@ struct TitleMetaChips: View {
         HStack(spacing: 6) {
             ForEach(values, id: \.self) { genre in
                 NavigationLink(value: SearchLabResultsRoute(filters: genreFilters(genre))) {
-                    MetaChip(text: genre, tint: ChipTint.genre(genre))
+                    // Studio: genres in one quiet grey (their colours meant nothing).
+                    MetaChip(text: genre, tint: Studio.on(.titleMeta) ? HomeStyle.secondary : ChipTint.genre(genre))
                 }.buttonStyle(.springPress).accessibilityHint("Shows more \(genre) titles")
             }
         }.fixedSize()
@@ -224,7 +236,8 @@ struct TitleMetaChips: View {
     }
     private func facts(_ extras: TitleExtras) -> [Fact] {
         var result: [Fact] = []
-        if let rating = extras.certification {
+        // Studio: the age rating sits on the year line (TitleHero), not alone on a row of its own.
+        if let rating = extras.certification, !Studio.on(.titleMeta) {
             // TMDB filters by US ratings only: another country's rating is shown, not linked.
             let us = ["G", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA"].contains(rating.uppercased())
             var filters = DiscoveryFilters(section: .genres)
@@ -303,7 +316,23 @@ struct RatingBoxes: View {
     }
     var body: some View {
         let boxes = boxes
-        if !boxes.isEmpty {
+        if !boxes.isEmpty, Studio.on(.titleRatings) {
+            // Studio: the scores share one card, divided by thin lines (four boxes read as four things to tap).
+            HStack(spacing: 0) {
+                ForEach(Array(boxes.enumerated()), id: \.element.id) { index, box in
+                    if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(width: 1 / 3, height: 24) }
+                    HStack(spacing: 6) {
+                        if let service = BrandLogo.service(forRatingSource: box.id) {
+                            BrandLogo(service: service, size: 20)
+                        } else {
+                            Text(box.label).font(.app(size: 9, weight: .bold)).foregroundStyle(box.color)
+                        }
+                        Text(box.text).font(.app(size: 16, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.primary)
+                    }.frame(maxWidth: .infinity).frame(height: 46)
+                        .accessibilityElement(children: .ignore).accessibilityLabel(RatingsStrip<EmptyView>.name(box.id) + " " + box.text)
+                }
+            }.cardSurface(14).accessibilityIdentifier("title-rating-boxes")
+        } else if !boxes.isEmpty {
             HStack(spacing: 8) {
                 ForEach(boxes) { box in
                     // The source's own logo above its score; a source without one keeps its name.
@@ -366,9 +395,19 @@ struct RatingCircles: View {
     static func color(_ score: Double) -> Color {
         switch RatingTone(score: score) { case .low: Color(themed: "#ef5350"); case .mid: Color(themed: "#ffa726"); case .high: Color(themed: "#43c66b") }
     }
+    /// Studio: "You" and "Community" under the circles, so it's clear whose score each is.
+    private func captioned<Content: View>(_ caption: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 4) {
+            content()
+            if Studio.on(.titleStatus) {
+                Text(caption).font(.app(size: 11)).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize().accessibilityHidden(true)
+            }
+        }
+    }
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             if showsMine {
+            captioned("You") {
             Button(action: onRate) {
                 ZStack {
                     Circle().fill(mine.map { Self.color($0).opacity(0.22) } ?? Color.primary.opacity(0.07))
@@ -379,8 +418,10 @@ struct RatingCircles: View {
             }.buttonStyle(.springPress).accessibilityLabel("Your rating").accessibilityValue(mine.map { $0.formatted() } ?? "Not rated")
                 .accessibilityHint("Tap to rate").accessibilityIdentifier("title-personal-rating")
             }
+            }
             // The community average is always shown beside your rating ("–" until a score is known),
             // so the row never changes shape.
+            captioned("Community") {
             Button { onCommunity?() } label: {
                 ZStack {
                     Circle().stroke(HomeStyle.outline(0.1), lineWidth: 4)
@@ -395,6 +436,7 @@ struct RatingCircles: View {
             }.buttonStyle(.springPress).disabled(onCommunity == nil)
                 .accessibilityLabel("Average rating").accessibilityValue(community.map { $0.formatted(.number.precision(.fractionLength(1))) + " out of 10" } ?? "Not known yet")
                 .accessibilityIdentifier("title-community-rating")
+            }
         }
     }
 }
@@ -463,6 +505,12 @@ struct CompanyLogo: View {
                 // The company's own logo, unchanged; many are black, so they sit on a light tile.
                 Artwork(path: logo, title: company.name, contentMode: .fit).padding(.horizontal, 18).padding(.vertical, 16)
                     .background(Color(themed: "#f2f1f5"), in: RoundedRectangle(cornerRadius: 16))
+            } else if Studio.on(.titleCompanies) {
+                // Studio: the initials on a grey disc (the full name in colour read as a link, and the
+                // name is written under the tile anyway).
+                Text(Self.initials(company.name)).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+                    .frame(width: 48, height: 48).background(Color(uiColor: .tertiarySystemFill), in: Circle())
+                    .accessibilityHidden(true)
             } else {
                 Text(company.name).font(.app(size: 18, weight: .heavy)).foregroundStyle(Self.tint(company.name))
                     .lineLimit(2).minimumScaleFactor(0.6).multilineTextAlignment(.center).padding(10)
@@ -470,6 +518,15 @@ struct CompanyLogo: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(themed: "#16151b"), in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08)))
+    }
+    /// "Bill/Phillips Productions" → "BP": the first letter of up to two words (generic words skipped).
+    static func initials(_ name: String) -> String {
+        let skip: Set<String> = ["productions", "production", "pictures", "films", "film", "studios", "studio", "entertainment", "the", "and", "&", "company", "inc", "inc.", "ltd", "llc"]
+        let words = name.components(separatedBy: CharacterSet.alphanumerics.inverted.subtracting(CharacterSet(charactersIn: "&")))
+            .filter { !$0.isEmpty }
+        let kept = words.filter { !skip.contains($0.lowercased()) }
+        let letters = (kept.isEmpty ? words : kept).prefix(2).compactMap { $0.first.map(String.init) }
+        return letters.joined().uppercased()
     }
     static func tint(_ name: String) -> Color {
         let values = ["#6ee07a", "#ff9b4a", "#ff6b7d", "#5cc8ff", "#ffd54a", "#b48cff"]

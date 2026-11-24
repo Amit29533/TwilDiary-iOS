@@ -11,6 +11,10 @@ Open **More → Theme** to choose a theme. Changes apply immediately across the 
 | Amber        | Gold     | Original dark surfaces                                               |
 | Liquid Glass | Ice blue | Pure black AMOLED canvas, dark glass controls and silver reflections |
 
+### Studio (iPhone app)
+
+Studio is Native with the November 2026 redraws of Home, Glance, the title page, the person page and Known for switched on (owner's request). It uses Native's colours and controls; each redrawn piece checks `Studio.on(_:)` (`ios/App/Design/Studio.swift`). Under **Settings → Appearance → Design lab** every change has its own switch, on by default, so each can be tried alone; "Turn every change back on" resets them. Two people-page orderings (lead roles first in Known for, released titles first in Shows and Movies) are Studio switches too, because the shared ranking in `PersonSections` matches the web app and its golden tests.
+
 All six themes share the floating capsule navigation layout and a whole-tab selection pill, with matching safe-area clearance for content and Undo messages. Each theme retains its own accent and material treatment. Navigation, filters, progress, primary actions, personal ratings and accent-based charts share theme tokens. Semantic success/error colors, gold community ratings, artwork and genre category colors keep their meaning.
 
 The device-local preference uses only `twildiary.theme.v1`. It does not modify diary data or sync settings. Other tabs on the same origin follow changes. A small allowlisted pre-paint script restores the theme before rendering; the PWA caches this public script for offline startup. Invalid preferences fall back to Twilight. If saving is blocked, the picker reports that the choice applies to the current session.

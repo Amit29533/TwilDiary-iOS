@@ -245,7 +245,7 @@ struct StandardPoster: View {
         VStack(alignment: .leading, spacing: 0) {
             Artwork(path: artwork, title: name, initialsOnly: false)
                 .posterAspect()
-                .overlay(alignment: .bottomLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
+                .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score, score > 0 { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             if showsCaption {
                 Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)

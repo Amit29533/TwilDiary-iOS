@@ -7,6 +7,12 @@ import TwilDiaryCore
 enum Motion {
     static var spring: Animation { .snappy }
     static var press: Animation { .spring(duration: 0.3, bounce: 0.25) }
+    /// A press, going down or coming back up. Studio: a quick sink and a settle without bounce
+    /// (a press isn't a flick, so it shouldn't overshoot).
+    @MainActor static func pressMotion(pressed: Bool) -> Animation {
+        guard Studio.on(.pressNoBounce) else { return press }
+        return pressed ? .easeOut(duration: 0.15) : .spring(duration: 0.25, bounce: 0)
+    }
     /// `nil` under Reduce Motion, so changes simply appear.
     static func spring(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : spring }
     /// Apple's "smooth" curve (no bounce) for content that arrives or changes: a list replacing its
@@ -106,7 +112,7 @@ struct SpringPressStyle: ButtonStyle {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         var body: some View {
             configuration.label.scaleEffect(configuration.isPressed && !reduceMotion ? 0.965 : 1)
-                .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
+                .animation(reduceMotion ? nil : Motion.pressMotion(pressed: configuration.isPressed), value: configuration.isPressed)
         }
     }
 }

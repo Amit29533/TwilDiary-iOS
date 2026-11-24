@@ -44,18 +44,37 @@ struct CatalogGrid: View {
 struct CatalogPoster: View {
     let item: CatalogItem
     var profileTypography = false
+    /// Studio: the person's role on this title, joined to the year line.
+    var role: String? = nil
     @Environment(DiaryStore.self) private var store
     private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
     var body: some View {
         let score = PosterScores.score(for: item, store: store)
         VStack(alignment: .leading, spacing: 0) {
-            Artwork(path: item.artwork, title: item.name, initialsOnly: false)
-                .posterAspect()
-                .overlay(alignment: .bottomLeading) { if let score { PosterScoreBadge(score: score) } }
+            Group {
+                if item.artwork == nil && Studio.on(.missingPoster) {
+                    // Studio: no poster: the name on a grey tile the size of one, not a placeholder that looks broken.
+                    Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .lineLimit(4).minimumScaleFactor(0.8).padding(10)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(uiColor: .tertiarySystemFill))
+                        .posterAspect()
+                } else {
+                    Artwork(path: item.artwork, title: item.name, initialsOnly: false)
+                        .posterAspect()
+                }
+            }
+                .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .wantsPosterScore(item, known: score, store: store)
             if !showsCaption {
                 EmptyView()
+            } else if Studio.on(.posterCaptions) {
+                // Studio: the name (up to two lines) and one details line right under it; a hidden copy
+                // keeps two lines' room below, so every card in a row is one height.
+                ZStack(alignment: .topLeading) {
+                    studioCaption(name: " ", reserve: true).hidden().accessibilityHidden(true)
+                    studioCaption(name: item.name, reserve: false)
+                }
             } else if profileTypography {
                 ProfileCardCaption(title: item.name).padding(.top, 8)
                 if let year = item.year { ProfileCardCaption(title: String(year), secondary: true).padding(.top, 4) }
@@ -64,6 +83,18 @@ struct CatalogPoster: View {
                 Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.app(size: 12)).foregroundStyle(.secondary).lineLimit(1).frame(height: 18).padding(.top, 4)
             }
         }.accessibilityElement(children: .combine)
+    }
+    private func studioCaption(name: String, reserve: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(2, reservesSpace: reserve)
+                .multilineTextAlignment(.leading).padding(.top, 8)
+            Text(studioDetails).font(.app(size: 13)).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3)
+        }
+    }
+    /// "2008 · Marcus Pike", or the year alone.
+    private var studioDetails: String {
+        let details = [item.year.map(String.init), ProfileText.line(role), item.inLibraryId == nil || role != nil ? nil : "In library"].compactMap { $0 }.joined(separator: " · ")
+        return details.isEmpty ? " " : details
     }
 }
 
@@ -1014,7 +1045,7 @@ struct CastAndRelated: View {
         let score = PosterScores.score(for: item, store: store)
         return VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 111, height: 167)
-                .overlay(alignment: .bottomLeading) { if let score { PosterScoreBadge(score: score) } }
+                .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .wantsPosterScore(item, known: score, store: store)
             Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)

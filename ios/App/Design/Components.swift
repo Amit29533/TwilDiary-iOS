@@ -3,13 +3,13 @@ import UIKit
 import TwilDiaryCore
 
 enum DiaryTheme: String, CaseIterable, Identifiable {
-    case twilight, ocean, jade, rose, amber, premiere, native
+    case twilight, ocean, jade, rose, amber, premiere, native, studio
     var id: Self { self }
     var name: String { rawValue.capitalized }
     var field: Color {
         switch self {
         case .premiere: Color(webHex: "#121212")
-        case .native: Color(uiColor: .secondarySystemBackground)
+        case .native, .studio: Color(uiColor: .secondarySystemBackground)
         default: Color(webHex: "#111115")
         }
     }
@@ -18,6 +18,7 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         switch self {
         case .premiere: .premiere
         case .native: .native
+        case .studio: .studio
         default: .classic
         }
     }
@@ -30,10 +31,11 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .amber: "Warm cinema gold"
         case .premiere: "Streaming night: black, white and red"
         case .native: "iOS itself: light or dark, Liquid Glass"
+        case .studio: "Native, redrawn: try each change"
         }
     }
     var ink: Color {
-        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere, .native: Color(webHex: "#ffffff") }
+        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere, .native, .studio: Color(webHex: "#ffffff") }
     }
     var accent: Color {
         switch self {
@@ -43,7 +45,7 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .rose: Color(webHex: "#f4a2c6")
         case .amber: Color(webHex: "#edbe73")
         case .premiere: Color(webHex: "#e50914")
-        case .native: Color(uiColor: .systemBlue)
+        case .native, .studio: Color(uiColor: .systemBlue)
         }
     }
     /// The colour scheme the app asks for: always dark, except Native, which follows the iPhone.
@@ -200,7 +202,7 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
                 .nativeGlassCapsule(prominent: (prominent || bright) && !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
                 .opacity(enabled ? 1 : 0.45)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-                .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.35), value: configuration.isPressed)
+                .animation(reduceMotion ? nil : Studio.on(.pressNoBounce) ? Motion.pressMotion(pressed: configuration.isPressed) : .spring(duration: 0.3, bounce: 0.35), value: configuration.isPressed)
         }
         private var classic: some View {
             let destructive = configuration.role == .destructive
@@ -343,11 +345,14 @@ struct PageHeader: View {
     @State private var angle = 0.0
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
+        let logoTrailing = isHome && Studio.on(.homeHeader)
         HStack(spacing: 10) {
             // The spinning logo lives on Home only; other pages lead with a bigger title.
-            if isHome { logo }
+            // Studio: the title leads and the logo sits on the right, as iOS places a page's buttons.
+            if isHome && !logoTrailing { logo }
             title
             Spacer(minLength: 0)
+            if logoTrailing { logo }
             if let onSelect { glassButton("circle-check", label: "Select titles", id: "library-select", action: onSelect) }
         }.frame(height: height).padding(.horizontal, isHome ? 16 : 14)
     }
@@ -689,6 +694,8 @@ struct CategoryPicker: View {
         return HStack(spacing: 0) {
             ForEach(LibraryCategory.allCases) { category in
                 let selected = shown == category
+                // Studio: a category with nothing in it reads dimmer before you tap it (it still opens).
+                let empty = !selected && counts?[category] == 0 && Studio.on(.glanceFilters)
                 Button { choose(category) } label: {
                     HStack(spacing: 5) {
                         Text(category.rawValue)
@@ -696,7 +703,7 @@ struct CategoryPicker: View {
                             Text(count.formatted()).foregroundStyle(.secondary).monospacedDigit()
                                 .contentTransition(.numericText())
                         }
-                    }.font(.app(size: 13, weight: selected ? .semibold : .medium)).foregroundStyle(Color(uiColor: .label))
+                    }.font(.app(size: 13, weight: selected ? .semibold : .medium)).foregroundStyle(empty ? Color(uiColor: .tertiaryLabel) : Color(uiColor: .label))
                         .lineLimit(1).fixedSize().padding(.horizontal, 4).frame(maxWidth: .infinity, minHeight: 36)
                         .background {
                             if selected {
@@ -838,7 +845,11 @@ struct ProgressCard: View {
                             Group {
                                 // Home's hero draws its backdrop behind the whole page header instead.
                                 if compact { Color.clear }
-                                else if hero { Artwork(path: cardBackdrop, title: title.name).overlay(scrim) }
+                                else if hero {
+                                    Artwork(path: cardBackdrop, title: title.name).overlay(scrim)
+                                        // Studio: a darker fade under the text, so the label and title read on busy art.
+                                        .overlay { if Studio.on(.lastWatchedLabel) { LinearGradient(stops: [.init(color: .black.opacity(0), location: 0.25), .init(color: .black.opacity(0.78), location: 1)], startPoint: .top, endPoint: .bottom) } }
+                                }
                                 else if ThemeStore.current.native { Color.clear }
                                 else { Rectangle().fill(theme.field) }
                             }.frame(width: proxy.size.width, height: proxy.size.height).contentShape(Rectangle())
@@ -846,7 +857,8 @@ struct ProgressCard: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                .background { if ThemeStore.current.native && !compact && !hero { Color.clear.nativeCard(radius: cornerRadius) } }
+                // Studio's compact rows share one card drawn by the list, so each row draws none.
+                .background { if ThemeStore.current.native && !compact && !hero && !studioGroupedRow { Color.clear.nativeCard(radius: cornerRadius) } }
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact || (ThemeStore.current.native && !hero) ? 0 : 0.17)))
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
@@ -863,7 +875,11 @@ struct ProgressCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
             Group {
-                if notStarted {
+                if Studio.on(.heroLabel) {
+                    // Studio: a plain white label (the spaced lilac capitals were lost on bright art).
+                    Text("Continue watching").font(.app(size: 13, weight: .semibold)).tracking(0.4).foregroundStyle(.white.opacity(0.9))
+                        .frame(height: 16).padding(.bottom, 7)
+                } else if notStarted {
                     Text("CONTINUE WATCHING").font(.app(size: 11, weight: .bold)).tracking(1.54).foregroundStyle(Color(themed: "#cdbbff"))
                         .frame(height: 14).padding(.bottom, 6)
                 } else {
@@ -881,14 +897,20 @@ struct ProgressCard: View {
                 .opacity(progressKnown || waitedForProgress ? 1 : 0)
                 .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: progressKnown || waitedForProgress)
                 .task { try? await Task.sleep(for: .seconds(2)); waitedForProgress = true }
-        }.padding(.horizontal, 8).frame(height: 196)
+        // Studio's episode track adds a line under "Season 2 · 12 episodes".
+        }.padding(.horizontal, 8).frame(height: Studio.on(.heroTrack) ? 232 : 196)
     }
     private var progressRow: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(homeLine).font(.app(size: 14)).foregroundStyle(Color(themed: "#d8d4e6")).lineLimit(1).frame(height: 20).padding(.top, 6)
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    GeometryReader { proxy in RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.28)).overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(width: 186, height: 5)
+                    if let card, title.isSeries, Studio.on(.heroTrack), StudioEpisodeTrack.fits(card.progress.total) {
+                        // Studio: a capsule per episode; the next one outlined.
+                        StudioEpisodeTrack(watched: card.progress.watched, total: card.progress.total, showsNext: card.next != nil).frame(width: 186)
+                    } else {
+                        GeometryReader { proxy in RoundedRectangle(cornerRadius: 3).fill(.white.opacity(0.28)).overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 3).fill(.tint).frame(width: proxy.size.width * fraction) } }.frame(width: 186, height: 5)
+                    }
                     // Held to the bar's width: a long label ("Time unknown") shortens with … instead of
                     // pushing the − / count / + over, which wrapped the count onto two lines.
                     HStack(spacing: 12) {
@@ -908,6 +930,16 @@ struct ProgressCard: View {
     private var startRow: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(startLine).font(.app(size: 13)).foregroundStyle(Color(themed: "#b4b3c2")).lineLimit(1).frame(height: 18).padding(.top, 6)
+            if let card, Studio.on(.heroTrack), StudioEpisodeTrack.fits(card.progress.total) {
+                // Studio: "Not started · 0 of 12" over a capsule per episode, the first one outlined.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Not started"); Spacer(minLength: 8)
+                        Text("\(card.progress.watched) of \(card.progress.total)").monospacedDigit().contentTransition(.numericText())
+                    }.font(.app(size: 12)).foregroundStyle(.white.opacity(0.62))
+                    StudioEpisodeTrack(watched: card.progress.watched, total: card.progress.total, showsNext: card.next != nil)
+                }.padding(.top, 12)
+            }
             HStack(spacing: 10) {
                 Button { Task { await markWatch() } } label: {
                     HStack(spacing: 8) {
@@ -952,7 +984,7 @@ struct ProgressCard: View {
     /// and how much is left; the episode; the count, the bar and the round button. Poster and card
     /// are one size whatever the title's length (owner's request, 2026-11-19).
     @ViewBuilder private var glanceContent: some View {
-        if grid { gridContent } else {
+        if grid { gridContent } else if studioGroupedRow { studioRow } else {
             HStack(alignment: .top, spacing: 14) {
                 Button { openTitle() } label: {
                     Artwork(path: title.poster, title: title.name, initialsOnly: false)
@@ -970,6 +1002,50 @@ struct ProgressCard: View {
         }
     }
     private static let posterWidth: CGFloat = 76, posterHeight: CGFloat = 114
+    /// Studio's compact Glance row (one shared card, drawn by the list).
+    private var studioGroupedRow: Bool { Studio.on(.glanceRows) && !grid && !hero && !compact }
+    /// Studio: a 52 pt poster, the title, "S1 E2 · Episode 2 · 25m", then the bar with what's left
+    /// beside it ("1/35" and the bar said the same thing twice); the menu on top and the tinted +
+    /// below, on the right.
+    private var studioRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Button { openTitle() } label: {
+                Artwork(path: title.poster, title: title.name, initialsOnly: false)
+                    .frame(width: 52, height: 78).clipShape(RoundedRectangle(cornerRadius: 8))
+            }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 0) {
+                titleButton(size: 15)
+                studioDetailLine.padding(.top, 2)
+                Spacer(minLength: 6)
+                HStack(spacing: 8) {
+                    GeometryReader { proxy in
+                        Capsule().fill(Color.primary.opacity(0.12))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(markable ? Color(uiColor: .systemBlue) : Color(uiColor: .systemGray))
+                                    .frame(width: max(fraction > 0 ? 4 : 0, proxy.size.width * fraction))
+                            }
+                    }.frame(height: 4)
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: fraction)
+                    Text(studioLeftText).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).monospacedDigit().lineLimit(1).fixedSize()
+                        .contentTransition(.numericText()).animation(reduceMotion ? nil : .snappy(duration: 0.25), value: card?.progress.watched)
+                }.accessibilityElement(children: .ignore).accessibilityLabel(progressSpoken)
+                    .accessibilityIdentifier("watch-progress-" + title.id)
+            }.frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 78)
+            VStack(spacing: 0) {
+                cardMenu.frame(width: 32, height: 28)
+                Spacer(minLength: 0)
+                roundButton
+            }.frame(height: 78)
+        }.padding(.horizontal, 12).padding(.vertical, 10)
+    }
+    /// "S1 E2 · Episode 2 · 25m": what's next, then the episode.
+    private var studioDetailLine: some View {
+        let detail = detailText.trimmingCharacters(in: .whitespaces)
+        return Text("\(Text(nextParts.lead).fontWeight(.semibold).foregroundStyle(HomeStyle.ink))\(Text(detail.isEmpty ? "" : " · " + detail).foregroundStyle(HomeStyle.secondary))")
+            .font(.app(size: 13)).lineLimit(1)
+    }
+    /// "34 left (12h 39m)", or "12/12" when there's nothing left.
+    private var studioLeftText: String { nextParts.rest ?? countText }
     /// Grid: the poster on top, then the title, what's next, and the count, bar and button.
     private var gridContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -986,14 +1062,29 @@ struct ProgressCard: View {
     /// The backdrop fills the card and fades to black on the right; the lines sit over it, light.
     private var heroContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(heroLabel).font(.app(size: 12, weight: .bold)).tracking(1.8)
-                // Native: white on the artwork (the accent blue was lost on warm pictures).
-                .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
-                .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
+            if Studio.on(.lastWatchedLabel) {
+                // Studio: sentence case, white, no spaced capitals (they were hard to read on busy art).
+                Text(Studio.sentenceCase(heroLabel))
+                    .font(.app(size: 13, weight: .semibold)).tracking(0.4).foregroundStyle(Color.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
+            } else {
+                Text(heroLabel).font(.app(size: 12, weight: .bold)).tracking(1.8)
+                    // Native: white on the artwork (the accent blue was lost on warm pictures).
+                    .foregroundStyle(ThemeStore.current.native ? Color.white.opacity(0.85) : HomeStyle.chipText)
+                    .shadow(color: .black.opacity(0.5), radius: 4).accessibilityAddTraits(.isHeader)
+            }
             Spacer(minLength: 8)
             titleButton(size: 24, onArtwork: true).padding(.trailing, 8)
             nextLine(primary: .white, secondary: Color.white.opacity(0.8)).modifier(TextShadow(on: true)).padding(.top, 4)
-            glanceRow(accent: ThemeStore.current.native ? .white : HomeStyle.chipText, track: Color.white.opacity(0.25), onArtwork: true).padding(.top, 10)
+            if let card, title.isSeries, Studio.on(.lastWatchedTrack), StudioEpisodeTrack.fits(card.progress.total) {
+                // Studio: a capsule per episode in place of "1/8" and the bar (the line above says what's left).
+                HStack(spacing: 12) {
+                    StudioEpisodeTrack(watched: card.progress.watched, total: card.progress.total, showsNext: card.next != nil, tint: .white)
+                    roundButton
+                }.frame(height: 36).padding(.top, 10)
+            } else {
+                glanceRow(accent: ThemeStore.current.native ? .white : HomeStyle.chipText, track: Color.white.opacity(0.25), onArtwork: true).padding(.top, 10)
+            }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).frame(height: 178)
             .overlay(alignment: .topTrailing) { cardMenu.background(.black.opacity(0.35), in: Circle()).padding(8) }
             // On the artwork: light text in light mode too (Native).
@@ -1146,10 +1237,13 @@ struct ProgressCard: View {
             guard let next = card?.next else { return "Nothing left to mark" }
             return (starting ? "Start" : "Mark") + " episode \(next.number)"
         }()
+        // Studio: the rows' buttons are tinted, so the Last watched card's is the one filled button on screen.
+        let tinted = Studio.on(.glanceButtons) && !hero && !compact
+        let accent = Color(uiColor: .systemBlue)
         return Button { Task { await markWatch() } } label: {
             actionIcon(.mark, symbol: symbol, size: starting ? 12 : 15).fontWeight(.bold)
-                .foregroundStyle(WatchStyle.ink).frame(width: 36, height: 36)
-                .background { Circle().fill(WatchStyle.fill) }
+                .foregroundStyle(tinted ? AnyShapeStyle(accent) : AnyShapeStyle(WatchStyle.ink)).frame(width: 36, height: 36)
+                .background { if tinted { Circle().fill(accent.opacity(0.18)) } else { Circle().fill(WatchStyle.fill) } }
                 .contentShape(Rectangle().inset(by: -4))
         }.buttonStyle(.springPress).disabled(!markable).opacity(markable ? 1 : 0.45).starBurst(trigger: sparks)
             .accessibilityLabel(label + ", " + title.name)

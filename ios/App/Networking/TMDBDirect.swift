@@ -342,7 +342,11 @@ import TwilDiaryCore
             if var existing = credits[key] {
                 func joined(_ field: String, _ value: String, limit: Int) {
                     let current = existing[field] as? String ?? ""
-                    guard !value.isEmpty, !current.components(separatedBy: " / ").contains(value) else { return }
+                    // The same part twice ("Joel Miller" and "Joel Miller (uncredited)") is one part.
+                    func core(_ text: String) -> String {
+                        text.replacingOccurrences(of: "(uncredited)", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespaces).lowercased()
+                    }
+                    guard !value.isEmpty, !current.components(separatedBy: " / ").contains(where: { core($0) == core(value) }) else { return }
                     existing[field] = String([current, value].filter { !$0.isEmpty }.joined(separator: " / ").prefix(limit))
                 }
                 joined("character", character, limit: 600); joined("job", job, limit: 400)

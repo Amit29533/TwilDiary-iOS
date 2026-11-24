@@ -45,8 +45,12 @@ struct ContinueWatchingCarousel: View {
             && !store.busy && store.cardActions.isEmpty && !store.needsSignIn && titles.count > 1
     }
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            track.zIndex(0)
+        VStack(spacing: 12) {
+            ZStack(alignment: .topTrailing) {
+                track.zIndex(0)
+            }
+            // Studio: dots under the hero say there's more to swipe.
+            if Studio.on(.heroDots) && titles.count > 1 { pageDots }
         }
             .accessibilityElement(children: .contain).accessibilityIdentifier("continue-carousel")
             .accessibilityLabel("Continue watching")
@@ -95,6 +99,24 @@ struct ContinueWatchingCarousel: View {
                 scrollIdle = phase == .idle
                 if phase == .tracking || phase == .interacting { lastInteraction = .now }
             }
+    }
+    /// A dot per title (up to eight), the current one white; with more titles, "3 of 30".
+    private var pageDots: some View {
+        let index = titles.firstIndex { $0.id == selection } ?? 0
+        return Group {
+            if titles.count <= 8 {
+                HStack(spacing: 7) {
+                    ForEach(titles.indices, id: \.self) { position in
+                        Circle().fill(position == index ? Color.white : Color.white.opacity(0.3)).frame(width: 7, height: 7)
+                    }
+                }
+            } else {
+                Text("\(index + 1) of \(titles.count)").font(.app(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                    .monospacedDigit().contentTransition(.numericText())
+            }
+        }.frame(maxWidth: .infinity)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: index)
+            .accessibilityHidden(true)
     }
     private func reconcile() {
         if ids.contains(selection) { return }

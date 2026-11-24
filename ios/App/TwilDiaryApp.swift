@@ -255,7 +255,7 @@ struct RootView: View {
                 }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity).background(ThemeStore.current.canvas)
             } else {
                 // Premiere marks the chosen tab in white on the glass bar, as streaming apps do; red stays for content.
-                NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme == .native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
+                NativeTabShell(selection: $router.selectedTab, accent: theme == .premiere ? .white : theme.palette.native ? .systemBlue : UIColor(theme.accent), syncing: syncing,
                                pageKey: theme.rawValue + ":" + nativeAppearance.rawValue + ":" + String(describing: scenePhase), canPage: { tab in
                     (router.paths[tab]?.isEmpty ?? true) && router.randomPick == nil
                 }, onReselect: { router.select($0) }, tabs: TabLayout.layout(tabLayout).visible.compactMap(AppTab.init(rawValue:))) { tab in

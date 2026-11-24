@@ -734,7 +734,8 @@ struct GlanceView: View {
         let titles = watching.filter { category.includes($0) }
         let ordered = order(titles)
         // True full screen: the header and filters scroll with the cards; nothing stays pinned.
-        let header = PageHeader(name: "Glance", count: "\(watching.count) watching")
+        // Studio: just "Glance"; the count is on All right under it.
+        let header = PageHeader(name: "Glance", count: Studio.on(.glanceHeader) ? nil : "\(watching.count) watching")
         EdgeToEdgeScroll {
                 VStack(spacing: 0) {
                     header
@@ -756,24 +757,37 @@ struct GlanceView: View {
                                 .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
                         }.accessibilityLabel("Order").accessibilityValue(sort.wrappedValue.label).accessibilityIdentifier("glance-sort")
                         Spacer(minLength: 0)
-                        layoutButton(grid: false, icon: "list.bullet")
-                        layoutButton(grid: true, icon: "square.grid.2x2")
+                        if Studio.on(.layoutSwitch) {
+                            // Studio: one grey two-part switch; the chosen side is lighter, never blue.
+                            StudioLayoutSwitch(grid: $grid, identifier: "glance-layout")
+                        } else {
+                            layoutButton(grid: false, icon: "list.bullet")
+                            layoutButton(grid: true, icon: "square.grid.2x2")
+                        }
                     }.padding(.horizontal, 14).padding(.top, 6)
                 }
                 // The title you logged last (or first in the chosen order) gets the large card; the rest
                 // split into Continue (started) and Not started, each with its count.
                 let started = store.memoized("glance.started") { Set(store.activeEvents.map(\.titleId)) }
                 let rest = Array(ordered.dropFirst())
-                let continuing = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
+                let startedTitles = rest.filter { started.contains($0.id) }, fresh = rest.filter { !started.contains($0.id) }
+                // Studio: a show whose season is done has nothing to continue; it moves to Caught up.
+                let caught = Studio.on(.glanceCaughtUp) ? startedTitles.filter { seasonDone($0) } : []
+                let caughtIDs = Set(caught.map(\.id))
+                let continuing = caughtIDs.isEmpty ? startedTitles : startedTitles.filter { !caughtIDs.contains($0.id) }
                 VStack(alignment: .leading, spacing: 8) {
                     if let first = ordered.first { ProgressCard(title: first, hero: true, heroLabel: heroLabel) }
                     if !continuing.isEmpty {
                         glanceHeading("Continue", continuing.count)
-                        CollectionLayout(grid: grid, spacing: 8) { ForEach(showAll ? continuing : Array(continuing.prefix(8))) { ProgressCard(title: $0, grid: grid) } }
+                        rows(showAll ? continuing : Array(continuing.prefix(8)))
                     }
                     if !fresh.isEmpty && (showAll || continuing.count <= 8) {
                         glanceHeading("Not started", fresh.count)
-                        CollectionLayout(grid: grid, spacing: 8) { ForEach(fresh) { ProgressCard(title: $0, grid: grid) } }
+                        rows(fresh)
+                    }
+                    if !caught.isEmpty && (showAll || continuing.count <= 8) {
+                        glanceHeading("Caught up", caught.count)
+                        rows(caught)
                     }
                     if !showAll && continuing.count > 8 {
                         Button { showAll = true } label: {
@@ -794,6 +808,27 @@ struct GlanceView: View {
     }
     private var heroLabel: String {
         switch sort.wrappedValue { case .recentlyUpdated: "LAST WATCHED"; case .almostDone: "ALMOST DONE"; case .title: "WATCHING" }
+    }
+    /// A list of cards. Studio's compact rows share one card, divided by inset hairlines.
+    @ViewBuilder private func rows(_ items: [MediaTitle]) -> some View {
+        if Studio.on(.glanceRows) && !grid {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, title in
+                    if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 76) }
+                    ProgressCard(title: title, grid: false)
+                }
+            }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } else {
+            CollectionLayout(grid: grid, spacing: 8) { ForEach(items) { ProgressCard(title: $0, grid: grid) } }
+        }
+    }
+    /// A show whose current season is fully watched, with nothing aired left to mark.
+    private func seasonDone(_ title: MediaTitle) -> Bool {
+        guard title.isSeries else { return false }
+        guard let card = store.cachedCard(title) ?? (store.diarySource != "server" ? store.localCard(title) : nil),
+              card.progress.total > 0 else { return false }
+        return card.next == nil && card.progress.watched >= card.progress.total
     }
     /// One side of the list | grid switch: the chosen one sits on the accent tint.
     private func layoutButton(grid value: Bool, icon: String) -> some View {

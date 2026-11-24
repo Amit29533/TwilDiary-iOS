@@ -218,10 +218,12 @@ struct NativeRoundGlass: View {
     var selected = false
     var size: CGFloat = 36
     var body: some View {
+        // Studio: layout buttons stay grey whichever layout is on (blue read as "something to do").
+        let lit = selected && !Studio.on(.layoutSwitch)
         Image(systemName: system).font(.app(size: size * 0.4, weight: .semibold))
-            .foregroundStyle(selected ? Color.white : Color(uiColor: .label))
+            .foregroundStyle(lit ? Color.white : Color(uiColor: .label))
             .frame(width: size, height: size)
-            .background(selected ? Color(uiColor: .systemBlue) : Color(uiColor: .tertiarySystemFill), in: Circle())
+            .background(lit ? Color(uiColor: .systemBlue) : Color(uiColor: .tertiarySystemFill), in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
     }
 }

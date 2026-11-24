@@ -26,7 +26,22 @@ enum ProfileText {
                 body.removeSubrange(range)
             }
         }
-        return (body.trimmingCharacters(in: .whitespacesAndNewlines), source)
+        return (withoutPronunciation(body).trimmingCharacters(in: .whitespacesAndNewlines), source)
+    }
+    /// Wikipedia's pronunciation guides, which read as noise in a bio: "(Spanish: [xo ˈse ˈpeðɾo];
+    /// born April 2, 1975)" → "(born April 2, 1975)". Only brackets holding non-ASCII letters (IPA),
+    /// with an optional "Language:" before them, are removed; footnotes like "[1]" stay.
+    static func withoutPronunciation(_ text: String) -> String {
+        var result = text
+        // Never a markdown link ("[宮間 かれん](https://…)"): the bracket mustn't be followed by "(".
+        if let ipa = try? NSRegularExpression(pattern: #"(?:\b[\p{L}][\p{L} ]{1,30}:\s*)?\[[^\]\n]*[^\x00-\x7F][^\]\n]*\](?!\()\s*[;,]?\s*"#) {
+            result = ipa.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
+        }
+        // Tidy what's left: "( born" → "(born", "()" removed, doubled spaces closed.
+        result = result.replacingOccurrences(of: #"\(\s*[;,]?\s*"#, with: "(", options: .regularExpression)
+            .replacingOccurrences(of: #"\s*\(\)"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
+        return result
     }
     static func line(_ value: String?) -> String? {
         guard let value else { return nil }

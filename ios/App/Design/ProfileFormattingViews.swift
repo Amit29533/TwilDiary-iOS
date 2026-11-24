@@ -472,20 +472,26 @@ struct ProfileSourceRow: View {
         return name.isEmpty ? nil : (name, voice)
     }
     var body: some View {
+        // Studio: a plain "From" label and grey tags (spaced capitals and blue read as buttons).
+        let quiet = Studio.on(.personFrom)
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: "play.rectangle").font(.app(size: 17, weight: .semibold)).foregroundStyle(theme.accent)
-                    .frame(width: 36, height: 36).background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                Image(systemName: "play.rectangle").font(.app(size: 17, weight: .semibold)).foregroundStyle(quiet ? HomeStyle.secondary : theme.accent)
+                    .frame(width: 36, height: 36).background(quiet ? Color(uiColor: .tertiarySystemFill) : theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("FROM").font(.app(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                    if quiet {
+                        Text("From").font(.app(size: 12, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                    } else {
+                        Text("FROM").font(.app(size: 11, weight: .bold)).tracking(0.6).foregroundStyle(Color(themed: "#a9a7b6"))
+                    }
                     Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
                         .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     if let parts {
                         HStack(spacing: 6) {
                             Text("as " + parts.name).font(.caption).foregroundStyle(Color(themed: "#a9a7b6")).lineLimit(1)
                             if parts.voice {
-                                Text("Voice").font(.app(size: 10, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
-                                    .padding(.horizontal, 6).padding(.vertical, 2).background(HomeStyle.chip, in: Capsule())
+                                Text("Voice").font(.app(size: 10, weight: .semibold)).foregroundStyle(quiet ? HomeStyle.secondary : HomeStyle.chipText)
+                                    .padding(.horizontal, 6).padding(.vertical, 2).background(quiet ? Color(uiColor: .tertiarySystemFill) : HomeStyle.chip, in: Capsule())
                             }
                         }
                     }

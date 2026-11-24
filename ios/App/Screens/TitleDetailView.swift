@@ -360,10 +360,19 @@ struct TitleDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     // Before the first episode: "Not started · 10 episodes" ("Episode 0 of 10" read oddly).
                     let notStarted = title.isSeries && displayedWatched == 0
-                    Text(!title.isSeries ? "\(movieViewings.count)" : notStarted ? "Not started" : "Episode \(displayedWatched)").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                    // Studio: quieter numbers (an unwatched title shouted "0" and a big blue "0%"); they roll when they change.
+                    let quiet = Studio.on(.titleStatus)
+                    Text(!title.isSeries ? "\(movieViewings.count)" : notStarted ? "Not started" : "Episode \(displayedWatched)").font(.app(size: quiet ? 18 : 22, weight: quiet ? .semibold : .bold)).foregroundStyle(HomeStyle.primary)
+                        .contentTransition(.numericText()).animation(quiet ? .smooth : nil, value: displayedWatched)
                     Text(!title.isSeries ? (movieViewings.count == 1 ? "view logged" : "views logged")
                          : notStarted ? "· \(card.progress.total) " + (card.progress.total == 1 ? "episode" : "episodes") : "of \(card.progress.total)").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-                    Spacer(minLength: 0); Text("\(displayedPercent)%").foregroundStyle(.tint).font(.app(size: 22, weight: .bold))
+                    Spacer(minLength: 0)
+                    if quiet {
+                        Text("\(displayedPercent)%").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                            .contentTransition(.numericText()).animation(.smooth, value: displayedPercent)
+                    } else {
+                        Text("\(displayedPercent)%").foregroundStyle(.tint).font(.app(size: 22, weight: .bold))
+                    }
                 }.frame(minHeight: 29).padding(.bottom, 14)
                 if title.isSeries {
                     episodeSlider(title, card: card)
@@ -384,7 +393,7 @@ struct TitleDetailView: View {
                 if let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { nextPreview(title, episode: episode).padding(.top, 8).padding(.bottom, 12) }
                 else if title.isSeries { Text(seasonCanEdit(title) ? "You’re caught up with available episodes." : "Load the season to see what’s next.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 12) }
                 // Your rating, the community's, then the main action on one line.
-                HStack(spacing: 10) {
+                HStack(alignment: Studio.on(.titleStatus) ? .top : .center, spacing: 10) {
                     RatingCircles(mine: title.score, community: communityAverage(title), onRate: { openRating(title) }, onCommunity: { showInformation = true })
                     Button { Task {
                         var recorded = false
@@ -395,7 +404,7 @@ struct TitleDetailView: View {
                     } } label: {
                         Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                             .font(.app(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
-                    }.buttonStyle(.diaryWatch).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
+                    }.modifier(StudioWatchButtonStyle()).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
                         .haptic(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)
                 if let watchDate, DiaryDate.day(watchDate) != DiaryDate.day(store.now) {

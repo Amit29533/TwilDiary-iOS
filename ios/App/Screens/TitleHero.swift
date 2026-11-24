@@ -63,7 +63,16 @@ struct TitleHero<Ratings: View>: View {
                         .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
                         .accessibilityIdentifier("title-hero-name")
                         .onGeometryChange(for: CGFloat.self) { CompactHeaderTransition.progress(nameBottom: $0.frame(in: .scrollView(axis: .vertical)).maxY) } action: { onNameScrolled?($0) }
-                    Text([year.map(String.init) ?? "—", category, runtimeText].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 12)).foregroundStyle(HomeStyle.dateChipText).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                    HStack(spacing: 6) {
+                        Text([year.map(String.init) ?? "—", category, runtimeText].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 12)).foregroundStyle(HomeStyle.dateChipText).fixedSize(horizontal: false, vertical: true)
+                        // Studio: the age rating as a small outlined badge on the year line.
+                        if Studio.on(.titleMeta), let rating = extras?.certification {
+                            Text(rating).font(.app(size: 11, weight: .bold)).foregroundStyle(HomeStyle.dateChipText).lineLimit(1).fixedSize()
+                                .padding(.horizontal, 4).frame(height: 16)
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(HomeStyle.dateChipText.opacity(0.7), lineWidth: 1))
+                                .accessibilityLabel("Rated " + rating)
+                        }
+                    }.padding(.top, 6)
                     TitleMetaChips(genres: genres, extras: extras, series: series, anime: category.lowercased().contains("anime")).padding(.top, 6)
                     if !ratingsBelow { ratings.padding(.top, 14) }
                 }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .topLeading)
