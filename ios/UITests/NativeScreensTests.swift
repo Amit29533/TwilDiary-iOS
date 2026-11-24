@@ -88,7 +88,7 @@ import UIKit
         openStatistics(app)
         XCTAssertTrue(app.staticTexts["Watch time"].waitForExistence(timeout: 5)); capture("Stats")
         app.tabBars.buttons["Profile"].tap()
-        XCTAssertTrue(app.staticTexts["APPEARANCE"].waitForExistence(timeout: 5)); capture("More")
+        XCTAssertTrue(app.staticTexts["LOOK AND LAYOUT"].waitForExistence(timeout: 5)); capture("More")
     }
     func testCommunityInformationSheetUsesOverallStatsAndReturnsToTheTitle() {
         let app = launch(titleMetadata: true); app.tabBars.buttons["Library"].tap(); app.buttons["title-again"].waitAndTap()
@@ -1368,7 +1368,7 @@ import UIKit
     }
     func testNativeBackReturnsFromEverySettingsDestination() {
         let app = launch(); app.tabBars.buttons["Profile"].tap()
-        for (entryID, title) in [("settings-history", "Recently watched"), ("settings-files", "Files & drives"), ("settings-theme", "Appearance"), ("settings-connections", "Connections"), ("settings-about", "About")] {
+        for (entryID, title) in [("settings-history", "Recently watched"), ("settings-files", "Files & drives"), ("settings-theme", "Theme"), ("settings-connections", "Connections"), ("settings-about", "About")] {
             let entry = app.buttons[entryID]
             for _ in 0..<12 {
                 if entry.isHittable { break }
@@ -1397,7 +1397,7 @@ import UIKit
         let library = app.tabBars.buttons["Library"], more = app.tabBars.buttons["Profile"]
         XCTAssertTrue(library.waitForExistence(timeout: 5))
         library.press(forDuration: 0.3, thenDragTo: more)
-        XCTAssertTrue(more.isSelected); XCTAssertTrue(app.staticTexts["APPEARANCE"].exists)
+        XCTAssertTrue(more.isSelected); XCTAssertTrue(app.staticTexts["LOOK AND LAYOUT"].exists)
         capture("Glass navigation scrub More")
         more.press(forDuration: 0.3, thenDragTo: app.tabBars.buttons["Home"])
         XCTAssertTrue(app.tabBars.buttons["Home"].isSelected)
