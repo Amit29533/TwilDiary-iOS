@@ -33,7 +33,7 @@ struct HomeRecommendedShelf: View {
                 // until then, and appeared in the middle of Home pushing everything under it down.
                 VStack(alignment: .leading, spacing: 16) {
                     HomeSectionHeader(title: "Recommended", icon: "cinemind", subtitle: seeds.first.map { "Because you watched " + $0.name }) { EmptyView() }
-                    DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf)
+                    DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .homeShelf)
                 }
             } else {
                 // A real (zero-height) view, so the task below runs: on an empty Group it never did,

@@ -5,13 +5,15 @@ struct SearchTagsShelf: View {
     let shows: [CatalogItem]
     let animeFirst: Bool
     let movies: Bool
+    /// Trending titles are still on their way, so their tags will be too.
+    var trendingPending = false
     @Environment(DiaryStore.self) private var store
     @ScaledMetric(relativeTo: .subheadline) private var tagRowHeight: CGFloat = 44
     @State private var popular: [SearchBrowseTag] = []
     @State private var loadedKeys: [String] = []
     private static var kept: [[String]: [SearchBrowseTag]] = [:]
-    init(shows: [CatalogItem], animeFirst: Bool, movies: Bool) {
-        self.shows = shows; self.animeFirst = animeFirst; self.movies = movies
+    init(shows: [CatalogItem], animeFirst: Bool, movies: Bool, trendingPending: Bool = false) {
+        self.shows = shows; self.animeFirst = animeFirst; self.movies = movies; self.trendingPending = trendingPending
         let keys = shows.prefix(5).map(\.key)
         if let saved = Self.kept[keys] { _popular = State(initialValue: saved); _loadedKeys = State(initialValue: keys) }
     }
@@ -33,13 +35,24 @@ struct SearchTagsShelf: View {
         let keys = shows.prefix(5).map(\.key)
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: .tags, destination: .tags(tags, artwork: ExploreBrowseHeader.artwork(in: shows)))
-            if !popular.isEmpty {
+            // While trending titles or their tags load, the row's room is kept with grey capsules: it
+            // used to appear on load and push every shelf under it down.
+            let waiting = popular.isEmpty && (trendingPending || (!keys.isEmpty && keys != loadedKeys))
+            if !popular.isEmpty || waiting {
                 Text(movies ? "From trending movies" : "From trending shows").font(.subheadline).foregroundStyle(.secondary)
                 ScrollView(.horizontal) {
-                    LazyHStack { ForEach(popular.prefix(6)) { SearchTagLink(tag: $0) } }
-                }.scrollIndicators(.hidden)
+                    if waiting {
+                        HStack(spacing: 8) {
+                            ForEach([96, 120, 84, 132, 104, 90], id: \.self) { width in
+                                Capsule().fill(Color(uiColor: .tertiarySystemFill)).frame(width: CGFloat(width), height: 36).frame(height: tagRowHeight)
+                            }
+                        }.accessibilityElement(children: .ignore).accessibilityLabel("Loading tags")
+                    } else {
+                        LazyHStack { ForEach(popular.prefix(6)) { SearchTagLink(tag: $0) } }.frame(minHeight: tagRowHeight)
+                    }
+                }.scrollIndicators(.hidden).scrollDisabled(waiting)
+                Text("Suggested tags").font(.subheadline).foregroundStyle(.secondary)
             }
-            if !popular.isEmpty { Text("Suggested tags").font(.subheadline).foregroundStyle(.secondary) }
             ScrollView(.horizontal) {
                 let rows = Array(repeating: GridItem(.fixed(tagRowHeight), spacing: 4, alignment: .leading), count: 2)
                 LazyHGrid(rows: rows, alignment: .top, spacing: 8) {
@@ -507,6 +520,7 @@ struct SearchPeopleGrid: View {
 private struct SearchBrowsePersonLink: View {
     let person: SearchBrowsePerson
     @Environment(DiaryStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var image: String?
     private static var photos: [Int: String] = [:]
     init(person: SearchBrowsePerson) {
@@ -520,10 +534,18 @@ private struct SearchBrowsePersonLink: View {
                 Color.clear.aspectRatio(1, contentMode: .fit)
                     .overlay { Artwork(path: person.image ?? image, title: person.name, alignment: .top) }
                     .clipShape(Circle())
-                ProfileCardCaption(title: person.name).multilineTextAlignment(.center)
-                if let work = person.knownFor {
-                    Text(work).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        .accessibilityLabel("Known for " + work)
+                // Two lines kept for the name and two for Known for, on every card: the shelf grew
+                // when the popular people (with Known for) replaced the first picks, and its height
+                // changed as taller cards scrolled into view.
+                if typeSize.isAccessibilitySize {
+                    ProfileCardCaption(title: person.name).multilineTextAlignment(.center)
+                } else {
+                    Text(person.name).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary)
+                        .lineLimit(2, reservesSpace: true).multilineTextAlignment(.center)
+                    Text(person.knownFor ?? " ").font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(2, reservesSpace: true).multilineTextAlignment(.center)
+                        .accessibilityLabel(person.knownFor.map { "Known for " + $0 } ?? "")
+                        .accessibilityHidden(person.knownFor == nil)
                 }
             }.frame(maxWidth: .infinity).contentShape(Rectangle())
         }.buttonStyle(.springPress)

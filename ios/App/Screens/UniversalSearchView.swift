@@ -34,6 +34,11 @@ struct SearchLandingView: View {
         _shows = State(initialValue: [.all, .movies, .shows].contains(kind) ? Self.trending[kind == .movies ? "movie" : "tv"]?.items ?? [] : [])
     }
     private var loading: Bool { loadingRevision == store.sessionRevision }
+    /// This session's chart isn't here yet and hasn't failed: its row (and its tags) are coming.
+    private var trendingPending: Bool {
+        [.all, .movies, .shows].contains(kind) && shows.isEmpty && failure == nil && loadedRevision != store.sessionRevision
+    }
+    private var trendingHeading: String { kind == .movies ? "Most searched movies today" : kind == .shows ? "Most searched shows today" : "Most searched today" }
     /// A trending title's poster with its place in the chart.
     private func rankedPoster(index: Int, item: CatalogItem) -> some View {
         CatalogPoster(item: item).overlay(alignment: .topLeading) {
@@ -69,7 +74,7 @@ struct SearchLandingView: View {
             if !shows.isEmpty {
                 // The week's top ten as one row of posters, as the other shelves, each with its rank.
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(kind == .movies ? "Most searched movies today" : kind == .shows ? "Most searched shows today" : "Most searched today").font(.title2.bold())
+                    Text(trendingHeading).font(.title2.bold())
                         .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
                     ScrollView(.horizontal) {
                         LazyHStack(alignment: .top, spacing: 12) {
@@ -84,9 +89,16 @@ struct SearchLandingView: View {
                     }.scrollIndicators(.hidden).scrollClipDisabled()
                 }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
             }
-            if loading && shows.isEmpty { DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .list(rows: 3)) }
+            if trendingPending {
+                // The row's own shape (heading and a shelf of posters) while it loads: a list-shaped
+                // placeholder was a different height, so the page below jumped when the posters came.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(trendingHeading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                    DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .posterShelf)
+                }
+            }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
-            SearchBrowseShelves(shows: shows, kind: kind)
+            SearchBrowseShelves(shows: shows, kind: kind, trendingPending: trendingPending)
         }.smoothChange(of: shows.isEmpty)
             .task(id: store.sessionRevision) {
                 guard [.all, .movies, .shows].contains(kind), loadedRevision != store.sessionRevision else { return }

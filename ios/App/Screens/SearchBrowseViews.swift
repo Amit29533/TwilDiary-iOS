@@ -18,6 +18,8 @@ enum SearchBrowseRoute: Hashable {
 struct SearchBrowseShelves: View {
     let shows: [CatalogItem]
     let kind: CatalogSearchView.Kind
+    /// Trending titles are still loading (the tag shelf keeps room for their tags).
+    var trendingPending = false
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 24) {
@@ -26,7 +28,7 @@ struct SearchBrowseShelves: View {
                 SearchPeopleShelf(shelf: .directors)
             }
             if kind == .anime { SearchTopicShelf(topic: .anime) }
-            SearchTagsShelf(shows: shows, animeFirst: kind == .anime, movies: kind == .movies)
+            SearchTagsShelf(shows: shows, animeFirst: kind == .anime, movies: kind == .movies, trendingPending: trendingPending)
             shelf(.genres, categories: SearchBrowseCatalog.genres)
             SearchThemesShelf()
             ForEach(SearchBrowseTopic.allCases.filter { kind != .anime || $0 != .anime }) { SearchTopicShelf(topic: $0) }

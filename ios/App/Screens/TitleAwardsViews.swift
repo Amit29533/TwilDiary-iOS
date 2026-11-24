@@ -8,7 +8,17 @@ struct TitleAwardsSection: View {
     let title: String
     let imdbID: String?
     @Environment(DiaryStore.self) private var store
-    @State private var rows: [TitleAwardsPage.CeremonyCount] = []
+    @State private var rows: [TitleAwardsPage.CeremonyCount]
+    /// Whether this title's awards have been read (this visit or an earlier one this session).
+    @State private var checked: Bool
+    /// The rows read before, per title: coming back to a title shows them at once.
+    private static var kept: [String: [TitleAwardsPage.CeremonyCount]] = [:]
+    private var key: String { String(describing: route) + "|" + (imdbID ?? "") }
+    init(route: CatalogRoute, title: String, imdbID: String?) {
+        self.route = route; self.title = title; self.imdbID = imdbID
+        let saved = Self.kept[String(describing: route) + "|" + (imdbID ?? "")]
+        _rows = State(initialValue: saved ?? []); _checked = State(initialValue: saved != nil)
+    }
 
     var body: some View {
         let destination = ShowPageRoute.titleAwards(route, title: title, imdbID: imdbID)
@@ -20,7 +30,21 @@ struct TitleAwardsSection: View {
                 // The round chevron every section uses for "see all".
                 SectionMoreLink(label: "See all awards and nominations", value: destination, identifier: "title-awards-all")
             }
-            if rows.isEmpty {
+            if rows.isEmpty && !checked {
+                // While they're read: three rows' room in the card's shape, so the card doesn't push
+                // the page down when the ceremonies arrive.
+                VStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { index in
+                        if index > 0 { Divider().padding(.leading, 44) }
+                        HStack(spacing: 8) {
+                            Capsule().fill(Color(uiColor: .systemFill)).frame(width: index == 1 ? 150 : 190, height: 10)
+                            Spacer(minLength: 8)
+                        }.padding(.horizontal, 14).frame(minHeight: 44)
+                    }
+                }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline))
+                    .accessibilityElement(children: .ignore).accessibilityLabel("Loading awards")
+            } else if rows.isEmpty {
                 NavigationLink(value: destination) {
                     Label("View award history", systemImage: "trophy").font(.subheadline).foregroundStyle(.secondary)
                 }.buttonStyle(.plain)
@@ -60,6 +84,9 @@ struct TitleAwardsSection: View {
             let people = store.isPreview ? [] : ((try? await TitleAwardHistory.shared.peopleRecords(route, imdbID: imdbID)) ?? [])
             guard !Task.isCancelled else { return }
             rows = TitleAwardsPage.ceremonyCounts(AwardNames.merge(archive: local, people: people, movie: movie))
+            checked = true
+            if Self.kept.count >= 40 { Self.kept.removeAll() }
+            Self.kept[key] = rows
         }
     }
 }

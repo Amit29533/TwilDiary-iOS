@@ -10,8 +10,14 @@ enum PlaceholderLayout {
     case list(rows: Int = 5)
     /// A grid of 2:3 posters with a name and a line under each (Canvas, Explore, filmographies).
     case posterGrid(columns: Int = 3, rows: Int = 2)
-    /// One sideways shelf of posters (Explore's rows).
+    /// One sideways shelf of posters, sized as the real shelf: posters a column wide (as many to a
+    /// screen as Posters' size) with the two-line name and details line `CatalogPoster` keeps.
     case posterShelf
+    /// The same shelf with `StandardPoster`'s one-line name and subtitle (Explore's seasonal and
+    /// coming-soon rows).
+    case standardShelf
+    /// Home's shelf of fixed-width posters (`HomePoster`).
+    case homeShelf
     /// A portrait beside a few lines, then a paragraph (person and character pages).
     case profile
 }
@@ -24,6 +30,7 @@ struct DiaryLoadingPlaceholder: View {
     var label = "Loading content"
     var layout: PlaceholderLayout = .block
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
     var body: some View {
         shapes
             .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.45]) { view, strength in view.opacity(strength) } animation: { _ in .easeInOut(duration: 0.9) }
@@ -42,7 +49,9 @@ struct DiaryLoadingPlaceholder: View {
         case .block: block
         case .list(let rows): list(rows)
         case .posterGrid(let columns, let rows): grid(columns: columns, rows: rows)
-        case .posterShelf: shelf
+        case .posterShelf: shelf(oneLine: false)
+        case .standardShelf: shelf(oneLine: true)
+        case .homeShelf: homeShelf
         case .profile: profile
         }
     }
@@ -90,11 +99,59 @@ struct DiaryLoadingPlaceholder: View {
         }.frame(maxWidth: .infinity)
     }
 
-    private var shelf: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ForEach(0..<3, id: \.self) { _ in poster.frame(width: 128) }
-            Spacer(minLength: 0)
-        // minWidth 0: three posters are wider than the phone's column; without it the shelf took their
+    /// The shelf's own geometry (a sideways scroll view holding column-wide posters), so the real
+    /// posters land exactly where the shapes were and nothing under the shelf moves.
+    private func shelf(oneLine: Bool) -> some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(0..<(posterSize.columns + 1), id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 0) {
+                        RoundedRectangle(cornerRadius: Studio.corner(8), style: .continuous).fill(fill).posterAspect()
+                        if TilePrefs.shared.posterCaptions { caption(oneLine: oneLine) }
+                    }.containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                }
+            }
+        }.scrollDisabled(true).scrollIndicators(.hidden)
+    }
+    /// The caption's height comes from hidden text in the real fonts (it follows Dynamic Type as the
+    /// real caption does); the grey bars sit over it.
+    private func caption(oneLine: Bool) -> some View {
+        Group {
+            if oneLine {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(" ").font(.app(size: 15, weight: .semibold)).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
+                    Text(" ").font(.app(size: 12)).lineLimit(1).frame(height: 18).padding(.top, 4)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(" ").font(.app(size: 15, weight: .semibold)).lineLimit(2, reservesSpace: true).padding(.top, 8)
+                    Text(" ").font(.app(size: 13)).lineLimit(1).padding(.top, 3)
+                }
+            }
+        }.hidden().frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .topLeading) { captionBars }
+    }
+    private var captionBars: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Capsule().fill(line).frame(height: 10).padding(.trailing, 18)
+            Capsule().fill(faint).frame(width: 40, height: 8)
+        }.padding(.top, 11)
+    }
+    /// Home's posters: a fixed width, a 14 pt name on two lines and a 12 pt details line.
+    private var homeShelf: some View {
+        let width = posterSize.homeWidth
+        return HStack(alignment: .top, spacing: 12) {
+            ForEach(0..<4, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 0) {
+                    RoundedRectangle(cornerRadius: Studio.corner(16), style: .continuous).fill(fill).frame(width: width, height: width * 1.5)
+                    if TilePrefs.shared.posterCaptions {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(" ").font(.app(size: 14, weight: .semibold)).lineLimit(2, reservesSpace: true).padding(.top, 9)
+                            Text(" ").font(.app(size: 12)).lineLimit(1).padding(.top, 3)
+                        }.hidden().frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .topLeading) { captionBars }
+                    }
+                }.frame(width: width)
+            }
+        // minWidth 0: four posters are wider than the phone's column; without it the shelf took their
         // width and stretched the page past the screen while it loaded.
         }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
     }

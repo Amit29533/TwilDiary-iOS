@@ -316,7 +316,7 @@ private struct DiscoveryShelfView: View {
         VStack(alignment: .leading, spacing: 10) {
             ExploreHeading(section: section)
             DiscoveryTrack(items: results.items)
-            if (results.loading || results.page == 0) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf) }
+            if (results.loading || results.page == 0) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf).padding(.bottom, 10) }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await load() } } }
             else if !results.loading && results.page > 0 && results.items.isEmpty { DiscoveryNotice(text: "No titles available.") }
         }.smoothChange(of: results.items.isEmpty).task { if results.page == 0 { await load() } }
@@ -362,7 +362,7 @@ private struct RecommendedDiscoveryView: View {
         VStack(alignment: .leading, spacing: 10) {
             ExploreHeading(section: .recommended)
             DiscoveryTrack(items: results.items)
-            if (results.loading || !results.checked) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf) }
+            if (results.loading || !results.checked) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf).padding(.bottom, 10) }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await results.load(refresh: true) } } }
             else if !results.loading && results.checked && !results.connected {
                 // A way in, not a dead end: Trakt's settings page connects it.

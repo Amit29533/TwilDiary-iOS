@@ -299,9 +299,11 @@ private struct FeedTrack<Item: Identifiable, Tile: View>: View {
     }
 }
 
-/// A placeholder the height of a row, so the page doesn't jump while a row loads.
+/// A placeholder the height of a row (its posters, captions and the track's bottom space), so the
+/// page doesn't jump while a row loads. `standard`: the row's tiles are `StandardPoster`s.
 private struct FeedPlaceholder: View {
-    var body: some View { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf) }
+    var standard = false
+    var body: some View { DiaryLoadingPlaceholder(label: "Loading titles", layout: standard ? .standardShelf : .posterShelf).padding(.bottom, 10) }
 }
 
 /// Opens a TMDB title: its library page when it's in your diary.
@@ -557,7 +559,7 @@ struct SeasonalAnimeRow: View {
             } else if feeds.seasonal.loading || feeds.seasonal.loadedFor == nil, feeds.seasonal.failure == nil {
                 VStack(alignment: .leading, spacing: 10) {
                     FeedHeading(title: "This season's anime", value: nil as ExploreFeedRoute?, identifier: "explore-more-seasonal")
-                    FeedPlaceholder()
+                    FeedPlaceholder(standard: true)
                 }
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
         }.task(id: DiaryDate.day(store.now)) { await feeds.loadSeasonal(store: store) }
@@ -649,7 +651,7 @@ struct ComingSoonRow: View {
             if !feed.items.isEmpty {
                 FeedTrack(items: Array(feed.items.prefix(15))) { ComingTile(entry: $0) }
             } else if feed.loading || feed.loadedFor == nil {
-                FeedPlaceholder()
+                FeedPlaceholder(standard: true)
             } else {
                 HStack(spacing: 10) {
                     Text(feed.failure ?? "Nothing coming up.").font(.app(size: 13)).foregroundStyle(.secondary)

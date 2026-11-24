@@ -210,9 +210,11 @@ private struct SearchTVDBListLink: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(list.name).font(.subheadline.weight(.bold)).foregroundStyle(HomeStyle.primary)
                         .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
-                    if let count = preview?.count {
-                        Text(count == 1 ? "1 title" : "\(count) titles").font(.footnote).foregroundStyle(HomeStyle.secondary)
-                    }
+                    // The count's line is there before the count is (a blank line until then): it
+                    // appeared on load and the whole shelf, and everything under it, jumped down.
+                    let count = preview?.count.map { $0 == 1 ? "1 title" : "\($0) titles" }
+                    Text(count ?? " ").font(.footnote).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                        .accessibilityHidden(count == nil)
                 }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
             }.frame(maxWidth: .infinity, alignment: .leading)
                 .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
