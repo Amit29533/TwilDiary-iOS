@@ -201,7 +201,7 @@ struct YourListsView: View {
                         Button("New list", systemImage: "plus") { creating = true }.buttonStyle(.diaryPrimary)
                     }
                 } else {
-                    LazyVGrid(columns: columns, spacing: 14) {
+                    LazyVGrid(columns: columns, spacing: Gap.tileRow) {
                         ForEach(model.lists) { list in
                             NavigationLink(value: YourListRoute(id: list.id, name: list.name)) { YourListCard(list: list) }
                                 .buttonStyle(.springPress).accessibilityIdentifier("your-list-\(list.id)")

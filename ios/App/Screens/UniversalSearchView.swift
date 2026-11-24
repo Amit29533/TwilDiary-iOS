@@ -50,7 +50,7 @@ struct SearchLandingView: View {
         }
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: Gap.section) {
             RecentlyViewedShelf()
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -75,9 +75,9 @@ struct SearchLandingView: View {
                 // The week's top ten as one row of posters, as the other shelves, each with its rank.
                 VStack(alignment: .leading, spacing: 8) {
                     Text(trendingHeading).font(.title2.bold())
-                        .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                        .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader).frame(minHeight: Gap.headingRow)
                     ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 12) {
+                        LazyHStack(alignment: .top, spacing: Gap.item) {
                             ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
                                 Group {
                                     if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
@@ -93,7 +93,7 @@ struct SearchLandingView: View {
                 // The row's own shape (heading and a shelf of posters) while it loads: a list-shaped
                 // placeholder was a different height, so the page below jumped when the posters came.
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(trendingHeading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader)
+                    Text(trendingHeading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader).frame(minHeight: Gap.headingRow)
                     DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .posterShelf)
                 }
             }

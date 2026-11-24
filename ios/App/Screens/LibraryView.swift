@@ -206,13 +206,13 @@ struct LibraryView: View {
     @ViewBuilder private var jellyfinSection: some View {
         let extras = jellyfinExtras
         if !extras.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("Not in your diary").font(.app(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7"))
-                    Text("\(extras.count)").font(.app(size: 14)).foregroundStyle(.secondary)
-                }.accessibilityElement(children: .combine).accessibilityIdentifier("library-jellyfin-extras")
+            VStack(alignment: .leading, spacing: Gap.heading) {
+                HStack(spacing: 10) {
+                    Text("Not in your diary").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                    CountPill(count: extras.count)
+                }.frame(minHeight: Gap.headingRow).accessibilityElement(children: .combine).accessibilityIdentifier("library-jellyfin-extras")
                 Text("On your Jellyfin. Open one to add it.").font(.app(size: 13)).foregroundStyle(.secondary)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Gap.item, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: Gap.gridRow) {
                     ForEach(extras) { JellyfinEntryCard(entry: $0) }
                 }
             }.padding(.horizontal, 14).padding(.top, filtered.isEmpty ? 4 : 26)
@@ -221,18 +221,18 @@ struct LibraryView: View {
     @ViewBuilder private var diaryTitles: some View {
                     switch selecting ? (layout == .shelves ? .grid : layout) : layout {
                     case .shelves:
-                        LazyVStack(alignment: .leading, spacing: 22) {
+                        LazyVStack(alignment: .leading, spacing: Gap.section) {
                             ForEach(shelves) { shelf in
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack(spacing: 8) {
-                                        Text(shelf.genre).font(.app(size: 18, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).truncationMode(.tail)
-                                        Text("\(shelf.titles.count)").font(.app(size: 14)).foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: Gap.heading) {
+                                    HStack(spacing: 10) {
+                                        Text(shelf.genre).font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
+                                        CountPill(count: shelf.titles.count)
                                         Spacer()
                                         if shelf.genre != "Without a genre" {
                                             SectionMoreButton(label: "See all \(shelf.genre) titles", identifier: "library-genre-" + shelf.genre) { genres = [shelf.genre]; genreRows = false; list = false }
                                         }
-                                    }
-                                    ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 10) { ForEach(shelf.titles) { title in poster(title).frame(width: posterSize.homeWidth * 0.875) } } }
+                                    }.frame(minHeight: Gap.headingRow)
+                                    ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: Gap.item) { ForEach(shelf.titles) { title in poster(title).frame(width: posterSize.homeWidth * 0.875) } } }
                                         .scrollIndicators(.hidden).scrollClipDisabled()
                                 }
                             }
@@ -242,7 +242,7 @@ struct LibraryView: View {
                     case .grid:
                         if showsOverview { overview }
                         else {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Gap.item, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: Gap.gridRow) {
                                 ForEach(shown) { title in poster(title).onAppear { revealMore(after: title) } }
                             }.padding(.horizontal, 14)
                         }
@@ -254,14 +254,15 @@ struct LibraryView: View {
         !expandedAll && !selecting && status == "all" && genres.isEmpty && tag.isEmpty && drive.isEmpty && !favoritesOnly && minScore == 0 && filtered.count > overviewCount
     }
     private var overview: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("All titles").font(.app(size: 22, weight: .bold)).tracking(-0.5)
+        VStack(alignment: .leading, spacing: Gap.section) {
+          VStack(alignment: .leading, spacing: Gap.heading) {
+            HStack(spacing: 10) {
+                Text("All titles").font(.app(size: 22, weight: .bold)).tracking(-0.22)
+                CountPill(count: filtered.count)
                 Spacer()
-                Text(filtered.count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
-                    .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: 16) {
+            }.frame(minHeight: Gap.headingRow)
+            VStack(alignment: .leading, spacing: 14) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Gap.item, alignment: .top), count: posterSize.columns), alignment: .leading, spacing: Gap.gridRow) {
                 ForEach(filtered.prefix(overviewCount)) { title in poster(title) }
             }
             // A full-width button under the posters, as Glance's Show all (a "+344" tile among the
@@ -272,11 +273,14 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity, minHeight: 54).background(HomeStyle.card, in: Capsule())
                     .overlay(Capsule().strokeBorder(HomeStyle.cardBorder, lineWidth: HomeStyle.hairline)).contentShape(Capsule())
             }.buttonStyle(.springPress).accessibilityIdentifier("library-see-all")
+            }
+          }
+          VStack(alignment: .leading, spacing: Gap.heading) {
             HStack {
-                Text("Browse by genre").font(.app(size: 22, weight: .bold)).tracking(-0.5).lineLimit(1)
+                Text("Browse by genre").font(.app(size: 22, weight: .bold)).tracking(-0.22).lineLimit(1)
                 Spacer()
                 SectionMoreButton(label: "All genres", identifier: "library-all-genres") { genreRows = true; list = false }
-            }.padding(.top, 12)
+            }.frame(minHeight: Gap.headingRow)
             // One card, a row per genre divided by inset hairlines (a card each read as separate buttons).
             let rows = shelves.filter { $0.genre != "Without a genre" }
             VStack(spacing: 0) {
@@ -294,6 +298,7 @@ struct LibraryView: View {
             }.background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(HomeStyle.outline(0.08)))
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+          }
         }.padding(.horizontal, 14)
     }
     private func ratingStatus(_ message: String) -> some View {
@@ -310,10 +315,10 @@ struct LibraryView: View {
         }.frame(maxWidth: .infinity).padding(.vertical, 40).padding(.horizontal, 24)
     }
     private var skeleton: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: posterSize.columns), spacing: 16) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Gap.item, alignment: .top), count: posterSize.columns), spacing: Gap.gridRow) {
             ForEach(0..<9, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)).posterAspect()
+                    RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)).fill(Color.primary.opacity(0.06)).posterAspect()
                     Capsule().fill(Color.primary.opacity(0.06)).frame(height: 8)
                 }
             }
@@ -655,8 +660,8 @@ struct LibraryPosterCard: View {
                             .padding(.horizontal, 7).padding(.bottom, 7)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
+                .clipShape(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)))
+                .overlay(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)).strokeBorder(HomeStyle.outline(0.08)))
             if showsCaption {
                 Text(title.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1).padding(.top, 6)
                 Text([title.year.map(String.init), title.categoryName].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 11)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1).padding(.top, 2)
@@ -723,12 +728,11 @@ struct GlanceView: View {
     @AppStorage("glanceCategory") private var category = LibraryCategory.all
     @State private var showAll = false
     private func glanceHeading(_ name: String, _ count: Int) -> some View {
-        HStack {
-            Text(name).font(.app(size: 24, weight: .bold)).tracking(-0.6)
+        HStack(spacing: 10) {
+            Text(name).font(.app(size: 22, weight: .bold)).tracking(-0.22)
+            CountPill(count: count)
             Spacer()
-            Text(count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(themed: "#c5c0cf"))
-                .padding(.horizontal, 9).frame(height: 26).background(Color.primary.opacity(0.09), in: Capsule())
-        }.padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 2)
+        }.frame(minHeight: Gap.headingRow).padding(.horizontal, 8).padding(.top, 14).padding(.bottom, 2)
     }
     var body: some View {
         // One pass over the library per update instead of three.

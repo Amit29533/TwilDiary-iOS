@@ -47,7 +47,7 @@ struct HomeSectionHeader<Trailing: View>: View {
             }
             Spacer(minLength: 8)
             HStack(spacing: 8) { trailing }
-        }.accessibilityElement(children: .contain)
+        }.frame(minHeight: Gap.headingRow).accessibilityElement(children: .contain)
     }
 }
 
@@ -56,13 +56,12 @@ struct HomeRoundIcon: View {
     var system: String = "chevron.right"
     var selected = false
     var body: some View {
-        if ThemeStore.current.native {
-            if system == "chevron.right" {
-                Image(systemName: system).font(.app(size: 19, weight: .bold)).foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
-            } else {
-                NativeRoundGlass(system: system, selected: selected)
-            }
+        // See all is the one round chevron every section uses (in the classic themes Home's was a
+        // smaller circle than the rest of the app's).
+        if system == "chevron.right" {
+            RoundChevron()
+        } else if ThemeStore.current.native {
+            NativeRoundGlass(system: system, selected: selected)
         } else { classic }
     }
     private var classic: some View {
@@ -201,7 +200,7 @@ struct HomePoster<Badge: View>: View {
     var body: some View {
         let width = posterSize.homeWidth
         VStack(alignment: .leading, spacing: 0) {
-            let radius = Studio.corner(16)
+            let radius = Studio.corner(Gap.posterCorner)
             Artwork(path: artwork, title: name, initialsOnly: initialsOnly).frame(width: width, height: width * 1.5)
                 .clipShape(RoundedRectangle(cornerRadius: radius))
                 .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))

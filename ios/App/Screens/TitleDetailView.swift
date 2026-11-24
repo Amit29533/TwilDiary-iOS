@@ -68,7 +68,7 @@ struct TitleDetailView: View {
                 GeometryReader { geometry in
                     ScrollViewReader { proxy in
                         detailPresentations(title: title, content: ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
+                            VStack(alignment: .leading, spacing: Gap.section) {
                                 header(title, coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top))
                                 // On your Jellyfin: play it here (hidden otherwise).
                                 JellyPlayButton(title: title)
@@ -467,9 +467,7 @@ struct TitleDetailView: View {
             HStack(spacing: 10) {
                 Text("Episodes").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                 if !episodes.isEmpty {
-                    Text(episodes.count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
-                        .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
-                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                    CountPill(count: episodes.count)
                 }
                 Spacer(minLength: 0)
                 seasonMenu

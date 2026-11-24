@@ -408,7 +408,7 @@ struct EpisodesPage: View {
     }
     @ViewBuilder private func listBody(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
         if grid {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: Gap.gridRow) {
                 ForEach(episodes) { episode in
                     EpisodeGridCard(number: episode.number, name: name(episode, watched: watched), artwork: artwork(episode, title: title), hidden: hidden(episode, watched: watched),
                                     state: state(episode, watched: watched, dates: dates, next: next), airedOn: episode.airedOn, runtime: details.runtime(episode),
@@ -665,7 +665,7 @@ struct PreviewEpisodesPage: View {
     private func list(_ episodes: [CatalogEpisode]) -> some View { listBody(episodes).layoutFade(grid) }
     @ViewBuilder private func listBody(_ episodes: [CatalogEpisode]) -> some View {
         if grid {
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: Gap.gridRow) {
                 ForEach(episodes) { episode in
                     EpisodeGridCard(number: episode.number, name: name(episode), artwork: artwork(episode), hidden: hidden(episode), state: state(episode),
                                     airedOn: episode.airedOn, runtime: episode.runtimeMinutes, score: episode.communityScore,

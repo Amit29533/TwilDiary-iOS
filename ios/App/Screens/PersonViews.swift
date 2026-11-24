@@ -40,7 +40,7 @@ struct PersonView: View {
                                   sameVoice: actor?.id, samePerson: person?.id,
                                   heroFacts: facts, photos: photos, showsPhotoShelf: false, backdrop: backdrop) {
                     // Design (Actor Profile, page 1): About under the header, then Photos, then the credits.
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: Gap.section) {
                         VStack(alignment: .leading, spacing: 12) {
                             intro
                             about
@@ -172,7 +172,7 @@ struct PersonView: View {
         let aliases = [person?.name, actor?.name, actor?.native].compactMap { $0 }
         // The biography first, then the other names.
         return VStack(alignment: .leading, spacing: 14) {
-            Text("About").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+            Text("About").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
                 .accessibilityAddTraits(.isHeader).padding(.top, 6)
             if let actor, let content {
                 ProfileAbout(content: content, excludingFacts: shownFacts,
@@ -198,7 +198,7 @@ struct PersonView: View {
     @ViewBuilder private var watched: some View {
         let tmdb = person.map { store.personSections($0).watched } ?? []
         if let person, !tmdb.isEmpty || actor == nil {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Gap.heading) {
                 sectionHeading("Watched", count: tmdb.isEmpty ? nil : tmdb.count, route: PersonFilmographyRoute(person: person.id, section: .credits, watchedOnly: true))
                 if tmdb.isEmpty { Text("No watches from these credits yet.").font(.subheadline).foregroundStyle(.secondary) }
                 else if tmdb.count <= 2 {
@@ -220,7 +220,7 @@ struct PersonView: View {
         if !items.isEmpty {
             // The count as a grey pill beside the heading ("Shows 45" read as one word).
             let counted = kind == .shows || kind == .movies
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Gap.heading) {
                 sectionHeading(label, count: counted ? items.count : nil, route: PersonFilmographyRoute(person: person.id, section: kind))
                 PersonCreditShelf(items: Array(items.prefix(12)))
             }
@@ -249,30 +249,28 @@ struct PersonView: View {
     }
     private func sectionHeading(_ label: String, count: Int? = nil, route: PersonFilmographyRoute) -> some View {
         HStack(spacing: 10) {
-            Text(label).font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary).lineLimit(1)
-            if let count {
-                // Never squeezed: a long heading truncates first, and the pill never runs under the > button.
-                Text(count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
-                    .lineLimit(1).fixedSize().padding(.horizontal, 9).frame(height: 24).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-            }
+            Text(label).font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
+            // Never squeezed: a long heading truncates first, and the pill never runs under the > button.
+            if let count { CountPill(count: count) }
             Spacer(minLength: 4)
             SectionMoreLink(label: "View more " + label, value: route,
                             identifier: "person-more-" + route.section.rawValue + (route.onServer ? "-server" : ""))
-        }
+        }.frame(minHeight: Gap.headingRow)
     }
     /// Characters as a sideways row (the first 20), then the round > to all of them.
     private func roles(_ actor: AniVoiceActorDetail) -> some View {
         // Each character once, however many seasons they're in.
         let characters = actor.characters
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: Gap.heading) {
             HStack {
-                Text("Characters \(characters.count)").font(.app(size: 24, weight: .bold)).tracking(-0.5).foregroundStyle(HomeStyle.primary)
+                Text("Characters").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
+                CountPill(count: characters.count)
                 Spacer(minLength: 4)
                 if characters.count > 1 {
                     SectionMoreLink(label: "All characters", value: VoiceActorCharactersRoute(id: actor.id, name: actor.name),
                                     identifier: "voice-actor-characters-more")
                 }
-            }
+            }.frame(minHeight: Gap.headingRow)
             ProfileShelf {
                 ForEach(characters.prefix(20)) { role in
                     VoiceActorRoleCard(role: role, grid: !typeSize.isAccessibilitySize)

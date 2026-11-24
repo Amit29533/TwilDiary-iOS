@@ -51,7 +51,7 @@ struct HomeView: View {
         return EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: 0) {
                 if watching.isEmpty || !showContinue { header(overArtwork: false) } else { continueSection(watching) }
-                VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: Gap.section) {
                     // Your order and choice of sections (Settings → Customise).
                     ForEach(HomeSection.layout(homeLayout).visible.compactMap(HomeSection.init(rawValue:))) { section in
                         homeSection(section, overview: overview, recent: recent, now: now)
@@ -77,7 +77,7 @@ struct HomeView: View {
                     NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
                 }.padding(.bottom, -0)
         case .week:
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     HomeSectionHeader(title: "This week") {
                         Button { router.statsToday() } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Stats").accessibilityIdentifier("home-stats")
                     }
@@ -85,7 +85,7 @@ struct HomeView: View {
                 }
         case .upNext:
                 if !overview.planned.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Gap.heading) {
                         HomeSectionHeader(title: "Up next") {
                             Button { router.library("planned") } label: { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("Planned").accessibilityIdentifier("home-upnext-more")
                         }
@@ -114,7 +114,7 @@ struct HomeView: View {
                 let favourites = FavouritesStore.shared.items
                 let favouriteShows = store.favouriteTitles
                 if !favourites.isEmpty || !favouriteShows.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Gap.heading) {
                         HomeSectionHeader(title: "Favourites", icon: "heart.fill") {
                             NavigationLink(value: AppDestination.favourites) { HomeRoundIcon() }.buttonStyle(.plain).accessibilityLabel("All favourites").accessibilityIdentifier("home-favourites")
                         }
@@ -134,7 +134,7 @@ struct HomeView: View {
                     }
                 }
         case .newEpisodes:
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     HomeSectionHeader(title: "New episodes") {
                         Button { upcomingGrid.toggle() } label: { HomeRoundIcon(system: upcomingGrid ? "list.bullet" : "square.grid.2x2", selected: upcomingGrid) }
                             .buttonStyle(.plain).accessibilityLabel(upcomingGrid ? "Show as list" : "Show as cards").accessibilityValue(upcomingGrid ? "Cards" : "List").accessibilityIdentifier("upcoming-layout")
@@ -167,7 +167,7 @@ struct HomeView: View {
         case .recent:
                 let groups = RecentWatchGroup.make(recent, limit: 3)
                 if !groups.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Gap.heading) {
                         HomeSectionHeader(title: "Recently watched") {
                             Button { historyGrid.toggle() } label: { HomeRoundIcon(system: historyGrid ? "list.bullet" : "square.grid.2x2", selected: historyGrid) }
                                 .buttonStyle(.plain).accessibilityLabel(historyGrid ? "Show as list" : "Show as cards").accessibilityValue(historyGrid ? "Cards" : "List").accessibilityIdentifier("home-history-layout")

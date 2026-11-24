@@ -8,7 +8,7 @@ struct SearchAwardsShelf: View {
             SearchBrowseHeading(shelf: .awards)
             // One row of posters, as the other shelves.
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 10) {
+                LazyHStack(alignment: .top, spacing: Gap.item) {
                     ForEach(SearchAwardCeremony.featured.filter { !SearchAwardCeremony.withoutRecords.contains($0.id) }) { ceremony in
                         // The genre tiles' size, so the rows on Search line up.
                         AwardCeremonyLink(ceremony: ceremony).containerRelativeFrame(.horizontal) { width, _ in min(210, width * 0.44) }

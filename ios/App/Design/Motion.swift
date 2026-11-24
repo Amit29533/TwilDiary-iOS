@@ -81,7 +81,7 @@ private struct SmoothChange<Value: Equatable>: ViewModifier {
 /// A list/grid switch: the new layout fades in quickly instead of every card morphing from one
 /// layout to the other (a morph of a whole collection read as busy, and it's tapped often). The
 /// cards keep their identity, so loaded artwork and details stay.
-private struct LayoutFade<Value: Equatable>: ViewModifier {
+private struct LayoutFade<Value: Equatable & Sendable>: ViewModifier {
     let value: Value
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
@@ -118,7 +118,7 @@ extension View {
     /// For items in a sideways shelf.
     func shelfTransition() -> some View { modifier(ShelfTransition()) }
     /// For a collection a list/grid switch changes: it fades into the new layout when `value` changes.
-    func layoutFade<V: Equatable>(_ value: V) -> some View { modifier(LayoutFade(value: value)) }
+    func layoutFade<V: Equatable & Sendable>(_ value: V) -> some View { modifier(LayoutFade(value: value)) }
     /// Marks the artwork a title page zooms out of, and back into on return.
     func zoomSource(_ id: String) -> some View { modifier(ZoomSource(id: id)) }
     /// A sideways swipe moves between All, Movies, Shows and Anime; it never changes app tabs.

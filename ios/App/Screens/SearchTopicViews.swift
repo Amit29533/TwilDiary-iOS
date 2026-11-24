@@ -85,7 +85,7 @@ struct SearchTopicShelf: View {
                                 identifier: "search-topics-more-" + topic.rawValue)
             }
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 10) {
+                LazyHStack(spacing: Gap.item) {
                     ForEach(topic.tiles) { tile in
                         SearchTopicLink(tile: tile)
                             .containerRelativeFrame(.horizontal) { width, _ in min(210, width * 0.44) }

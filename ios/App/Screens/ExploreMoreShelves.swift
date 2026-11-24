@@ -246,7 +246,7 @@ struct StandardPoster: View {
             Artwork(path: artwork, title: name, initialsOnly: false)
                 .posterAspect()
                 .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score, score > 0 { PosterScoreBadge(score: score) } }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)))
             if showsCaption {
                 Text(name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).lineLimit(1).frame(minHeight: 20.25).padding(.top, 8)
                 Text(subtitle).font(.app(size: 12)).foregroundStyle(subtitleTint).lineLimit(1).frame(height: 18).padding(.top, 4)
@@ -271,7 +271,7 @@ private struct FeedHeading<Value: Hashable>: View {
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
             if let value { SectionMoreLink(label: "See all " + title, value: value, identifier: identifier) }
-        }
+        }.frame(minHeight: Gap.headingRow)
     }
 }
 
@@ -410,11 +410,11 @@ struct ExploreAIPrompts: View {
     ]
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Gap.heading) {
             HStack(spacing: 8) {
                 AISparkle()
                 Text("Ask CineMind").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
-            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+            }.frame(minHeight: Gap.headingRow).accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(Self.prompts, id: \.label) { prompt in
@@ -455,7 +455,7 @@ struct CineMindRow: View {
         let feed = movies ? feeds.cineMovies : feeds.cineShows
         let shown = feed.items.filter { store.libraryIdentity($0) == nil }
         let title = movies ? "Movies recommended by CineMind" : "Shows recommended by CineMind"
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Gap.heading) {
             FeedHeading(title: title, value: shown.isEmpty ? nil : ExploreFeedRoute(kind: movies ? .cineMovies : .cineShows),
                         identifier: "explore-more-cinemind-" + (movies ? "movies" : "shows"), ai: true)
             if SemanticSearch.key == nil {
@@ -493,7 +493,7 @@ struct BecauseYouLovedRow: View {
     var body: some View {
         Group {
             if let seed = feeds.lovedSeed, let tmdb = seed.tmdbId, !feeds.loved.items.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "Because you loved " + seed.name,
                                 value: ShowPageRoute.related(CatalogRoute(kind: seed.isSeries ? .tv : .movie, id: tmdb), title: seed.name),
                                 identifier: "explore-more-loved")
@@ -501,7 +501,7 @@ struct BecauseYouLovedRow: View {
                 }
             } else if feeds.loved.loading || feeds.loved.loadedFor == nil, feeds.loved.failure == nil {
                 // While it reads: its shapes where the row will land (it took no room, then pushed Explore down).
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: feeds.lovedSeed.map { "Because you loved " + $0.name } ?? "Because you loved", value: nil as ShowPageRoute?, identifier: "explore-more-loved")
                     FeedPlaceholder()
                 }
@@ -516,12 +516,12 @@ struct TrendingPlannedRow: View {
     var body: some View {
         Group {
             if !feeds.trending.items.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "Trending from your Planned", value: ExploreFeedRoute(kind: .trending), identifier: "explore-more-trending")
                     FeedTrack(items: feeds.trending.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
                 }
             } else if feeds.trending.loading || feeds.trending.loadedFor == nil, feeds.trending.failure == nil {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "Trending from your Planned", value: nil as ExploreFeedRoute?, identifier: "explore-more-trending")
                     FeedPlaceholder()
                 }
@@ -549,7 +549,7 @@ struct SeasonalAnimeRow: View {
     var body: some View {
         Group {
             if !feeds.seasonal.items.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "This season's anime", value: ExploreFeedRoute(kind: .seasonal), identifier: "explore-more-seasonal")
                     // The countdowns move once a minute.
                     TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -557,7 +557,7 @@ struct SeasonalAnimeRow: View {
                     }
                 }
             } else if feeds.seasonal.loading || feeds.seasonal.loadedFor == nil, feeds.seasonal.failure == nil {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "This season's anime", value: nil as ExploreFeedRoute?, identifier: "explore-more-seasonal")
                     FeedPlaceholder(standard: true)
                 }
@@ -635,7 +635,7 @@ struct ComingSoonRow: View {
 
     var body: some View {
         let feed = movies ? feeds.comingMovies : feeds.comingShows
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Gap.heading) {
             HStack(alignment: .center, spacing: 10) {
                 Text("Coming soon").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
@@ -647,7 +647,7 @@ struct ComingSoonRow: View {
                 if !feed.items.isEmpty {
                     SectionMoreLink(label: "See all coming soon", value: ExploreFeedRoute(kind: movies ? .comingMovies : .comingShows), identifier: "explore-more-coming")
                 }
-            }
+            }.frame(minHeight: Gap.headingRow)
             if !feed.items.isEmpty {
                 FeedTrack(items: Array(feed.items.prefix(15))) { ComingTile(entry: $0) }
             } else if feed.loading || feed.loadedFor == nil {

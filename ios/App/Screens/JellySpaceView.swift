@@ -554,7 +554,7 @@ struct JellySpaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             heading("Tags")
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 10) {
+                LazyHStack(alignment: .top, spacing: Gap.item) {
                     ForEach(tags) { tag in
                         let shape = RoundedRectangle(cornerRadius: 14)
                         NavigationLink(value: JellyListRoute(kind: .tag, id: tag.id, name: tag.name)) {

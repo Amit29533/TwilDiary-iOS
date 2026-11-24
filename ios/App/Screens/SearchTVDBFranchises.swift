@@ -47,7 +47,7 @@ struct SearchTVDBListShelf: View {
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: shelf)
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 10) {
+                LazyHStack(alignment: .top, spacing: Gap.item) {
                     ForEach(lists) { list in
                         SearchTVDBListLink(list: list)
                             .containerRelativeFrame(.horizontal) { width, _ in min(210, width * 0.44) }
@@ -212,7 +212,7 @@ private struct SearchTVDBListLink: View {
                         .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
                     // The count's line is there before the count is (a blank line until then): it
                     // appeared on load and the whole shelf, and everything under it, jumped down.
-                    let count = preview?.count.map { $0 == 1 ? "1 title" : "\($0) titles" }
+                    let count = (preview?.count).map { $0 == 1 ? "1 title" : "\($0) titles" }
                     Text(count ?? " ").font(.footnote).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                         .accessibilityHidden(count == nil)
                 }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
@@ -307,7 +307,7 @@ struct SearchTVDBFranchisePage: View {
                         }
                     }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 16) {
+                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: Gap.gridRow) {
                         ForEach(matching.prefix(visibleCount)) { entry in
                             SearchTVDBTitleCard(entry: entry) { id in resolved[entry] = CatalogRoute(kind: entry.kind, id: id) }
                         }

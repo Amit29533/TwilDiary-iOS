@@ -93,7 +93,7 @@ struct DiaryLoadingPlaceholder: View {
 
     private var poster: some View {
         VStack(alignment: .leading, spacing: 6) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(fill).posterAspect()
+            RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner), style: .continuous).fill(fill).posterAspect()
             Capsule().fill(line).frame(height: 10).padding(.trailing, 18)
             Capsule().fill(faint).frame(width: 40, height: 8)
         }.frame(maxWidth: .infinity)
@@ -106,7 +106,7 @@ struct DiaryLoadingPlaceholder: View {
             HStack(alignment: .top, spacing: 12) {
                 ForEach(0..<(posterSize.columns + 1), id: \.self) { _ in
                     VStack(alignment: .leading, spacing: 0) {
-                        RoundedRectangle(cornerRadius: Studio.corner(8), style: .continuous).fill(fill).posterAspect()
+                        RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner), style: .continuous).fill(fill).posterAspect()
                         if TilePrefs.shared.posterCaptions { caption(oneLine: oneLine) }
                     }.containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
                 }
@@ -142,7 +142,7 @@ struct DiaryLoadingPlaceholder: View {
         return HStack(alignment: .top, spacing: 12) {
             ForEach(0..<4, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 0) {
-                    RoundedRectangle(cornerRadius: Studio.corner(16), style: .continuous).fill(fill).frame(width: width, height: width * 1.5)
+                    RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner), style: .continuous).fill(fill).frame(width: width, height: width * 1.5)
                     if TilePrefs.shared.posterCaptions {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(" ").font(.app(size: 14, weight: .semibold)).lineLimit(2, reservesSpace: true).padding(.top, 9)

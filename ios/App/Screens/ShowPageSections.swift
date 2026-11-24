@@ -13,18 +13,13 @@ struct ShowSectionHeading<Value: Hashable>: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(title).font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary)
-            if let count {
-                // Design: 13 pt semibold #d8d4e6 on #17171d, 28 pt tall, #26262e hairline.
-                Text(count.formatted()).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.soft)
-                    .padding(.horizontal, 10).frame(height: 28).pillSurface(border: nil)
-                    .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
-            }
+            if let count { CountPill(count: count) }
             Spacer(minLength: 0)
             if let value {
                 NavigationLink(value: value) { RoundChevron() }.buttonStyle(.plain)
                     .accessibilityLabel("See all " + title).accessibilityIdentifier(identifier)
             }
-        }
+        }.frame(minHeight: Gap.headingRow)
     }
 }
 extension ShowSectionHeading where Value == String {
@@ -54,7 +49,7 @@ struct ParentalGuideSection: View {
         let categories = guide?.categories ?? []
         Group {
             if rating != nil || !categories.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     ShowSectionHeading(title: "Parental Guide").accessibilityAddTraits(.isHeader)
                     VStack(alignment: .leading, spacing: 10) {
                         if let rating {
@@ -403,7 +398,7 @@ struct TitleTagsSection: View {
             // a 20 pt emoji and a 16 pt medium label, 8 pt apart.
             // Each row scrolls on its own and its pills sit 8 pt apart (no grid columns, so no gaps).
             // Rows follow the count: up to 6 tags one row, more two (never three); every tag is shown.
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: Gap.heading) {
                 ShowSectionHeading(title: "Tags", count: keywords.count)
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(TagRows.split(keywords).enumerated()), id: \.offset) { _, row in
@@ -508,7 +503,7 @@ struct CompaniesSection: View {
     var body: some View {
         let companies = extras.companies
         if !companies.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: Gap.heading) {
                 ShowSectionHeading(title: "Companies", value: ShowPageRoute.companies(route, title: title), identifier: "title-companies-all")
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
@@ -571,7 +566,7 @@ struct InListsSection: View {
     var body: some View {
         Group {
             if lists?.isEmpty != true {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     ShowSectionHeading(title: "In lists", value: ShowPageRoute.lists(route, title: title), identifier: "title-lists-all")
                         .allowsHitTesting(lists != nil)
                     ScrollView(.horizontal) {
@@ -739,7 +734,7 @@ struct RelatedCollectionsSection: View {
     var body: some View {
         Group {
             if !model.items.isEmpty || !model.loaded {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     ShowSectionHeading(title: "Related collections", value: ShowPageRoute.collections(route, title: title, anime: anime), identifier: "title-collections-all")
                         .allowsHitTesting(!model.items.isEmpty)
                     ScrollView(.horizontal) {

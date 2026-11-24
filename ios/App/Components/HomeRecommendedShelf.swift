@@ -16,7 +16,7 @@ struct HomeRecommendedShelf: View {
     var body: some View {
         Group {
             if !items.isEmpty, let seed {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     HomeSectionHeader(title: "Recommended", icon: "cinemind", subtitle: "Because you watched " + seed.name) {
                         // All of the recommendations for that title (its More like this page), not Explore.
                         NavigationLink(value: ShowPageRoute.related(CatalogRoute(kind: seed.isSeries ? .tv : .movie, id: seed.tmdbId ?? 0), title: seed.name)) { HomeRoundIcon() }.buttonStyle(.plain)
@@ -31,14 +31,14 @@ struct HomeRecommendedShelf: View {
             } else if !loaded, !seeds.isEmpty {
                 // While it reads: the heading and posters' shapes where the shelf will land. It took no room
                 // until then, and appeared in the middle of Home pushing everything under it down.
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     HomeSectionHeader(title: "Recommended", icon: "cinemind", subtitle: seeds.first.map { "Because you watched " + $0.name }) { EmptyView() }
                     DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .homeShelf)
                 }
             } else {
                 // A real (zero-height) view, so the task below runs: on an empty Group it never did,
-                // and the shelf never loaded. The negative padding cancels Home's 32 pt section gap.
-                Color.clear.frame(height: 0).padding(.top, -32).accessibilityHidden(true)
+                // and the shelf never loaded. The negative padding cancels Home's section gap.
+                Color.clear.frame(height: 0).padding(.top, -Gap.section).accessibilityHidden(true)
             }
         }
         // Nothing to recommend: the room it held closes smoothly.

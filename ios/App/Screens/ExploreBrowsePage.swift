@@ -54,7 +54,7 @@ struct ExploreBrowseHeader: View {
                     if let accessory { Spacer(minLength: 8); accessory }
                 }
                 if let subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary) }
-            }.padding(.horizontal, 16)
+            }.padding(.horizontal, Gap.gutter)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: artwork, initial: true) { _, path in

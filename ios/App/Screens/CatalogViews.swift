@@ -15,7 +15,7 @@ struct CatalogGrid: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if showsLayoutToggle { HStack { Spacer(); CollectionLayoutToggle(grid: $grid, collection: "catalog") } }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), alignment: .leading, spacing: useGrid ? 20 : 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), alignment: .leading, spacing: useGrid ? Gap.gridRow : 10) {
                 ForEach(items, id: \.displayKey) { item in
                     Group {
                         if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { card(item).zoomSource(ZoomID.title(saved)) } }
@@ -64,7 +64,7 @@ struct CatalogPoster: View {
                 }
             }
                 .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score { PosterScoreBadge(score: score) } }
-                .clipShape(RoundedRectangle(cornerRadius: Studio.corner(8)))
+                .clipShape(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)))
                 .wantsPosterScore(item, known: score, store: store)
             if !showsCaption {
                 EmptyView()
@@ -583,7 +583,7 @@ struct CatalogDetailView: View {
         GeometryReader { geometry in
             ScrollView {
                 // The same page as a saved title (owner's Show page design), minus your own progress.
-                VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: Gap.section) {
                     if let details {
                         let anime = details.details.suggestedCategory.hasPrefix("anime")
                         let animated = anime || details.details.genres.contains("Animation") || extras?.genres.contains(where: { $0.id == 16 }) == true
@@ -771,7 +771,7 @@ private struct CatalogSeasonPreview: View {
     private func artwork(_ episode: CatalogEpisode) -> String? { CatalogTools.image(episode.stillPath) ?? CatalogTools.image(details.backdropPath, size: "w780") }
     private func name(_ episode: CatalogEpisode) -> String { hidden(episode) ? "A story for later" : episode.name.isEmpty ? "Episode \(episode.number)" : episode.name }
     var body: some View {
-        VStack(alignment: .leading, spacing: 32) {
+        VStack(alignment: .leading, spacing: Gap.section) {
             // Seasons, as on a diary show's page; a tile picks the season shown below.
             SeasonCardsSection(preview: details, selected: $selected)
             VStack(alignment: .leading, spacing: 12) {
@@ -951,8 +951,8 @@ struct CastAndRelated: View {
     @State private var castRead: CatalogRoute?
     @State private var relatedRead: CatalogRoute?
     var body: some View {
-        // Design: sections 42 pt apart, 22 pt headings, 111 pt tiles (radius 18) 12 pt apart.
-        VStack(alignment: .leading, spacing: 42) {
+        // Sections the app's one gap apart, 22 pt headings, 111 pt tiles 12 pt apart.
+        VStack(alignment: .leading, spacing: Gap.section) {
             if let characters, let sourceTitle { AnimeCharactersRow(title: sourceTitle, year: characters.year, movie: characters.movie, tmdbID: route.id, originalLanguage: originalLanguage, seeAll: seeAll) }
             if !cast.isEmpty {
               VStack(alignment: .leading, spacing: 8) {
@@ -966,7 +966,7 @@ struct CastAndRelated: View {
                         ForEach(cast) { person in
                             NavigationLink(value: PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character)) {
                                 VStack(alignment: .leading, spacing: 0) {
-                                    Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 111, height: 148).clipShape(RoundedRectangle(cornerRadius: 18))
+                                    Artwork(path: CatalogTools.image(person.profilePath, size: "w185"), title: person.name).frame(width: 111, height: 148).clipShape(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)))
                                         // Press and hold to peek at the photo; a tap still opens the person.
                                         .fullScreenArtwork(CatalogTools.image(person.profilePath, size: "w185"), title: person.name) {
                                             router.paths[router.selectedTab, default: NavigationPath()].append(PersonRoute(id: person.id, sourceTitle: sourceTitle, sourceRole: person.character))
@@ -1040,13 +1040,13 @@ struct CastAndRelated: View {
             NavigationLink(value: item.route) { relatedPoster(item) }.buttonStyle(.springPress)
         }
     }
-    /// Design: a 111 x 167 poster (radius 18), the name in 14 pt semibold and the year under it.
+    /// Design: a 111 x 167 poster, the name in 14 pt semibold and the year under it.
     private func relatedPoster(_ item: CatalogItem) -> some View {
         let score = PosterScores.score(for: item, store: store)
         return VStack(alignment: .leading, spacing: 0) {
             Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 111, height: 167)
                 .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score { PosterScoreBadge(score: score) } }
-                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .clipShape(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)))
                 .wantsPosterScore(item, known: score, store: store)
             Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
             Text(item.year.map(String.init) ?? "").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 3)

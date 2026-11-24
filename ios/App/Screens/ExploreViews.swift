@@ -98,12 +98,12 @@ private struct ExploreContent: View {
     @State private var service: LiveDiscoveryService
     init(store: DiaryStore) { self.store = store; _service = State(initialValue: LiveDiscoveryService(store: store)) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: Gap.section) {
             let picks = Self.heroPicks(store, day: DiaryDate.day(store.now))
             if !picks.isEmpty {
                 ExploreHeroCarousel(titles: picks)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: Gap.heading) {
                     ExploreHeading(section: .daily)
                     VStack(spacing: 10) {
                         Text("No unwatched titles in your library.")
@@ -118,7 +118,7 @@ private struct ExploreContent: View {
             // Lazy: rows further down build (and load) as they come on screen. Your order and
             // choice of rows (Settings → Customise); by default Ask CineMind, popular, CineMind's picks,
             // Trakt's, the newer rows and the highest rated.
-            LazyVStack(alignment: .leading, spacing: 22) {
+            LazyVStack(alignment: .leading, spacing: Gap.section) {
                 ForEach(ExploreRow.layout(exploreLayout).visible.compactMap(ExploreRow.init(rawValue:))) { row in
                     exploreRow(row)
                 }
@@ -239,7 +239,7 @@ private struct ExploreHeading: View {
             Spacer(minLength: 0)
             SectionMoreLink(label: "View more " + section.label, value: ExploreSectionRoute(section: section, filters: filters),
                             identifier: "explore-more-" + section.id)
-        }
+        }.frame(minHeight: Gap.headingRow)
     }
 }
 
@@ -313,7 +313,7 @@ private struct DiscoveryShelfView: View {
     @State private var results: DiscoveryResults
     init(section: DiscoverySection, service: any DiscoveryServing) { self.section = section; _results = State(initialValue: DiscoveryResults(service: service)) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Gap.heading) {
             ExploreHeading(section: section)
             DiscoveryTrack(items: results.items)
             if (results.loading || results.page == 0) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf).padding(.bottom, 10) }
@@ -359,7 +359,7 @@ private struct RecommendedDiscoveryView: View {
     @State private var results: DiscoveryRecommendations
     init(service: any DiscoveryServing, section: Bool) { self.section = section; _results = State(initialValue: DiscoveryRecommendations(service: service)) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Gap.heading) {
             ExploreHeading(section: .recommended)
             DiscoveryTrack(items: results.items)
             if (results.loading || !results.checked) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf).padding(.bottom, 10) }

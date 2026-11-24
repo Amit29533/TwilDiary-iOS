@@ -33,7 +33,7 @@ struct VoiceActorCharactersView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if let roles {
                     LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())],
-                              alignment: .leading, spacing: 16) {
+                              alignment: .leading, spacing: Gap.gridRow) {
                         ForEach(roles.prefix(shown)) { role in VoiceActorRoleCard(role: role, grid: usesGrid) }
                     }
                     if roles.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }

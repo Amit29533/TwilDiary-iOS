@@ -22,7 +22,7 @@ struct SearchBrowseShelves: View {
     var trendingPending = false
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 24) {
+        LazyVStack(alignment: .leading, spacing: Gap.section) {
             if kind == .people {
                 SearchPeopleShelf(shelf: .actors)
                 SearchPeopleShelf(shelf: .directors)
@@ -51,7 +51,7 @@ struct SearchBrowseShelves: View {
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: shelf)
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 10) {
+                LazyHStack(spacing: Gap.item) {
                     ForEach(categories.prefix(8)) { category in
                         SearchCategoryLink(category: category)
                             .containerRelativeFrame(.horizontal) { width, _ in

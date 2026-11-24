@@ -43,7 +43,7 @@ struct CloudflareUsageView: View {
                     }
                 }
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: Gap.item), GridItem(.flexible(), spacing: Gap.item)], spacing: Gap.tileRow) {
                 gauge("Requests", used: usage.today?.requests, limit: usage.limits.requests, key: "requests")
                 gauge("D1 reads", used: usage.today?.rowsRead, limit: usage.limits.rowsRead, key: "reads")
                 gauge("D1 writes", used: usage.today?.rowsWritten, limit: usage.limits.rowsWritten, key: "writes")

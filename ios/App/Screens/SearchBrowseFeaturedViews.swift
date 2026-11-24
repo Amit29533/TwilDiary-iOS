@@ -39,6 +39,7 @@ struct SearchTagsShelf: View {
             // used to appear on load and push every shelf under it down.
             let waiting = popular.isEmpty && (trendingPending || (!keys.isEmpty && keys != loadedKeys))
             if !popular.isEmpty || waiting {
+                VStack(alignment: .leading, spacing: 4) {
                 Text(movies ? "From trending movies" : "From trending shows").font(.subheadline).foregroundStyle(.secondary)
                 ScrollView(.horizontal) {
                     if waiting {
@@ -51,7 +52,8 @@ struct SearchTagsShelf: View {
                         LazyHStack { ForEach(popular.prefix(6)) { SearchTagLink(tag: $0) } }.frame(minHeight: tagRowHeight)
                     }
                 }.scrollIndicators(.hidden).scrollDisabled(waiting)
-                Text("Suggested tags").font(.subheadline).foregroundStyle(.secondary)
+                }
+                Text("Suggested tags").font(.subheadline).foregroundStyle(.secondary).padding(.bottom, -4)
             }
             ScrollView(.horizontal) {
                 let rows = Array(repeating: GridItem(.fixed(tagRowHeight), spacing: 4, alignment: .leading), count: 2)
@@ -251,7 +253,7 @@ struct SearchAnimeTagTitlesPage: View {
                     DiaryLoadingPlaceholder(label: "Loading anime", layout: .posterGrid(columns: 3, rows: 2))
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 16) {
+                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: Gap.gridRow) {
                         ForEach(items) { item in
                             AnimeAppearanceButton(appearance: item) {
                                 VStack(alignment: .leading, spacing: 6) {
@@ -356,7 +358,7 @@ struct SearchThemesShelf: View {
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: .themes, icon: "square.grid.2x2")
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 10) {
+                LazyHStack(spacing: Gap.item) {
                     ForEach(SearchBrowseTheme.allCases) { theme in
                         SearchThemeCard(theme: theme)
                             .containerRelativeFrame(.horizontal) { width, _ in
@@ -412,7 +414,7 @@ struct SearchPeopleShelf: View {
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: shelf, destination: .people(shelf, people))
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 10) {
+                LazyHStack(alignment: .top, spacing: Gap.item) {
                     ForEach(people.prefix(12)) { person in
                         SearchBrowsePersonLink(person: person)
                             .containerRelativeFrame(.horizontal) { width, _ in min(130, width * 0.27) }
@@ -475,7 +477,7 @@ struct SearchPeopleGrid: View {
                     ContentUnavailableView("No matching names", systemImage: "person")
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: 18) {
+                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: Gap.gridRow) {
                         ForEach(matching) { SearchBrowsePersonLink(person: $0) }
                     }
                 }
