@@ -516,6 +516,9 @@ struct Artwork: View {
     var contentMode: ContentMode = .fill
     /// Full-width profiles can use the original public TMDB portrait before downsampling.
     var prefersOriginal = false
+    /// Episode stills: plain grey while loading (no coloured gradient flashing in before the
+    /// picture), and `title` (the episode number) in grey when there is no still.
+    var plainPlaceholder = false
     @Environment(\.displayScale) private var displayScale
     private var theme: DiaryTheme { TilePrefs.shared.theme }
     @State private var loadedArtwork: PublicArtworkBitmap?
@@ -533,6 +536,7 @@ struct Artwork: View {
             // drawn only while there's no image over it: under a loaded poster it was two more
             // layers per tile composited on every frame of a scroll (eight per Canvas list card).
             if contentMode == .fit { Color.clear }
+            else if bitmap == nil, plainPlaceholder { Color(uiColor: .secondarySystemFill) }
             else if bitmap == nil, initialsOnly { LinearGradient(colors: [tint, theme.initialsBase], startPoint: .topLeading, endPoint: .bottomTrailing) }
             else if bitmap == nil {
                 LinearGradient(colors: [Color(themed: "#243638"), Color(themed: "#17151e"), Color(themed: "#17151e")], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -584,7 +588,9 @@ struct Artwork: View {
         #endif
     }
     @ViewBuilder private func placeholder(size: CGSize) -> some View {
-        if initialsOnly { initials }
+        if plainPlaceholder {
+            Text(title).font(.app(size: min(24, max(14, min(size.width, size.height) * 0.3)), weight: .semibold)).foregroundStyle(HomeStyle.secondary)
+        } else if initialsOnly { initials }
         else {
             // Just the clapperboard: every card already shows the title beside or below its artwork.
             DiaryIcon(name: "clapperboard", size: min(34, max(16, min(size.width, size.height) * 0.3)))

@@ -278,8 +278,9 @@ struct SeasonProgressCard: View {
                     .accessibilityHidden(true)
                 Text(remaining).font(.app(size: 13)).foregroundStyle(Color(themed: "#9A9AA3")).lineLimit(1).monospacedDigit()
             }.frame(maxWidth: .infinity)
-            Text("\(percent)%").font(.app(size: 28, weight: .bold)).tracking(-0.56).monospacedDigit().foregroundStyle(theme.accent)
-                .frame(minWidth: 58, alignment: .trailing)
+            // Quiet, as the title page's status card: a big blue "0%" shouted about nothing watched.
+            Text("\(percent)%").font(.app(size: 15)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                .frame(minWidth: 40, alignment: .trailing)
         }.padding(.vertical, 14).padding(.leading, 14).padding(.trailing, 20)
             .background(Color(themed: "#0F0F11"), in: RoundedRectangle(cornerRadius: 24))
             .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(HomeStyle.outline(0.07), lineWidth: 1))

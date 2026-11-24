@@ -453,7 +453,7 @@ struct TitleDetailView: View {
                 .padding(.vertical, 16).padding(.horizontal, 10).frame(minHeight: 98).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
         }.buttonStyle(.plain).accessibilityLabel("Episode \(episode.number) details")
     }
-    /// Episodes: heading with the count and season, All / Unwatched beside a list–grid switch,
+    /// Episodes: heading with the count and season, All / To watch beside a list–grid switch,
     /// three episodes around what's next (a sideways row of cards in grid), then the full page.
     private func episodeSection(_ title: MediaTitle) -> some View {
         let seen = watched
@@ -471,20 +471,14 @@ struct TitleDetailView: View {
                 Spacer(minLength: 0)
                 seasonMenu
             }
-            HStack(spacing: 8) {
-                episodeFilter("All episodes", on: !unwatchedOnly) { unwatchedOnly = false }
-                episodeFilter("Unwatched", on: unwatchedOnly) { unwatchedOnly = true }
-                Spacer(minLength: 0)
-                Button { episodesGrid.toggle() } label: {
-                    // Design: an 87 x 43 pill (#17171d, #26262e hairline) with a 40 x 36 #2a2440 knob.
-                    HStack(spacing: 0) {
-                        DiaryIcon(name: "layout-grid", size: 17).foregroundStyle(episodesGrid ? HomeStyle.chipText : HomeStyle.secondary)
-                            .frame(width: 40, height: 36).background(episodesGrid ? HomeStyle.chip : .clear, in: Capsule())
-                        DiaryIcon(name: "list", size: 17).foregroundStyle(episodesGrid ? HomeStyle.secondary : HomeStyle.chipText)
-                            .frame(width: 40, height: 36).background(episodesGrid ? .clear : HomeStyle.chip, in: Capsule())
-                    }.padding(3).pillSurface(border: nil)
-                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline)).contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityLabel("Show episodes as " + (episodesGrid ? "list" : "grid")).accessibilityValue(episodesGrid ? "Grid" : "List").accessibilityIdentifier("episodes-layout")
+            HStack(spacing: 10) {
+                // The same grey control as the Episodes page ("All 10 · To watch 10"), and the grey
+                // two-part layout switch every list uses.
+                let toWatch = episodes.filter { !seen.contains($0.id) }.count
+                NativeSegmentedControl(segments: [NativeSegment(value: false, title: "All \(episodes.count)", id: "episodes-filter-all"),
+                                                  NativeSegment(value: true, title: "To watch \(toWatch)", id: "episodes-filter-unwatched", dimmed: toWatch == 0)],
+                                       selection: $unwatchedOnly)
+                StudioLayoutSwitch(grid: $episodesGrid, identifier: "episodes-layout")
             }
             if !seasonCanEdit(title) { Button("Load season episodes") { Task { await store.loadSeason(title, number: season); await loadCard(title) } }.buttonStyle(.glass).disabled(store.writesBlocked) }
             if let seasonLoadError { RetryNotice(message: seasonLoadError) { Task { await prepareSeason(title, force: true) } } }
@@ -560,17 +554,9 @@ struct TitleDetailView: View {
                 .frame(minHeight: 44).contentShape(Capsule())
         }.disabled(seasonNumbers.count < 2).accessibilityLabel("Season").accessibilityValue(season == 0 ? "Specials" : "Season \(season)").accessibilityIdentifier("title-season")
     }
-    private func episodeFilter(_ name: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            // Design: 44 pt pills, 14 pt semibold; the chosen one in the accent ink on the accent.
-            Text(name).font(.app(size: 14, weight: .semibold)).foregroundStyle(on ? ThemeStore.current.accentInk : HomeStyle.soft)
-                .padding(.horizontal, 20).frame(height: 44)
-                .pillSurface(chosen: on ? theme.accent : nil)
-        }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("episodes-filter-" + (name == "Unwatched" ? "unwatched" : "all"))
-    }
     @ViewBuilder private func episodeArtwork(_ episode: Episode) -> some View {
         if isHidden(episode) { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 23).foregroundStyle(.secondary) } }
-        else { Artwork(path: episodeDetails.episodes[episode.id]?.artwork ?? episode.still ?? store.title(id)?.backdrop, title: String(episode.number)) }
+        else { Artwork(path: episodeDetails.episodes[episode.id]?.artwork ?? episode.still ?? store.title(id)?.backdrop, title: String(episode.number), plainPlaceholder: true) }
     }
     private func isHidden(_ episode: Episode) -> Bool { hideSpoilers && !watched.contains(episode.id) && !revealedEpisodeIDs.contains(episode.id) }
     private func episodeName(_ episode: Episode) -> String {

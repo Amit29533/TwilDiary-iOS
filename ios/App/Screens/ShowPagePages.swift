@@ -15,7 +15,9 @@ enum EpisodeRowState: Equatable {
             if calendar.isDateInYesterday(date) { return "Watched yesterday" }
             return "Watched " + date.formatted(.dateTime.day().month(.abbreviated))
         case .next: return "Up next"
-        case .notWatched: return "Not watched"
+        // The same word as the short form: a row with room for the long one said "Not watched"
+        // beside rows saying "Unwatched".
+        case .notWatched: return "Unwatched"
         case .notAired: return "Not aired yet"
         }
     }
@@ -91,6 +93,20 @@ struct ScoreChip: View {
     }
 }
 
+/// How many episodes the Episodes page shows before it folds the rest into groups.
+enum EpisodeFolding {
+    static let shownAtOnce = 16
+}
+
+/// The icon of a folded "Episodes 5 to 20" group: a small stack of cards on a grey tile.
+struct EpisodeStackIcon: View {
+    var body: some View {
+        Image(systemName: "square.stack").font(.app(size: 16, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+            .frame(width: 36, height: 36).background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.leading, 4).accessibilityHidden(true)
+    }
+}
+
 /// The watched tick: filled when watched, a ring (accent for what's next) when not.
 struct EpisodeTick: View {
     let watched: Bool
@@ -125,7 +141,7 @@ struct EpisodeCardRow: View {
                 HStack(spacing: 12) {
                     Group {
                         if hidden { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 20).foregroundStyle(.secondary) } }
-                        else { Artwork(path: artwork, title: String(number)) }
+                        else { Artwork(path: artwork, title: String(number), plainPlaceholder: true) }
                     }.frame(width: 96, height: 60).clipShape(RoundedRectangle(cornerRadius: 14))
                     VStack(alignment: .leading, spacing: 5) {
                         // The number isn't a spoiler: hidden rows keep it ("9. A story for later").
@@ -191,7 +207,7 @@ struct EpisodeGridCard: View {
                 Color.clear.aspectRatio(230.0 / 128.0, contentMode: .fit).frame(width: fills ? nil : 230)
                     .overlay {
                         if hidden { Color(themed: "#211d2d").overlay { DiaryIcon(name: "eye-off", size: 24).foregroundStyle(HomeStyle.secondary) } }
-                        else { Artwork(path: artwork, title: String(number)) }
+                        else { Artwork(path: artwork, title: String(number), plainPlaceholder: true) }
                     }.clipShape(RoundedRectangle(cornerRadius: 21))
                     .padding(1).background(HomeStyle.round, in: RoundedRectangle(cornerRadius: 22))
                     .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
@@ -214,23 +230,20 @@ struct EpisodeGridCard: View {
                         .accessibilityIdentifier("episode-watch-\(number)").padding(4)
                     }
                 }
-            Text(hidden ? name : "\(number) · \(name)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1).padding(.top, 11)
-            // Score, length and when it was watched on one line when they fit.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
-                    if let score, score > 0 { ScoreChip(score: score) }
-                    if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize() }
-                    if runtime != nil || (score ?? 0) > 0 { Text("·").font(.caption).foregroundStyle(HomeStyle.secondary) }
-                    Text(subtitle).font(.caption).foregroundStyle(HomeStyle.secondary).lineLimit(1).fixedSize()
-                }.padding(.top, 6)
-                VStack(alignment: .leading, spacing: 0) {
-                    InlineFlowLayout(spacing: 6, rowSpacing: 3) {
-                        if let score, score > 0 { ScoreChip(score: score) }
-                        if let runtime { Text("\(runtime) min").font(.caption).foregroundStyle(HomeStyle.secondary) }
-                    }.padding(.top, runtime != nil || (score ?? 0) > 0 ? 6 : 0)
-                    Text(subtitle).font(.caption).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
+            // The name on up to two lines (room for two is always kept), then one details line, so
+            // every card in a row is one height ("Before the Firewor…" showed less than it could).
+            Text(hidden ? name : "\(number) · \(name)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading).padding(.top, 11)
+            HStack(spacing: 4) {
+                if let score, score > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "star.fill").font(.app(size: 10)).foregroundStyle(Color(themed: "#ffc83d"))
+                        Text(score.formatted(.number.precision(.fractionLength(1)))).foregroundStyle(HomeStyle.primary)
+                    }.fixedSize().accessibilityElement(children: .ignore).accessibilityLabel("Rated " + score.formatted(.number.precision(.fractionLength(1))))
                 }
-            }
+                if let runtime { Text(((score ?? 0) > 0 ? "· " : "") + "\(runtime) min").fixedSize() }
+                Text((runtime != nil || (score ?? 0) > 0 ? "· " : "") + subtitle).lineLimit(1).truncationMode(.tail)
+            }.font(.caption).foregroundStyle(HomeStyle.secondary).padding(.top, 4)
         }.frame(width: fills ? nil : 232, alignment: .leading).frame(maxWidth: fills ? .infinity : nil, alignment: .leading)
     }
     private var subtitle: String {
@@ -325,21 +338,17 @@ struct EpisodesPage: View {
             VStack(alignment: .leading, spacing: 14) {
                 seasonCard(title)
                 let count = episodes.filter { watched.contains($0.id) }.count
-                if ThemeStore.current.native {
-                    // Native: All · Watched · To watch as iOS's segmented control on glass.
-                    NativeSegmentedControl(segments: [NativeSegment(value: Filter.all, title: "All \(episodes.count)", id: "episodes-filter-all"),
-                                                      NativeSegment(value: Filter.watched, title: "Watched \(count)", id: "episodes-filter-watched"),
-                                                      NativeSegment(value: Filter.toWatch, title: "To watch \(episodes.count - count)", id: "episodes-filter-towatch")],
-                                           selection: $filter)
-                } else {
-                    HStack(spacing: 8) {
-                        ShowFilterChip(label: "All \(episodes.count)", on: filter == .all) { filter = .all }
-                        ShowFilterChip(label: "Watched \(count)", on: filter == .watched) { filter = .watched }
-                        ShowFilterChip(label: "To watch \(episodes.count - count)", on: filter == .toWatch) { filter = .toWatch }
-                    }
-                }
+                // All · Watched · To watch in one grey segmented control (every theme, and the same
+                // control as the title page); a choice with nothing in it reads dimmer.
+                NativeSegmentedControl(segments: [NativeSegment(value: Filter.all, title: "All \(episodes.count)", id: "episodes-filter-all"),
+                                                  NativeSegment(value: Filter.watched, title: "Watched \(count)", id: "episodes-filter-watched", dimmed: count == 0),
+                                                  NativeSegment(value: Filter.toWatch, title: "To watch \(episodes.count - count)", id: "episodes-filter-towatch", dimmed: episodes.count == count)],
+                                       selection: $filter)
                 if episodes.isEmpty { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
-                else if filter == .all {
+                else if filter == .all && episodes.count <= EpisodeFolding.shownAtOnce {
+                    // Up to 16 episodes show at once; only a longer season folds.
+                    list(episodes, title: title, watched: watched, dates: dates, next: nextIndex.map { episodes[$0].id })
+                } else if filter == .all {
                     let window = EpisodeWindow(count: episodes.count, focus: nextIndex)
                     if !window.before.isEmpty { group("before", Array(episodes[window.before]), title: title, watched: watched, dates: dates, nextIndex: nextIndex) }
                     list(Array(episodes[window.shown]), title: title, watched: watched, dates: dates, next: nextIndex.map { episodes[$0].id })
@@ -370,7 +379,8 @@ struct EpisodesPage: View {
         .toolbar {
             ShowPageTitle(title: "Episodes", subtitle: title.name)
             ToolbarItem(placement: .topBarTrailing) {
-                Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19) }
+                // Grey, as every layout switch (blue read as "something to do").
+                Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19).foregroundStyle(HomeStyle.primary) }
                     .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
             }
         }
@@ -425,7 +435,9 @@ struct EpisodesPage: View {
                 withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { if open { openGroups.remove(key) } else { openGroups.insert(key) } }
             } label: {
                 HStack(spacing: 12) {
-                    EpisodeTick(watched: allWatched)
+                    // A stack, not a tick: the ring looked like a button that marks them all, but
+                    // the row only opens the list.
+                    EpisodeStackIcon()
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Text(allWatched ? "All watched" : ([left.count.formatted() + " to watch"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
@@ -600,25 +612,19 @@ struct PreviewEpisodesPage: View {
             VStack(alignment: .leading, spacing: 14) {
                 if let details { seasonCard(details, count: items.count) }
                 if !items.isEmpty {
-                    if ThemeStore.current.native {
-                        NativeSegmentedControl(segments: [NativeSegment(value: Filter.all, title: "All \(items.count)", id: "episodes-filter-all"),
-                                                          NativeSegment(value: Filter.watched, title: "Watched 0", id: "episodes-filter-watched"),
-                                                          NativeSegment(value: Filter.toWatch, title: "To watch \(items.count)", id: "episodes-filter-towatch")],
-                                               selection: $filter)
-                    } else {
-                        HStack(spacing: 8) {
-                            ShowFilterChip(label: "All \(items.count)", on: filter == .all) { filter = .all }
-                            ShowFilterChip(label: "Watched 0", on: filter == .watched) { filter = .watched }
-                            ShowFilterChip(label: "To watch \(items.count)", on: filter == .toWatch) { filter = .toWatch }
-                        }
-                    }
+                    NativeSegmentedControl(segments: [NativeSegment(value: Filter.all, title: "All \(items.count)", id: "episodes-filter-all"),
+                                                      NativeSegment(value: Filter.watched, title: "Watched 0", id: "episodes-filter-watched", dimmed: true),
+                                                      NativeSegment(value: Filter.toWatch, title: "To watch \(items.count)", id: "episodes-filter-towatch")],
+                                           selection: $filter)
                 }
                 if controller?.loading == true && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading season", layout: .list(rows: 6)) }
                 if let error = controller?.error { RetryNotice(message: error) { Task { await controller?.load(season, reveal: !hideSpoilers, force: true) } } }
                 if items.isEmpty && controller?.loading == false { Text("No episode metadata yet").font(.subheadline).foregroundStyle(.secondary).padding(.top, 8) }
                 if !items.isEmpty {
-                    if filter == .all {
-                        // As on the title page: the first episodes, then the rest folded until tapped.
+                    if filter == .all && items.count <= EpisodeFolding.shownAtOnce {
+                        list(items)
+                    } else if filter == .all {
+                        // A long season: the first episodes, then the rest folded until tapped.
                         let window = EpisodeWindow(count: items.count, focus: 0)
                         list(Array(items[window.shown]))
                         if !window.after.isEmpty { group("after", Array(items[window.after])) }
@@ -631,7 +637,7 @@ struct PreviewEpisodesPage: View {
         .toolbar {
             ShowPageTitle(title: "Episodes", subtitle: details?.name ?? "")
             ToolbarItem(placement: .topBarTrailing) {
-                Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19) }
+                Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19).foregroundStyle(HomeStyle.primary) }
                     .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
             }
         }
@@ -678,6 +684,7 @@ struct PreviewEpisodesPage: View {
                 withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { if open { openGroups.remove(key) } else { openGroups.insert(key) } }
             } label: {
                 HStack(spacing: 12) {
+                    EpisodeStackIcon()
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Episodes \(episodes.first?.number ?? 0) to \(episodes.last?.number ?? 0)").font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink)
                         Text(([episodes.count.formatted() + " episodes"] + (minutes.map { [DiaryDate.duration($0)] } ?? [])).joined(separator: " · "))
