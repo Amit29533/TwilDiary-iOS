@@ -68,7 +68,8 @@ extension View {
 private struct NativeGlassCard: ViewModifier {
     let radius: CGFloat
     func body(content: Content) -> some View {
-        content.background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        // Design Lab's Corners: Native's cards squarer or rounder (they draw no outline to match).
+        content.background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: Studio.corner(radius), style: .continuous))
     }
 }
 

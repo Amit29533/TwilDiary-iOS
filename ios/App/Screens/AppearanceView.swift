@@ -42,9 +42,9 @@ struct AppearanceView: View {
                         // Turning them on answers with one, so you feel what you chose.
                         .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }
                 }
+                // Design Lab: how each part of the app looks, in any theme (its own page).
+                DesignLabLink()
                 SettingsFootnote(text: "Changes instantly · saved on this iPhone")
-                // Studio's switches: one per redrawn piece, so each can be tried on its own.
-                if theme == .studio { StudioDesignLab().transition(.opacity) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
         }.diaryScreenBackground().diaryPageNavigation("Appearance")
     }

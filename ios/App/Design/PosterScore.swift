@@ -62,7 +62,8 @@ struct PosterScoreBadge: View {
     let score: Double
     private var showsRating: Bool { TilePrefs.shared.posterRatings }
     var body: some View {
-        if showsRating { badge }
+        // Design Lab can hide rating badges on posters (Feel → Rating badge → Off).
+        if showsRating && Studio.showsBadge { badge }
     }
     private var badge: some View {
         HStack(spacing: 5) { Image(systemName: "star.fill").font(.app(size: 13)); Text(String(format: "%.1f", score)).frame(height: 18) }

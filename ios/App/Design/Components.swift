@@ -3,13 +3,13 @@ import UIKit
 import TwilDiaryCore
 
 enum DiaryTheme: String, CaseIterable, Identifiable {
-    case twilight, ocean, jade, rose, amber, premiere, native, studio
+    case twilight, ocean, jade, rose, amber, premiere, native
     var id: Self { self }
     var name: String { rawValue.capitalized }
     var field: Color {
         switch self {
         case .premiere: Color(webHex: "#121212")
-        case .native, .studio: Color(uiColor: .secondarySystemBackground)
+        case .native: Color(uiColor: .secondarySystemBackground)
         default: Color(webHex: "#111115")
         }
     }
@@ -18,7 +18,6 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         switch self {
         case .premiere: .premiere
         case .native: .native
-        case .studio: .studio
         default: .classic
         }
     }
@@ -31,11 +30,10 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .amber: "Warm cinema gold"
         case .premiere: "Streaming night: black, white and red"
         case .native: "iOS itself: light or dark, Liquid Glass"
-        case .studio: "Native, redrawn: try each change"
         }
     }
     var ink: Color {
-        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere, .native, .studio: Color(webHex: "#ffffff") }
+        switch self { case .twilight: Color(webHex: "#21182e"); case .ocean: Color(webHex: "#102039"); case .jade: Color(webHex: "#102820"); case .rose: Color(webHex: "#321622"); case .amber: Color(webHex: "#2c2010"); case .premiere, .native: Color(webHex: "#ffffff") }
     }
     var accent: Color {
         switch self {
@@ -45,7 +43,7 @@ enum DiaryTheme: String, CaseIterable, Identifiable {
         case .rose: Color(webHex: "#f4a2c6")
         case .amber: Color(webHex: "#edbe73")
         case .premiere: Color(webHex: "#e50914")
-        case .native, .studio: Color(uiColor: .systemBlue)
+        case .native: Color(uiColor: .systemBlue)
         }
     }
     /// The colour scheme the app asks for: always dark, except Native, which follows the iPhone.
@@ -201,8 +199,9 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
                 .padding(.horizontal, compact ? 12 : 18).frame(minHeight: compact ? 34 : 44)
                 .nativeGlassCapsule(prominent: (prominent || bright) && !destructive, ink: destructive ? Color(uiColor: .systemRed) : nil)
                 .opacity(enabled ? 1 : 0.45)
-                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-                .animation(reduceMotion ? nil : Studio.on(.pressNoBounce) ? Motion.pressMotion(pressed: configuration.isPressed) : .spring(duration: 0.3, bounce: 0.35), value: configuration.isPressed)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.pressScale(0.97) : 1)
+                // Design Lab's Press feel: Bouncy keeps this button's own spring; Firm and Off as everywhere else.
+                .animation(reduceMotion ? nil : StudioLab.shared.press == .bouncy ? Animation.spring(duration: 0.3, bounce: 0.35) : Motion.pressMotion(pressed: configuration.isPressed), value: configuration.isPressed)
         }
         private var classic: some View {
             let destructive = configuration.role == .destructive
@@ -212,8 +211,8 @@ struct DiaryCapsuleButtonStyle: ButtonStyle {
                 .background(bright ? AnyShapeStyle(WatchStyle.fill) : prominent ? AnyShapeStyle(HomeStyle.chip) : AnyShapeStyle(Color.primary.opacity(0.07)), in: Capsule())
                 .overlay { if !prominent { Capsule().strokeBorder(HomeStyle.outline(0.12)) } }
                 .opacity(enabled ? 1 : 0.45).contentShape(Capsule())
-                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
-                .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? Motion.pressScale(0.95) : 1)
+                .animation(reduceMotion ? nil : Motion.pressMotion(pressed: configuration.isPressed), value: configuration.isPressed)
         }
     }
 }
@@ -733,7 +732,8 @@ struct CategoryPicker: View {
                             Text(count.formatted()).foregroundStyle(selected ? theme.ink.opacity(0.75) : HomeStyle.secondary).monospacedDigit()
                         }
                     }.font(.app(size: 15, weight: .semibold))
-                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(themed: "#c5c0cf") : HomeStyle.primary)
+                        // Design Lab: a category with nothing in it reads dimmer (it still opens).
+                        .foregroundStyle(selected ? theme.ink : counts == nil && !pills ? Color(themed: "#c5c0cf") : counts?[category] == 0 && Studio.on(.glanceFilters) ? HomeStyle.muted : HomeStyle.primary)
                         .padding(.horizontal, counts == nil ? 16 : 14).frame(minHeight: 40)
                         .background {
                             if selected { Capsule().fill(theme.accent).matchedGeometryEffect(id: "category-pill", in: pill) }
@@ -850,7 +850,7 @@ struct ProgressCard: View {
                                         // Studio: a darker fade under the text, so the label and title read on busy art.
                                         .overlay { if Studio.on(.lastWatchedLabel) { LinearGradient(stops: [.init(color: .black.opacity(0), location: 0.25), .init(color: .black.opacity(0.78), location: 1)], startPoint: .top, endPoint: .bottom) } }
                                 }
-                                else if ThemeStore.current.native { Color.clear }
+                                else if ThemeStore.current.native || studioGroupedRow { Color.clear }
                                 else { Rectangle().fill(theme.field) }
                             }.frame(width: proxy.size.width, height: proxy.size.height).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("Open " + title.name).accessibilityIdentifier("progress-cover-" + title.id)
@@ -859,7 +859,7 @@ struct ProgressCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                 // Studio's compact rows share one card drawn by the list, so each row draws none.
                 .background { if ThemeStore.current.native && !compact && !hero && !studioGroupedRow { Color.clear.nativeCard(radius: cornerRadius) } }
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact || (ThemeStore.current.native && !hero) ? 0 : 0.17)))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact || studioGroupedRow || (ThemeStore.current.native && !hero) ? 0 : 0.17)))
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .haptic(.success, trigger: watchFeedback)
@@ -1021,7 +1021,7 @@ struct ProgressCard: View {
                     GeometryReader { proxy in
                         Capsule().fill(Color.primary.opacity(0.12))
                             .overlay(alignment: .leading) {
-                                Capsule().fill(markable ? Color(uiColor: .systemBlue) : Color(uiColor: .systemGray))
+                                Capsule().fill(markable ? Studio.accent : Color(uiColor: .systemGray))
                                     .frame(width: max(fraction > 0 ? 4 : 0, proxy.size.width * fraction))
                             }
                     }.frame(height: 4)
@@ -1239,7 +1239,7 @@ struct ProgressCard: View {
         }()
         // Studio: the rows' buttons are tinted, so the Last watched card's is the one filled button on screen.
         let tinted = Studio.on(.glanceButtons) && !hero && !compact
-        let accent = Color(uiColor: .systemBlue)
+        let accent = Studio.accent
         return Button { Task { await markWatch() } } label: {
             actionIcon(.mark, symbol: symbol, size: starting ? 12 : 15).fontWeight(.bold)
                 .foregroundStyle(tinted ? AnyShapeStyle(accent) : AnyShapeStyle(WatchStyle.ink)).frame(width: 36, height: 36)

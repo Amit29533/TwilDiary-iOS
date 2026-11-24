@@ -64,7 +64,7 @@ struct CatalogPoster: View {
                 }
             }
                 .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score { PosterScoreBadge(score: score) } }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: Studio.corner(8)))
                 .wantsPosterScore(item, known: score, store: store)
             if !showsCaption {
                 EmptyView()

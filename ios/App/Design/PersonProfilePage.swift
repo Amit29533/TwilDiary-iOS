@@ -90,8 +90,8 @@ struct PersonProfilePage<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(parts.first ?? name).foregroundStyle(.white)
-                    // Studio: one colour (the blue second name read as a link).
-                    if parts.count > 1 { Text(parts[1]).foregroundStyle(Studio.on(.personFacts) ? Color.white : theme.accent) }
+                    // Design Lab: one colour (the accent second name read as a link).
+                    if parts.count > 1 { Text(parts[1]).foregroundStyle(Studio.on(.personName) ? Color.white : theme.accent) }
                 }.font(.app(size: fit.nameSize, weight: .bold)).tracking(-0.9).lineLimit(3).truncationMode(.tail).minimumScaleFactor(0.8)
                     .shadow(color: .black.opacity(0.55), radius: 10, y: 2)
                     .accessibilityElement(children: .combine).accessibilityIdentifier(identifier + "-name")

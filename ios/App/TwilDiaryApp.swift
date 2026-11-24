@@ -11,6 +11,9 @@ import TwilDiaryCore
     @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
     @AppStorage("use24HourTime") private var use24Hour = false
     init() {
+        // Studio was a theme for one build: it becomes Native with Design Lab's Studio preset,
+        // before anything reads the theme.
+        DesignLabMigration.run()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             UserDefaults.standard.set(DiaryTheme.twilight.rawValue, forKey: "theme")

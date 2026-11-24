@@ -66,8 +66,9 @@ struct HomeRoundIcon: View {
         } else { classic }
     }
     private var classic: some View {
+        // Design Lab's grey layout switches: never the accent tint, whichever layout is on.
         Image(systemName: system).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.dateChipText)
-            .frame(width: 36, height: 36).background(selected ? HomeStyle.chip : HomeStyle.round, in: Circle())
+            .frame(width: 36, height: 36).background(selected && !Studio.on(.layoutSwitch) ? HomeStyle.chip : HomeStyle.round, in: Circle())
             .frame(width: 44, height: 44).contentShape(Circle())
     }
 }
@@ -245,11 +246,12 @@ struct HomePoster<Badge: View>: View {
     var body: some View {
         let width = posterSize.homeWidth
         VStack(alignment: .leading, spacing: 0) {
+            let radius = Studio.corner(16)
             Artwork(path: artwork, title: name, initialsOnly: initialsOnly).frame(width: width, height: width * 1.5)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
+                .clipShape(RoundedRectangle(cornerRadius: radius))
+                .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(HomeStyle.outline(0.08), lineWidth: HomeStyle.hairline))
                 .overlay(alignment: .bottomLeading) { badge }
-                .overlay(alignment: .topLeading) { if let score, score > 0 { PosterScoreBadge(score: score) } }
+                .overlay(alignment: Studio.badgeCorner(.topLeading)) { if let score, score > 0 { PosterScoreBadge(score: score) } }
             if showsCaption {
                 if Studio.on(.posterCaptions) {
                     // Studio: the details sit right under the name; the room for a second line goes

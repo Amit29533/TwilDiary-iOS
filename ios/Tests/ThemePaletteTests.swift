@@ -67,7 +67,7 @@ final class ThemePaletteTests: XCTestCase {
         XCTAssertEqual(DiaryTheme.native.palette, .native)
         XCTAssertTrue(ThemePalette.native.native); XCTAssertTrue(ThemePalette.native.followsSystemAppearance)
         XCTAssertNil(DiaryTheme.native.colorScheme)
-        for theme in DiaryTheme.allCases where theme != .native && theme != .studio {
+        for theme in DiaryTheme.allCases where theme != .native {
             XCTAssertEqual(theme.colorScheme, .dark, "\(theme) stays dark")
             XCTAssertFalse(theme.palette.native)
         }
@@ -113,29 +113,57 @@ final class ThemePaletteTests: XCTestCase {
         XCTAssertEqual(DiaryTheme.native.colorScheme(native: .light), .light)
         XCTAssertEqual(DiaryTheme.native.colorScheme(native: .dark), .dark)
         // The other themes stay dark whatever Native's choice is.
-        for theme in DiaryTheme.allCases where theme != .native && theme != .studio {
+        for theme in DiaryTheme.allCases where theme != .native {
             for appearance in NativeAppearance.allCases { XCTAssertEqual(theme.colorScheme(native: appearance), .dark, "\(theme)") }
         }
     }
 
-    // MARK: Studio
+    // MARK: Design Lab
 
-    func testStudioIsNativeWithTheRedrawnPagesOn() {
-        // Everything Native does still applies; only the Studio flag differs.
-        var withoutFlag = ThemePalette.studio; withoutFlag.studio = false
-        XCTAssertEqual(withoutFlag, .native)
-        XCTAssertTrue(ThemePalette.studio.studio); XCTAssertTrue(ThemePalette.studio.native)
-        XCTAssertFalse(ThemePalette.native.studio); XCTAssertFalse(ThemePalette.classic.studio); XCTAssertFalse(ThemePalette.premiere.studio)
-        XCTAssertEqual(DiaryTheme.studio.palette, .studio)
-        XCTAssertEqual(DiaryTheme.studio.colorScheme(native: .dark), .dark)
-        XCTAssertNil(DiaryTheme.studio.colorScheme(native: .automatic))
+    func testEveryDesignLabPieceHasAnAreaAndTwoChoices() {
+        for change in StudioChange.allCases {
+            XCTAssertFalse(change.title.isEmpty, change.rawValue); XCTAssertFalse(change.section.isEmpty, change.rawValue)
+            XCTAssertFalse(change.choices.off.isEmpty, change.rawValue); XCTAssertNotEqual(change.choices.off, change.choices.on, change.rawValue)
+        }
+        // Each area page lists something.
+        for area in StudioChange.Area.pages { XCTAssertTrue(StudioChange.allCases.contains { $0.area == area }, area.rawValue) }
     }
 
-    @MainActor func testEveryStudioChangeHasAGroupAndWords() {
-        for change in StudioChange.allCases {
-            XCTAssertFalse(change.title.isEmpty, change.rawValue); XCTAssertFalse(change.detail.isEmpty, change.rawValue)
+    func testTheStudioThemeBecomesNativeWithTheStudioPreset() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "design-lab-migration-test"))
+        defaults.removePersistentDomain(forName: "design-lab-migration-test")
+        defaults.set("studio", forKey: "theme")
+        defaults.set(["heroDots", "pressNoBounce"], forKey: "studio.lab.off")
+        DesignLabMigration.run(defaults)
+        XCTAssertEqual(defaults.string(forKey: "theme"), "native")
+        let on = Set(defaults.stringArray(forKey: DesignLabKeys.on) ?? [])
+        XCTAssertFalse(on.contains("heroDots")); XCTAssertTrue(on.contains("weekBar")); XCTAssertEqual(on.count, StudioChange.allCases.count - 1)
+        // A switch that was turned off stays off in its new form.
+        XCTAssertEqual(defaults.string(forKey: DesignLabKeys.press), DesignPress.bouncy.rawValue)
+        XCTAssertEqual(defaults.string(forKey: DesignLabKeys.badge), DesignBadge.topLeft.rawValue)
+        XCTAssertNil(defaults.stringArray(forKey: "studio.lab.off"))
+        // Any other theme is left alone.
+        defaults.set("twilight", forKey: "theme"); DesignLabMigration.run(defaults)
+        XCTAssertEqual(defaults.string(forKey: "theme"), "twilight")
+        defaults.removePersistentDomain(forName: "design-lab-migration-test")
+    }
+
+    @MainActor func testDesignLabPresets() {
+        let lab = StudioLab.shared
+        let saved = (on: lab.on, press: lab.press, badge: lab.badge, corners: lab.corners, match: lab.match)
+        defer {
+            lab.apply(.original)
+            for change in StudioChange.allCases where saved.on.contains(change.rawValue) { lab.set(change, on: true) }
+            lab.setPress(saved.press); lab.setBadge(saved.badge); lab.setCorners(saved.corners); lab.setMatch(saved.match)
         }
-        // Each page's group lists something.
-        for group in StudioChange.Group.allCases { XCTAssertTrue(StudioChange.allCases.contains { $0.group == group }, group.rawValue) }
+        lab.apply(.studio)
+        XCTAssertEqual(lab.preset, .studio); XCTAssertTrue(StudioChange.allCases.allSatisfy { lab.isOn($0) })
+        XCTAssertEqual(lab.count(.home).on, lab.count(.home).of)
+        lab.set(.heroDots, on: false)
+        XCTAssertEqual(lab.preset, .custom)
+        lab.apply(.original)
+        XCTAssertEqual(lab.preset, .original); XCTAssertFalse(StudioChange.allCases.contains { lab.isOn($0) })
+        lab.setCorners(.rounder)
+        XCTAssertEqual(lab.preset, .custom); XCTAssertEqual(Studio.corner(16), 22)
     }
 }
