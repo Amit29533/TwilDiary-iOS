@@ -91,7 +91,7 @@ import TwilDiaryCore
         if titleID == nil, addToPlanned {
             let route = CatalogRoute(kind: candidate.tv ? .tv : .movie, id: candidate.tmdbID)
             if let browse = try? await store.browse(route) {
-                titleID = await store.importTitle(browse.details, category: browse.details.suggestedCategory)?.id
+                titleID = await store.importTitle(browse.details, category: browse.details.suggestedCategory)
             }
         }
         updated.titleID = titleID

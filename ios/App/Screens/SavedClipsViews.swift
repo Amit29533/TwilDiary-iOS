@@ -147,14 +147,16 @@ struct SavedClipsPage: View {
         let clips = inbox.clips
         EdgeToEdgeScroll {
             VStack(alignment: .leading, spacing: Gap.section) {
-                // Two more ways in, for a link you copied or a video in Photos.
+                // Two more ways in, for a link you copied or a video in Photos. (The picker's label
+                // is a Sendable closure, so it gets plain values, not the view's state.)
+                let adding = importing, ink = HomeStyle.primary
                 HStack(spacing: 10) {
                     PasteButton(payloadType: String.self) { [store] strings in
                         Task { @MainActor in await ClipInbox.shared.add(pasted: strings.joined(separator: "\n"), store: store) }
                     }.labelStyle(.titleAndIcon).buttonBorderShape(.capsule).tint(Color(uiColor: .tertiarySystemFill))
                     PhotosPicker(selection: $photo, matching: .any(of: [.videos, .images])) {
-                        Label(importing ? "Adding…" : "From Photos", systemImage: "photo.on.rectangle")
-                            .font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        Label(adding ? "Adding…" : "From Photos", systemImage: "photo.on.rectangle")
+                            .font(.app(size: 15, weight: .semibold)).foregroundStyle(ink)
                             .padding(.horizontal, 14).frame(height: 36).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
                     }.disabled(importing)
                     Spacer(minLength: 0)
