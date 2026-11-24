@@ -120,6 +120,9 @@ targets:
     platform: iOS
     sources: [ShareExtension, ClipShared]
     dependencies:
+      # Without it Xcode's App Intents step warns ("No AppIntents.framework dependency found"),
+      # and CI accepts no warnings.
+      - sdk: AppIntents.framework
       - sdk: UniformTypeIdentifiers.framework
       - sdk: AVFoundation.framework
       - sdk: SwiftUI.framework
