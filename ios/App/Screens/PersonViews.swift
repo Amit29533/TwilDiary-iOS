@@ -430,7 +430,7 @@ struct PersonFilmographyView: View {
                     else {
                         Text("\(items.count) \(items.count == 1 ? "title" : "titles")" + (filters.watchedOnly ? " · Watched" : filters.onServer ? " · On your server" : "")).font(.app(size: 12)).foregroundStyle(.secondary).accessibilityIdentifier("person-result-count")
                         if items.isEmpty { ContentUnavailableView("No titles in this mix", systemImage: "film", description: Text("Try another genre, year, rating or collection.")) }
-                        else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false) }
+                        else { CatalogGrid(items: Array(items.prefix(shown)), showsLayoutToggle: false).layoutFade(grid) }
                         if shown < items.count { ScrollLoadTrigger(token: shown, loading: false) { shown += 40 } }
                     }
                 } else if let failure { RetryNotice(message: failure) { Task { await load() } } }

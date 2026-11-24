@@ -382,6 +382,7 @@ struct EpisodesPage: View {
                 // Grey, as every layout switch (blue read as "something to do").
                 Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19).foregroundStyle(HomeStyle.primary) }
                     .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
+                    .haptic(.selection, trigger: grid)
             }
         }
         .task(id: season) {
@@ -402,7 +403,10 @@ struct EpisodesPage: View {
                                   watched: progress.watched, total: progress.total, remainingMinutes: progress.remainingMinutes)
     }
 
-    @ViewBuilder private func list(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
+    private func list(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
+        listBody(episodes, title: title, watched: watched, dates: dates, next: next).layoutFade(grid)
+    }
+    @ViewBuilder private func listBody(_ episodes: [Episode], title: MediaTitle, watched: Set<String>, dates: [String: Date], next: String?) -> some View {
         if grid {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
                 ForEach(episodes) { episode in
@@ -639,6 +643,7 @@ struct PreviewEpisodesPage: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { grid.toggle() } label: { DiaryIcon(name: grid ? "list" : "layout-grid", size: 19).foregroundStyle(HomeStyle.primary) }
                     .accessibilityLabel("Show episodes as " + (grid ? "list" : "grid")).accessibilityIdentifier("episodes-page-layout")
+                    .haptic(.selection, trigger: grid)
             }
         }
         .task(id: route) { if details == nil { details = try? await store.browse(route).details } }
@@ -657,7 +662,8 @@ struct PreviewEpisodesPage: View {
                                   remainingMinutes: details.runtimeMinutes.map { $0 * total })
     }
 
-    @ViewBuilder private func list(_ episodes: [CatalogEpisode]) -> some View {
+    private func list(_ episodes: [CatalogEpisode]) -> some View { listBody(episodes).layoutFade(grid) }
+    @ViewBuilder private func listBody(_ episodes: [CatalogEpisode]) -> some View {
         if grid {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)], spacing: 16) {
                 ForEach(episodes) { episode in

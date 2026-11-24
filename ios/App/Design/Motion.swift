@@ -78,6 +78,27 @@ private struct SmoothChange<Value: Equatable>: ViewModifier {
     func body(content: Content) -> some View { content.animation(reduceMotion ? nil : Motion.smooth, value: value) }
 }
 
+/// A list/grid switch: the new layout fades in quickly instead of every card morphing from one
+/// layout to the other (a morph of a whole collection read as busy, and it's tapped often). The
+/// cards keep their identity, so loaded artwork and details stay.
+private struct LayoutFade<Value: Equatable>: ViewModifier {
+    let value: Value
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View {
+        if reduceMotion {
+            content.transaction(value: value) { $0.animation = nil }
+        } else {
+            content.transaction(value: value) { $0.animation = nil }
+                .keyframeAnimator(initialValue: 1.0, trigger: value) { view, opacity in view.opacity(opacity) } keyframes: { _ in
+                    KeyframeTrack {
+                        MoveKeyframe(0.2)
+                        CubicKeyframe(1, duration: 0.22)
+                    }
+                }
+        }
+    }
+}
+
 /// Sideways shelves: cards ease in slightly as they scroll into view, as in Apple's own apps.
 private struct ShelfTransition: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -96,6 +117,8 @@ extension View {
     func smoothChange<V: Equatable>(of value: V) -> some View { modifier(SmoothChange(value: value)) }
     /// For items in a sideways shelf.
     func shelfTransition() -> some View { modifier(ShelfTransition()) }
+    /// For a collection a list/grid switch changes: it fades into the new layout when `value` changes.
+    func layoutFade<V: Equatable>(_ value: V) -> some View { modifier(LayoutFade(value: value)) }
     /// Marks the artwork a title page zooms out of, and back into on return.
     func zoomSource(_ id: String) -> some View { modifier(ZoomSource(id: id)) }
     /// A sideways swipe moves between All, Movies, Shows and Anime; it never changes app tabs.

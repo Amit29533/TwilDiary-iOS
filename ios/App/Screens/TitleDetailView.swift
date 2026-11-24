@@ -399,6 +399,9 @@ struct TitleDetailView: View {
                     } } label: {
                         Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
                             .font(.app(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
+                            // The label changes in place when a watch is logged, not with a jump.
+                            .contentTransition(.interpolate)
+                            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: title.isSeries ? card.next?.number ?? -1 : movieViewings.count)
                     }.modifier(StudioWatchButtonStyle()).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
                         .haptic(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
                 }.padding(.top, 4)

@@ -266,6 +266,8 @@ struct StudioLayoutSwitch: View {
             side(false, symbol: "list.bullet", label: "Show as list")
             side(true, symbol: "square.grid.2x2", label: "Show as grid")
         }.padding(3).background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+            // A light tap as the thumb moves (the round toggle it replaced had one).
+            .haptic(.selection, trigger: grid)
     }
     private func side(_ value: Bool, symbol: String, label: String) -> some View {
         Button { withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) { grid = value } } label: {

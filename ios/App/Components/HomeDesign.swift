@@ -103,8 +103,6 @@ struct HomeWeekCard: View {
     let now: Date
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The bars grow up from nothing the first time the card shows, as Apple's charts do.
-    @State private var grown = false
     /// Watch time large, Watches and Streak small on the right, one bar for this week with a mark at
     /// last week's total, the days, and the empty-week line under a hairline (no box in the card).
     var body: some View {
@@ -152,7 +150,6 @@ struct HomeWeekCard: View {
         }.padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface(24)
-            .onAppear { grown = true }
     }
     private func smallMetric(_ value: String, _ label: String) -> some View {
         VStack(alignment: .trailing, spacing: 1) {
@@ -164,7 +161,7 @@ struct HomeWeekCard: View {
     /// The seven days: letter, date (today circled) and a small bar of that day's watching.
     private func dayStrip(maximum: Int) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(overview.days.enumerated()), id: \.element.id) { order, day in
+            ForEach(overview.days) { day in
                 let today = DiaryDate.calendar().isDate(day.date, inSameDayAs: now)
                 NavigationLink(value: HistoryRoute(day: day.date)) {
                     VStack(spacing: 0) {
@@ -173,13 +170,12 @@ struct HomeWeekCard: View {
                             .foregroundStyle(today ? HomeStyle.chipText : day.future ? HomeStyle.muted : HomeStyle.soft)
                             .frame(width: 32, height: 32).background(today ? HomeStyle.chip : .clear, in: Circle())
                             .padding(.top, 7).padding(.bottom, 6)
+                        // A day's bar rises when you log something that day, without a bounce; it no
+                        // longer grows in every time Home opens (seen many times a day, that read as slow).
                         RoundedRectangle(cornerRadius: 5).fill(HomeStyle.round).frame(width: 14, height: 22)
                             .overlay(alignment: .bottom) {
-                                if day.minutes > 0 {
-                                    Rectangle().fill(theme.accent).frame(height: max(4, 22 * CGFloat(day.minutes) / CGFloat(maximum)))
-                                        .scaleEffect(y: grown || reduceMotion ? 1 : 0.001, anchor: .bottom)
-                                        .animation(reduceMotion ? nil : .spring(duration: 0.6, bounce: 0.25).delay(Double(order) * 0.05), value: grown)
-                                }
+                                Rectangle().fill(theme.accent).frame(height: day.minutes > 0 ? max(4, 22 * CGFloat(day.minutes) / CGFloat(maximum)) : 0)
+                                    .animation(reduceMotion ? nil : .smooth(duration: 0.45), value: day.minutes)
                             }.clipShape(RoundedRectangle(cornerRadius: 5))
                     }.frame(maxWidth: .infinity)
                 }.buttonStyle(.plain).disabled(day.future)

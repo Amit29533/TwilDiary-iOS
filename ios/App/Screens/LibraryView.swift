@@ -718,6 +718,7 @@ struct GlanceView: View {
     @AppStorage("glanceGrid") private var grid = false
     @AppStorage("glanceSort") private var sortRaw = GlanceSort.recentlyUpdated.rawValue
     @Environment(DiaryStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Remembered between visits, like the layout and sort.
     @AppStorage("glanceCategory") private var category = LibraryCategory.all
     @State private var showAll = false
@@ -797,15 +798,20 @@ struct GlanceView: View {
                         }.padding(.horizontal, 6).padding(.top, 14)
                     }
                 }.padding(.horizontal, 8).padding(.top, 6).padding(.bottom, 100)
+                    // Marking a season's last episode moves the row out of Continue and into Caught up,
+                    // the rows below closing the gap, instead of jumping.
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: caughtIDs)
             }.categorySwipe($category).accessibilityIdentifier("glance-content").refreshable { await store.refresh() }
             .onChange(of: category) { _, _ in showAll = false }
-            .haptic(.selection, trigger: sortRaw).haptic(.selection, trigger: grid)
+            .haptic(.selection, trigger: sortRaw)
     }
     private var heroLabel: String {
         switch sort.wrappedValue { case .recentlyUpdated: "LAST WATCHED"; case .almostDone: "ALMOST DONE"; case .title: "WATCHING" }
     }
-    /// A list of cards. Design Lab's compact rows share one card, divided by inset hairlines.
-    @ViewBuilder private func rows(_ items: [MediaTitle]) -> some View {
+    /// A list of cards. Design Lab's compact rows share one card, divided by inset hairlines. A
+    /// list/grid switch fades the rows into the new layout.
+    private func rows(_ items: [MediaTitle]) -> some View { rowsBody(items).layoutFade(grid) }
+    @ViewBuilder private func rowsBody(_ items: [MediaTitle]) -> some View {
         if Studio.on(.glanceRows) && !grid {
             LazyVStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, title in
