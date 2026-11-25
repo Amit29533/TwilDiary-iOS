@@ -94,12 +94,8 @@ import TwilDiaryCore
         reload()
     }
 
-    /// The clipboard's version last pasted (Search stops offering a link once it's added).
-    static let pastedKey = "clips.pastedChange"
-
     /// A pasted link (and any words around it), for an install where the share sheet can't hand over.
     func add(pasted text: String, store: DiaryStore) async {
-        UserDefaults.standard.set(UIPasteboard.general.changeCount, forKey: Self.pastedKey)
         let link = Self.firstLink(in: text)
         let rest = text.replacingOccurrences(of: link ?? "\u{0}", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard link != nil || !rest.isEmpty else { return }

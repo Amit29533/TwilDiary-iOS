@@ -98,7 +98,6 @@ struct SearchLandingView: View {
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
-            if kind == .all { SavedClipsSection() }
             SearchBrowseShelves(shows: shows, kind: kind)
         }.smoothChange(of: shows.isEmpty)
             .task(id: store.sessionRevision) {

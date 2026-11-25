@@ -64,9 +64,9 @@ final class ShareViewController: UIViewController {
         guard let folder else {
             if let link {
                 UIPasteboard.general.string = [link.absoluteString, words].compactMap { $0 }.joined(separator: "\n")
-                phase = .copied("Link copied. Open TwilDiary and tap Paste in Search → Saved clips; it finds the title from there.")
+                phase = .copied("Link copied. Open TwilDiary and tap Paste in Home → Clipt; it finds the title from there.")
             } else if media {
-                phase = .failed("This copy of TwilDiary can’t take videos from the share sheet. Save the video to Photos, then add it in TwilDiary: Search → Saved clips → From Photos.")
+                phase = .failed("This copy of TwilDiary can’t take videos from the share sheet. Save the video to Photos, then add it in TwilDiary: Home → Clipt → From Photos.")
             } else {
                 phase = .failed("There was nothing here TwilDiary could save.")
             }

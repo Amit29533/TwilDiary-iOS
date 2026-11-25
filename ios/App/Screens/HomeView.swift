@@ -73,11 +73,24 @@ struct HomeView: View {
     @ViewBuilder private func homeSection(_ section: HomeSection, overview: HomeOverview, recent: [HistoryEntry], now: Date) -> some View {
         switch section {
         case .shortcuts:
-                // Explore is systematic discovery; Canvas is for browsing artwork at random.
-                HStack(spacing: 10) {
-                    NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress).accessibilityIdentifier("explore-shortcut")
-                    NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
-                }.padding(.bottom, -0)
+                // Explore is systematic discovery; Canvas is for browsing artwork at random; Clipt is your
+                // saved clips (shared reels and videos); Cines is next. Two at a time at their usual size;
+                // the row scrolls sideways and comes to rest on a pair (owner's call).
+                ScrollView(.horizontal) {
+                    HStack(spacing: 32) {
+                        HStack(spacing: 10) {
+                            NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress).accessibilityIdentifier("explore-shortcut")
+                            NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
+                        }.containerRelativeFrame(.horizontal)
+                        HStack(spacing: 10) {
+                            NavigationLink(value: AppDestination.savedClips) { HomeShortcut(name: "Clipt", icon: "list-video") }.buttonStyle(.springPress).accessibilityIdentifier("clipt-shortcut")
+                            NavigationLink(value: AppDestination.cines) { HomeShortcut(name: "Cines", icon: "clapperboard") }.buttonStyle(.springPress).accessibilityIdentifier("cines-shortcut")
+                        }.containerRelativeFrame(.horizontal)
+                    }.scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden)
+                // Edge to edge, so a pair slides off the screen's side, not the page's margin.
+                .contentMargins(.horizontal, 16, for: .scrollContent).padding(.horizontal, -16)
         case .week:
                 VStack(alignment: .leading, spacing: Gap.heading) {
                     HomeSectionHeader(title: "This week") {

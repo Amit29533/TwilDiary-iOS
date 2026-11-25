@@ -82,7 +82,7 @@ struct HomeShortcut: View {
             if ThemeStore.current.native {
                 // Native: an app-style tile in a system colour, as Apple's own shortcut rows.
                 DiaryIcon(name: icon, size: 17).foregroundStyle(.white).frame(width: 34, height: 34)
-                    .background(Color(uiColor: name == "Canvas" ? .systemPurple : .systemOrange).gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .background(Color(uiColor: Self.tint(name)).gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             } else {
                 DiaryIcon(name: icon, size: 17).foregroundStyle(theme.ink).frame(width: 36, height: 36).background(theme.accent, in: Circle())
             }
@@ -93,6 +93,15 @@ struct HomeShortcut: View {
             .background(HomeStyle.shortcut, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(HomeStyle.shortcutBorder, lineWidth: HomeStyle.hairline))
             .contentShape(RoundedRectangle(cornerRadius: 20))
+    }
+    /// Each tile's system colour in the Native look.
+    private static func tint(_ name: String) -> UIColor {
+        switch name {
+        case "Canvas": .systemPurple
+        case "Clipt": .systemTeal
+        case "Cines": .systemPink
+        default: .systemOrange
+        }
     }
 }
 
