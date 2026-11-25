@@ -100,18 +100,9 @@ struct SeasonCardsSection: View {
     private func tileBody(_ row: Row, chosen: Bool) -> some View {
         let watched = row.watched ?? 0
         return VStack(alignment: .leading, spacing: 0) {
+            // No season poster (yet): the show's cover, as it is. No text or darkening over it (owner's
+            // call): the season's name is under it.
             Artwork(path: posters[row.number] ?? showPoster, title: showName, initialsOnly: false).frame(width: 111, height: 167)
-                // No season poster (yet): the show's cover, dimmed, with the season's number, so it never
-                // passes for that season's own poster (owner saw the cover on every season as "wrong").
-                .overlay {
-                    if posters[row.number] == nil {
-                        ZStack {
-                            Color.black.opacity(0.5)
-                            // Specials: just the dimmed cover (its name is under it; "SP" over it read as clutter).
-                            if row.number > 0 { Text("S\(row.number)").font(.app(size: 34, weight: .heavy)).foregroundStyle(.white.opacity(0.92)) }
-                        }.accessibilityHidden(true)
-                    }
-                }
                 .overlay(alignment: .bottom) {
                     if watched > 0 {
                         GeometryReader { proxy in
