@@ -453,8 +453,6 @@ struct AiringCalendarView: View {
 /// The calendar's pieces, shared by every tab (Upcoming, Missed, Following and Global look alike:
 /// owner's request): filter pills, section headings, badges, posters and the row layout.
 @MainActor enum CalendarStyle {
-    /// One poster size across the calendar.
-    static let posterWidth: CGFloat = 72
     static func pill(_ label: String, active: Bool = false) -> some View {
         HStack(spacing: 6) {
             Text(label).lineLimit(1).truncationMode(.tail).frame(maxWidth: 120)
@@ -477,9 +475,16 @@ struct AiringCalendarView: View {
             .padding(.horizontal, 8).frame(height: 22)
             .background(strong ? HomeStyle.chip : Color.primary.opacity(0.08), in: Capsule())
     }
-    static func poster(_ path: String?, name: String) -> some View {
-        Artwork(path: path, title: name, initialsOnly: false).frame(width: PosterSizes.current.row, height: PosterSizes.current.rowHeight)
-            .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
+    /// The calendar's posters: the List rows size (Settings → Posters), redrawn as it changes.
+    static func poster(_ path: String?, name: String) -> some View { CalendarPoster(path: path, name: name) }
+    private struct CalendarPoster: View {
+        let path: String?
+        let name: String
+        @PosterSizing private var posterSize
+        var body: some View {
+            Artwork(path: path, title: name, initialsOnly: false).frame(width: posterSize.row, height: posterSize.rowHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
+        }
     }
     /// "Today", "Tomorrow", "In 6d", "2d ago".
     static func away(_ days: Int) -> String { days == 0 ? "Today" : days == 1 ? "Tomorrow" : days < 0 ? "\(-days)d ago" : "In \(days)d" }

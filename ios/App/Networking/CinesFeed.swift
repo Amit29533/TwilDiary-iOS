@@ -114,9 +114,13 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             rounds += 1
             // The channels are read alongside TMDB.
             async let channelsRead: Void = readChannels(store, token: token)
+            var fetchFailed = false
             if queue.count < 8, !exhausted {
                 do { try await fill(store, token: token) }
                 catch {
+                    // The page wasn't read: it's asked for again next time, not skipped.
+                    page = max(0, page - 1)
+                    fetchFailed = true
                     if !Task.isCancelled, clips.count == before, channelClips.isEmpty { failure = FriendlyError.message(error) }
                 }
             }
@@ -140,6 +144,11 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             if later.count > 6 { fresh += later.prefix(3); later.removeFirst(min(3, later.count)) }
             if fresh.isEmpty, queue.isEmpty, exhausted, channelsLeft?.isEmpty != false, channelClips.isEmpty {
                 clips += later; later = []
+                break
+            }
+            // Offline: show what this round found, and try again on the next load rather than now.
+            if fetchFailed {
+                clips += Self.spread(fresh.shuffled())
                 break
             }
             // With a YouTube key, YouTube says first which of them play here (1 unit a batch).

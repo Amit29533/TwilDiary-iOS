@@ -931,14 +931,16 @@ private struct CatalogSeasonPreview: View {
 struct TilesPlaceholder: View {
     let height: CGFloat
     let label: String
+    /// The tiles' width: the cast's 111, or the shelf card size for title rows.
+    var width: CGFloat = 111
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             ForEach(0..<4, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 0) {
-                    RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .tertiarySystemFill)).frame(width: 111, height: height)
+                    RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .tertiarySystemFill)).frame(width: width, height: height)
                     Text("A name here").font(.app(size: 14, weight: .semibold)).padding(.top, 11)
                     Text("A line").font(.app(size: 12)).padding(.top, 3)
-                }.frame(width: 111, alignment: .leading)
+                }.frame(width: width, alignment: .leading)
             }
         }
         .redacted(reason: .placeholder)
@@ -1029,7 +1031,7 @@ struct CastAndRelated: View {
             } else if relatedRead != route {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("More like this").font(.app(size: 22, weight: .bold)).tracking(-0.22).foregroundStyle(HomeStyle.primary).frame(minHeight: 44)
-                    TilesPlaceholder(height: 167, label: "Loading titles like this")
+                    TilesPlaceholder(height: posterSize.shelfHeight, label: "Loading titles like this", width: posterSize.shelf)
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }

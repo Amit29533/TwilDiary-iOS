@@ -206,7 +206,7 @@ struct PersonView: View {
                     // One or two titles as rows (a shelf of one left a wide empty gap).
                     VStack(spacing: 0) {
                         ForEach(Array(tmdb.enumerated()), id: \.element.key) { index, item in
-                            if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 76) }
+                            if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 28 + posterSize.small) }
                             watchedRow(item)
                         }
                     }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))

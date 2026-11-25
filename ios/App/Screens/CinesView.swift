@@ -63,6 +63,8 @@ struct CinesView: View {
         .background(Color.black.ignoresSafeArea())
         .environment(\.colorScheme, .dark)
         .toolbar(.hidden, for: .navigationBar)
+        // The bar is hidden, so UIKit's back swipes need turning back on (as Explore does).
+        .background(EdgeSwipeBack().frame(width: 0, height: 0))
         .task { await open(tab) }
         .onChange(of: current) { _, id in settle(on: id); showChrome() }
         // A pause brings a Short's buttons back (and keeps them).
@@ -96,13 +98,13 @@ struct CinesView: View {
     private var topBar: some View {
         HStack(spacing: 18) {
             Button { dismiss() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 36, height: 36).background(.white.opacity(0.16), in: Circle())
+                Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40).background(.white.opacity(0.16), in: Circle())
             }.buttonStyle(.plain).accessibilityLabel("Back").accessibilityIdentifier("cines-back")
             HStack(spacing: 16) {
                 ForEach(CinesTab.allCases) { item in
                     Button { if tab != item { tab = item } } label: {
-                        Text(item.name).font(.app(size: 15, weight: tab == item ? .semibold : .medium)).lineLimit(1).fixedSize()
+                        Text(item.name).font(.app(size: 17, weight: tab == item ? .semibold : .medium)).lineLimit(1).fixedSize()
                             .foregroundStyle(tab == item ? Color.white : Color.white.opacity(0.62))
                             .padding(.bottom, 4)
                             .overlay(alignment: .bottom) { if tab == item { Capsule().fill(.white).frame(height: 2) } }
@@ -130,8 +132,8 @@ struct CinesView: View {
 
     // MARK: A clip
 
-    /// The right-hand buttons' height (four 40 pt circles with their names, 10 pt apart).
-    private static let railHeight: CGFloat = 4 * (40 + 4 + 14) + 3 * 10
+    /// The right-hand buttons' height (four 46 pt circles with their names, 10 pt apart).
+    private static let railHeight: CGFloat = 4 * (46 + 4 + 16) + 3 * 10
 
     private func page(_ clip: CinesClip, size: CGSize, insets: EdgeInsets) -> some View {
         let active = clip.id == current
@@ -226,15 +228,15 @@ struct CinesView: View {
 
     private func info(_ clip: CinesClip) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(clip.kind).font(.app(size: 11, weight: .semibold)).padding(.horizontal, 7).padding(.vertical, 3)
+            Text(clip.kind).font(.app(size: 13, weight: .semibold)).padding(.horizontal, 8).padding(.vertical, 4)
                 .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 6)).padding(.bottom, 2)
-            Text(clip.name).font(.app(size: 18, weight: .semibold)).lineLimit(2)
-            Text(clip.detail).font(.app(size: 13)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+            Text(clip.name).font(.app(size: 21, weight: .semibold)).lineLimit(2)
+            Text(clip.detail).font(.app(size: 15)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
             if let channel = feed.channels[clip.id] {
-                Label(channel, systemImage: "play.rectangle.fill").font(.app(size: 13)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+                Label(channel, systemImage: "play.rectangle.fill").font(.app(size: 15)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
             }
             if let failure = failures[clip.id] {
-                Text(failure).font(.app(size: 12)).foregroundStyle(.orange).lineLimit(2)
+                Text(failure).font(.app(size: 14)).foregroundStyle(.orange).lineLimit(2)
             }
         }
         .foregroundStyle(.white)
@@ -288,13 +290,13 @@ struct CinesView: View {
     }
     private func railLabel(_ title: String, symbol: String, fill: Color = .white.opacity(0.18), working: Bool = false) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+            Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 .opacity(working ? 0 : 1)
                 .overlay { if working { ProgressView().tint(.white) } }
-                .frame(width: 40, height: 40).background(fill, in: Circle())
-            Text(title).font(.app(size: 11, weight: .medium)).foregroundStyle(.white).lineLimit(1).frame(height: 14)
+                .frame(width: 46, height: 46).background(fill, in: Circle())
+            Text(title).font(.app(size: 13, weight: .medium)).foregroundStyle(.white).lineLimit(1).frame(height: 16)
         }
-        .frame(minWidth: 52)
+        .frame(minWidth: 60)
         .shadow(color: .black.opacity(0.3), radius: 3)
     }
 
