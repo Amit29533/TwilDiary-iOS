@@ -71,30 +71,35 @@ struct SearchLandingView: View {
                     }
                 }
             }
-            if !shows.isEmpty {
-                // The week's top ten as one row of posters, as the other shelves, each with its rank.
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(trendingHeading).font(.title2.bold())
-                        .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader).frame(minHeight: Gap.headingRow)
-                    ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: Gap.item) {
-                            ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
-                                Group {
-                                    if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
-                                    else { NavigationLink(value: item.route) { rankedPoster(index: index, item: item) } }
-                                }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
-                                    .accessibilityIdentifier("trending-show-\(index + 1)")
-                            }
+            if !shows.isEmpty || trendingPending {
+                // The chart and its stand-in share one place: one under the other, swapping them
+                // stacked both for the length of the fade, so the page grew by a row and snapped back.
+                ZStack(alignment: .topLeading) {
+                    if !shows.isEmpty {
+                        // The week's top ten as one row of posters, as the other shelves, each with its rank.
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(trendingHeading).font(.title2.bold())
+                                .foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader).frame(minHeight: Gap.headingRow)
+                            ScrollView(.horizontal) {
+                                LazyHStack(alignment: .top, spacing: Gap.item) {
+                                    ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
+                                        Group {
+                                            if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
+                                            else { NavigationLink(value: item.route) { rankedPoster(index: index, item: item) } }
+                                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                                            .accessibilityIdentifier("trending-show-\(index + 1)")
+                                    }
+                                }
+                            }.scrollIndicators(.hidden).scrollClipDisabled()
+                        }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
+                    } else {
+                        // The row's own shape (heading and a shelf of posters) while it loads: a list-shaped
+                        // placeholder was a different height, so the page below jumped when the posters came.
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(trendingHeading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader).frame(minHeight: Gap.headingRow)
+                            DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .posterShelf)
                         }
-                    }.scrollIndicators(.hidden).scrollClipDisabled()
-                }.accessibilityElement(children: .contain).accessibilityIdentifier("search-top-shows")
-            }
-            if trendingPending {
-                // The row's own shape (heading and a shelf of posters) while it loads: a list-shaped
-                // placeholder was a different height, so the page below jumped when the posters came.
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(trendingHeading).font(.title2.bold()).foregroundStyle(HomeStyle.primary).accessibilityAddTraits(.isHeader).frame(minHeight: Gap.headingRow)
-                    DiaryLoadingPlaceholder(label: "Loading trending titles", layout: .posterShelf)
+                    }
                 }
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
@@ -106,7 +111,8 @@ struct SearchLandingView: View {
                 if let kept = Self.trending[trendingType], kept.revision == store.sessionRevision, Date.now.timeIntervalSince(kept.at) < 1_800 {
                     shows = kept.items; loadedRevision = kept.revision; return
                 }
-                shows = []
+                // The chart already shown stays while today's is read (it was cleared, and the stand-in
+                // came back, every half hour).
                 await load()
             }
     }
