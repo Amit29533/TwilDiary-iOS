@@ -155,12 +155,14 @@ struct TitleArtworkBackdrop: View {
             // Drawn at an eighth of its size, blurred there and flattened into one picture, then scaled up:
             // the same wash, but the blur works on 1/64 of the pixels and once, not at full size on every
             // frame as the page scrolls (it moves with the page).
-            art.frame(width: width * 1.3 / Self.washScale, height: artwork / Self.washScale)
+            // 1.6 times the cover's height, so it reaches past where the darkening below is fully dark
+            // (it used to end ~55 pt before that, on a straight line above the ratings: owner's note).
+            art.frame(width: width * 1.3 / Self.washScale, height: artwork * 1.6 / Self.washScale)
                 .scaleEffect(x: 1, y: -1)
                 .blur(radius: 60 / Self.washScale).saturation(1.2)
                 .drawingGroup()
                 .scaleEffect(Self.washScale)
-                .frame(width: width * 1.3, height: artwork)
+                .frame(width: width * 1.3, height: artwork * 1.6)
                 .opacity(0.95)
                 .offset(y: artwork - 50)
                 .frame(width: width)

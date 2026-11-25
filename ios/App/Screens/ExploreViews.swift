@@ -101,7 +101,9 @@ private struct ExploreContent: View {
         VStack(alignment: .leading, spacing: Gap.section) {
             let picks = Self.heroPicks(store, day: DiaryDate.day(store.now))
             if !picks.isEmpty {
-                ExploreHeroCarousel(titles: picks)
+                // Closer to the row below than the page's usual 28 pt (owner's note, 25 Nov 2026: the gap
+                // under the cover to Ask CineMind was too big): 12 pt.
+                ExploreHeroCarousel(titles: picks).padding(.bottom, 12 - Gap.section)
             } else {
                 VStack(alignment: .leading, spacing: Gap.heading) {
                     ExploreHeading(section: .daily)
@@ -282,7 +284,7 @@ private struct DailyDiscoveryHero: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.top, 70)
-        .padding(.bottom, 36)
+        .padding(.bottom, 22)
         .frame(maxWidth: .infinity, alignment: .bottomLeading)
         .frame(height: verticalSizeClass == .compact ? 240 : min(height, 520), alignment: .bottomLeading)
         .background {
