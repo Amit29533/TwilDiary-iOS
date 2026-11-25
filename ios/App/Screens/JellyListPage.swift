@@ -165,12 +165,19 @@ struct JellyListPage: View {
         defer { loadingMore = false }
         let options = JellyBrowseOptions.decode(optionsRaw)
         let user = await JellyfinUser.id(client)
-        guard let page = try? await client.itemsPage(request.extra, filters: request.filters, user: user, sort: options.sort,
-                                                     ascending: options.isAscending, start: fetched), !Task.isCancelled else { return }
-        fetched += page.Items.count
-        total = page.Items.isEmpty ? fetched : page.TotalRecordCount
-        let hidden = JellyHidden.decode(hiddenRaw), known = Set(items.map(\.Id))
-        items += page.Items.filter { hidden[$0.Id] == nil && !request.hiddenLibraries.contains($0.Id) && !known.contains($0.Id) }
+        let hidden = JellyHidden.decode(hiddenRaw)
+        // Pages until one adds something to show (a page of only hidden titles added nothing, and with no
+        // new last poster to come on screen the list stopped there).
+        while fetched < total {
+            guard let page = try? await client.itemsPage(request.extra, filters: request.filters, user: user, sort: options.sort,
+                                                         ascending: options.isAscending, start: fetched), !Task.isCancelled else { return }
+            fetched += page.Items.count
+            total = page.Items.isEmpty ? fetched : page.TotalRecordCount
+            let known = Set(items.map(\.Id))
+            let added = page.Items.filter { hidden[$0.Id] == nil && !request.hiddenLibraries.contains($0.Id) && !known.contains($0.Id) }
+            items += added
+            if !added.isEmpty { return }
+        }
     }
 }
 

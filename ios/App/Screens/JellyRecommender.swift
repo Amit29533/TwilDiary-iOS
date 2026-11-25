@@ -483,8 +483,11 @@ extension JellyRecommender {
         }
         building = task; buildingKey = key
         let built = await task.value
-        if buildingKey == key { building = nil; buildingKey = nil }
-        if let built {
+        // Kept only while it's still the build in flight: one for another account started meanwhile
+        // replaced it, and this one's index isn't that account's.
+        let current = building == task
+        if current { building = nil; buildingKey = nil }
+        if current, let built {
             kept = (key, .now, built)
             JellyDiskCache.save(JellyIndexSnapshot(key: key, at: .now, index: built), name: "index")
         }
