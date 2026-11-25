@@ -336,8 +336,16 @@ struct CatalogSearchView: View {
                 if let failedPage { RetryNotice(message: failure) { requestPage(failedPage) } }
                 else { Text(failure).font(.subheadline).foregroundStyle(.secondary) }
             }
-            LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(onlineExpanded && activeScope == searchScope ? shown : Array(shown.prefix(8))) { result in resultCard(result) }
+            // One card, a row per result with a hairline between (owner's call: about six results on
+            // a screen, where the large cards fitted three).
+            let rows = onlineExpanded && activeScope == searchScope ? shown : Array(shown.prefix(8))
+            if !rows.isEmpty {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, result in
+                        if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 70) }
+                        resultRow(result)
+                    }
+                }.modifier(SettingsCard())
             }
             if !loading && failure == nil && (hasMore || (!onlineExpanded && shown.count > 8)) {
                 Button {
@@ -355,69 +363,65 @@ struct CatalogSearchView: View {
             }
         }
     }
-    /// The design's result card: poster, name, "Anime · Series", then In library or + Add.
-    private func resultCard(_ result: Result) -> some View {
+    /// One result: a small poster, the name, "Anime · Series" (or why adding failed), and at the
+    /// right what it is to your diary: + to add it to Planned, a filled tick while it's Planned (a tap
+    /// takes it out), "Watched", or its other state (Watching, Paused, Dropped).
+    private func resultRow(_ result: Result) -> some View {
         let addRoute = result.libraryID == nil ? result.route : nil
         let plannedID = result.libraryID.flatMap { id in store.title(id)?.status == "planned" ? id : nil }
-        let posterWidth: CGFloat = 78
-        let spacing: CGFloat = 16
-        return VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .bottomLeading) {
-                Button {
-                    if let id = result.libraryID { chooseLibrary(id) } else if let route = result.route { chooseCatalog(route) }
-                } label: {
-                    HStack(spacing: spacing) {
-                        Artwork(path: result.poster, title: result.name, initialsOnly: false)
-                            .frame(width: posterWidth, height: 117).clipShape(RoundedRectangle(cornerRadius: 12))
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(result.name).font(.headline).foregroundStyle(HomeStyle.primary)
-                                .lineLimit(typeSize.isAccessibilitySize ? nil : 2).fixedSize(horizontal: false, vertical: true)
-                            Text(result.detail).font(.subheadline).foregroundStyle(HomeStyle.secondary)
-                            if let alias = result.alias { Text("Also known as " + alias).font(.caption).foregroundStyle(.secondary) }
-                            if let libraryID = result.libraryID, plannedID == nil {
-                                Text(store.title(libraryID).map { $0.status == "completed" ? "Watched" : $0.status == "planned" ? "Planned" : "In library" } ?? "In library").font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
-                                    .padding(.horizontal, 16).padding(.vertical, 8).background(HomeStyle.chip, in: Capsule())
-                            } else if addRoute != nil || plannedID != nil {
-                                Color.clear.frame(height: addControlHeight).accessibilityHidden(true)
-                            }
-                        }.frame(maxWidth: .infinity, minHeight: 117, alignment: addRoute == nil && plannedID == nil ? .leading : .bottomLeading)
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain)
-                    .accessibilityIdentifier(result.libraryID.map { "search-library-" + $0 } ?? "search-" + (result.route.map(Self.key) ?? result.id))
-                if let route = addRoute { addButton(route, title: result.name).padding(.leading, posterWidth + spacing) }
-                else if let id = plannedID { plannedButton(id, title: result.name).padding(.leading, posterWidth + spacing) }
-            }
-            if let route = addRoute, let message = addFailures[Self.key(route)] {
-                Text(message).font(.footnote).foregroundStyle(.secondary)
-            }
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
+        let failure = addRoute.flatMap { addFailures[Self.key($0)] }
+        return HStack(spacing: 12) {
+            Button {
+                if let id = result.libraryID { chooseLibrary(id) } else if let route = result.route { chooseCatalog(route) }
+            } label: {
+                HStack(spacing: 12) {
+                    Artwork(path: result.poster, title: result.name, initialsOnly: false)
+                        .frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(result.name).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
+                            .lineLimit(typeSize.isAccessibilitySize ? nil : 2).fixedSize(horizontal: false, vertical: true)
+                        Text(failure ?? result.detail).font(.footnote).foregroundStyle(failure == nil ? HomeStyle.secondary : Color.orange)
+                            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                        if let alias = result.alias { Text("Also known as " + alias).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                    Spacer(minLength: 0)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+                .accessibilityIdentifier(result.libraryID.map { "search-library-" + $0 } ?? "search-" + (result.route.map(Self.key) ?? result.id))
+            if let route = addRoute { addButton(route, title: result.name) }
+            else if let id = plannedID { plannedButton(id, title: result.name) }
+            else if let id = result.libraryID { stateLabel(store.title(id)?.status) }
+        }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 
+    /// A round button at the row's end: the symbol in a tinted circle, a spinner while it works.
+    private func roundControl(_ symbol: String, busy: Bool, ink: Color, fill: Color) -> some View {
+        Image(systemName: symbol).font(.subheadline.weight(.bold)).foregroundStyle(ink)
+            .opacity(busy ? 0 : 1)
+            .overlay { if busy { ProgressView().controlSize(.small).tint(ink) } }
+            .frame(width: addControlHeight * 0.78, height: addControlHeight * 0.78)
+            .background(fill, in: Circle())
+            .frame(width: addControlHeight, height: addControlHeight).contentShape(Circle())
+    }
+
+    /// + adds the title to Planned; after a failure, an orange retry (the reason is in the row).
     private func addButton(_ route: CatalogRoute, title: String) -> some View {
         let key = Self.key(route)
         let busy = adding.contains(key)
         let retry = addFailures[key] != nil
         return Button { Task { await add(route) } } label: {
-            Label(retry ? "Retry add" : "Add", systemImage: "plus").lineLimit(1)
-                .font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
-                .opacity(busy ? 0 : 1)
-                .overlay { if busy { ProgressView().controlSize(.small) } }
-                .padding(.horizontal, 16).frame(height: addControlHeight)
-                .background(HomeStyle.chip, in: Capsule())
+            roundControl(retry ? "arrow.clockwise" : "plus", busy: busy,
+                         ink: retry ? .orange : HomeStyle.chipText, fill: retry ? Color.orange.opacity(0.16) : HomeStyle.chip)
         }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
             .accessibilityLabel((retry ? "Retry adding " : "Add ") + title)
             .accessibilityIdentifier("search-add-" + key)
     }
-    /// "✓ Planned": tapping it asks, then takes the title back out of Planned (into Trash).
+    /// A filled tick while it's Planned: tapping it asks, then takes the title back out of Planned
+    /// (into Trash).
     private func plannedButton(_ id: String, title: String) -> some View {
         let busy = adding.contains(id)
         return Button { if confirmDeletions { removingPlanned = id } else { Task { await removePlanned(id) } } } label: {
-            Label("Planned", systemImage: "checkmark").lineLimit(1)
-                .font(.subheadline.bold()).foregroundStyle(HomeStyle.chipText)
-                .opacity(busy ? 0 : 1)
-                .overlay { if busy { ProgressView().controlSize(.small) } }
-                .padding(.horizontal, 16).frame(height: addControlHeight)
-                .background(HomeStyle.chip, in: Capsule())
+            roundControl("checkmark", busy: busy, ink: .white, fill: HomeStyle.chipText)
         }.buttonStyle(.springPress).disabled(busy || !store.canMutate)
             .confirmationDialog("Remove \(title) from Planned?", isPresented: Binding(get: { removingPlanned == id }, set: { if !$0 { removingPlanned = nil } }),
                                 titleVisibility: .visible) {
@@ -425,6 +429,22 @@ struct CatalogSearchView: View {
             } message: { Text("It moves to Trash.") }
             .accessibilityLabel("Planned. Remove " + title + " from Planned")
             .accessibilityIdentifier("search-planned-" + id)
+    }
+    /// A title already in the diary, not Planned: "Watched" in green, any other state in grey.
+    private func stateLabel(_ status: String?) -> some View {
+        let watched = status == "completed"
+        let name = switch status ?? "" {
+        case "completed": "Watched"
+        case "watching": "Watching"
+        case "paused", "on_hold": "Paused"
+        case "dropped": "Dropped"
+        default: "In library"
+        }
+        let green = Color(themed: "#7fe0b5")
+        return Text(name).font(.caption.weight(.semibold)).foregroundStyle(watched ? green : HomeStyle.secondary)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(watched ? green.opacity(0.16) : Color(uiColor: .tertiarySystemFill), in: Capsule())
+            .fixedSize()
     }
     private func removePlanned(_ id: String) async {
         guard let title = store.title(id), title.status == "planned", adding.insert(id).inserted else { return }
