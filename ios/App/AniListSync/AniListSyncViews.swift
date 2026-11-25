@@ -145,7 +145,7 @@ struct AniListSyncSection: View {
         let comparison = sync.comparison
         let bringing = sync.adoptions.count
         return SettingsGroup(label: "Options") {
-            Toggle(isOn: $account.saving) { SettingsRowTitle("Also save my activity to AniList", "") }
+            Toggle(isOn: $account.saving) { SettingsRowTitle("Also save my activity to AniList", "").frame(maxWidth: .infinity, alignment: .leading) }
                 .settingsRowFrame().accessibilityIdentifier("anilist-sync-saving")
             SettingsDivider()
             SettingsRow(title: "Make AniList match", subtitle: comparison.map { $0.keysToSend.isEmpty ? "Nothing to send" : $0.keysToSend.count.counted("title", "titles") + " sent from your diary" } ?? "Check first") {
@@ -182,10 +182,10 @@ struct AniListSyncSection: View {
                 SettingsRow(title: "Account limits") { SettingsChevron() }
             }.buttonStyle(.plain).accessibilityIdentifier("anilist-account-limits")
             SettingsDivider()
-            Toggle(isOn: $account.sendNotes) { SettingsRowTitle("Send my notes", "") }
+            Toggle(isOn: $account.sendNotes) { SettingsRowTitle("Send my notes", "").frame(maxWidth: .infinity, alignment: .leading) }
                 .settingsRowFrame().accessibilityIdentifier("anilist-sync-notes")
             SettingsDivider()
-            Toggle(isOn: $account.keepPrivate) { SettingsRowTitle("Keep entries private on AniList", "") }
+            Toggle(isOn: $account.keepPrivate) { SettingsRowTitle("Keep entries private on AniList", "").frame(maxWidth: .infinity, alignment: .leading) }
                 .settingsRowFrame().accessibilityIdentifier("anilist-sync-private")
         }
     }

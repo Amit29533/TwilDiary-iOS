@@ -419,7 +419,7 @@ struct DesignLabView: View {
                     SettingsDivider()
                     // Haptics (moved here from the Theme page): the little taps when you mark, add,
                     // switch tabs and trace the rating chart. Turning them on answers with one.
-                    Toggle(isOn: $haptics) { SettingsRowTitle("Haptics", "Little taps when you mark, add and switch") }
+                    Toggle(isOn: $haptics) { SettingsRowTitle("Haptics", "").frame(maxWidth: .infinity, alignment: .leading) }
                         .tint(Color(uiColor: .systemGreen)).settingsRowFrame().accessibilityIdentifier("settings-haptics")
                         .onChange(of: haptics) { _, on in if on { Haptics.play(.success) } }
                 }

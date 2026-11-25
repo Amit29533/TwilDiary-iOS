@@ -53,7 +53,11 @@ struct SettingsRowTitle: View {
         if ThemeStore.current.native {
             Text(title).font(.app(size: 17)).foregroundStyle(HomeStyle.primary).lineLimit(1)
         } else {
-            VStack(alignment: .leading, spacing: 2) { Text(title).font(.app(size: 15, weight: .semibold)); Text(subtitle).font(.app(size: 12)).foregroundStyle(.secondary) }
+            // No subtitle given: the name alone (an empty second line still took its height).
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.app(size: 15, weight: .semibold))
+                if !subtitle.isEmpty { Text(subtitle).font(.app(size: 12)).foregroundStyle(.secondary) }
+            }
         }
     }
 }

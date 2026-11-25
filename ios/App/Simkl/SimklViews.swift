@@ -100,7 +100,7 @@ struct SimklSettingsView: View {
                     }
                     if ThemeStore.current.native {
                         TrackerPreviewPanel(tracker: .simkl, leadingOptions: AnyView(
-                            Toggle(isOn: $account.saving) { SettingsRowTitle("Also save my activity to Simkl", "") }
+                            Toggle(isOn: $account.saving) { SettingsRowTitle("Also save my activity to Simkl", "").frame(maxWidth: .infinity, alignment: .leading) }
                                 .settingsRowFrame().accessibilityIdentifier("simkl-saving")), trailingOptions: AnyView(
                             NavigationLink { ServiceLimitsView(tracker: .simkl) } label: {
                                 SettingsRow(title: "Account limits") { SettingsChevron() }

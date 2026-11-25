@@ -197,13 +197,13 @@ struct PosterSettingsView: View {
                     }.padding(14)
                 }
                 SettingsGroup(label: "On each poster") {
-                    Toggle(isOn: $showsRating) { SettingsRowTitle("Rating", "The community score on the poster") }
+                    // The label fills the row (it shrank to fit, so each row sat centred on its own width).
+                    Toggle(isOn: $showsRating) { SettingsRowTitle("Rating", "").frame(maxWidth: .infinity, alignment: .leading) }
                         .settingsRowFrame().accessibilityIdentifier("customise-poster-rating")
                     SettingsDivider()
-                    Toggle(isOn: $showsCaption) { SettingsRowTitle("Name under posters", "The title and a line of details") }
+                    Toggle(isOn: $showsCaption) { SettingsRowTitle("Name under posters", "").frame(maxWidth: .infinity, alignment: .leading) }
                         .settingsRowFrame().accessibilityIdentifier("customise-poster-caption")
                 }
-                SettingsFootnote(text: "A title page's big poster, wide episode pictures, people's photos and Cines keep their own sizes. Where the rating sits, corners and caption spacing are in Design Lab.")
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 32)
         }
         .diaryScreenBackground().diaryPageNavigation("Posters")

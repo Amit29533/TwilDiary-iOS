@@ -59,7 +59,7 @@ struct ConnectionsView: View {
                         // Native: a settings row with the system switch, the same height as the rows below.
                         HStack(spacing: 12) {
                             SettingsTile(symbol: "server.rack")
-                            Toggle(isOn: $server) { SettingsRowTitle("Your server", "") }
+                            Toggle(isOn: $server) { SettingsRowTitle("Your server", "").frame(maxWidth: .infinity, alignment: .leading) }
                         }.settingsRowFrame().accessibilityIdentifier("connections-server")
                     } else {
                     HStack(spacing: 14) {
