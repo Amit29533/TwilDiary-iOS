@@ -307,6 +307,7 @@ struct StatsWhenCard: View {
 }
 
 struct StatsHallOfFameCard: View {
+    @PosterSizing private var posterSize
     let insights: StatsInsights
     let longestStreak: Int
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -353,7 +354,7 @@ struct StatsHallOfFameCard: View {
     private func moment(_ value: StatsInsights.Moment) -> some View {
         NavigationLink(value: value.title.id) {
             VStack(spacing: 6) {
-                Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: 54, height: 76).clipShape(RoundedRectangle(cornerRadius: 9))
+                Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 9))
                 Text(value.date.formatted(.dateTime.day().month(.abbreviated).year())).font(.app(size: 12)).foregroundStyle(.secondary)
             }
         }.buttonStyle(.plain)
@@ -369,6 +370,7 @@ struct StatsHallOfFameCard: View {
 }
 
 struct StatsMarathonsCard: View {
+    @PosterSizing private var posterSize
     let marathons: [StatsInsights.Marathon]
     var body: some View {
         if !marathons.isEmpty {
@@ -376,7 +378,7 @@ struct StatsMarathonsCard: View {
                 ForEach(marathons) { item in
                     NavigationLink(value: item.title.id) {
                         HStack(spacing: 12) {
-                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 46, height: 64).clipShape(RoundedRectangle(cornerRadius: 9))
+                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 9))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.title.name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2)
                                 Text(item.day.formatted(.dateTime.day().month(.abbreviated).year())).font(.app(size: 13)).foregroundStyle(.secondary)
@@ -404,6 +406,7 @@ struct StatsPosterItem: Identifiable {
 }
 
 struct StatsPosterRow: View {
+    @PosterSizing private var posterSize
     let title: String
     let items: [StatsPosterItem]
     @Binding var shows: Bool
@@ -415,7 +418,7 @@ struct StatsPosterRow: View {
                 HStack(spacing: 12) {
                     ForEach(items) { item in
                         NavigationLink(value: item.title.id) {
-                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 104, height: 150).clipShape(RoundedRectangle(cornerRadius: 14))
+                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight).clipShape(RoundedRectangle(cornerRadius: 14))
                                 .overlay(alignment: .bottomLeading) {
                                     VStack(alignment: .leading, spacing: 0) {
                                         Text(item.badge).font(.app(size: 13, weight: .bold))

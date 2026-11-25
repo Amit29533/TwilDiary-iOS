@@ -48,6 +48,7 @@ enum RecentlyViewed {
 
 /// The search page's row of the titles you opened last.
 struct RecentlyViewedShelf: View {
+    @PosterSizing private var posterSize
     @AppStorage(RecentlyViewed.storageKey) private var json = "[]"
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(DiaryStore.self) private var store
@@ -68,11 +69,11 @@ struct RecentlyViewedShelf: View {
                         ForEach(items) { item in
                             Button { open(item) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: 90, height: 135)
+                                    Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
                                     Text(item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                         .lineLimit(2).multilineTextAlignment(.leading)
-                                }.frame(width: 90, alignment: .leading)
+                                }.frame(width: posterSize.shelf, alignment: .leading)
                             }.buttonStyle(.springPress).accessibilityIdentifier("search-viewed-" + item.key)
                                 .contextMenu {
                                     Button("Remove", systemImage: "xmark", role: .destructive) {
@@ -100,6 +101,7 @@ struct RecentlyViewedShelf: View {
 /// Studios and franchises (TMDB's companies and collections) whose names match the search,
 /// under the titles: "Ghibli" finds Studio Ghibli, "Harry Potter" the film series.
 struct SearchStudiosAndFranchises: View {
+    @PosterSizing private var posterSize
     let query: String
     let kind: CatalogSearchView.Kind
     var onChoose: () -> Void = {}
@@ -122,11 +124,11 @@ struct SearchStudiosAndFranchises: View {
                             ForEach(franchises) { item in
                                 NavigationLink(value: ShowPageRoute.tmdbCollection(id: item.id, name: item.name)) {
                                     VStack(alignment: .leading, spacing: 6) {
-                                        Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: 100, height: 150)
+                                        Artwork(path: item.poster, title: item.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight)
                                             .clipShape(RoundedRectangle(cornerRadius: 12))
                                         Text(item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                             .lineLimit(2).multilineTextAlignment(.leading)
-                                    }.frame(width: 100, alignment: .leading)
+                                    }.frame(width: posterSize.shelf, alignment: .leading)
                                 }.buttonStyle(.springPress).simultaneousGesture(TapGesture().onEnded(onChoose))
                                     .accessibilityIdentifier("search-franchise-\(item.id)")
                             }

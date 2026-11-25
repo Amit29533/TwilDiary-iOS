@@ -206,6 +206,7 @@ private struct CineGlowRing<S: InsettableShape>: ViewModifier {
 }
 
 struct CineMindView: View {
+    @PosterSizing private var posterSize
     let title: MediaTitle
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -391,10 +392,10 @@ struct CineMindView: View {
                     Button { dismiss(); router.openCatalog(match.item.route) } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false)
-                                .frame(width: 112, height: 168).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .frame(width: posterSize.shelf, height: posterSize.shelfHeight).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(HomeStyle.outline(0.08), lineWidth: 0.75))
                             Text(match.item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(Color(uiColor: .label))
-                                .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: 112, alignment: .leading)
+                                .lineLimit(2).truncationMode(.tail).multilineTextAlignment(.leading).frame(width: posterSize.shelf, alignment: .leading)
                             if let tag = match.why.split(separator: "|").first.map({ String($0).trimmingCharacters(in: .whitespaces) }), !tag.isEmpty {
                                 Text(tag).font(.app(size: 11, weight: .medium)).foregroundStyle(Color(uiColor: .secondaryLabel)).lineLimit(1).frame(width: 112, alignment: .leading)
                             }

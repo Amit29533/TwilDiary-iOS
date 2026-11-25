@@ -208,6 +208,7 @@ struct SearchTagTitlesPage: View {
 }
 
 struct SearchAnimeTagTitlesPage: View {
+    @PosterSizing private var posterSize
     let tag: SearchBrowseTag
     var fromTopic = false
     @Environment(DiaryStore.self) private var store
@@ -243,7 +244,7 @@ struct SearchAnimeTagTitlesPage: View {
                     DiaryLoadingPlaceholder(label: "Loading anime", layout: .posterGrid(columns: 3, rows: 2))
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: Gap.gridRow) {
+                                              count: typeSize.isAccessibilitySize ? 2 : posterSize.columns), spacing: Gap.gridRow) {
                         ForEach(items) { item in
                             AnimeAppearanceButton(appearance: item) {
                                 VStack(alignment: .leading, spacing: 6) {

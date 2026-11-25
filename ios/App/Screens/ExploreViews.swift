@@ -325,7 +325,7 @@ private struct DiscoveryShelfView: View {
 }
 
 private struct DiscoveryTrack: View {
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     let items: [CatalogItem]
     var body: some View {
         if !items.isEmpty {

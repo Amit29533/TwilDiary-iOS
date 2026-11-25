@@ -203,7 +203,7 @@ struct HomePoster<Badge: View>: View {
     /// Studio: Recommended's match, in green at the start of the caption (in place of the pill).
     var match: Int? = nil
     @ViewBuilder var badge: Badge
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     private var showsCaption: Bool { TilePrefs.shared.posterCaptions }
     var body: some View {
         let width = posterSize.homeWidth

@@ -260,6 +260,7 @@ private struct SearchListPosterStack: View {
 }
 
 struct SearchTVDBFranchisePage: View {
+    @PosterSizing private var posterSize
     let franchise: TVDBDirect.Franchise
     @Environment(DiaryStore.self) private var store
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -307,7 +308,7 @@ struct SearchTVDBFranchisePage: View {
                         }
                     }
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                                              count: typeSize.isAccessibilitySize ? 2 : 3), spacing: Gap.gridRow) {
+                                              count: typeSize.isAccessibilitySize ? 2 : posterSize.columns), spacing: Gap.gridRow) {
                         ForEach(matching.prefix(visibleCount)) { entry in
                             SearchTVDBTitleCard(entry: entry) { id in resolved[entry] = CatalogRoute(kind: entry.kind, id: id) }
                         }

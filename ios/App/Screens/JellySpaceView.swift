@@ -33,7 +33,7 @@ struct JellyFolderRoute: Hashable {
 /// over every film and episode; any library or folder opens in JellyFolderPage. Opens from the
 /// TwilDiary logo on Home. The player is JellyPlayerView.
 struct JellySpaceView: View {
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     /// Names under posters (Settings → JellySpace → Home → Posters → Titles); off is the Netflix look:
     /// bigger posters, close together, with small corners.
     @AppStorage(JellyPrefs.captionsKey) private var captions = true
@@ -329,7 +329,7 @@ struct JellySpaceView: View {
             ForEach(seerrResults.prefix(12)) { result in
                 HStack(spacing: 12) {
                     Artwork(path: result.posterPath, title: result.label, initialsOnly: false)
-                        .frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 6))
+                        .frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(result.label).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                         Text([result.year, result.mediaType == "tv" ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "))

@@ -6,6 +6,7 @@ import TwilDiaryCore
 /// time with its chart and one range control, Streaks, Backlog, Gone quiet,
 /// Genre mix and a link to the full history.
 struct StatsView: View {
+    @PosterSizing private var posterSize
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -397,7 +398,7 @@ struct StatsView: View {
                 HStack(spacing: 12) {
                     NavigationLink(value: item.id) {
                         HStack(spacing: 12) {
-                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: 46, height: 64).clipShape(RoundedRectangle(cornerRadius: 8))
+                            Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.title.name).font(.app(size: 15, weight: .semibold)).lineLimit(2)
                                 caption("Last watched \(item.daysSince ?? 0) days ago", size: 12)

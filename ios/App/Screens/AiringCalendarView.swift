@@ -478,7 +478,7 @@ struct AiringCalendarView: View {
             .background(strong ? HomeStyle.chip : Color.primary.opacity(0.08), in: Capsule())
     }
     static func poster(_ path: String?, name: String) -> some View {
-        Artwork(path: path, title: name, initialsOnly: false).frame(width: posterWidth, height: posterWidth * 1.4)
+        Artwork(path: path, title: name, initialsOnly: false).frame(width: PosterSizes.current.row, height: PosterSizes.current.rowHeight)
             .clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(HomeStyle.outline(0.08)))
     }
     /// "Today", "Tomorrow", "In 6d", "2d ago".

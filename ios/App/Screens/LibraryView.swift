@@ -6,7 +6,7 @@ import TwilDiaryCore
 /// then posters, rows or genre shelves. Select mode swaps the header for Cancel · N selected · All
 /// and shows a glass action bar.
 struct LibraryView: View {
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     enum Layout: String { case grid, list, shelves }
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -690,6 +690,7 @@ struct LibraryPosterCard: View {
 /// A Library row: poster, name, "2023 · Movie · Drama", the status chip and rating; a check
 /// circle in select mode.
 struct LibraryListRow: View {
+    @PosterSizing private var posterSize
     let title: MediaTitle
     var selected: Bool?
     @Environment(DiaryStore.self) private var store
@@ -698,7 +699,7 @@ struct LibraryListRow: View {
     var body: some View {
         let score = store.publicScore(title, source: ratingSource)
         HStack(spacing: 12) {
-            Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 7))
+            Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 4) {
                 Text(title.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(Color(themed: "#f3f0f7")).lineLimit(1)
                 Text(([title.year.map(String.init), title.categoryName, title.genres.first]).compactMap { $0 }.joined(separator: " · ")).font(.app(size: 12)).foregroundStyle(Color(themed: "#a09aa9")).lineLimit(1)

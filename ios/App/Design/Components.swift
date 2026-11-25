@@ -806,6 +806,7 @@ private struct CardCircle: ViewModifier {
 
 
 struct ProgressCard: View {
+    @PosterSizing private var posterSize
     private var theme: DiaryTheme { TilePrefs.shared.theme }
     let title: MediaTitle
     var compact = false
@@ -984,7 +985,7 @@ struct ProgressCard: View {
             HStack(alignment: .top, spacing: 14) {
                 Button { openTitle() } label: {
                     Artwork(path: title.poster, title: title.name, initialsOnly: false)
-                        .frame(width: Self.posterWidth, height: Self.posterHeight).clipShape(RoundedRectangle(cornerRadius: 10))
+                        .frame(width: posterSize.row, height: posterSize.rowHeight).clipShape(RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 0) {
                     titleButton(size: 16).padding(.trailing, 30)
@@ -992,12 +993,11 @@ struct ProgressCard: View {
                     detailLine.padding(.top, 1)
                     Spacer(minLength: 4)
                     glanceRow(accent: theme.accent, track: Color.primary.opacity(0.14))
-                }.frame(maxWidth: .infinity, alignment: .topLeading).frame(height: Self.posterHeight)
+                }.frame(maxWidth: .infinity, alignment: .topLeading).frame(height: posterSize.rowHeight)
                     .overlay(alignment: .topTrailing) { cardMenu.offset(x: 10, y: -10) }
             }.padding(12)
         }
     }
-    private static let posterWidth: CGFloat = 76, posterHeight: CGFloat = 114
     /// Studio's compact Glance row (one shared card, drawn by the list).
     private var studioGroupedRow: Bool { Studio.on(.glanceRows) && !grid && !hero && !compact }
     /// Studio: a 52 pt poster, the title, "S1 E2 · Episode 2 · 25m", then the bar with what's left
@@ -1007,7 +1007,7 @@ struct ProgressCard: View {
         HStack(alignment: .top, spacing: 12) {
             Button { openTitle() } label: {
                 Artwork(path: title.poster, title: title.name, initialsOnly: false)
-                    .frame(width: 52, height: 78).clipShape(RoundedRectangle(cornerRadius: 8))
+                    .frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 8))
             }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 0) {
                 titleButton(size: 15)

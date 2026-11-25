@@ -271,6 +271,7 @@ struct StatsYourDaysCard: View {
 
 /// The month's Hall of fame: biggest day, best streak (as dots), first and latest watch.
 struct StatsMonthHallOfFame: View {
+    @PosterSizing private var posterSize
     let month: StatsMonth
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
@@ -317,7 +318,7 @@ struct StatsMonthHallOfFame: View {
     private func moment(_ value: StatsMonth.Moment) -> some View {
         NavigationLink(value: value.title.id) {
             VStack(spacing: 6) {
-                Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: 54, height: 76).clipShape(RoundedRectangle(cornerRadius: 9))
+                Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 9))
                 Text(value.date.formatted(.dateTime.day().month(.abbreviated))).font(.app(size: 12)).foregroundStyle(.secondary)
             }
         }.buttonStyle(.plain)

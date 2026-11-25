@@ -10,6 +10,7 @@ import TwilDiaryCore
 /// left. On a preview (a show not in your diary) a tile shows the episode count and picks that
 /// season for the Episodes section below. The order flips (newest first by default; Specials last).
 struct SeasonCardsSection: View {
+    @PosterSizing private var posterSize
     enum Source {
         /// A show in your diary.
         case diary(MediaTitle)
@@ -102,7 +103,7 @@ struct SeasonCardsSection: View {
         return VStack(alignment: .leading, spacing: 0) {
             // No season poster (yet): the show's cover, as it is. No text or darkening over it (owner's
             // call): the season's name is under it.
-            Artwork(path: posters[row.number] ?? showPoster, title: showName, initialsOnly: false).frame(width: 111, height: 167)
+            Artwork(path: posters[row.number] ?? showPoster, title: showName, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight)
                 .overlay(alignment: .bottom) {
                     if watched > 0 {
                         GeometryReader { proxy in
@@ -122,7 +123,7 @@ struct SeasonCardsSection: View {
             Text(row.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
             Text(line(row)).font(.app(size: 12)).monospacedDigit()
                 .foregroundStyle(row.complete ? Self.done : watched > 0 ? theme.accent : HomeStyle.secondary).padding(.top, 3)
-        }.frame(width: 111, alignment: .leading)
+        }.frame(width: posterSize.shelf, alignment: .leading)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(row.name + ", " + line(row) + (row.complete ? ", complete" : ""))
     }

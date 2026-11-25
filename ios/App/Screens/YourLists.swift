@@ -263,7 +263,7 @@ struct YourListPage: View {
     /// rank (your order), added, name, year or rating; per list.
     @AppStorage("yourLists.sort") private var sortsJSON = "{}"
     private var model: YourListsStore { .shared }
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: posterSize.columns) }
 
     private var list: YourList? { model.lists.first { $0.id == route.id } }
@@ -369,7 +369,7 @@ struct YourListPage: View {
             List {
                 ForEach(entries) { entry in
                     HStack(spacing: 12) {
-                        Artwork(path: entry.item.artwork, title: entry.item.name, initialsOnly: false).frame(width: 40, height: 60).clipShape(RoundedRectangle(cornerRadius: 6))
+                        Artwork(path: entry.item.artwork, title: entry.item.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 6))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(entry.item.name).font(.app(size: 15, weight: .semibold)).lineLimit(1)
                             if let year = entry.item.year { Text(String(year)).font(.caption).foregroundStyle(.secondary) }

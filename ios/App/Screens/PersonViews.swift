@@ -5,6 +5,7 @@ import TwilDiaryCore
 /// route names loads first (so the page appears at once); the other side is then matched and its
 /// facts, credits and characters join the same page, instead of a second "TMDB profile" page.
 struct PersonView: View {
+    @PosterSizing private var posterSize
     enum Start: Hashable { case tmdb(PersonRoute), voice(VoiceActorRoute) }
     let start: Start
     init(route: PersonRoute) { start = .tmdb(route) }
@@ -230,7 +231,7 @@ struct PersonView: View {
     private func watchedRow(_ item: CatalogItem) -> some View {
         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
         let row = HStack(spacing: 13) {
-            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 48, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
+            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name).font(.app(size: 16, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                 Text([item.year.map(String.init), ProfileText.line(role)].compactMap { $0 }.joined(separator: " · ")).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
@@ -372,7 +373,7 @@ struct PersonView: View {
 }
 
 struct PersonCreditShelf: View {
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     let items: [CatalogItem]
     var identifier = "person-credit-shelf"
     @Environment(\.dynamicTypeSize) private var typeSize

@@ -11,7 +11,7 @@ struct SettingsView: View {
     @AppStorage("hideSpoilers") private var hideSpoilers = true
     @AppStorage(AppTab.launchKey) private var launchTab = AppTab.glance
     @AppStorage(TabLayout.key) private var tabText = ""
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     @AppStorage(TextScale.followsKey) private var textFollowsSystem = true
     @AppStorage(TextScale.customKey) private var textCustom = 1.0
     @AppStorage(AniListMostWatched.userKey) private var anilistUser = ""
@@ -64,7 +64,7 @@ struct SettingsView: View {
                         }.accessibilityIdentifier("settings-customise")
                         divider
                         NavigationLink { PosterSettingsView() } label: {
-                            settingsRow("photo.on.rectangle", .orange, "Posters", subtitle: "Size, rating and name", value: posterSize.title, disclosure: true)
+                            settingsRow("photo.on.rectangle", .orange, "Posters", subtitle: "Size, rating and name", value: "(posterSize.columns) across", disclosure: true)
                         }.accessibilityIdentifier("settings-posters")
                         divider
                         // Text size: iPhone's, or your own on a slider. A route (not a pushed view), so the

@@ -240,6 +240,7 @@ extension Binding where Value == ProfileMilestone? {
 }
 
 struct PersonalProfileView: View {
+    @PosterSizing private var posterSize
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
     @AppStorage("theme") private var theme = DiaryTheme.twilight
@@ -537,8 +538,8 @@ struct PersonalProfileView: View {
                     ForEach(Array(recent)) { title in
                         NavigationLink(value: title.id) {
                             VStack(alignment: .leading, spacing: 6) {
-                                Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: 116, height: 172).clipShape(RoundedRectangle(cornerRadius: 14))
-                                Text(title.name).font(.app(size: 14.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).frame(width: 116, alignment: .leading)
+                                Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight).clipShape(RoundedRectangle(cornerRadius: 14))
+                                Text(title.name).font(.app(size: 14.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).frame(width: posterSize.shelf, alignment: .leading)
                             }
                         }.buttonStyle(.springPress)
                     }

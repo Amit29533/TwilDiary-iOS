@@ -10,7 +10,7 @@ struct CatalogGrid: View {
     var showsLayoutToggle = true
     var forceGrid = false
     private var useGrid: Bool { forceGrid || grid }
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     private var columns: Int { useGrid ? (forceGrid && typeSize.isAccessibilitySize ? 2 : posterSize.columns) : 1 }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -29,7 +29,7 @@ struct CatalogGrid: View {
         if useGrid { CatalogPoster(item: item, profileTypography: forceGrid && typeSize.isAccessibilitySize) }
         else {
             HStack(spacing: 12) {
-                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 68, height: 102).clipShape(RoundedRectangle(cornerRadius: 10))
+                Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: posterSize.row, height: posterSize.rowHeight).clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
                     Text((item.year.map(String.init) ?? "Year unknown") + (item.inLibraryId == nil ? "" : " · In library")).font(.app(size: 12)).foregroundStyle(.secondary)
@@ -96,6 +96,7 @@ struct CatalogPoster: View {
 }
 
 struct CatalogSearchView: View {
+    @PosterSizing private var posterSize
     var universal = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .subheadline) private var addControlHeight: CGFloat = 44
@@ -342,7 +343,7 @@ struct CatalogSearchView: View {
             if !rows.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, result in
-                        if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 102) }
+                        if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 24 + posterSize.row) }
                         resultRow(result)
                     }
                 }.modifier(SettingsCard())
@@ -376,7 +377,7 @@ struct CatalogSearchView: View {
             } label: {
                 HStack(spacing: 12) {
                     Artwork(path: result.poster, title: result.name, initialsOnly: false)
-                        .frame(width: 78, height: 117).clipShape(RoundedRectangle(cornerRadius: 12))
+                        .frame(width: posterSize.row, height: posterSize.rowHeight).clipShape(RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(result.name).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
                             .lineLimit(typeSize.isAccessibilitySize ? nil : 2).fixedSize(horizontal: false, vertical: true)
@@ -950,6 +951,7 @@ struct TilesPlaceholder: View {
 }
 
 struct CastAndRelated: View {
+    @PosterSizing private var posterSize
     let route: CatalogRoute
     var sourceTitle: String? = nil
     var awardsIMDbID: String? = nil
@@ -1064,13 +1066,13 @@ struct CastAndRelated: View {
     private func relatedPoster(_ item: CatalogItem) -> some View {
         let score = PosterScores.score(for: item, store: store)
         return VStack(alignment: .leading, spacing: 0) {
-            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: 111, height: 167)
+            Artwork(path: item.artwork, title: item.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight)
                 .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score { PosterScoreBadge(score: score) } }
                 .clipShape(RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner)))
                 .wantsPosterScore(item, known: score, store: store)
             Text(item.name).font(.app(size: 14, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).multilineTextAlignment(.leading).padding(.top, 10)
             Text(item.year.map(String.init) ?? "").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).padding(.top, 3)
-        }.frame(width: 111, alignment: .leading).accessibilityElement(children: .combine)
+        }.frame(width: posterSize.shelf, alignment: .leading).accessibilityElement(children: .combine)
     }
     private func load() async {
         failure = nil

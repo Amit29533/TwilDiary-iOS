@@ -30,7 +30,7 @@ struct DiaryLoadingPlaceholder: View {
     var label = "Loading content"
     var layout: PlaceholderLayout = .block
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     var body: some View {
         shapes
             .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.45]) { view, strength in view.opacity(strength) } animation: { _ in .easeInOut(duration: 0.9) }

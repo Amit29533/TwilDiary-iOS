@@ -6,6 +6,7 @@ import TwilDiaryCore
 /// "Side story", "Other"). One already in your diary shows your score and, when completed, a
 /// tick. A tap opens it as other anime posters do (your diary's copy, else TMDB's page).
 struct AnimeRelatedRow: View {
+    @PosterSizing private var posterSize
     let title: String
     let year: Int?
     let movie: Bool
@@ -36,7 +37,7 @@ struct AnimeRelatedRow: View {
     private func card(_ item: AniRelated) -> some View {
         let saved = diaryTitle(item.appearance)
         return Artwork(path: item.appearance.cover, title: item.appearance.title, initialsOnly: false)
-            .frame(width: 128, height: 184).clipShape(RoundedRectangle(cornerRadius: 18))
+            .frame(width: posterSize.shelf, height: posterSize.shelfHeight).clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay(alignment: .bottomLeading) {
                 ZStack(alignment: .bottomLeading) {
                     LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)

@@ -113,6 +113,7 @@ enum ProfileWatchMatching {
 }
 
 struct ProfileWatchedShelf: View {
+    @PosterSizing private var posterSize
     let appearances: [AniAppearance]
     @Environment(DiaryStore.self) private var store
     @State private var confirmed: [Int: CatalogRoute] = [:]
@@ -130,11 +131,11 @@ struct ProfileWatchedShelf: View {
                                 ProfileMediaRow(image: title.poster, name: title.name, score: title.communityScore, provider: "TMDB")
                             } else {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Artwork(path: title.poster, title: title.name).frame(width: 104, height: 156)
+                                    Artwork(path: title.poster, title: title.name).frame(width: posterSize.shelf, height: posterSize.shelfHeight)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
                                         .overlay(alignment: .bottomLeading) { if let score = title.communityScore, score > 0 { RatingBadge(score: score).padding(5) } }
                                     ProfileCardCaption(title: title.name)
-                                }.frame(width: 104).foregroundStyle(.primary).shelfTransition()
+                                }.frame(width: posterSize.shelf).foregroundStyle(.primary).shelfTransition()
                             }
                         }.buttonStyle(.plain).accessibilityIdentifier("profile-watched-" + title.id)
                     }

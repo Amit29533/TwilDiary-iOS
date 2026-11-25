@@ -72,7 +72,7 @@ struct HomeSavedShelves: View {
     @State private var newName = ""
     /// Each shelf's titles, worked out in the background when the diary or the shelves change.
     @State private var found: [String: [MediaTitle]] = [:]
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {

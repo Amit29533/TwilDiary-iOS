@@ -3,6 +3,7 @@ import TwilDiaryCore
 
 /// Resolve AniList's anime to an existing diary title or TMDB detail, without importing it.
 struct AnimeAppearanceView: View {
+    @PosterSizing private var posterSize
     let appearance: AniAppearance
     @Environment(DiaryStore.self) private var store
     @State private var savedID: String?
@@ -37,7 +38,7 @@ struct AnimeAppearanceView: View {
                                 Button { Task { await chooseLibrary(title.id) } } label: {
                                     HStack(spacing: 12) {
                                         Artwork(path: title.artwork, title: title.name)
-                                            .frame(width: 56, height: 84).clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .frame(width: posterSize.row, height: posterSize.rowHeight).clipShape(RoundedRectangle(cornerRadius: 8))
                                         VStack(alignment: .leading, spacing: 6) {
                                             Text(title.name).font(.headline).foregroundStyle(.primary)
                                             Text("In your library").font(.caption).foregroundStyle(.secondary)

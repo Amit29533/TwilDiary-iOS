@@ -3,6 +3,7 @@ import TwilDiaryCore
 
 /// The list branch of the source TitleCard, sharing Library's public-rating preference.
 struct LibraryTitleRow: View {
+    @PosterSizing private var posterSize
     let title: MediaTitle
     var archived = false
     @Environment(DiaryStore.self) private var store
@@ -12,7 +13,7 @@ struct LibraryTitleRow: View {
         let score = store.publicScore(title, source: ratingSource)
         let present = !archived && store.hasPresentLocation(title.id)
         HStack(spacing: 14) {
-            Artwork(path: title.poster, title: title.name).frame(width: 72, height: 108)
+            Artwork(path: title.poster, title: title.name).frame(width: posterSize.row, height: posterSize.rowHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 10) {
                 Text(title.name).font(.app(size: 15, weight: .semibold)).lineLimit(1).frame(minHeight: 20.25)

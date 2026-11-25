@@ -584,6 +584,7 @@ import TwilDiaryCore
 
 /// Search with the AI pill on: Gemini's matches above the usual results, each with why it fits.
 struct SemanticSearchSection: View {
+    @PosterSizing private var posterSize
     let query: String
     let kind: CatalogSearchView.Kind
     /// Search marks its AI results apart from the others; a CineMind page is all AI and says so in its header.
@@ -654,7 +655,7 @@ struct SemanticSearchSection: View {
     private func row(_ match: SemanticSearch.Match) -> some View {
         NavigationLink(value: match.item.route) {
             HStack(alignment: .top, spacing: 14) {
-                Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false).frame(width: 64, height: 96)
+                Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false).frame(width: posterSize.row, height: posterSize.rowHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 5) {
                     Text(match.item.name).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(2).truncationMode(.tail)

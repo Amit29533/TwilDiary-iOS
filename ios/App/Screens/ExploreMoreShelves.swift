@@ -289,7 +289,7 @@ struct AISparkle: View {
 private struct FeedTrack<Item: Identifiable, Tile: View>: View {
     let items: [Item]
     @ViewBuilder let tile: (Item) -> Tile
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 12) {
@@ -340,7 +340,7 @@ struct ExploreFeedPage: View {
     let route: ExploreFeedRoute
     @Environment(DiaryStore.self) private var store
     private var feeds: ExploreFeeds { .shared }
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: posterSize.columns) }
 
     private var title: String {

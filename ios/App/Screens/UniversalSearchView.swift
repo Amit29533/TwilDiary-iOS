@@ -14,7 +14,7 @@ struct UniversalSearchView: View {
 }
 
 struct SearchLandingView: View {
-    @AppStorage(PosterSize.key) private var posterSize = PosterSize.regular
+    @PosterSizing private var posterSize
     let kind: CatalogSearchView.Kind
     let recent: [String]
     let choose: (String) -> Void
