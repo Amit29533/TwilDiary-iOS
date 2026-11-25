@@ -382,7 +382,10 @@ import UIKit
                            options: [.allowUserInteraction, .beginFromCurrentState]) {
                 controller.tabBarMinimizeBehavior = .never
                 bar.transform = .identity; bar.alpha = 1
-                controller.view.layoutIfNeeded()
+                // Only the bar is laid out here: laying out the controller's whole view did every page
+                // under it at once (all of Explore's rows), mid-drag, and froze the scroll for 70-150 ms
+                // at each turn near the bottom of a page.
+                bar.layoutIfNeeded()
             } completion: { [weak controller] _ in
                 controller?.tabBarMinimizeBehavior = .onScrollDown
             }
