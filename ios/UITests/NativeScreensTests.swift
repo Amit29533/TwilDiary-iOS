@@ -1100,8 +1100,8 @@ import UIKit
         XCTAssertTrue(more.isHittable)
         XCTAssertTrue(heart.isHittable); XCTAssertEqual(heart.frame.midY, topY, accuracy: 2)
         capture("Person credit shelves and pinned favourite"); more.tap()
-        let count = app.staticTexts["person-result-count"]
-        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertEqual(count.label, "16 titles"); capture("Person show filmography")
+        let count = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "· 16 titles")).firstMatch
+        XCTAssertTrue(count.waitForExistence(timeout: 5), "The count is in the heading's line"); capture("Person show filmography")
         let layout = app.buttons["catalog-layout"]
         XCTAssertTrue(layout.exists); layout.tap(); XCTAssertEqual(layout.value as? String, "List")
         let firstCredit = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'catalog-tv:' OR identifier BEGINSWITH 'catalog-movie:'")).firstMatch
