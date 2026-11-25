@@ -4,16 +4,13 @@ import TwilDiaryCore
 struct SearchTagsShelf: View {
     let shows: [CatalogItem]
     let animeFirst: Bool
-    let movies: Bool
-    /// Trending titles are still on their way, so their tags will be too.
-    var trendingPending = false
     @Environment(DiaryStore.self) private var store
     @ScaledMetric(relativeTo: .subheadline) private var tagRowHeight: CGFloat = 44
     @State private var popular: [SearchBrowseTag] = []
     @State private var loadedKeys: [String] = []
     private static var kept: [[String]: [SearchBrowseTag]] = [:]
-    init(shows: [CatalogItem], animeFirst: Bool, movies: Bool, trendingPending: Bool = false) {
-        self.shows = shows; self.animeFirst = animeFirst; self.movies = movies; self.trendingPending = trendingPending
+    init(shows: [CatalogItem], animeFirst: Bool) {
+        self.shows = shows; self.animeFirst = animeFirst
         let keys = shows.prefix(5).map(\.key)
         if let saved = Self.kept[keys] { _popular = State(initialValue: saved); _loadedKeys = State(initialValue: keys) }
     }
@@ -23,42 +20,35 @@ struct SearchTagsShelf: View {
         return popular + SearchBrowseTag.suggestions.filter { !names.contains($0.id) }
     }
 
+    /// The suggested tags: fixed lists only, so nothing in view changes when the trending tags
+    /// arrive (they're kept apart at the strip's end).
     private var featured: [SearchBrowseTag] {
         let anime = SearchBrowseTag.animeSuggestions.filter { anime in
-            !tags.prefix(16).contains { $0.name.caseInsensitiveCompare(anime.name) == .orderedSame }
+            !SearchBrowseTag.suggestions.prefix(16).contains { $0.name.caseInsensitiveCompare(anime.name) == .orderedSame }
         }
         let curated = Array(SearchBrowseTag.suggestions.prefix(8))
         return animeFirst ? Array(anime.prefix(12)) + curated : curated + Array(anime.prefix(8))
+    }
+
+    /// The one strip under the heading (owner's call, no subheadings): the suggested tags, then the
+    /// tags from trending titles at the end, where they arrive out of sight (no loading row, and
+    /// nothing in view moves when they come). A tag in both shows once.
+    private var strip: [SearchBrowseTag] {
+        let shown = featured
+        let trending = popular.prefix(6).filter { tag in
+            !shown.contains { $0.id == tag.id || $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }
+        }
+        return shown + trending
     }
 
     var body: some View {
         let keys = shows.prefix(5).map(\.key)
         VStack(alignment: .leading, spacing: 8) {
             SearchBrowseHeading(shelf: .tags, destination: .tags(tags, artwork: ExploreBrowseHeader.artwork(in: shows)))
-            // While trending titles or their tags load, the row's room is kept with grey capsules: it
-            // used to appear on load and push every shelf under it down.
-            let waiting = popular.isEmpty && (trendingPending || (!keys.isEmpty && keys != loadedKeys))
-            if !popular.isEmpty || waiting {
-                VStack(alignment: .leading, spacing: 4) {
-                Text(movies ? "From trending movies" : "From trending shows").font(.subheadline).foregroundStyle(.secondary)
-                ScrollView(.horizontal) {
-                    if waiting {
-                        HStack(spacing: 8) {
-                            ForEach([96, 120, 84, 132, 104, 90], id: \.self) { width in
-                                Capsule().fill(Color(uiColor: .tertiarySystemFill)).frame(width: CGFloat(width), height: 36).frame(height: tagRowHeight)
-                            }
-                        }.accessibilityElement(children: .ignore).accessibilityLabel("Loading tags")
-                    } else {
-                        LazyHStack { ForEach(popular.prefix(6)) { SearchTagLink(tag: $0) } }.frame(minHeight: tagRowHeight)
-                    }
-                }.scrollIndicators(.hidden).scrollDisabled(waiting)
-                }
-                Text("Suggested tags").font(.subheadline).foregroundStyle(.secondary).padding(.bottom, -4)
-            }
             ScrollView(.horizontal) {
                 let rows = Array(repeating: GridItem(.fixed(tagRowHeight), spacing: 4, alignment: .leading), count: 2)
                 LazyHGrid(rows: rows, alignment: .top, spacing: 8) {
-                    ForEach(featured) { SearchTagLink(tag: $0) }
+                    ForEach(strip) { SearchTagLink(tag: $0) }
                 }.padding(.horizontal, 14)
             }.padding(.horizontal, -14).scrollIndicators(.hidden)
         }.task(id: keys) {

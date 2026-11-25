@@ -99,7 +99,7 @@ struct SearchLandingView: View {
             }
             if let failure { RetryNotice(message: failure) { Task { await load() } } }
             if kind == .all { SavedClipsSection() }
-            SearchBrowseShelves(shows: shows, kind: kind, trendingPending: trendingPending)
+            SearchBrowseShelves(shows: shows, kind: kind)
         }.smoothChange(of: shows.isEmpty)
             .task(id: store.sessionRevision) {
                 guard [.all, .movies, .shows].contains(kind), loadedRevision != store.sessionRevision else { return }
