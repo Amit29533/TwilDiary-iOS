@@ -421,20 +421,27 @@ extension JellyRecommender {
 @MainActor enum JellyIndexStore {
     private static var kept: (key: String, at: Date, index: JellyLibraryIndex)?
     private static var building: Task<JellyLibraryIndex?, Never>?
+    /// The server and user the build in flight is for (another account doesn't wait on it or get it).
+    private static var buildingKey: String?
+    /// A refresh of a stale index is waiting to start.
+    private static var refreshQueued = false
+    /// A stale index is refreshed this long after it was first asked for (as Home opens), so its
+    /// downloads don't compete with the rows on screen.
+    private static let refreshDelay: Duration = .seconds(8)
 
     static func index(client: JellyfinClient, user: String?) async -> JellyLibraryIndex? {
         let key = client.base.absoluteString + "|" + (user ?? "")
         if let kept, kept.key == key {
-            // Older than a quarter of an hour: this one at once, a fresh one built behind it.
-            if Date.now.timeIntervalSince(kept.at) >= 900, building == nil { Task { _ = await rebuild(client: client, user: user, key: key) } }
+            // Older than a quarter of an hour: this one at once, a fresh one built behind it (later).
+            if Date.now.timeIntervalSince(kept.at) >= 900 { refreshLater(client: client, user: user, key: key) }
             return kept.index
         }
-        if let building { return await building.value }
+        if let building, buildingKey == key { return await building.value }
         // Just launched: the one saved last time, at once (it took the whole library downloaded and
         // read again on every launch), and a fresh one behind it when it's old.
         if kept == nil, let saved = await JellyDiskCache.load(JellyIndexSnapshot.self, name: "index"), saved.key == key {
             if kept == nil { kept = (key, saved.at, saved.index) }
-            if Date.now.timeIntervalSince(saved.at) >= 900, building == nil { Task { _ = await rebuild(client: client, user: user, key: key) } }
+            if Date.now.timeIntervalSince(saved.at) >= 900 { refreshLater(client: client, user: user, key: key) }
             return saved.index
         }
         return await rebuild(client: client, user: user, key: key)
@@ -443,33 +450,40 @@ extension JellyRecommender {
     static func warm(client: JellyfinClient, user: String?) {
         Task { _ = await index(client: client, user: user) }
     }
+    /// A stale index's refresh, once, a few seconds on (Home's rows first).
+    private static func refreshLater(client: JellyfinClient, user: String?, key: String) {
+        guard !refreshQueued, building == nil else { return }
+        refreshQueued = true
+        Task(priority: .utility) {
+            try? await Task.sleep(for: refreshDelay)
+            refreshQueued = false
+            _ = await rebuild(client: client, user: user, key: key)
+        }
+    }
     private static func rebuild(client: JellyfinClient, user: String?, key: String) async -> JellyLibraryIndex? {
-        if let building { return await building.value }
-        let task = Task<JellyLibraryIndex?, Never> {
-            // Library by library (all at once), so each title knows its library; the whole server in one
-            // go if the libraries can't be listed.
+        if let building, buildingKey == key { return await building.value }
+        let task = Task<JellyLibraryIndex?, Never>(priority: .utility) {
+            // Library by library, one at a time, so each title knows its library (they were all asked at
+            // once, beside Home's rows, and every reply held in memory together); the whole server if
+            // the libraries can't be listed.
             let libraries = ((try? await client.libraries(user: user)) ?? []).filter(JellyDiscover.holdsVideo).map(\.id)
             var groups: [(library: String, items: [JellyfinClient.Item])] = []
             if libraries.isEmpty {
                 guard let items = try? await client.libraryIndex(user: user), !items.isEmpty else { return nil }
                 groups = [("", items)]
             } else {
-                groups = await withTaskGroup(of: (library: String, items: [JellyfinClient.Item]).self) { group in
-                    for library in libraries {
-                        group.addTask { (library, (try? await client.libraryIndex(user: user, library: library)) ?? []) }
-                    }
-                    var found: [(library: String, items: [JellyfinClient.Item])] = []
-                    for await part in group { found.append(part) }
-                    return found
+                for library in libraries {
+                    guard !Task.isCancelled else { return nil }
+                    groups.append((library, (try? await client.libraryIndex(user: user, library: library)) ?? []))
                 }
                 guard groups.contains(where: { !$0.items.isEmpty }) else { return nil }
             }
             let parts = groups
             return await Task.detached(priority: .utility) { JellyLibraryIndex.build(parts) }.value
         }
-        building = task
+        building = task; buildingKey = key
         let built = await task.value
-        building = nil
+        if buildingKey == key { building = nil; buildingKey = nil }
         if let built {
             kept = (key, .now, built)
             JellyDiskCache.save(JellyIndexSnapshot(key: key, at: .now, index: built), name: "index")

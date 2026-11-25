@@ -86,7 +86,10 @@ import TwilDiaryCore
             let content = UNMutableNotificationContent()
             content.title = alert.title; content.body = alert.body; content.sound = .default
             content.threadIdentifier = alert.titleId
-            content.userInfo = [AlertOpening.key: alert.titleId]
+            var info: [AnyHashable: Any] = [AlertOpening.key: alert.titleId]
+            // Its poster, so a later visit can tell the alert is already set as it would be.
+            if let poster = store.title(alert.titleId)?.poster { info["poster"] = poster }
+            content.userInfo = info
             let finished = await NotificationArtwork.finish(content, from: alert.title, conversation: alert.titleId, poster: store.title(alert.titleId)?.poster)
             var when = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: entry.at)
             when.calendar = calendar; when.timeZone = calendar.timeZone
@@ -94,8 +97,24 @@ import TwilDiaryCore
                                                                trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false)))) != nil else { return }
             times[alert.id] = entry.at
         }
+        // What iOS holds now: an alert set for the same moment with the same words and poster is left as
+        // it is (each was added again on every visit and edit, its poster copied and read on the main
+        // thread and its message registered with iOS again).
+        let pending = Dictionary(await center.pendingNotificationRequests().compactMap { request -> (String, (at: Date?, title: String, body: String, poster: String?))? in
+            guard request.identifier.hasPrefix("episode|") else { return nil }
+            return (request.identifier, ((request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate(), request.content.title,
+                                         request.content.body, request.content.userInfo["poster"] as? String))
+        }, uniquingKeysWith: { one, _ in one })
+        func unchanged(_ entry: (alert: EpisodeAlerts.Alert, at: Date)) -> Bool {
+            guard let set = pending[entry.alert.id], let at = set.at else { return false }
+            return abs(at.timeIntervalSince(entry.at)) < 60 && set.title == entry.alert.title && set.body == entry.alert.body
+                && set.poster == store.title(entry.alert.titleId)?.poster
+        }
         let first = wanted()
-        for entry in first { await set(entry) }
+        for entry in first {
+            guard !Task.isCancelled else { return }
+            if unchanged(entry) { times[entry.alert.id] = entry.at } else { await set(entry) }
+        }
         UserDefaults.standard.set(times, forKey: timesKey)
         guard !Task.isCancelled else { return }
         // Air times not known yet, for the next few days: the alerts they move are set again.

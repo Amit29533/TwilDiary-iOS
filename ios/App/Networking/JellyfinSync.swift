@@ -714,13 +714,21 @@ struct JellyfinClient: Sendable {
     /// Every film, show and video on the server, with what recommending reads (names, files and
     /// folders, genres, tags, studios, dates, lengths, TMDB ids, watched).
     func libraryIndex(user: String?, library: String? = nil) async throws -> [Item] {
-        var query = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
-                     URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate,PrimaryImageAspectRatio"),
-                     URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop,Thumb"), URLQueryItem(name: "Limit", value: "8000")]
-        if let library { query.append(URLQueryItem(name: "ParentId", value: library)) }
-        if let user { query.append(URLQueryItem(name: "userId", value: user)) }
-        let page: Page = try await get("Items", query)
-        return page.Items
+        // Pages of 2,000, one after another: it was one request capped at 8,000 (a bigger library lost
+        // the rest) whose single huge reply was decoded in one go.
+        var base = [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Series,Video"),
+                    URLQueryItem(name: "Fields", value: "ProviderIds,Path,Genres,Tags,Studios,DateCreated,PremiereDate,PrimaryImageAspectRatio"),
+                    URLQueryItem(name: "EnableImageTypes", value: "Primary,Backdrop,Thumb"), URLQueryItem(name: "Limit", value: "2000"),
+                    URLQueryItem(name: "SortBy", value: "SortName")]
+        if let library { base.append(URLQueryItem(name: "ParentId", value: library)) }
+        if let user { base.append(URLQueryItem(name: "userId", value: user)) }
+        var items: [Item] = []
+        while true {
+            try Task.checkCancellation()
+            let page: Page = try await get("Items", base + (items.isEmpty ? [] : [URLQueryItem(name: "StartIndex", value: String(items.count))]))
+            items += page.Items
+            if page.Items.isEmpty || items.count >= page.TotalRecordCount || items.count >= 40_000 { return items }
+        }
     }
     /// A person's films and shows on this server, newest first (the first `limit`), and how many in all.
     func titles(person id: String, user: String?, limit: Int = 10) async throws -> Page {
