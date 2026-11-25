@@ -72,23 +72,20 @@ struct HomeView: View {
         switch section {
         case .shortcuts:
                 // Explore is systematic discovery; Canvas is for browsing artwork at random; Cines is
-                // trailers and clips, swiped as reels are. Two at a time at their usual size; the row
-                // scrolls sideways and comes to rest on a pair (owner's call).
+                // trailers and clips, swiped as reels are. One row of tiles at their usual size (two
+                // across the screen); it scrolls sideways and comes to rest on a tile (owner's call).
                 ScrollView(.horizontal) {
-                    HStack(spacing: 32) {
-                        HStack(spacing: 10) {
-                            NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress).accessibilityIdentifier("explore-shortcut")
-                            NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
-                        }.containerRelativeFrame(.horizontal)
-                        HStack(spacing: 10) {
-                            NavigationLink(value: AppDestination.cines) { HomeShortcut(name: "Cines", icon: "clapperboard") }.buttonStyle(.springPress).accessibilityIdentifier("cines-shortcut")
-                            // The pair's other half, empty, so Cines keeps the size of the others.
-                            Color.clear.frame(maxWidth: .infinity).accessibilityHidden(true)
-                        }.containerRelativeFrame(.horizontal)
+                    HStack(spacing: 10) {
+                        NavigationLink(value: AppDestination.explore) { HomeShortcut(name: "Explore", icon: "compass") }.buttonStyle(.springPress)
+                            .containerRelativeFrame(.horizontal, count: 2, spacing: 10).accessibilityIdentifier("explore-shortcut")
+                        NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress)
+                            .containerRelativeFrame(.horizontal, count: 2, spacing: 10).accessibilityIdentifier("canvas-shortcut")
+                        NavigationLink(value: AppDestination.cines) { HomeShortcut(name: "Cines", icon: "clapperboard") }.buttonStyle(.springPress)
+                            .containerRelativeFrame(.horizontal, count: 2, spacing: 10).accessibilityIdentifier("cines-shortcut")
                     }.scrollTargetLayout()
                 }
                 .scrollTargetBehavior(.viewAligned).scrollIndicators(.hidden)
-                // Edge to edge, so a pair slides off the screen's side, not the page's margin.
+                // Edge to edge, so a tile slides off the screen's side, not the page's margin.
                 .contentMargins(.horizontal, 16, for: .scrollContent).padding(.horizontal, -16)
         case .week:
                 VStack(alignment: .leading, spacing: Gap.heading) {
