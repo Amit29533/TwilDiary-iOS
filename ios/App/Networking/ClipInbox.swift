@@ -165,12 +165,30 @@ import TwilDiaryCore
                 if (try? data.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
             }
         }
-        if let url = clip.url.flatMap(URL.init(string:)), ClipLinks.isInstagramPost(url),
-           let preview = await ClipLinks.instagramPreview(url) {
-            pageTitle = preview.title ?? pageTitle
-            if clip.thumbnail == nil, let data = preview.image, let folder = ClipStore.folder {
-                let name = clip.id.uuidString + "-preview.jpg"
-                if (try? data.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
+        // 1b. Any other link (an Instagram reel, a Threads or Facebook post, a web page): its public
+        // page as a signed-out phone browser gets it, the caption taken out of the page's wrapper
+        // ("Sulpho on Instagram: "…""), its account and its picture (as mymind reads a saved link).
+        // The system link preview when the page gives nothing.
+        if clip.url.map({ ClipText.source(of: $0) != "TikTok" && ClipText.source(of: $0) != "YouTube" }) == true,
+           let url = clip.url.flatMap(URL.init(string:)) {
+            if let page = await ClipPage.read(url) {
+                let fromTitle = page.title.map(ClipText.unwrap), fromDescription = page.description.map(ClipText.unwrap)
+                if let described = fromDescription, described.author != nil {
+                    pageTitle = described.caption
+                    if clip.author == nil { clip.author = described.author }
+                } else if let title = fromTitle?.caption, !title.isEmpty {
+                    pageTitle = title
+                }
+                if clip.thumbnail == nil, let picture = page.image, let data = await ClipLinks.download(picture), let folder = ClipStore.folder {
+                    let name = clip.id.uuidString + "-preview.jpg"
+                    if (try? data.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
+                }
+            } else if ClipLinks.isInstagramPost(url), let preview = await ClipLinks.instagramPreview(url) {
+                pageTitle = preview.title.map { ClipText.unwrap($0).caption } ?? pageTitle
+                if clip.thumbnail == nil, let data = preview.image, let folder = ClipStore.folder {
+                    let name = clip.id.uuidString + "-preview.jpg"
+                    if (try? data.write(to: folder.appendingPathComponent(name))) != nil { clip.thumbnail = name }
+                }
             }
         }
         // 2. A saved video's frames (or the picture) and the text on them; a link's thumbnail for Gemini.
@@ -190,7 +208,7 @@ import TwilDiaryCore
            let url = clip.url.flatMap(URL.init(string:)), ClipLinks.isInstagramPost(url) {
             clip.sampledPublicVideo = false
             let reel = await PublicReel.read(url)
-            pageTitle = reel.caption ?? pageTitle
+            if pageTitle == nil, let caption = reel.caption { pageTitle = ClipText.unwrap(caption).caption }
             if let video = reel.reading {
                 frames = video.frames
                 lines = video.lines + lines.filter { !video.lines.contains($0) }
@@ -213,22 +231,27 @@ import TwilDiaryCore
             clip.identificationHint = "TMDB is unavailable. Check the TMDB key in Settings and try again."
             return clip
         }
-        // 3. The words, then the text on screen, searched on TMDB.
+        // 3 and 4 together (as mymind reads a saved link with AI, and then some): Gemini reads the
+        // words, the picture and the frames for every clip it's allowed to, while the words and the
+        // text on screen are searched on TMDB, each search with the year said beside its title.
+        // Both land on TMDB's titles: when they agree the title is sure; when they don't, you pick.
+        let words = [ClipText.unwrap(clip.text ?? "").caption, pageTitle, clip.author.map { "Posted by " + $0 }]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+        let asksGemini = ClipInbox.geminiAllowed && !SemanticSearch.keys.isEmpty && (!frames.isEmpty || !words.isEmpty)
+        let shownFrames = frames, screenText = lines, source = clip.source
+        async let asked = asksGemini ? ClipGemini.guesses(frames: shownFrames, words: words, screen: screenText, source: source) : []
         var found: [SavedClip.Candidate] = []
-        for query in ClipText.queries(caption: clip.text, pageTitle: pageTitle) {
-            found += await ClipTMDB.search(query, key: token)
+        for search in ClipText.searches(caption: clip.text, pageTitle: pageTitle) {
+            found += await ClipTMDB.search(search.text, key: token, year: search.year).map { var guess = $0; guess.confidence *= search.weight; return guess }
         }
         let fromWords = !found.isEmpty
-        for query in ClipText.queries(caption: nil, screenLines: lines, limit: 3) {
-            found += await ClipTMDB.search(query, key: token).map { var guess = $0; guess.confidence *= 0.9; return guess }
+        for search in ClipText.searches(caption: nil, screenLines: lines, limit: 3) {
+            found += await ClipTMDB.search(search.text, key: token).map { var guess = $0; guess.confidence *= 0.9; return guess }
         }
         var ranked = ClipRanking.merged(found)
         var method: String? = ranked.isEmpty ? nil : fromWords ? "caption" : "text on screen"
-        // 4. Gemini, when the words aren't enough and it's allowed.
-        if ClipRanking.state(for: ranked) != .identified, ClipInbox.geminiAllowed, !SemanticSearch.keys.isEmpty,
-           !frames.isEmpty || clip.text?.isEmpty == false || pageTitle != nil {
-            let guesses = await ClipGemini.guesses(frames: frames, words: [clip.text, pageTitle].compactMap { $0 }.joined(separator: "\n"),
-                                                  screen: lines, source: clip.source)
+        let guesses = await asked
+        if !guesses.isEmpty {
             var named: [SavedClip.Candidate] = []
             for guess in guesses {
                 let suggestion = SemanticSearch.Suggestion(title: guess.title, year: guess.year, type: guess.type, why: "")
@@ -240,7 +263,8 @@ import TwilDiaryCore
             if !named.isEmpty {
                 let before = ranked.first?.id
                 ranked = ClipRanking.merged(found + named)
-                if ranked.first?.id != before || method == nil { method = "Gemini" }
+                if method == nil || ranked.first?.id != before { method = "Gemini" }
+                else if named.contains(where: { $0.id == before }) { method = (method ?? "caption") + " and Gemini" }
             }
         }
         clip.candidates = Array(ranked.prefix(3))
@@ -258,7 +282,7 @@ import TwilDiaryCore
 }
 
 /// A post's caption, account and thumbnail from TikTok's and YouTube's public oEmbed lookups.
-/// Instagram's needs a Meta developer key, so its posts keep only what the share handed over.
+/// Instagram's needs a Meta developer key; its posts are read from their public page (ClipPage).
 enum ClipLinks {
     struct Post: Sendable { let title: String?; let author: String?; let thumbnail: URL? }
 
@@ -310,6 +334,76 @@ enum ClipLinks {
         guard let reply = try? await URLSession.shared.data(from: url), (reply.1 as? HTTPURLResponse)?.statusCode == 200,
               reply.0.count < 3_000_000 else { return nil }
         return reply.0
+    }
+}
+
+/// A public page's Open Graph data, read as a signed-out phone browser gets it: no cookies, no
+/// sign-in, the page's own HTML (what mymind and link previews read). For an Instagram reel it's
+/// "Sulpho on Instagram: "…"" with the caption, the picture and the account.
+enum ClipPage {
+    struct Meta: Sendable, Equatable {
+        var title: String?
+        var description: String?
+        var image: URL?
+        var video: URL?
+    }
+
+    static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+
+    static func read(_ url: URL) async -> Meta? {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        request.setValue(Locale.preferredLanguages.prefix(2).joined(separator: ","), forHTTPHeaderField: "Accept-Language")
+        let config = URLSessionConfiguration.ephemeral
+        config.httpShouldSetCookies = false
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        // The head is enough; a link to a big file stops at 3 MB.
+        guard let reply = try? await session.bytes(for: request), let response = reply.1 as? HTTPURLResponse,
+              response.statusCode == 200, response.mimeType?.contains("html") == true else { return nil }
+        var data = Data()
+        do {
+            for try await byte in reply.0 {
+                data.append(byte)
+                if data.count >= 3_000_000 { break }
+            }
+        } catch { if data.isEmpty { return nil } }
+        let meta = parse(String(decoding: data, as: UTF8.self))
+        return meta.title == nil && meta.description == nil && meta.image == nil ? nil : meta
+    }
+
+    /// The page's og: and twitter: tags (a description's own tag when there's no og:description),
+    /// with HTML's escapes undone.
+    nonisolated static func parse(_ html: String) -> Meta {
+        var tags: [String: String] = [:]
+        for tag in html.matches(of: #/<meta\s[^>]*>/#.ignoresCase()) {
+            let text = String(tag.0)
+            guard let key = text.firstMatch(of: #/(?:property|name)\s*=\s*["']([^"']+)["']/#.ignoresCase())?.1.lowercased(),
+                  let value = text.firstMatch(of: #/content\s*=\s*"([^"]*)"/#.ignoresCase())?.1 ?? text.firstMatch(of: #/content\s*=\s*'([^']*)'/#.ignoresCase())?.1,
+                  tags[key] == nil else { continue }
+            tags[key] = decode(String(value))
+        }
+        func first(_ keys: String...) -> String? { keys.lazy.compactMap { tags[$0] }.first { !$0.isEmpty } }
+        let secure = { (value: String?) in value.flatMap(URL.init(string:)).flatMap { $0.scheme == "https" ? $0 : nil } }
+        return Meta(title: first("og:title", "twitter:title"),
+                    description: first("og:description", "twitter:description", "description"),
+                    image: secure(first("og:image", "og:image:secure_url", "twitter:image")),
+                    video: secure(first("og:video:secure_url", "og:video:url", "og:video")))
+    }
+
+    /// &quot; &amp; &#39; &#x27; and the rest.
+    nonisolated static func decode(_ text: String) -> String {
+        var result = text
+        for (code, character) in [("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"), ("&lt;", "<"), ("&gt;", ">"), ("&nbsp;", " ")] {
+            result = result.replacingOccurrences(of: code, with: character)
+        }
+        result = result.replacing(#/&#(x?)([0-9A-Fa-f]{1,6});/#) { match in
+            let value = UInt32(String(match.2), radix: match.1.isEmpty ? 10 : 16)
+            return value.flatMap { Unicode.Scalar($0) }.map { String(Character($0)) } ?? String(match.0)
+        }
+        return result.replacingOccurrences(of: "&amp;", with: "&")
     }
 }
 

@@ -99,8 +99,8 @@ final class ShareViewController: UIViewController {
     private func quickGuess(_ text: String?) async {
         guard let key = ClipTMDB.builtInKey else { return }
         var found: [SavedClip.Candidate] = []
-        for query in ClipText.queries(caption: text, limit: 3) {
-            found += await ClipTMDB.search(query, key: key)
+        for search in ClipText.searches(caption: text, limit: 3) {
+            found += await ClipTMDB.search(search.text, key: key, year: search.year).map { var guess = $0; guess.confidence *= search.weight; return guess }
         }
         let ranked = ClipRanking.merged(found)
         if ClipRanking.state(for: ranked) == .identified { guess = ranked.first }

@@ -249,4 +249,61 @@ final class SavedClipsTests: XCTestCase {
         XCTAssertEqual(ClipInbox.firstLink(in: "watch this https://www.tiktok.com/@a/video/1 so good"), "https://www.tiktok.com/@a/video/1")
         XCTAssertNil(ClipInbox.firstLink(in: "no link here"))
     }
+
+    // The owner's reel (instagram.com/reel/DNLcqNKJEdf), as its public page titles and describes it.
+    private let reelTitle = #"Sulpho on Instagram: ""Where it all began" - My Sassy Girl (2001) | Edit | Lord Huron - The Night We Met""#
+    private let reelDescription = #"168K likes, 262 comments - sulpho.96 on August 10, 2025: ""Where it all began" - My Sassy Girl (2001) | Edit | Lord Huron - The Night We Met""#
+
+    func testInstagramWrappersGiveTheCaptionAndTheAccount() {
+        let caption = #""Where it all began" - My Sassy Girl (2001) | Edit | Lord Huron - The Night We Met"#
+        XCTAssertEqual(ClipText.unwrap(reelTitle).caption, caption)
+        XCTAssertNil(ClipText.unwrap(reelTitle).author)
+        XCTAssertEqual(ClipText.unwrap(reelDescription).caption, caption)
+        XCTAssertEqual(ClipText.unwrap(reelDescription).author, "@sulpho.96")
+        XCTAssertEqual(ClipText.unwrap("Vivant (2023) - Official Trailer").caption, "Vivant (2023) - Official Trailer")
+    }
+
+    func testATitleBeforeItsYearInAPartOfTheCaptionComesFirstWithItsYear() throws {
+        let searches = ClipText.searches(caption: nil, pageTitle: reelTitle)
+        let first = try XCTUnwrap(searches.first)
+        XCTAssertEqual(first.text, "My Sassy Girl"); XCTAssertEqual(first.year, 2001); XCTAssertEqual(first.weight, 1)
+        // The tagline in quotes is still tried, for less.
+        let tagline = try XCTUnwrap(searches.first { $0.text == "Where it all began" })
+        XCTAssertLessThan(tagline.weight, 1)
+        XCTAssertFalse(searches.contains { $0.text.contains("Instagram") || $0.text.contains("Sulpho") })
+        // A year range stays one part: "(2021–2022)".
+        XCTAssertEqual(ClipText.searches(caption: "Young Lady and Gentleman (2021–2022) | Edit").first?.year, 2021)
+    }
+
+    func testAYearPicksBetweenTitlesOfTheSameName() throws {
+        let reply = """
+        {"results":[
+          {"media_type":"movie","id":11178,"title":"My Sassy Girl","release_date":"2001-07-27","vote_count":700,"poster_path":"/k.jpg"},
+          {"media_type":"movie","id":13692,"title":"My Sassy Girl","release_date":"2008-08-25","vote_count":300,"poster_path":"/u.jpg"}
+        ]}
+        """
+        let ranked = ClipRanking.merged(ClipTMDB.candidates(fromSearch: Data(reply.utf8), query: "My Sassy Girl", year: 2001))
+        XCTAssertEqual(ranked.first?.tmdbID, 11178)
+        XCTAssertEqual(ClipRanking.state(for: ranked), .identified)
+        // Without a year the two are too close to choose between.
+        let unsure = ClipRanking.merged(ClipTMDB.candidates(fromSearch: Data(reply.utf8), query: "My Sassy Girl"))
+        XCTAssertEqual(ClipRanking.state(for: unsure), .needsPick)
+    }
+
+    func testPublicPageTagsAreReadAndUnescaped() throws {
+        let html = """
+        <html><head><title>Instagram</title>
+        <meta property="og:title" content="Sulpho on Instagram: &quot;&quot;Where it all began&quot; - My Sassy Girl (2001)&quot;" />
+        <meta name="description" content="168K likes &amp; more" />
+        <meta content='https://scontent.cdninstagram.com/v/t51/a.jpg' property='og:image'>
+        <meta property="og:video" content="http://insecure.example/v.mp4">
+        </head></html>
+        """
+        let page = ClipPage.parse(html)
+        XCTAssertEqual(page.title, #"Sulpho on Instagram: ""Where it all began" - My Sassy Girl (2001)""#)
+        XCTAssertEqual(page.description, "168K likes & more")
+        XCTAssertEqual(page.image?.host, "scontent.cdninstagram.com")
+        XCTAssertNil(page.video, "Only https addresses are kept")
+        XCTAssertEqual(ClipPage.decode("it&#39;s &#x2014; &amp;amp;"), "it's — &amp;")
+    }
 }

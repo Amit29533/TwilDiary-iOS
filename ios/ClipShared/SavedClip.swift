@@ -283,37 +283,67 @@ enum ClipText {
         "funny", "sad", "romance", "action", "horror", "thriller", "comedy", "fypシ", "capcut", "4k", "hd", "foryourpage", "xyzbca", "viralvideo"
     ]
 
+    /// One search for a title: its words, the year said with them, and how much a match counts
+    /// (a tagline in quotes next to "Title (Year)" counts for less than the title itself).
+    struct Search: Equatable, Sendable {
+        let text: String
+        var year: Int? = nil
+        var weight: Double = 1
+    }
+
     /// The searches to try for these words, best first, at most `limit`.
     static func queries(caption: String?, pageTitle: String? = nil, screenLines: [String] = [], limit: Int = 6) -> [String] {
-        var found: [String] = []
-        func keep(_ value: String) {
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        searches(caption: caption, pageTitle: pageTitle, screenLines: screenLines, limit: limit).map(\.text)
+    }
+
+    /// The searches to try for these words, best first, at most `limit`. A social page's wrapper
+    /// ("Sulpho on Instagram: "…"") is taken off first, and each part of a caption ("…" - My Sassy
+    /// Girl (2001) | Edit) is read on its own, so a title before its year is found with its year.
+    static func searches(caption: String?, pageTitle: String? = nil, screenLines: [String] = [], limit: Int = 6) -> [Search] {
+        var found: [Search] = []
+        func keep(_ value: String, year: Int? = nil, weight: Double = 1) {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters).union(.symbols))
             guard trimmed.count >= 2, trimmed.count <= 60, trimmed.contains(where: \.isLetter) else { return }
-            if !found.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) { found.append(trimmed) }
+            if let at = found.firstIndex(where: { $0.text.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+                if found[at].year == nil, let year { found[at].year = year }
+                return
+            }
+            found.append(Search(text: trimmed, year: year, weight: weight))
         }
-        let text = [caption, pageTitle].compactMap { $0 }.joined(separator: "\n")
+        let words = caption.map { unwrap($0).caption }
+        let page = pageTitle.map { unwrap($0).caption }
+        let text = [words, page].compactMap { $0 }.joined(separator: "\n")
         // Common caption format: "Movie: The Bear #edit".
         for match in text.matches(of: #/(?im)^\s*(?:movie|film|show|series|drama|anime|title)(?: name)?\s*[:：]\s*([^\n#@|]{2,60})/#) {
             keep(String(match.1))
         }
+        // A title before its year, in each part of the caption: "My Sassy Girl (2001)", "Vivant (2023)".
+        let yearPattern = #/([A-Z0-9][^\n()#@|"“”]{0,58}?)\s*[(\[]((?:19|20)\d\d)(?:\s*[-–—]\s*(?:(?:19|20)\d\d)?)?[)\]]/#
+        var titled = false
+        for part in parts(of: text) {
+            for match in part.matches(of: yearPattern) {
+                keep(String(match.1), year: Int(match.2))
+                titled = true
+            }
+        }
+        // Words beside a "Title (Year)" are mostly a tagline or the song: they count for less.
+        let aside = titled ? 0.7 : 1
         // A title in quotes ("Vivant", “Vivant”, 'Vivant').
-        for match in text.matches(of: #/["“”'‘’]([^"“”'‘’\n]{2,60})["“”'‘’]/#) { keep(String(match.1)) }
-        // A title before its year: "Vivant (2023)".
-        for match in text.matches(of: #/([A-Z0-9][^\n()#@]{1,58}?)\s*\((?:19|20)\d\d(?:\s*[-–—]\s*(?:(?:19|20)\d\d)?)?\)/#) { keep(String(match.1)) }
+        for match in text.matches(of: #/["“”'‘’]([^"“”'‘’\n]{2,60})["“”'‘’]/#) { keep(String(match.1), weight: aside) }
         // A video page's title before " - " or " | " ("Vivant (2023) - Official Trailer").
-        if let page = pageTitle, let first = page.split(whereSeparator: { $0 == "|" || $0 == "–" || $0 == "—" }).first {
+        if let page, let first = page.split(whereSeparator: { $0 == "|" || $0 == "–" || $0 == "—" || $0 == "\n" }).first {
             let head = first.components(separatedBy: " - ").first ?? String(first)
-            keep(head.replacingOccurrences(of: #"\((19|20)\d\d\)"#, with: "", options: .regularExpression))
+            keep(head.replacingOccurrences(of: #"\((19|20)\d\d\)"#, with: "", options: .regularExpression), weight: aside)
         }
         // Hashtags that aren't noise: #vivant, #breakingbad, #TheBear.
         for match in text.matches(of: #/[#]([\p{L}\p{N}_]{2,40})/#) {
             let tag = String(match.1)
             guard !noise.contains(tag.lowercased()) else { continue }
-            keep(spaced(tag))
+            keep(spaced(tag), weight: aside)
         }
-        if let caption, !caption.contains(where: { "#@:/!?\n".contains($0) }),
-           caption.split(whereSeparator: { $0.isWhitespace }).count <= 6, found.isEmpty {
-            keep(caption)
+        if let words, !words.contains(where: { "#@:/!?\n".contains($0) }),
+           words.split(whereSeparator: { $0.isWhitespace }).count <= 6, found.isEmpty {
+            keep(words)
         }
         // Lines read off the screen: a title card or credits (short lines with letters, not subtitles' sentences).
         let screen = screenLines.map { $0.trimmingCharacters(in: .whitespaces) }
@@ -322,8 +352,40 @@ enum ClipText {
                 let upperL = lhs == lhs.uppercased(), upperR = rhs == rhs.uppercased()
                 return upperL != upperR ? upperL : lhs.count > rhs.count
             }
-        for line in screen.prefix(3) { keep(line) }
+        for line in screen.prefix(3) { keep(line, weight: aside) }
         return Array(found.prefix(limit))
+    }
+
+    /// A caption cut at its separators: new lines, " - ", " – ", " — ", "|", "•", "·" (a dash
+    /// without spaces stays: it's a year range, "(2021–2022)").
+    static func parts(of text: String) -> [String] {
+        var pieces = text.components(separatedBy: "\n")
+        for dash in [" - ", " – ", " — "] { pieces = pieces.flatMap { $0.components(separatedBy: dash) } }
+        return pieces.flatMap { $0.split(whereSeparator: { "|•·".contains($0) }).map(String.init) }
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// A social page's title or description, reduced to the post's own words and its account.
+    /// "Sulpho on Instagram: "…"" and "168K likes, 262 comments - sulpho.96 on August 10, 2025:
+    /// "…"" (how Instagram, Threads and Facebook title a post) give the caption inside; anything
+    /// else comes back as it was.
+    static func unwrap(_ text: String) -> (caption: String, author: String?) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let match = trimmed.firstMatch(of: #/(?s)^[\d.,]+[KkMm]?\s+likes?,\s*[\d.,]+[KkMm]?\s+comments?\s*[-–]\s*([\w.]+)\s+on\s+[^:\n]{3,40}:\s*(.*)$/#) {
+            return (unquote(String(match.2)), "@" + String(match.1))
+        }
+        if let match = trimmed.firstMatch(of: #/(?s)^[^\n]{1,80}?\s+on\s+(?:Instagram|Threads|Facebook)\s*:\s*(.*)$/#) {
+            return (unquote(String(match.1)), nil)
+        }
+        return (trimmed, nil)
+    }
+    /// The wrapper's own quotes taken off the caption.
+    private static func unquote(_ text: String) -> String {
+        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.count >= 2, let first = value.first, let last = value.last, "\"“".contains(first), "\"”".contains(last) {
+            value = String(value.dropFirst().dropLast())
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// "TheBear" → "The Bear", "breaking_bad" → "breaking bad"; an all-lowercase tag stays as it is.
@@ -392,8 +454,8 @@ enum ClipTMDB {
         return value
     }
 
-    /// Movies and shows for a search, with how well each name fits it.
-    static func search(_ query: String, key: String) async -> [SavedClip.Candidate] {
+    /// Movies and shows for a search, with how well each name fits it (and its year, when given).
+    static func search(_ query: String, key: String, year: Int? = nil) async -> [SavedClip.Candidate] {
         var parts = URLComponents(string: "https://api.themoviedb.org/3/search/multi")!
         var items = [URLQueryItem(name: "query", value: query), URLQueryItem(name: "include_adult", value: "false")]
         // A 32-character v3 key goes in the address; a longer v4 token in the header.
@@ -405,12 +467,14 @@ enum ClipTMDB {
         if !v3 { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
         guard let reply = try? await URLSession.shared.data(for: request),
               (reply.1 as? HTTPURLResponse)?.statusCode == 200 else { return [] }
-        return candidates(fromSearch: reply.0, query: query)
+        return candidates(fromSearch: reply.0, query: query, year: year)
     }
 
     /// The results of a TMDB multi search as guesses: movies and shows whose names fit the search,
     /// more sure for a closer name and a better-known title.
-    static func candidates(fromSearch data: Data, query: String) -> [SavedClip.Candidate] {
+    /// With a year: the title of that year counts more, one years apart much less ("My Sassy Girl
+    /// (2001)" is the Korean film, not the 2008 remake).
+    static func candidates(fromSearch data: Data, query: String, year: Int? = nil) -> [SavedClip.Candidate] {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rows = root["results"] as? [[String: Any]] else { return [] }
         var result: [SavedClip.Candidate] = []
@@ -424,9 +488,13 @@ enum ClipTMDB {
             let votes = Double(row["vote_count"] as? Int ?? 0)
             // Well-known titles and TMDB's own order count a little; the name counts most.
             let known = min(1, log10(votes + 1) / 4)
-            let confidence = min(0.95, fit * (0.7 + 0.2 * known) + (index == 0 ? 0.08 : 0))
+            var confidence = min(0.95, fit * (0.7 + 0.2 * known) + (index == 0 ? 0.08 : 0))
             let date = (tv ? row["first_air_date"] : row["release_date"]) as? String
-            result.append(.init(tmdbID: id, tv: tv, name: name.isEmpty ? original : name, year: date.flatMap { Int($0.prefix(4)) },
+            let released = date.flatMap { Int($0.prefix(4)) }
+            if let year, let released {
+                confidence = abs(released - year) <= 1 ? min(0.95, confidence + 0.1) : confidence * 0.5
+            }
+            result.append(.init(tmdbID: id, tv: tv, name: name.isEmpty ? original : name, year: released,
                                 posterPath: row["poster_path"] as? String, confidence: confidence))
         }
         return result

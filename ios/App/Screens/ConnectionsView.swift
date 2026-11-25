@@ -83,7 +83,7 @@ struct ConnectionsView: View {
                 Toggle(isOn: $useGemini) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Identify clips with Gemini").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        Text("Send the caption, on-screen text and up to four images when a title is unclear.")
+                        Text("Send each clip's caption, on-screen text and up to four images to Gemini; TMDB confirms its answer.")
                             .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                     }
                 }.tint(theme.accent).padding(15).cardSurface(18)
