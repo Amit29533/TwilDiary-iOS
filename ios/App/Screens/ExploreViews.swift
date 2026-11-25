@@ -117,12 +117,10 @@ private struct ExploreContent: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 72)
             }
-            // Your order and choice of rows (Settings → Customise); by default Ask CineMind, popular,
-            // CineMind's picks, Trakt's, the newer rows and the highest rated. Built once when Explore
-            // opens: in a lazy stack each row (its own sideways scroller, posters, loader) was built as
-            // it came on screen and thrown away once far off, so scrolling to and from the bottom
-            // stalled for a few frames each time a row came back. Each row's posters stay lazy.
-            VStack(alignment: .leading, spacing: Gap.section) {
+            // Lazy: rows further down build (and load) as they come on screen. Your order and
+            // choice of rows (Settings → Customise); by default Ask CineMind, popular, CineMind's picks,
+            // Trakt's, the newer rows and the highest rated.
+            LazyVStack(alignment: .leading, spacing: Gap.section) {
                 ForEach(ExploreRow.layout(exploreLayout).visible.compactMap(ExploreRow.init(rawValue:))) { row in
                     exploreRow(row)
                 }
