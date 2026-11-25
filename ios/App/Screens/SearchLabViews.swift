@@ -14,11 +14,26 @@ struct SearchLabView: View {
     @State private var allGenres = false
     @State private var matchCount: Int?
     @State private var yourTags = SearchLabTags.shared
+    /// Everything back to how the page opens.
+    private var resetButton: some View {
+        Button { filters = Self.blank; tagQuery = ""; foundTags = []; allGenres = false } label: {
+            Text("Reset").font(.app(size: 15, weight: .semibold)).lineLimit(1).fixedSize()
+                .foregroundStyle(filters == Self.blank ? HomeStyle.secondary : HomeStyle.primary)
+                .padding(.horizontal, 16).frame(height: 38).glassEffect(.regular.interactive(), in: Capsule()).contentShape(Capsule())
+        }
+        .buttonStyle(.plain).disabled(filters == Self.blank)
+        .accessibilityIdentifier("search-lab-reset")
+    }
     static var blank: DiscoveryFilters { var value = DiscoveryFilters(section: .genres); value.type = "tv"; return value }
     private static let languages: [(String, String)] = [("ja", "Japanese"), ("en", "English"), ("ko", "Korean"), ("hi", "Hindi"), ("zh", "Chinese"), ("es", "Spanish"), ("fr", "French")]
     private static let decades: [(String, Int?, Int?)] = [("Any", nil, nil), ("2020s", 2020, nil), ("2010s", 2010, 2019), ("2000s", 2000, 2009), ("1990s", 1990, 1999), ("Older", nil, 1989)]
     var body: some View {
-        ExploreBrowsePage(title: "Search Lab", symbol: "flask") {
+        // The title at the top left with Reset beside it, as the app's other pages, and no back button
+        // (the swipe from the left edge goes back): the flask picture and the bar above it are gone.
+        EdgeToEdgeScroll {
+            VStack(alignment: .leading, spacing: 0) {
+            PageHeader(name: "Search Lab", height: 54)
+                .overlay(alignment: .trailing) { resetButton.padding(.trailing, 14) }
             VStack(alignment: .leading, spacing: 22) {
                 keywordField
                 section("Type") {
@@ -98,14 +113,11 @@ struct SearchLabView: View {
                     }
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 120)
-        }.scrollDismissesKeyboard(.interactively)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { filters = Self.blank; tagQuery = ""; foundTags = []; allGenres = false } label: { Text("Reset").lineLimit(1).fixedSize() }
-                        .font(.app(size: 15, weight: .semibold)).disabled(filters == Self.blank)
-                        .accessibilityIdentifier("search-lab-reset")
-                }
             }
+        }.scrollDismissesKeyboard(.interactively)
+            .diaryScreenBackground()
+            .toolbar(.hidden, for: .navigationBar)
+            .background(EdgeSwipeBack().frame(width: 0, height: 0))
             .safeAreaInset(edge: .bottom) {
                 NavigationLink(value: SearchLabResultsRoute(filters: filters)) {
                     Text(showLabel).lineLimit(1).contentTransition(.numericText())
