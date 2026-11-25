@@ -19,9 +19,16 @@ struct CinesView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @AppStorage("confirmDeletions") private var confirmDeletions = true
-    @State private var tab = CinesTab.forYou
-    @State private var feeds = Dictionary(uniqueKeysWithValues: CinesTab.allCases.map { ($0, CinesFeed(tab: $0)) })
-    @State private var positions: [CinesTab: String] = [:]
+    // Kept for the session (back to Cines later, you're where you were): the tab, its clips, and
+    // the clip you were on in each.
+    private static var lastTab = CinesTab.forYou
+    private static let sharedFeeds = Dictionary(uniqueKeysWithValues: CinesTab.allCases.map { ($0, CinesFeed(tab: $0)) })
+    private static var lastPositions: [CinesTab: String] = [:]
+    @State private var tab = CinesView.lastTab
+    @State private var feeds = CinesView.sharedFeeds
+    @State private var positions = CinesView.lastPositions
+    /// The video a little enlarged, its edges cut (a pinch out; a pinch in puts it back).
+    @AppStorage("cines.zoomed") private var zoomed = false
     @State private var current: String?
     @State private var player = CinesPlayer()
     @State private var busy = Set<String>()
@@ -66,11 +73,15 @@ struct CinesView: View {
         // The bar is hidden, so UIKit's back swipes need turning back on (as Explore does).
         .background(EdgeSwipeBack().frame(width: 0, height: 0))
         .task { await open(tab) }
-        .onChange(of: current) { _, id in settle(on: id); showChrome() }
+        .onChange(of: current) { _, id in
+            settle(on: id); showChrome()
+            if let id { positions[tab] = id; Self.lastPositions[tab] = id }
+        }
         // A pause brings a Short's buttons back (and keeps them).
         .onChange(of: player.paused) { _, _ in showChrome() }
         .onChange(of: tab) { old, new in
             positions[old] = current
+            Self.lastTab = new
             player.stop()
             Task { await open(new) }
         }
@@ -132,6 +143,9 @@ struct CinesView: View {
 
     // MARK: A clip
 
+    /// How much a pinch enlarges the video.
+    private static let zoom: CGFloat = 1.15
+
     /// The right-hand buttons' height (three 46 pt circles with their names, 10 pt apart).
     private static let railHeight: CGFloat = 3 * (46 + 4 + 16) + 2 * 10
 
@@ -176,17 +190,21 @@ struct CinesView: View {
             .opacity(shown ? 1 : 0)
             .allowsHitTesting(shown)
             if active {
-                Capsule().fill(.white.opacity(0.22)).frame(height: 3)
-                    .overlay(alignment: .leading) {
-                        GeometryReader { line in Capsule().fill(.white.opacity(shown ? 1 : 0.8)).frame(width: line.size.width * player.progress) }
-                    }
-                    .padding(.bottom, insets.bottom + 4).padding(.horizontal, 14)
-                    .accessibilityHidden(true)
+                // Drag along it to move through the clip (it thickens while held).
+                CinesSeekBar(progress: player.progress, bright: shown, enabled: player.duration > 0) { player.seek(to: $0) }
+                    .padding(.bottom, max(0, insets.bottom - 9)).padding(.horizontal, 14)
             }
         }
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture { tapped(clip) }
+        // Pinch out: the video a little enlarged, its edges cut; pinch in: the whole picture again.
+        .simultaneousGesture(MagnifyGesture().onEnded { value in
+            let next = value.magnification > 1.06 ? true : value.magnification < 0.94 ? false : zoomed
+            guard next != zoomed else { return }
+            withAnimation(.smooth(duration: 0.3)) { zoomed = next }
+            Haptics.play(.light)
+        })
     }
 
     /// The player, with the clip's own still in the video's place until it plays. YouTube centres
@@ -204,9 +222,10 @@ struct CinesView: View {
                         } placeholder: { Color.black }
                     }
                     .clipped()
+                    .scaleEffect(zoomed ? Self.zoom : 1)
                     .allowsHitTesting(false)
             }
-            if active, !refused { CinesPlayerHost(player: player).opacity(showing ? 1 : 0) }
+            if active, !refused { CinesPlayerHost(player: player).scaleEffect(zoomed ? Self.zoom : 1).opacity(showing ? 1 : 0) }
             if refused {
                 VStack(spacing: 10) {
                     Text("This clip can't play in the app.").font(.app(size: 14, weight: .semibold))
@@ -341,7 +360,9 @@ struct CinesView: View {
     private func open(_ tab: CinesTab) async {
         let feed = feeds[tab]!
         if feed.clips.isEmpty { await feed.loadMore(store) }
-        let saved = positions[tab].flatMap { saved in feed.clips.contains { $0.id == saved } ? saved : nil }
+        // The clip on screen when you come back (from a title's page: this ran again and went to the
+        // tab's first clip), else where you were in this tab.
+        let saved = [current, positions[tab]].compactMap { $0 }.first { saved in feed.clips.contains { $0.id == saved } }
         if saved == nil {
             let others = feed.clips.prefix(3).dropFirst().map(\.id)
             Task {
@@ -398,5 +419,47 @@ struct CinesView: View {
         guard let id = libraryID(clip), let title = store.title(id), title.status == "planned", busy.insert(key).inserted else { return }
         defer { busy.remove(key) }
         if await store.trash(title) { Haptics.play(.light) }
+    }
+}
+
+/// The clip's progress along the bottom, which also seeks: drag along it (or touch a point) to move
+/// through the clip; it thickens while held. A tall invisible strip takes the finger.
+private struct CinesSeekBar: View {
+    let progress: Double
+    /// Full white (the clip's buttons showing) or a little dimmer.
+    let bright: Bool
+    let enabled: Bool
+    let seek: (Double) -> Void
+    @State private var scrub: Double?
+    var body: some View {
+        GeometryReader { line in
+            let shown = scrub ?? progress
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.22))
+                Capsule().fill(.white.opacity(bright || scrub != nil ? 1 : 0.8)).frame(width: max(0, line.size.width * shown))
+            }
+            .frame(height: scrub == nil ? 3 : 7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { drag in
+                    guard enabled, line.size.width > 0 else { return }
+                    scrub = min(1, max(0, drag.location.x / line.size.width))
+                }
+                .onEnded { drag in
+                    guard enabled, line.size.width > 0 else { scrub = nil; return }
+                    seek(min(1, max(0, drag.location.x / line.size.width)))
+                    scrub = nil
+                })
+        }
+        .frame(height: 24)
+        .animation(.snappy(duration: 0.15), value: scrub == nil)
+        .accessibilityElement()
+        .accessibilityLabel("Position")
+        .accessibilityValue("\(Int((progress * 100).rounded())) percent")
+        .accessibilityAdjustableAction { direction in
+            if direction == .increment { seek(progress + 0.1) } else if direction == .decrement { seek(progress - 0.1) }
+        }
+        .accessibilityIdentifier("cines-seek")
     }
 }

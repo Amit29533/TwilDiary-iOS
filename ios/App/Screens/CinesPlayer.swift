@@ -21,6 +21,8 @@ import WebKit
     /// The video playing (or about to).
     private(set) var current: String?
     private(set) var progress: Double = 0
+    /// The clip's length in seconds (0 until YouTube says).
+    private(set) var duration: Double = 0
     private(set) var playing = false
     /// Paused (a tap, or leaving the page).
     private(set) var paused = false
@@ -47,10 +49,18 @@ import WebKit
         guard id != current else { if !away { resume() }; return }
         current = id
         progress = 0
+        duration = 0
         playing = false
         paused = false
         guard ready else { start(); return }
         load(id)
+    }
+    /// To this point of the clip (0 to 1): the bar at the bottom, dragged.
+    func seek(to fraction: Double) {
+        guard duration > 0 else { return }
+        let value = min(1, max(0, fraction))
+        progress = value
+        run("player.seekTo(\(value * duration), true)")
     }
     func toggle() {
         guard current != nil else { return }
@@ -105,6 +115,7 @@ import WebKit
             if state == 0 { run("player.seekTo(0, true);player.playVideo()") } // ended: loop, as a reel does
         case "time":
             guard let time = message["t"] as? Double, let duration = message["d"] as? Double, duration > 0 else { return }
+            if self.duration != duration { self.duration = duration }
             let value = min(1, max(0, time / duration))
             if abs(value - progress) > 0.002 { progress = value }
         case "error":
@@ -172,6 +183,7 @@ import WebKit
           if(w===w.top||w.__cinesFrame||!/^\/embed\//.test(location.pathname)||!/^www\.youtube(-nocookie)?\.com$/.test(location.hostname))return;
           w.__cinesFrame=true;
           var css='SELECTORS{display:none!important}'+
+            '.html5-video-player>:not(.html5-video-container){display:none!important}'+
             '.html5-video-container{width:100%!important;height:100%!important}'+
             'video.html5-main-video{width:100%!important;height:100%!important;left:0!important;top:0!important;object-fit:contain!important}';
           function add(){
