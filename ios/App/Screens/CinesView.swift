@@ -10,7 +10,8 @@ import TwilDiaryCore
 /// - A Short fills the screen. Its tabs, buttons and title show when it starts and fade after
 ///   three seconds (owner's call: a personal app); a tap brings them back, and they stay while
 ///   it's paused.
-/// - YouTube's normal controls (`CinesPlayer`): a tap or a pause shows them, and they fade again.
+/// - No YouTube controls or buttons over the video (`CinesPlayer`, after youtube_player_flutter):
+///   a tap pauses or plays, with a play button of ours while paused.
 /// - On the right: Plan (a green tick once Planned; a tap takes it out again), Details, Sound,
 ///   Share. Bottom left: what the clip is, the title, "Show · 2021 · genres" and the channel.
 /// - At the top: back, then For you, Shows, Movies and Anime as plain text tabs.
@@ -66,8 +67,7 @@ struct CinesView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task { await open(tab) }
         .onChange(of: current) { _, id in settle(on: id); showChrome() }
-        // A tap on YouTube's player, or a pause, brings a Short's buttons back.
-        .onChange(of: player.taps) { _, _ in showChrome() }
+        // A pause brings a Short's buttons back (and keeps them).
         .onChange(of: player.paused) { _, _ in showChrome() }
         .onChange(of: tab) { old, new in
             positions[old] = current
@@ -184,6 +184,8 @@ struct CinesView: View {
             }
         }
         .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture { tapped(clip) }
     }
 
     /// The player, with the clip's own still in the video's place until it plays. YouTube centres
@@ -209,6 +211,11 @@ struct CinesView: View {
                     Text("This clip can't play in the app.").font(.app(size: 14, weight: .semibold))
                     Button("Watch on YouTube") { openURL(clip.watchURL) }.buttonStyle(.bordered).tint(.white)
                 }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black.opacity(0.6))
+            } else if active, player.paused {
+                // YouTube's own pause screen is hidden: this play button shows it's paused.
+                Image(systemName: "play.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 64, height: 64).background(.black.opacity(0.5), in: Circle())
+                    .allowsHitTesting(false).accessibilityHidden(true)
             } else if active, !showing {
                 ProgressView().tint(.white).allowsHitTesting(false)
             }
@@ -304,6 +311,15 @@ struct CinesView: View {
     private static func key(_ clip: CinesClip) -> String { clip.route.kind.rawValue + ":" + String(clip.route.id) }
 
     // MARK: Taps and fading
+
+    /// A tap: over a Short whose buttons have faded, they come back; otherwise it pauses or plays
+    /// (YouTube's player doesn't take taps).
+    private func tapped(_ clip: CinesClip) {
+        guard clip.id == current else { return }
+        if clip.short, !chromeShown { showChrome(); return }
+        player.toggle()
+        showChrome()
+    }
 
     /// Shows a Short's tabs, buttons and title, and fades them again three seconds later (not
     /// while it's paused). Wide clips keep theirs.

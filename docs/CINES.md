@@ -66,9 +66,9 @@ Nothing is downloaded or re-hosted.
 
 The layout (owner's drawing, 25 Nov 2026):
 
-- **A wide clip's** player fills the space from under the tabs down to the buttons, as the anime.com app's does. YouTube centres the video in it and puts its own title, seek bar and logo at its edges, not on the picture. The title's blurred picture is behind it, and the buttons on the right start below it, so nothing of ours covers it.
+- **A wide clip's** player fills the space from under the tabs down to the buttons, with the video in the middle of that space. (Owner's measurement, 25 Nov 2026: that puts the video about 34% down the screen, where anime.com's sits about 46% down; not changed yet.)
 - **A Short** fills the screen. Its tabs, buttons and title show when it starts and fade after three seconds (owner's call: a personal app). A tap brings them back, and they stay while it's paused.
-- **YouTube's normal controls,** as YouTubePlayerKit and youtube_player_iframe have them by default and as anime.com shows them: a clip that starts by itself plays clean, and a tap or a pause brings up YouTube's controls (time, seek bar, Share), which fade again by themselves. The "no controls" mode used before put a big pause button, Share and "More videos" over the start of every clip on a phone.
+- **Nothing of YouTube's over the video** (owner's call, 25 Nov 2026), done the way youtube_player_flutter 4.0.0 does it on iOS: YouTube's controls are off and taps don't reach its player (a tap pauses or plays, with a play button of ours while paused), and a style sheet injected into YouTube's embed frame at document start hides YouTube's own parts: logo, title, channel, Share, Watch later, "More videos", related videos, end screen and info cards (that library's list), plus the controls bars, big play button and spinner (added here). YouTube doesn't document these names, so one may stop matching when it changes its player; hiding them is outside YouTube's terms (a personal app).
 
 Each clip starts muted, and Sound turns the sound on. A clip loops at its end.
 
