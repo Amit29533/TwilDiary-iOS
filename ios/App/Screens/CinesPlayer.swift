@@ -13,6 +13,14 @@ import WebKit
     private(set) var progress: Double = 0
     private(set) var playing = false
     private(set) var paused = false
+    /// Whether the video shows. YouTube puts its own buttons over a clip for its first seconds
+    /// (a big pause button, Share, "More videos") and while it's paused; the page keeps the clip's
+    /// still over the player until they've gone (owner's call, 25 Nov 2026), and shows it with its
+    /// own play button while paused.
+    private(set) var revealed = false
+    @ObservationIgnored private var revealTask: Task<Void, Never>?
+    /// How long YouTube's buttons stay at the start (and, shorter, after a resume).
+    @ObservationIgnored private var revealDelay: Duration = .seconds(3)
     /// The clips the player refused (embedding switched off, removed).
     private(set) var refused = Set<String>()
     var muted = true { didSet { if muted != oldValue { run(muted ? "player.mute()" : "player.unMute()") } } }
@@ -38,12 +46,20 @@ import WebKit
         progress = 0
         playing = false
         paused = false
+        hide(for: .seconds(3))
         guard ready else { start(); return }
         load(id)
     }
     func toggle() {
         guard current != nil else { return }
         if paused { resume() } else { paused = true; run("player.pauseVideo()") }
+    }
+    /// Keeps the still over the player until YouTube's buttons have gone: `delay` after it plays.
+    private func hide(for delay: Duration) {
+        revealTask?.cancel()
+        revealTask = nil
+        revealed = false
+        revealDelay = delay
     }
     /// Leaving the page (a title's page pushed over it, or back to Home).
     func leave() {
@@ -59,9 +75,11 @@ import WebKit
         current = nil
         progress = 0
         playing = false
+        hide(for: .seconds(3))
     }
     private func resume() {
         paused = false
+        hide(for: .seconds(1.2))
         run("player.playVideo()")
     }
     private func load(_ id: String) {
@@ -89,7 +107,18 @@ import WebKit
             if let current { load(current) }
         case "state":
             let state = message["v"] as? Int ?? -1
-            if state == 1 { playing = true } // playing
+            if state == 1 { // playing
+                playing = true
+                if !revealed, revealTask == nil {
+                    let clip = current, delay = revealDelay
+                    revealTask = Task { [weak self] in
+                        try? await Task.sleep(for: delay)
+                        guard let self, !Task.isCancelled, self.current == clip, !self.paused else { return }
+                        self.revealed = true
+                        self.revealTask = nil
+                    }
+                }
+            }
             if state == 0 { run("player.seekTo(0, true);player.playVideo()") } // ended: loop, as a reel does
         case "time":
             guard let time = message["t"] as? Double, let duration = message["d"] as? Double, duration > 0 else { return }

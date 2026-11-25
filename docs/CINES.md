@@ -64,18 +64,23 @@ The clips play in YouTube's own embedded player (the IFrame API) in one web view
 
 Nothing is downloaded or re-hosted.
 
-YouTube's player gets the middle of the screen to itself, with its own title at the top and its logo at the bottom, and nothing of ours over it. This follows the anime.com app (owner's call, 25 Nov 2026, after the first layout's buttons covered the video). The title's blurred picture shows around the video.
+The layout (owner's drawing, 25 Nov 2026):
 
-Each clip starts muted, and Sound (top right) turns the sound on. A tap pauses, and a clip loops at its end.
+- **A wide clip** plays around the middle of the screen, where the anime.com app puts it, over the title's blurred picture. The buttons on the right start below it, so nothing covers it.
+- **A Short** fills the screen. Its tabs, buttons and title show when it starts and fade after three seconds (owner's call: a personal app). A tap brings them back, and a tap while they show pauses.
+- **YouTube's own buttons**, which it puts over a clip for its first seconds and while it's paused (a big pause button, Share, "More videos"), stay out of sight under the clip's still. Paused, the still shows with a play button of ours.
+
+Each clip starts muted, and Sound turns the sound on. A clip loops at its end.
 
 Only English videos are used; anime may also use Japanese ones, with English first. Before a clip comes on screen, YouTube's public oEmbed lookup is asked about it and the next few. A video whose uploader switched embedding off, or that was taken down, is dropped from the feed and left out from then on. If YouTube still refuses a clip while it plays (for example, a region block), the feed moves on to the next one.
 
-## The panel
+## The buttons
 
-Below the video (`ios/App/Screens/CinesView.swift`):
+On the right (`ios/App/Screens/CinesView.swift`):
 
-- what the clip is;
-- the title, with a › that opens its page;
-- "Show · year · genres";
-- **Share:** shares the YouTube link;
-- **Plan:** adds the title to Planned, the same way Search's + does. While the title is Planned, it shows a green **Planned**, and a tap takes it back out (to Trash, after asking). A title you're watching or have watched shows its state instead.
+- **Plan:** adds the title to Planned, the same way Search's + does. While the title is Planned, it shows a green tick, and a tap takes it back out (to Trash, after asking). A title you're watching or have watched shows its state instead.
+- **Details:** opens the title's page.
+- **Sound:** turns the sound on or off.
+- **Share:** shares the YouTube link.
+
+Bottom left: what the clip is, the title, "Show · year · genres", and the channel that posted it. At the top: back, then For you, Shows, Movies and Anime as plain text tabs.

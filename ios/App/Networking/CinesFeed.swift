@@ -46,6 +46,8 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
     private(set) var clips: [CinesClip] = []
     private(set) var loading = false
     private(set) var failure: String?
+    /// The channel that posted each clip ("Netflix", "Crunchyroll").
+    private(set) var channels: [String: String] = [:]
     /// Clips YouTube said it will play in the app (true) or won't (false).
     @ObservationIgnored private var checked: [String: Bool] = [:]
 
@@ -143,11 +145,12 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             // With a YouTube key, YouTube says first which of them play here (1 unit a batch).
             if let key = CinesYouTube.key, !fresh.isEmpty,
                let statuses = await CinesYouTube.statuses(fresh.map(\.id), key: key, region: CinesYouTube.region) {
-                for (id, playable) in statuses {
-                    checked[id] = playable
-                    if !playable { Self.markFailed(id) }
+                for (id, status) in statuses {
+                    checked[id] = status.playable
+                    if !status.playable { Self.markFailed(id) }
+                    if let channel = status.channel, !channel.isEmpty { channels[id] = String(channel.prefix(80)) }
                 }
-                fresh = fresh.filter { statuses[$0.id] != false }
+                fresh = fresh.filter { statuses[$0.id]?.playable != false }
             }
             clips += Self.spread(fresh.shuffled())
         }
@@ -166,8 +169,13 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         guard let url = parts.url else { return true }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        guard let (_, response) = try? await URLSession.shared.data(for: request), let status = (response as? HTTPURLResponse)?.statusCode else { return true }
+        guard let (data, response) = try? await URLSession.shared.data(for: request), let status = (response as? HTTPURLResponse)?.statusCode else { return true }
         let playable = ![401, 403, 404].contains(status)
+        // The same lookup names the channel.
+        if status == 200, channels[id] == nil, let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let author = object["author_name"] as? String, !author.isEmpty {
+            channels[id] = String(author.prefix(80))
+        }
         checked[id] = playable
         if !playable { refuse(id) }
         return playable
@@ -244,6 +252,7 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         var matched: [CinesClip] = []
         for (video, tries) in zip(fresh, names) {
             guard let title = match(tries, anime: video.channel.anime), fits(title) else { continue }
+            channels[video.id] = video.channel.name
             matched.append(CinesClip(id: video.id, kind: kind ?? Self.kind(video), name: title.name, year: title.year, route: title.route, anime: title.anime,
                                      genres: title.genres, poster: title.poster, backdrop: title.backdrop, short: video.short))
         }
@@ -311,6 +320,7 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         }.sorted { official.contains($0.channelID) && !official.contains($1.channelID) }.prefix(3)
         let scenes = kept.map { CinesClip(id: $0.id, kind: "Scene", name: title.name, year: title.year, route: title.route, anime: title.anime,
                                          genres: title.genres, poster: title.poster, backdrop: title.backdrop) }
+        for video in kept { if let channel = video.channelTitle { channels[video.id] = channel } }
         channelClips += scenes
     }
 

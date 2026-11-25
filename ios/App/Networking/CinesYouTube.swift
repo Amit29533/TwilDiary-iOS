@@ -18,6 +18,7 @@ enum CinesYouTube {
         let id: String
         let title: String
         let channelID: String
+        var channelTitle: String? = nil
     }
 
     static let searchesPerDay = 30
@@ -115,14 +116,20 @@ enum CinesYouTube {
         return object
     }
 
-    /// Which of these videos YouTube will play in the app here: public, embedding allowed, and not
-    /// blocked in your country. nil when YouTube couldn't be asked.
-    nonisolated static func statuses(_ ids: [String], key: String, region: String?) async -> [String: Bool]? {
+    struct Status: Sendable {
+        let playable: Bool
+        /// The channel that posted it ("Netflix").
+        let channel: String?
+    }
+
+    /// Which of these videos YouTube will play in the app here (public, embedding allowed, and not
+    /// blocked in your country), and the channel that posted each. nil when YouTube couldn't be asked.
+    nonisolated static func statuses(_ ids: [String], key: String, region: String?) async -> [String: Status]? {
         guard !ids.isEmpty else { return [:] }
-        var result: [String: Bool] = [:]
+        var result: [String: Status] = [:]
         for chunk in stride(from: 0, to: ids.count, by: 50).map({ Array(ids[$0..<min($0 + 50, ids.count)]) }) {
-            guard let object = try? await get("videos", ["part": "status,contentDetails", "id": chunk.joined(separator: ","), "maxResults": "50"], key: key) else { return nil }
-            for id in chunk { result[id] = false } // not returned: private or removed
+            guard let object = try? await get("videos", ["part": "status,contentDetails,snippet", "id": chunk.joined(separator: ","), "maxResults": "50"], key: key) else { return nil }
+            for id in chunk { result[id] = Status(playable: false, channel: nil) } // not returned: private or removed
             for item in object["items"] as? [[String: Any]] ?? [] {
                 guard let id = item["id"] as? String else { continue }
                 let status = item["status"] as? [String: Any] ?? [:]
@@ -131,7 +138,7 @@ enum CinesYouTube {
                     if let allowed = restriction["allowed"] as? [String], !allowed.contains(region) { playable = false }
                     if let blocked = restriction["blocked"] as? [String], blocked.contains(region) { playable = false }
                 }
-                result[id] = playable
+                result[id] = Status(playable: playable, channel: (item["snippet"] as? [String: Any])?["channelTitle"] as? String)
             }
         }
         return result
@@ -163,7 +170,8 @@ enum CinesYouTube {
             guard let id = (item["id"] as? [String: Any])?["videoId"] as? String,
                   id.range(of: #"^[A-Za-z0-9_-]{6,20}$"#, options: .regularExpression) != nil,
                   let snippet = item["snippet"] as? [String: Any], let title = snippet["title"] as? String else { return nil }
-            return Video(id: id, title: CinesChannels.decode(title), channelID: snippet["channelId"] as? String ?? "")
+            return Video(id: id, title: CinesChannels.decode(title), channelID: snippet["channelId"] as? String ?? "",
+                         channelTitle: (snippet["channelTitle"] as? String).map(CinesChannels.decode))
         }
     }
 
