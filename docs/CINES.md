@@ -66,7 +66,7 @@ Nothing is downloaded or re-hosted.
 
 The layout (owner's drawing, 25 Nov 2026):
 
-- **A wide clip's** player fills the space from under the tabs down to the buttons, with the video in the middle of that space. (Owner's measurement, 25 Nov 2026: that puts the video about 34% down the screen, where anime.com's sits about 46% down; not changed yet.)
+- **A wide clip** plays centred on the screen (owner's call, 25 Nov 2026), or as near the centre as clears the buttons on a smaller phone. The player is just the size of the video (16:9), so there's no black above or below it; the title's blurred picture is behind.
 - **A Short** fills the screen. Its tabs, buttons and title show when it starts and fade after three seconds (owner's call: a personal app). A tap brings them back, and they stay while it's paused.
 - **Nothing of YouTube's over the video** (owner's call, 25 Nov 2026), done the way youtube_player_flutter 4.0.0 does it on iOS: YouTube's controls are off and taps don't reach its player (a tap pauses or plays, with a play button of ours while paused), and a style sheet injected into YouTube's embed frame at document start hides YouTube's own parts: logo, title, channel, Share, Watch later, "More videos", related videos, end screen and info cards (that library's list), plus the controls bars, big play button and spinner (added here). YouTube doesn't document these names, so one may stop matching when it changes its player; hiding them is outside YouTube's terms (a personal app).
 

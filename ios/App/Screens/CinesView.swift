@@ -3,10 +3,8 @@ import TwilDiaryCore
 
 /// Cines (Home → Cines; owner's drawing, 25 Nov 2026): trailers, scenes and Shorts, one a screen,
 /// swiped up as reels are.
-/// - A wide clip's player fills the space from under the tabs down to the buttons, as anime.com's
-///   does: YouTube centres the video in it and puts its own title, seek bar and logo at its edges,
-///   not on the picture. The title's blurred picture is behind it, and the buttons on the right
-///   start below it, so nothing of ours covers it.
+/// - A wide clip plays centred on the screen (as near the centre as clears the buttons), the player
+///   just the size of the video, over the title's blurred picture.
 /// - A Short fills the screen. Its tabs, buttons and title show when it starts and fade after
 ///   three seconds (owner's call: a personal app); a tap brings them back, and they stay while
 ///   it's paused.
@@ -140,9 +138,10 @@ struct CinesView: View {
         let shown = !clip.short || !active || chromeShown
         let bottom = insets.bottom + 18
         let railTop = size.height - bottom - Self.railHeight
-        // A wide clip's player: from under the tabs to just above the buttons.
-        let stageTop = insets.top + 56
-        let stageHeight = max(size.width * 9 / 16, railTop - 10 - stageTop)
+        // A wide clip's player is just the video (16:9, no black above or below it), centred on the
+        // screen (owner's call, 25 Nov 2026), or as near the centre as clears the buttons.
+        let videoHeight = size.width * 9 / 16
+        let centre = max(insets.top + 56 + videoHeight / 2, min(size.height / 2, railTop - 8 - videoHeight / 2))
         return ZStack(alignment: .bottom) {
             Color.black
             if clip.short {
@@ -152,8 +151,8 @@ struct CinesView: View {
                     .frame(width: size.width, height: size.height).blur(radius: 36).opacity(0.5)
                     .overlay(LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
                     .accessibilityHidden(true)
-                stage(clip, active: active).frame(width: size.width, height: stageHeight)
-                    .position(x: size.width / 2, y: stageTop + stageHeight / 2)
+                stage(clip, active: active).frame(width: size.width, height: videoHeight)
+                    .position(x: size.width / 2, y: centre)
             }
             Group {
                 if clip.short {

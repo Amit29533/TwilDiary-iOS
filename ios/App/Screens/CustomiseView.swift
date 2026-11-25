@@ -141,9 +141,15 @@ struct PosterSettingsView: View {
                 SettingsIntro(eyebrow: "Posters", text: "How big each kind of poster is, and what shows on them.")
                 sizeGroup("Shelf cards", "Sideways rows: Home, title pages, Explore", value: $shelf, range: PosterSizes.shelfRange, step: 5,
                           id: "customise-poster-shelf") {
-                    HStack(spacing: 8) {
-                        ForEach(0..<4, id: \.self) { _ in sample(width: shelf) }
-                    }.frame(maxWidth: .infinity, alignment: .leading).frame(height: PosterSizes.height(PosterSizes.shelfRange.upperBound), alignment: .topLeading).clipped()
+                    // A row of cards cut off at the card's edge, as a shelf is (it scrolls; this
+                    // preview doesn't): it never makes the page wider than the screen.
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            ForEach(0..<4, id: \.self) { _ in sample(width: shelf) }
+                        }
+                    }
+                    .scrollDisabled(true).scrollIndicators(.hidden)
+                    .frame(height: PosterSizes.height(CGFloat(shelf)))
                 }
                 sizeGroup("List rows", "Library list, Search results, calendar", value: $row, range: PosterSizes.rowRange, step: 1,
                           id: "customise-poster-row") {
@@ -226,8 +232,10 @@ struct PosterSettingsView: View {
                     Spacer(minLength: 8)
                     Text("\(Int(value.wrappedValue)) pt").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
                 }
-                Slider(value: Binding(get: { min(range.upperBound, max(range.lowerBound, value.wrappedValue)) }, set: { value.wrappedValue = $0 }),
-                       in: range, step: step) {
+                // Continuous (a stepped slider draws a dot for every step), rounded to the step.
+                Slider(value: Binding(get: { min(range.upperBound, max(range.lowerBound, value.wrappedValue)) },
+                                      set: { value.wrappedValue = ($0 / step).rounded() * step }),
+                       in: range) {
                     Text(label + " size")
                 } minimumValueLabel: {
                     Text("Smaller").font(.app(size: 11)).foregroundStyle(HomeStyle.secondary)

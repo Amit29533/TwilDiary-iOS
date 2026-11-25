@@ -64,7 +64,7 @@ struct SettingsView: View {
                         }.accessibilityIdentifier("settings-customise")
                         divider
                         NavigationLink { PosterSettingsView() } label: {
-                            settingsRow("photo.on.rectangle", .orange, "Posters", subtitle: "Size, rating and name", value: "(posterSize.columns) across", disclosure: true)
+                            settingsRow("photo.on.rectangle", .orange, "Posters", subtitle: "Size, rating and name", value: "\(posterSize.columns) across", disclosure: true)
                         }.accessibilityIdentifier("settings-posters")
                         divider
                         // Text size: iPhone's, or your own on a slider. A route (not a pushed view), so the
