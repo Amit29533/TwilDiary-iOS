@@ -107,6 +107,19 @@ struct LibraryView: View {
                     }.buttonStyle(.plain).accessibilityLabel(name).accessibilityValue("\(counts[key] ?? 0) titles")
                         .accessibilityAddTraits(on ? .isSelected : []).accessibilityIdentifier("library-status-" + key)
                 }
+                // Lists: the ones you saved from anywhere and yours on Trakt.
+                NavigationLink(value: YourListsRoute()) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "list.bullet").font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText)
+                        Text("Lists").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                        if !SavedLists.shared.all.isEmpty {
+                            Text("\(SavedLists.shared.all.count)").font(.app(size: 13, weight: .semibold)).monospacedDigit().foregroundStyle(HomeStyle.secondary)
+                        }
+                    }.padding(.horizontal, 14).frame(height: 40)
+                        .background(HomeStyle.round, in: Capsule())
+                        .overlay(Capsule().strokeBorder(HomeStyle.dateChipBorder, lineWidth: HomeStyle.hairline))
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).accessibilityIdentifier("library-lists")
             }.padding(.horizontal, 14)
         }.scrollIndicators(.hidden).padding(.vertical, 6)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Motion.swipeSpace)) } action: { chipRow = $0 }

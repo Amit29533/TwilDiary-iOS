@@ -219,6 +219,7 @@ private struct AwardEditionPage: View {
 
     var body: some View {
         ExploreBrowsePage(title: ceremony.displayName, symbol: ceremony.symbol, subtitle: "Awards ceremony",
+                          accessory: AnyView(SaveListButton(list: .ceremony(ceremony))),
                           banner: AwardLogoArt(ceremony: ceremony, large: true).map { AnyView($0) }) {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if let editions = loader.editions {

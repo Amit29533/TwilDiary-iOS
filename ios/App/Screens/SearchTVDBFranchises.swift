@@ -278,7 +278,9 @@ struct SearchTVDBFranchisePage: View {
     var body: some View {
         ExploreBrowsePage(title: franchise.name, symbol: "square.stack.3d.up",
                           subtitle: SearchTVDBListCatalog.isFranchise(franchise) ? "Franchise" : "Official list",
-                          artwork: listArt ?? TVDBDirect.artworkURL(franchise.image)) {
+                          artwork: listArt ?? TVDBDirect.artworkURL(franchise.image),
+                          accessory: AnyView(SaveListButton(list: .tvdb(franchise, detail: SearchTVDBListCatalog.isFranchise(franchise) ? "TheTVDB franchise" : "TheTVDB list",
+                                                                        image: listArt ?? TVDBDirect.artworkURL(franchise.image))))) {
             VStack(alignment: .leading, spacing: 12) {
                 if let entries, !entries.isEmpty {
                     let watched = Set(store.activeTitles.compactMap { title -> CatalogRoute? in

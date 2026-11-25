@@ -406,7 +406,8 @@ struct CanvasListView: View {
     @State private var loader: CanvasListItemsLoader?
     var body: some View {
         ExploreBrowsePage(title: route.name, symbol: "list.bullet.rectangle", subtitle: "by " + route.user,
-                          artwork: ExploreBrowseHeader.artwork(in: loader?.items ?? [])) {
+                          artwork: ExploreBrowseHeader.artwork(in: loader?.items ?? []),
+                          accessory: AnyView(SaveListButton(list: .trakt(route, image: loader?.items.lazy.compactMap { $0.backdrop ?? $0.artwork }.first)))) {
             VStack(alignment: .leading, spacing: 14) {
                 if let loader {
                     ZStack(alignment: .topLeading) {

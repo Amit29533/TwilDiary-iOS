@@ -1030,7 +1030,10 @@ struct TMDbCollectionPage: View {
                 } else { DiaryLoadingPlaceholder(label: "Loading the collection", layout: .posterGrid(columns: 3, rows: 2)).padding(.top, 8) }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-            .toolbar { ShowPageTitle(title: name, subtitle: collection.map { $0.parts.count.counted("film", "films") } ?? "TMDb collection") }
+            .toolbar {
+                ShowPageTitle(title: name, subtitle: collection.map { $0.parts.count.counted("film", "films") } ?? "TMDb collection")
+                ToolbarItem(placement: .topBarTrailing) { SaveListButton(list: .tmdbCollection(id: id, name: name, image: nil), inBar: true) }
+            }
             .task(id: id) { await load() }
     }
     @ViewBuilder private func link(_ item: CatalogItem) -> some View {

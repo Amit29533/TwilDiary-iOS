@@ -103,7 +103,7 @@ import TwilDiaryCore
         return token
     }
 
-    struct Franchise: Decodable, Hashable, Identifiable, Sendable {
+    struct Franchise: Codable, Hashable, Identifiable, Sendable {
         let id: Int
         let name: String
         let image: String?

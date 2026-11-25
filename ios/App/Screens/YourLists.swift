@@ -193,6 +193,8 @@ struct YourListsView: View {
                           accessory: AnyView(Button { creating = true } label: { HomeRoundIcon(system: "plus") }.buttonStyle(.plain)
                             .accessibilityLabel("New list").accessibilityIdentifier("your-lists-new"))) {
             VStack(alignment: .leading, spacing: 14) {
+                // Lists you saved from anywhere (their bookmark), then yours on Trakt.
+                SavedListsSection()
                 if model.lists.isEmpty {
                     // A first load that failed shows Retry (it stayed "not loaded", so the placeholder hid it).
                     if !model.loading, let failure = model.failure { RetryNotice(message: failure) { Task { await model.load(store: store, force: true) } } }

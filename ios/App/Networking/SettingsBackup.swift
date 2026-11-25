@@ -6,7 +6,7 @@ import Foundation
 @MainActor enum SettingsBackup {
     nonisolated private static let names: Set<String> = [
         "theme", "nativeAppearance", "publicRatingSource", "hideSpoilers", "launchTab", "use24HourTime", "streamingRegion",
-        "animeEnglishTitles", "ignoreTitleArticles", "confirmDeletions", "haptics.enabled", "library.savedFilters",
+        "animeEnglishTitles", "ignoreTitleArticles", "confirmDeletions", "haptics.enabled", "library.savedFilters", "library.savedLists",
         "library.list", "library.genreRows", "library.sort",
     ]
     nonisolated private static let families = ["jellyspace.", "customise."]
@@ -34,5 +34,6 @@ import Foundation
         guard let data, let kept = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] else { return }
         for (key, value) in kept where carries(key) && defaults.object(forKey: key) == nil { defaults.set(value, forKey: key) }
         SavedFilters.shared.reload()
+        SavedLists.shared.reload()
     }
 }

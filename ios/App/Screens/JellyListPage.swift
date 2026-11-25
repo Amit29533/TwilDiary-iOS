@@ -61,7 +61,10 @@ struct JellyListPage: View {
         .jellyFaceLock()
         .jellyPage()
         .navigationTitle(route.name).navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { JellyBrowseMenu(options: optionsBinding, layout: $layout) } }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { SaveListButton(list: .jellyfin(route), inBar: true) }
+            ToolbarItem(placement: .topBarTrailing) { JellyBrowseMenu(options: optionsBinding, layout: $layout) }
+        }
         .safeAreaInset(edge: .bottom) { JellyMiniPlayer().padding(.bottom, 4) }
         .task(id: optionsRaw + hiddenRaw) { await load(fresh: true) }
         .fullScreenCover(item: $playing, onDismiss: { Task { await load(fresh: false) } }) { JellyPlayerView(playback: $0) }
