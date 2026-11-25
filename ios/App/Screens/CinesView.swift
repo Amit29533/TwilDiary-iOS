@@ -143,7 +143,8 @@ struct CinesView: View {
                 .overlay(LinearGradient(colors: [.black.opacity(0.4), .clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom))
                 .accessibilityHidden(true)
             if !showing {
-                Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                // A Short is vertical; its still (YouTube's 4:3 picture) is cut to fit.
+                Color.clear.aspectRatio(clip.short ? CGFloat(9) / 16 : CGFloat(16) / 9, contentMode: .fit)
                     .overlay {
                         AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg")) { image in
                             image.resizable().aspectRatio(contentMode: .fill)

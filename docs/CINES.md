@@ -23,6 +23,26 @@ The titles behind each tab:
 
 Outside For you's diary picks, titles already in your diary go to the back, and only every second one is kept, so they come up less often. Code: `ios/App/Networking/CinesFeed.swift`.
 
+## The official channels
+
+TMDB lists mostly trailers, so Cines also reads the official YouTube channels themselves (owner's call, 25 Nov 2026, as the anime.com app does). Their public feeds need no key and have no quota. Each channel gives two feeds of about 15 videos each: its newest uploads and its newest Shorts. Code: `ios/App/Networking/CinesChannels.swift`.
+
+- **The channels:**
+  - **Shows and films:** Netflix, Netflix K-Content, Prime Video, Disney+, HBO, Apple TV, Hulu, Paramount+, Peacock, A24, Universal Pictures, Sony Pictures and Marvel.
+  - **Anime:** Netflix Anime, Crunchyroll, Muse Asia, Aniplex USA, TOHO animation and GKIDS.
+- **How videos are read:** two channels at a time, in a random order, as the feed loads.
+- **Matching a video to its title:** the video's title is read for names:
+  - the parts between "|" ("Scene | Kakegurui | Clip | Netflix Anime" gives Kakegurui);
+  - a Short's hashtags ("#BlueBox" gives Blue Box);
+  - a name in capitals inside a sentence.
+
+  Words like Clip and Trailer, and channel names, are dropped. "Season 3" and a trailing number are tried without.
+
+  Each name is searched on TMDB. A video joins the feed only when TMDB has a title by that very name (or its best match is clearly the same), so Plan adds the right title. An anime channel's videos match anime only, and channel promos are left out.
+- **Mixing:** up to four channel clips a round are mixed in with TMDB's, in every tab (each tab keeps its kind). A Short is vertical and fills the player's height.
+
+The feeds hold only each channel's newest videos. A YouTube Data API key could reach further back if that's wanted later.
+
 ## Playing
 
 The clips play in YouTube's own embedded player (the IFrame API) in one web view that moves from page to page (`ios/App/Screens/CinesPlayer.swift`). It's set up the way YouTubePlayerKit 2.0.5 does it:

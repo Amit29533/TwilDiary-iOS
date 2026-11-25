@@ -3,10 +3,11 @@ import Observation
 import TwilDiaryCore
 
 /// Cines' clips (owner's request, 25 Nov 2026: a Reels-like feed of trailers and scenes from
-/// shows, movies and anime, each with its title and Add to Planned). The clips are the YouTube
-/// videos TMDB lists for each title (trailers, teasers, clips, featurettes), mostly the official
-/// uploads of Netflix, Crunchyroll and the studios, so every clip already belongs to its title.
-/// They play in YouTube's own embedded player (`CinesPlayer`); nothing is downloaded.
+/// shows, movies and anime, each with its title and Add to Planned). Two sources, mixed: the
+/// YouTube videos TMDB lists for each title (trailers, teasers, clips, featurettes), and the
+/// newest scenes, clips and Shorts of the official channels (`CinesChannels`), each matched to
+/// the title it names. They play in YouTube's own embedded player (`CinesPlayer`); nothing is
+/// downloaded.
 struct CinesClip: Identifiable, Hashable, Sendable {
     /// The YouTube video id.
     let id: String
@@ -18,6 +19,8 @@ struct CinesClip: Identifiable, Hashable, Sendable {
     let genres: [String]
     let poster: String?
     let backdrop: String?
+    /// A YouTube Short: vertical.
+    var short = false
     var label: String { anime ? "Anime" : route.kind == .movie ? "Movie" : "Show" }
     var watchURL: URL { URL(string: "https://www.youtube.com/watch?v=" + id)! }
     /// "Show · 2021 · Animation, Action"
@@ -60,6 +63,11 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
     private var seeds: [CatalogRoute] = []
     private var liked: [(kind: MediaKind, id: Int)] = []
     private var sourcePages: [String: Int] = [:]
+    // The official channels: those still to read (this tab's, shuffled), and matched clips waiting.
+    private var channelsLeft: [CinesChannels.Channel]?
+    private var channelClips: [CinesClip] = []
+    /// TMDB's answer for a name in a video's title, once per name.
+    @ObservationIgnored private var named: [String: [Candidate]] = [:]
 
     init(tab: CinesTab) { self.tab = tab }
 
@@ -86,7 +94,7 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
 
     /// More clips when the feed is within a few of its end (and the first ones on opening).
     func loadMore(_ store: DiaryStore) async {
-        guard !loading, !exhausted || !queue.isEmpty || !later.isEmpty else { return }
+        guard !loading, !exhausted || !queue.isEmpty || !later.isEmpty || channelsLeft?.isEmpty == false || !channelClips.isEmpty else { return }
         guard let token = TMDBDirect.token(store) else { failure = "Cines needs TMDB. Add a key in Settings → TMDB."; return }
         loading = true
         defer { loading = false }
@@ -95,20 +103,25 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         var rounds = 0
         while clips.count < before + 8, rounds < 4 {
             rounds += 1
+            // The channels are read alongside TMDB.
+            async let channelsRead: Void = readChannels(store, token: token)
             if queue.count < 8, !exhausted {
                 do { try await fill(store, token: token) }
                 catch {
-                    if !Task.isCancelled, clips.count == before { failure = FriendlyError.message(error) }
-                    break
+                    if !Task.isCancelled, clips.count == before, channelClips.isEmpty { failure = FriendlyError.message(error) }
                 }
             }
-            if queue.isEmpty {
-                clips += later; later = []
-                break
+            var found: [CinesClip] = []
+            if !queue.isEmpty {
+                let batch = Array(queue.prefix(8))
+                queue.removeFirst(batch.count)
+                found = await Self.videos(batch, token: token)
             }
-            let batch = Array(queue.prefix(8))
-            queue.removeFirst(batch.count)
-            let found = await Self.videos(batch, token: token)
+            await channelsRead
+            // Up to four of the channels' clips a round, mixed in with TMDB's.
+            let fromChannels = Array(channelClips.prefix(4))
+            channelClips.removeFirst(fromChannels.count)
+            found += fromChannels
             let failed = Self.failed
             var fresh: [CinesClip] = []
             for clip in found where !failed.contains(clip.id) && seenClips.insert(clip.id).inserted {
@@ -116,7 +129,11 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             }
             // A title's second clip joins a batch or two later.
             if later.count > 6 { fresh += later.prefix(3); later.removeFirst(min(3, later.count)) }
-            clips += fresh
+            if fresh.isEmpty, queue.isEmpty, exhausted, channelsLeft?.isEmpty != false, channelClips.isEmpty {
+                clips += later; later = []
+                break
+            }
+            clips += Self.spread(fresh.shuffled())
         }
     }
 
@@ -144,6 +161,97 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         checked[id] = false
         Self.markFailed(id)
         clips.removeAll { $0.id == id }
+    }
+
+    // MARK: The official channels
+
+    /// The next two channels' newest videos, each matched to the title it names (TMDB confirming
+    /// it); this tab's kind only (a show's clip in Shows, anime in Anime).
+    private func readChannels(_ store: DiaryStore, token: String) async {
+        guard channelClips.count < 6 else { return }
+        if channelsLeft == nil {
+            channelsLeft = CinesChannels.all.filter { channel in
+                switch tab {
+                case .anime: channel.anime
+                case .shows, .movies: !channel.anime
+                case .forYou: true
+                }
+            }.shuffled()
+        }
+        guard let left = channelsLeft, !left.isEmpty else { return }
+        let next = Array(left.prefix(2))
+        channelsLeft?.removeFirst(next.count)
+        let videos = await withTaskGroup(of: [CinesChannels.Video].self) { group in
+            for channel in next { group.addTask { await CinesChannels.videos(channel) } }
+            var all: [CinesChannels.Video] = []
+            for await found in group { all += found }
+            return all
+        }
+        let failed = Self.failed
+        let fresh = videos.filter { !failed.contains($0.id) && !seenClips.contains($0.id) }
+        let names = fresh.map { CinesChannels.names(in: $0.title, short: $0.short) }
+        let asks = Array(Set(names.flatMap { $0 })).filter { named[$0] == nil }
+        let answers = await withTaskGroup(of: (String, [Candidate]).self) { group in
+            for name in asks {
+                group.addTask {
+                    let found = (try? await Self.titles("search/multi", ["query": name, "include_adult": "false"], kind: nil, token: token)) ?? []
+                    return (name, Array(found.prefix(5)))
+                }
+            }
+            var all: [(String, [Candidate])] = []
+            for await answer in group { all.append(answer) }
+            return all
+        }
+        for (name, found) in answers { named[name] = found }
+        var matched: [CinesClip] = []
+        for (video, tries) in zip(fresh, names) {
+            guard let title = match(tries, anime: video.channel.anime), fits(title) else { continue }
+            matched.append(CinesClip(id: video.id, kind: Self.kind(video), name: title.name, year: title.year, route: title.route, anime: title.anime,
+                                     genres: title.genres, poster: title.poster, backdrop: title.backdrop, short: video.short))
+        }
+        channelClips += matched.shuffled()
+    }
+
+    /// The title a video names: among the names in its title, the one TMDB has under that very
+    /// name (the most popular when several do), else TMDB's best match when it's close enough
+    /// (`CinesChannels.same`). An anime channel's videos match anime only.
+    private func match(_ tries: [String], anime: Bool) -> Candidate? {
+        var exact: [Candidate] = [], close: [Candidate] = []
+        for name in tries {
+            let found = (named[name] ?? []).filter { !anime || $0.anime }
+            exact += found.filter { CinesChannels.same(name, $0.name, best: false) }
+            if let best = found.first, CinesChannels.same(name, best.name, best: true) { close.append(best) }
+        }
+        return exact.max { $0.popularity < $1.popularity } ?? close.first
+    }
+
+    /// Whether a title belongs in this tab.
+    private func fits(_ title: Candidate) -> Bool {
+        switch tab {
+        case .forYou: true
+        case .anime: title.anime
+        case .shows: !title.anime && title.route.kind == .tv
+        case .movies: !title.anime && title.route.kind == .movie
+        }
+    }
+
+    nonisolated private static func kind(_ video: CinesChannels.Video) -> String {
+        let words = CinesChannels.comparable(video.title)
+        if words.contains("teaser") { return "Teaser" }
+        if words.contains("trailer") { return words.contains("official") ? "Official trailer" : "Trailer" }
+        if video.short { return "Short" }
+        if words.contains("opening") { return "Opening" }
+        return "Clip"
+    }
+
+    /// No title twice in a row: a clip next to one of the same title swaps with the one after.
+    nonisolated private static func spread(_ clips: [CinesClip]) -> [CinesClip] {
+        var out = clips
+        guard out.count > 2 else { return out }
+        for index in 1..<out.count where out[index].route == out[index - 1].route {
+            if let other = out[(index + 1)...].firstIndex(where: { $0.route != out[index - 1].route }) { out.swapAt(index, other) }
+        }
+        return out
     }
 
     // MARK: Titles
