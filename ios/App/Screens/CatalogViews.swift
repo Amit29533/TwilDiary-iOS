@@ -336,13 +336,13 @@ struct CatalogSearchView: View {
                 if let failedPage { RetryNotice(message: failure) { requestPage(failedPage) } }
                 else { Text(failure).font(.subheadline).foregroundStyle(.secondary) }
             }
-            // One card, a row per result with a hairline between (owner's call: about six results on
-            // a screen, where the large cards fitted three).
+            // One card, a row per result with a hairline between; posters keep their full 78 by 117
+            // size (owner's call, 25 Nov 2026: they had been shrunk without asking).
             let rows = onlineExpanded && activeScope == searchScope ? shown : Array(shown.prefix(8))
             if !rows.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, result in
-                        if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 70) }
+                        if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 102) }
                         resultRow(result)
                     }
                 }.modifier(SettingsCard())
@@ -363,7 +363,7 @@ struct CatalogSearchView: View {
             }
         }
     }
-    /// One result: a small poster, the name, "Anime · Series" (or why adding failed), and at the
+    /// One result: its poster, the name, "Anime · Series" (or why adding failed), and at the
     /// right what it is to your diary: + to add it to Planned, a filled tick while it's Planned (a tap
     /// takes it out), "Watched", or its other state (Watching, Paused, Dropped).
     private func resultRow(_ result: Result) -> some View {
@@ -376,7 +376,7 @@ struct CatalogSearchView: View {
             } label: {
                 HStack(spacing: 12) {
                     Artwork(path: result.poster, title: result.name, initialsOnly: false)
-                        .frame(width: 46, height: 69).clipShape(RoundedRectangle(cornerRadius: 8))
+                        .frame(width: 78, height: 117).clipShape(RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(result.name).font(.subheadline.weight(.semibold)).foregroundStyle(HomeStyle.primary)
                             .lineLimit(typeSize.isAccessibilitySize ? nil : 2).fixedSize(horizontal: false, vertical: true)
