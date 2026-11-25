@@ -10,8 +10,8 @@ import TwilDiaryCore
 ///   it's paused.
 /// - No YouTube controls or buttons over the video (`CinesPlayer`, after youtube_player_flutter):
 ///   a tap pauses or plays, with a play button of ours while paused.
-/// - On the right: Plan (a green tick once Planned; a tap takes it out again), Details, Sound,
-///   Share. Bottom left: what the clip is, the title, "Show · 2021 · genres" and the channel.
+/// - On the right: Plan (a green tick once Planned; a tap takes it out again), Details and Sound
+///   (Share was taken out, owner's call, 25 Nov 2026). Bottom left: what the clip is, the title, "Show · 2021 · genres" and the channel.
 /// - At the top: back, then For you, Shows, Movies and Anime as plain text tabs.
 struct CinesView: View {
     @Environment(DiaryStore.self) private var store
@@ -132,8 +132,8 @@ struct CinesView: View {
 
     // MARK: A clip
 
-    /// The right-hand buttons' height (four 46 pt circles with their names, 10 pt apart).
-    private static let railHeight: CGFloat = 4 * (46 + 4 + 16) + 3 * 10
+    /// The right-hand buttons' height (three 46 pt circles with their names, 10 pt apart).
+    private static let railHeight: CGFloat = 3 * (46 + 4 + 16) + 2 * 10
 
     private func page(_ clip: CinesClip, size: CGSize, insets: EdgeInsets) -> some View {
         let active = clip.id == current
@@ -253,9 +253,6 @@ struct CinesView: View {
             railButton("Sound", symbol: player.muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { player.muted.toggle(); showChrome() }
                 .accessibilityLabel(player.muted ? "Sound off. Turn sound on" : "Sound on. Turn sound off")
                 .accessibilityIdentifier("cines-sound")
-            ShareLink(item: clip.watchURL, subject: Text(clip.name), message: Text(clip.name + " · " + clip.kind)) {
-                railLabel("Share", symbol: "square.and.arrow.up")
-            }.buttonStyle(.springPress).accessibilityIdentifier("cines-share")
         }
     }
 

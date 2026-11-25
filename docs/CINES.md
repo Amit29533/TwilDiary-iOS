@@ -81,6 +81,7 @@ On the right (`ios/App/Screens/CinesView.swift`):
 - **Plan:** adds the title to Planned, the same way Search's + does. While the title is Planned, it shows a green tick, and a tap takes it back out (to Trash, after asking). A title you're watching or have watched shows its state instead.
 - **Details:** opens the title's page.
 - **Sound:** turns the sound on or off.
-- **Share:** shares the YouTube link.
+
+(Share was taken out, owner's call, 25 Nov 2026, so the video sits lower on the screen.)
 
 Bottom left: what the clip is, the title, "Show · year · genres", and the channel that posted it. At the top: back, then For you, Shows, Movies and Anime as plain text tabs.
