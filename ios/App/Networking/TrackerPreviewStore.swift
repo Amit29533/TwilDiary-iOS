@@ -215,9 +215,9 @@ private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) as
             defer { naming = nil }
             let wanted = keys.sorted()
             for _ in 0..<10 {
-                let known = PhoneCatalog.shared.titles
-                guard wanted.contains(where: { known[$0] == nil }), await PhoneCatalog.shared.fill(wanted, store: store) else { break }
-                if PhoneCatalog.shared.titles.count == known.count { break }
+                let knownCount = PhoneCatalog.shared.titleCount
+                guard wanted.contains(where: { PhoneCatalog.shared.title(forKey: $0) == nil }), await PhoneCatalog.shared.fill(wanted, store: store) else { break }
+                if PhoneCatalog.shared.titleCount == knownCount { break }
             }
             guard session == generation, let analysed = await analyse(tracker, store: store), let report = reports[tracker] else { return }
             reports[tracker] = .init(seconds: report.seconds, requests: report.requests, fetched: report.fetched, unavailable: report.unavailable,

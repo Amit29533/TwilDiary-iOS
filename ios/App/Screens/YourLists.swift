@@ -164,7 +164,7 @@ struct YourListRoute: Hashable { let id: Int; let name: String }
             ((media["images"] as? [String: Any])?[name] as? [String])?.first.map { $0.hasPrefix("http") ? $0 : "https://" + $0 }
         }
         // The poster: your library's or the phone's catalog (TMDB), else Trakt's own.
-        let known = store.libraryIdentity(CatalogItem(id: tmdb, mediaType: kind, name: "")).flatMap { store.title($0) } ?? PhoneCatalog.shared.titles[key]
+        let known = store.libraryIdentity(CatalogItem(id: tmdb, mediaType: kind, name: "")).flatMap { store.title($0) } ?? PhoneCatalog.shared.title(forKey: key)
         let rating = (media["rating"] as? NSNumber).map { $0.doubleValue }.flatMap { $0 > 0 ? (($0 * 10).rounded() / 10) : nil }
         let item = CatalogItem(id: tmdb, mediaType: kind, name: media["title"] as? String ?? known?.name ?? "", year: media["year"] as? Int ?? known?.year,
                                overview: media["overview"] as? String ?? "", rating: known?.communityScore ?? rating,

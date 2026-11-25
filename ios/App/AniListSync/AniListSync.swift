@@ -325,7 +325,7 @@ struct AniListSyncAPI: Sendable {
         guard !store.isPreview, AniListSyncAccount.shared.canSend else { return }
         self.store = store
         let keys = Set(mutations.map(\.titleId)).compactMap { id -> String? in
-            guard let title = store.title(id) ?? PhoneCatalog.shared.titles[id], Self.counts(title) else { return nil }
+            guard let title = store.title(id) ?? PhoneCatalog.shared.title(forKey: id), Self.counts(title) else { return nil }
             return Self.key(title)
         }
         guard !keys.isEmpty else { return }

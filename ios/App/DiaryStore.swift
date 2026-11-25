@@ -43,6 +43,8 @@ import TwilDiaryCore
     }
     @ObservationIgnored private var publishingIndexedSnapshot = false
     @ObservationIgnored private var titleScopes: [String: Workspace] = [:]
+    /// The order the scopes were last used in, oldest first.
+    @ObservationIgnored private var titleScopeOrder: [String] = []
     @ObservationIgnored private var cachedHistory: (query: HistoryQuery, zone: String, value: [HistoryEntry])?
     @ObservationIgnored private var cachedActiveEventCount: Int?
     /// Library asks for its list, its status counts and its genre counts on every update; keep a few.
@@ -469,12 +471,10 @@ import TwilDiaryCore
         // Home stutter for a moment on each pull.
         let current = workspace, revision = homeWorkspaceRevision
         diaryBuild = Task { [weak self] in
-            let (built, same) = await Task.detached(priority: .userInitiated) { () -> (Workspace, Bool) in
-                let built = make()
-                let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
-                let same = (try? encoder.encode(built)).map { $0 == (try? encoder.encode(current)) } ?? false
-                return (built, same)
-            }.value
+            // Off the main thread and cancelled with this task: a detached worker went on building the
+            // old diary and encoding it and the current one as JSON after a newer edit had replaced it.
+            guard let result = await Self.buildAndCompare(make, against: current) else { return }
+            let (built, same) = result
             guard let self, !Task.isCancelled, ticket == self.diaryBuildTicket else { return }
             if !(same && revision == self.homeWorkspaceRevision) {
                 let indexed = await self.buildIndex(built)
@@ -484,13 +484,27 @@ import TwilDiaryCore
             self.fillServiceOnlyTitles()
         }
     }
+    /// Builds the diary and tells whether it's the same as `current`, stopping (nil) as soon as the
+    /// build is cancelled: between building and the comparison, and between encoding the two.
+    nonisolated private static func buildAndCompare(_ make: @escaping @Sendable () -> Workspace, against current: Workspace) async -> (Workspace, Bool)? {
+        let built = make()
+        guard !Task.isCancelled else { return nil }
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        guard let new = try? encoder.encode(built) else { return (built, false) }
+        guard !Task.isCancelled else { return nil }
+        return (built, (try? encoder.encode(current)) == new)
+    }
     @ObservationIgnored private var diaryBuild: Task<Void, Never>?
     @ObservationIgnored private var diaryBuildTicket = 0
     @ObservationIgnored private var builtFromService = false
     private static let runningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     /// Titles the diary knows only from the service get their details on the phone (TMDB, with your key).
     private func fillServiceOnlyTitles() {
-        PhoneCatalog.shared.prune(keeping: Set(workspace.titles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }))
+        // The set of every title's key only while the once-a-launch tidy is still to run (it was built
+        // on every rebuild, then thrown away).
+        if PhoneCatalog.shared.needsPrune {
+            PhoneCatalog.shared.prune(keeping: Set(workspace.titles.compactMap { title in title.tmdbId.map { (title.isSeries ? "tv:" : "movie:") + String($0) } }))
+        }
         let missing = workspace.titles.filter { isServiceOnly($0) && $0.poster == nil }.map(\.id)
         // Episode lists for the shows in the diary, from TMDB on the phone.
         if phoneHoldsDiary {
@@ -525,7 +539,7 @@ import TwilDiaryCore
         apply(built.index, changed: built.changed)
     }
     private func apply(_ index: WorkspaceIndex, changed precomputed: Set<String>?) {
-        cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; cachedShelves = []; cachedActive = nil; cachedNewestFirst = nil; catalogLookup = nil; cachedPersonSections = nil
+        cachedStats = nil; cachedHighlights = nil; titleScopes = [:]; titleScopeOrder = []; cachedHistory = nil; cachedActiveEventCount = nil; cachedLibrary = []; cachedShelves = []; cachedActive = nil; cachedNewestFirst = nil; catalogLookup = nil; cachedPersonSections = nil
         titleIndex = index.titles
         progressIndex = index.progress
         seasonProgressIndex = index.seasonProgress
@@ -543,13 +557,18 @@ import TwilDiaryCore
     func titleScope(_ id: String) -> Workspace {
         // Reading the observed workspace keeps the caller subscribed to changes.
         let snapshot = workspace
-        if let saved = titleScopes[id] { return saved }
+        if let saved = titleScopes[id] {
+            if titleScopeOrder.last != id { titleScopeOrder.removeAll { $0 == id }; titleScopeOrder.append(id) }
+            return saved
+        }
         let scope = Workspace(titles: titleIndex[id].map { [$0] } ?? [],
                               episodes: snapshot.episodes.filter { $0.titleId == id },
                               events: snapshot.events.filter { $0.titleId == id },
                               locations: snapshot.locations.filter { $0.titleId == id })
-        if titleScopes.count >= 24 { titleScopes.removeAll(keepingCapacity: true) }
+        // The least recently used goes (the 25th title cleared all 24, so going back rescanned them).
+        if titleScopes.count >= 24, let oldest = titleScopeOrder.first { titleScopes[oldest] = nil; titleScopeOrder.removeFirst() }
         titleScopes[id] = scope
+        titleScopeOrder.append(id)
         return scope
     }
     func title(_ id: String) -> MediaTitle? { titleIndex[id] }

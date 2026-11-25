@@ -497,12 +497,14 @@ struct JellyPlayerView: View {
         // Set again when it's changed, and when the phone gets hot or goes into Low Power Mode (off
         // then, back after).
         .task(id: usesMPV ? "\(activeSmooth)|\(activeSuperResolution)" : "") {
-            refresh.hold(usesMPV ? activeSmooth : 0)
+            refresh.hold(usesMPV && state == .playing ? activeSmooth : 0)
             if usesMPV {
                 mpv.setSmooth(activeSmooth, fps: frameRate)
                 mpv.setSuperResolution(activeSuperResolution)
             }
         }
+        // Paused (or ended), the screen's rate is let go: it was held at 60 or 120 Hz while nothing moved.
+        .onChange(of: state == .playing) { _, playing in if usesMPV { refresh.hold(playing ? activeSmooth : 0) } }
         .onChange(of: JellyPower.shared.constrained) { _, constrained in easeOff(constrained) }
         .onChange(of: scenePhase) { _, phase in sceneChanged(phase) }
     }

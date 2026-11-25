@@ -233,7 +233,7 @@ struct SimklQueue: Codable, Equatable, Sendable {
     /// The title, also one added a moment ago: adding a title rebuilds the diary in the background,
     /// so the phone's catalog has it before the diary does (Add to Planned from a title's page).
     private static func resolvedTitle(_ id: String, store: DiaryStore) -> MediaTitle? {
-        store.title(id) ?? PhoneCatalog.shared.titles[id]
+        store.title(id) ?? PhoneCatalog.shared.title(forKey: id)
     }
     /// Simkl's list for a diary status (movies: planned, completed or dropped).
     static func list(for status: String, movie: Bool) -> String? {

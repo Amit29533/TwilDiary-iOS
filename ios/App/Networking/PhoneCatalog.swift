@@ -84,6 +84,12 @@ import TwilDiaryCore
     }
     /// Titles by key ("tv:1399"), for `TraktDiary.build`.
     var titles: [String: MediaTitle] { entries.mapValues(\.title) }
+    /// One title by key: `titles[key]` copied the whole catalog to read one entry (per row of a list,
+    /// per item of a sync).
+    func title(forKey key: String) -> MediaTitle? { entries[key]?.title }
+    var titleCount: Int { entries.count }
+    /// Whether the once-a-launch tidy is still to run (so a caller can skip building its keys).
+    var needsPrune: Bool { !pruned }
 
     /// Reads the details of these keys that are missing or a week old (at most 24 at a time, eight
     /// side by side), then rebuilds the diary. Without your TMDB key: false (nothing to read with).
