@@ -171,15 +171,19 @@ struct SearchStudiosAndFranchises: View {
 
     private func load() async {
         guard loadedQuery != query else { return }
-        studios = []; franchises = []
-        guard !store.isPreview, query.count >= 3, let token = TMDBDirect.token(store) else { return }
+        guard !store.isPreview, query.count >= 3, let token = TMDBDirect.token(store) else { studios = []; franchises = []; return }
+        // The last search's studios and franchises stay until this one's arrive (they used to go at the
+        // first letter and come back after the pause and two requests, moving everything under them).
         do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
         let wanted = SpellingSuggestion.comparable(query)
         func matches(_ name: String) -> Bool { (" " + SpellingSuggestion.comparable(name) + " ").contains(" " + wanted) }
-        let companies = try? await TMDBDirect.object("search/company", query: ["query": query, "page": "1"], token: token)
+        // Both asked at once, not one after the other.
+        async let companyReply = try? TMDBDirect.data("search/company", query: ["query": query, "page": "1"], token: token)
+        async let collectionReply = try? TMDBDirect.data("search/collection", query: ["query": query, "page": "1", "language": "en-US"], token: token)
+        let (companyData, collectionData) = await (companyReply, collectionReply)
         guard !Task.isCancelled else { return }
-        let collections = try? await TMDBDirect.object("search/collection", query: ["query": query, "page": "1", "language": "en-US"], token: token)
-        guard !Task.isCancelled else { return }
+        let companies = companyData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let collections = collectionData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
         studios = Array(((companies?["results"] as? [[String: Any]]) ?? []).compactMap { row -> TitleCompany? in
             guard let id = row["id"] as? Int, id > 0, let name = row["name"] as? String, !name.isEmpty, matches(name) else { return nil }
             let logo = (row["logo_path"] as? String).flatMap { $0.hasPrefix("/") ? $0 : nil }

@@ -334,15 +334,27 @@ struct CinesView: View {
 
     // MARK: Actions
 
-    /// A tab's clips: the first few checked with YouTube before the first one plays.
+    /// A tab's clips. Back to a tab, the clip you were on comes back at once (it used to wait for
+    /// YouTube to answer about the tab's first three clips, so one slow answer held it up). New to a
+    /// tab, only the first clip is waited for, checked with YouTube before it plays (one it won't play
+    /// here leaves the feed, and the next is checked); the next two are checked alongside.
     private func open(_ tab: CinesTab) async {
         let feed = feeds[tab]!
         if feed.clips.isEmpty { await feed.loadMore(store) }
-        await withTaskGroup(of: Void.self) { group in
-            for clip in feed.clips.prefix(3) { let id = clip.id; group.addTask { _ = await feed.check(id) } }
+        let saved = positions[tab].flatMap { saved in feed.clips.contains { $0.id == saved } ? saved : nil }
+        if saved == nil {
+            let others = feed.clips.prefix(3).dropFirst().map(\.id)
+            Task {
+                await withTaskGroup(of: Void.self) { group in
+                    for id in others { group.addTask { _ = await feed.check(id) } }
+                }
+            }
+            for _ in 0..<5 {
+                guard let first = feed.clips.first?.id, !(await feed.check(first)) else { break }
+            }
         }
         guard self.tab == tab else { return }
-        let id = positions[tab].flatMap { saved in feed.clips.contains { $0.id == saved } ? saved : nil } ?? feed.clips.first?.id
+        let id = saved ?? feed.clips.first?.id
         if current == id { settle(on: id); showChrome() } else { current = id }
     }
 

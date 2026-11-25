@@ -265,21 +265,26 @@ struct SyncBackupView: View {
         let day = DiaryDate.day(store.now)
         guard force || UserDefaults.standard.string(forKey: lastKey) != day else { return nil }
         let snapshot = store.workspace
+        // No server: the phone's extras ride along (Import diary puts them back).
+        let phone: Data? = store.phoneOnly ? (try? JSONEncoder().encode(PhoneExtras.shared.backup)) : nil
         do {
-            var data = try await Task.detached(priority: .utility) { try DiaryExport(workspace: snapshot).encoded() }.value
-            // No server: the phone's extras ride along (Import diary puts them back).
-            if store.phoneOnly, let phone = ServerBackups.phoneExtras(),
-               var root = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                root["phone"] = phone
-                data = try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
-            }
-            let folder = URL.documentsDirectory.appending(path: "Backups", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try data.write(to: folder.appending(path: "TwilDiary-\(day).json"), options: .atomic)
-            let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-                .filter { $0.lastPathComponent.hasPrefix("TwilDiary-") && $0.pathExtension == "json" }
-                .sorted { $0.lastPathComponent > $1.lastPathComponent }
-            for old in files.dropFirst(7) { try? FileManager.default.removeItem(at: old) }
+            // All of it away from the screen: encoding, adding the phone's extras (which read the whole
+            // copy back and wrote it again on the main thread), writing and tidying the folder.
+            try await Task.detached(priority: .utility) {
+                var data = try DiaryExport(workspace: snapshot).encoded()
+                if let phone, let extras = try? JSONSerialization.jsonObject(with: phone),
+                   var root = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    root["phone"] = extras
+                    data = try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+                }
+                let folder = URL.documentsDirectory.appending(path: "Backups", directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try data.write(to: folder.appending(path: "TwilDiary-\(day).json"), options: .atomic)
+                let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+                    .filter { $0.lastPathComponent.hasPrefix("TwilDiary-") && $0.pathExtension == "json" }
+                    .sorted { $0.lastPathComponent > $1.lastPathComponent }
+                for old in files.dropFirst(7) { try? FileManager.default.removeItem(at: old) }
+            }.value
             UserDefaults.standard.set(day, forKey: lastKey)
             return "Saved today’s copy to Files."
         } catch { return "Couldn’t save a copy: " + FriendlyError.message(error) }

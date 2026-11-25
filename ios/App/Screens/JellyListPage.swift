@@ -35,6 +35,11 @@ struct JellyListPage: View {
     @State private var failure: String?
     @State private var playing: JellyPlayback?
     @State private var fullBio = false
+    /// What the list asks the server for, and how far it has read: the rest comes as you scroll.
+    @State private var request: JellyListRequest?
+    @State private var fetched = 0
+    @State private var total = 0
+    @State private var loadingMore = false
 
     var body: some View {
         EdgeToEdgeScroll(frosted: true) {
@@ -47,7 +52,8 @@ struct JellyListPage: View {
                         Text(JellyBrowseOptions.decode(optionsRaw).filtering ? "Nothing matches these filters." : "Nothing here.")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
-                    JellyGrid(items: items, client: client, playing: $playing, layout: layout)
+                    JellyGrid(items: items, client: client, playing: $playing, layout: layout) { Task { await loadMore() } }
+                    if loadingMore { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
                 }
             }.padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 110)
         }
@@ -132,21 +138,42 @@ struct JellyListPage: View {
             if route.kind == .tag, let index = await JellyIndexStore.index(client: client, user: user) {
                 inHiddenLibraries = Set(index.entries.filter { hidden[$0.library] != nil }.map(\.item.Id))
             }
-            // A page at a time: only the first 300 showed, so a big genre's or a long list's other titles
-            // couldn't be reached. (A random order is one page: every request shuffles again.)
-            var found: [JellyfinClient.Item] = [], seen = Set<String>(), start = 0
-            while true {
-                let page = try await client.itemsPage(extra, filters: Array(Set(filters)), user: user, sort: options.sort,
-                                                      ascending: options.isAscending, start: start)
-                guard !Task.isCancelled else { return }
-                start += page.Items.count
-                found += page.Items.filter { hidden[$0.Id] == nil && !inHiddenLibraries.contains($0.Id) && seen.insert($0.Id).inserted }
-                let last = page.Items.isEmpty || start >= page.TotalRecordCount || options.sort == .random
-                if fresh || last { items = found }
-                if last { return }
-            }
+            // The first page now, the rest as you scroll to them (every page used to be fetched in a row,
+            // and again after each film played). Read again after playing, it asks once for as many as
+            // were shown. A random order is one page: every request shuffles again.
+            let next = JellyListRequest(extra: extra, filters: Array(Set(filters)), hiddenLibraries: inHiddenLibraries)
+            let page = try await client.itemsPage(next.extra, filters: next.filters, user: user, sort: options.sort,
+                                                  ascending: options.isAscending, start: 0, limit: fresh ? 300 : max(300, fetched))
+            guard !Task.isCancelled else { return }
+            var seen = Set<String>()
+            items = page.Items.filter { hidden[$0.Id] == nil && !next.hiddenLibraries.contains($0.Id) && seen.insert($0.Id).inserted }
+            request = next
+            fetched = page.Items.count
+            total = options.sort == .random ? fetched : page.TotalRecordCount
         } catch {
             if !Task.isCancelled { failure = FriendlyError.message(error) }
         }
     }
+
+    /// The next page, as the last poster comes on screen.
+    private func loadMore() async {
+        guard !loadingMore, !loading, fetched < total, let request, let client = JellySpace.client else { return }
+        loadingMore = true
+        defer { loadingMore = false }
+        let options = JellyBrowseOptions.decode(optionsRaw)
+        let user = await JellyfinUser.id(client)
+        guard let page = try? await client.itemsPage(request.extra, filters: request.filters, user: user, sort: options.sort,
+                                                     ascending: options.isAscending, start: fetched), !Task.isCancelled else { return }
+        fetched += page.Items.count
+        total = page.Items.isEmpty ? fetched : page.TotalRecordCount
+        let hidden = JellyHidden.decode(hiddenRaw), known = Set(items.map(\.Id))
+        items += page.Items.filter { hidden[$0.Id] == nil && !request.hiddenLibraries.contains($0.Id) && !known.contains($0.Id) }
+    }
+}
+
+/// What a JellySpace list asks the server for (kept for its next pages).
+private struct JellyListRequest {
+    let extra: [URLQueryItem]
+    let filters: [String]
+    let hiddenLibraries: Set<String>
 }

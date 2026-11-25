@@ -59,7 +59,10 @@ struct StatsView: View {
                     tabPicker
                     switch tab {
                     case .overview where yearly:
-                        let summary = StatsMonth(workspace: store.workspace, month: yearDate, now: clock, wholeYear: true)
+                        // Worked out once per diary change, year and day (it was rebuilt on every redraw).
+                        let summary = store.memoized("stats.year|" + DiaryDate.day(yearDate) + "|" + DiaryDate.day(clock)) {
+                            StatsMonth(workspace: store.workspace, month: yearDate, now: clock, wholeYear: true)
+                        }
                         StatsMonthNavigator(month: $yearDate, earliest: earliestMonth, now: clock, byYear: true)
                         StatsMonthCard(month: summary)
                         StatsMonthOverTimeCard(month: summary, selected: Binding(get: { yearDate }, set: { chosen in month = chosen; yearly = false; monthly = true }))
@@ -68,7 +71,9 @@ struct StatsView: View {
                             StatsPosterItem(title: $0.title, badge: "×\($0.count)", detail: $0.minutes > 0 ? longDuration($0.minutes) : nil)
                         }, shows: $mostPlayedShows)
                     case .overview where monthly:
-                        let summary = StatsMonth(workspace: store.workspace, month: month, now: clock)
+                        let summary = store.memoized("stats.month|" + DiaryDate.day(month) + "|" + DiaryDate.day(clock)) {
+                            StatsMonth(workspace: store.workspace, month: month, now: clock)
+                        }
                         StatsMonthNavigator(month: $month, earliest: earliestMonth, now: clock)
                         StatsMonthCard(month: summary)
                         StatsMonthOverTimeCard(month: summary, selected: $month)

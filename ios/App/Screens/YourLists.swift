@@ -194,8 +194,9 @@ struct YourListsView: View {
                             .accessibilityLabel("New list").accessibilityIdentifier("your-lists-new"))) {
             VStack(alignment: .leading, spacing: 14) {
                 if model.lists.isEmpty {
-                    if model.loading || !model.loaded { DiaryLoadingPlaceholder(label: "Loading your lists", layout: .posterGrid(columns: 2, rows: 2)) }
-                    else if let failure = model.failure { RetryNotice(message: failure) { Task { await model.load(store: store, force: true) } } }
+                    // A first load that failed shows Retry (it stayed "not loaded", so the placeholder hid it).
+                    if !model.loading, let failure = model.failure { RetryNotice(message: failure) { Task { await model.load(store: store, force: true) } } }
+                    else if model.loading || !model.loaded { DiaryLoadingPlaceholder(label: "Loading your lists", layout: .posterGrid(columns: 2, rows: 2)) }
                     else {
                         DiaryEmptyState(title: "No lists yet", description: "Make one for anything: a weekend marathon, comfort shows, films to watch with friends.")
                         Button("New list", systemImage: "plus") { creating = true }.buttonStyle(.diaryPrimary)
@@ -465,7 +466,10 @@ struct AddToListSheet: View {
                     Button { creating = true } label: { Label("New list", systemImage: "plus") }.accessibilityIdentifier("add-to-list-new")
                 }
                 Section {
-                    if model.lists.isEmpty && (model.loading || !model.loaded) {
+                    if model.lists.isEmpty && !model.loading && !model.loaded && model.failure != nil {
+                        Button("Retry") { Task { model.failure = nil; await model.loadAllEntries(store: store) } }
+                            .accessibilityIdentifier("add-to-list-retry")
+                    } else if model.lists.isEmpty && (model.loading || !model.loaded) {
                         DiaryLoadingPlaceholder(label: "Loading your lists", layout: .list(rows: 3))
                     }
                     ForEach(model.lists) { list in

@@ -1361,6 +1361,13 @@ struct JellyFolderPage: View {
                         if loadingMore { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
                         if !songs.isEmpty { JellyTrackList(tracks: songs) }
                     }
+                    // A season's episodes and a folder of songs have no posters to say they've reached the
+                    // end: this does, so episode 201 and song 201 come too.
+                    if !showsTiles, fetched < total, route.kind == "Season" || items.allSatisfy({ $0.kind == "Audio" }) {
+                        Color.clear.frame(height: 1)
+                            .onScrollVisibilityChange(threshold: 0.01) { visible in if visible { Task { await loadMore() } } }
+                    }
+                    if loadingMore, route.kind == "Season" { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8) }
                 }
             }.padding(.horizontal, route.kind == "Season" ? 16 : 10).padding(.top, 8).padding(.bottom, 110)
         }

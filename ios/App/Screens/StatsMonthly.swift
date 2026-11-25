@@ -86,11 +86,20 @@ struct StatsMonth {
         mostPlayedMovies = played.filter { !$0.title.isSeries }
         // The twelve months ending with this one; for a year, its own January to December.
         let firstMonth = wholeYear ? begin : (calendar.date(byAdding: .month, value: -11, to: begin) ?? begin)
+        // One pass over the watches for all twelve (each month used to go through every watch again).
+        let chartEnd = calendar.date(byAdding: .month, value: 12, to: firstMonth) ?? firstMonth
+        var byMonth: [Int: Int] = [:]
+        func monthKey(_ date: Date) -> Int {
+            let parts = calendar.dateComponents([.year, .month], from: date)
+            return (parts.year ?? 0) * 12 + (parts.month ?? 1)
+        }
+        for item in all where item.date >= firstMonth && item.date < chartEnd {
+            byMonth[monthKey(item.date), default: 0] += minutes(item)
+        }
         months = (0..<12).compactMap { step in
             // Months still to come aren't plotted as zero.
-            guard let monthStart = calendar.date(byAdding: .month, value: step, to: firstMonth), monthStart <= now,
-                  let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) else { return nil }
-            return (monthStart, all.filter { $0.date >= monthStart && $0.date < monthEnd }.reduce(0) { $0 + minutes($1) })
+            guard let monthStart = calendar.date(byAdding: .month, value: step, to: firstMonth), monthStart <= now else { return nil }
+            return (monthStart, byMonth[monthKey(monthStart)] ?? 0)
         }
     }
     var totalMinutes: Int { tvMinutes + movieMinutes }
