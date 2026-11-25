@@ -341,7 +341,7 @@ private struct DiscoveryTrack: View {
                         Group {
                             if let id = item.inLibraryId { NavigationLink(value: id) { CatalogPoster(item: item).zoomSource(ZoomID.title(id)) } }
                             else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
-                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12).shelfTransition().accessibilityIdentifier("catalog-" + item.displayKey)
+                        }.buttonStyle(.springPress).frame(width: posterSize.shelf).shelfTransition().accessibilityIdentifier("catalog-" + item.displayKey)
                     }
                 }
             }.scrollIndicators(.hidden).padding(.bottom, 10)

@@ -86,7 +86,7 @@ struct SearchLandingView: View {
                                         Group {
                                             if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
                                             else { NavigationLink(value: item.route) { rankedPoster(index: index, item: item) } }
-                                        }.buttonStyle(.springPress).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                                        }.buttonStyle(.springPress).frame(width: posterSize.shelf)
                                             .accessibilityIdentifier("trending-show-\(index + 1)")
                                     }
                                 }

@@ -392,7 +392,7 @@ struct PersonCreditShelf: View {
                         // The role joins the year line ("2008 · Marcus Pike"), so every caption is one height.
                         if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.title(saved)) } }
                         else { NavigationLink(value: item.route) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.catalog(item.route)) } }
-                    }.containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12).buttonStyle(.springPress).shelfTransition()
+                    }.frame(width: posterSize.shelf).buttonStyle(.springPress).shelfTransition()
                 }
             }
         }.accessibilityIdentifier(identifier)

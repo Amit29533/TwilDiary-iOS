@@ -133,7 +133,15 @@ struct PosterSettingsView: View {
     @AppStorage(PosterSizes.gridKey) private var grid = PosterSizes.gridDefault
     @AppStorage(PosterSize.ratingKey) private var showsRating = true
     @AppStorage(PosterSize.captionKey) private var showsCaption = true
+    /// A size while its slider is held, by slider: only this page's preview follows it. Every step
+    /// used to be saved, and every poster in every open tab laid itself out again and decoded its
+    /// picture at the new size, step after step; now the app takes the size once, on release.
+    @State private var drafts: [String: Double] = [:]
+    @State private var dragging: String?
     init() { PosterSizes.migrate() }
+    private var shownShelf: Double { drafts["customise-poster-shelf"] ?? shelf }
+    private var shownRow: Double { drafts["customise-poster-row"] ?? row }
+    private var shownSmall: Double { drafts["customise-poster-small"] ?? small }
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -145,16 +153,16 @@ struct PosterSettingsView: View {
                     // preview doesn't): it never makes the page wider than the screen.
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
-                            ForEach(0..<4, id: \.self) { _ in sample(width: shelf) }
+                            ForEach(0..<4, id: \.self) { _ in sample(width: shownShelf) }
                         }
                     }
                     .scrollDisabled(true).scrollIndicators(.hidden)
-                    .frame(height: PosterSizes.height(CGFloat(shelf)))
+                    .frame(height: PosterSizes.height(CGFloat(shownShelf)))
                 }
                 sizeGroup("List rows", "Library list, Search results, calendar", value: $row, range: PosterSizes.rowRange, step: 1,
                           id: "customise-poster-row") {
                     HStack(spacing: 12) {
-                        sample(width: row)
+                        sample(width: shownRow)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Frieren: Beyond Journey's End").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                             Text("Anime · Series").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
@@ -165,7 +173,7 @@ struct PosterSettingsView: View {
                 sizeGroup("Small rows", "Stats, a person's credits, Your Lists", value: $small, range: PosterSizes.smallRange, step: 1,
                           id: "customise-poster-small") {
                     HStack(spacing: 12) {
-                        sample(width: small)
+                        sample(width: shownSmall)
                         Text("Arcane").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                         Spacer(minLength: 0)
                         Text("9 episodes").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
@@ -230,19 +238,28 @@ struct PosterSettingsView: View {
                 HStack {
                     Text(places).font(.app(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(2)
                     Spacer(minLength: 8)
-                    Text("\(Int(value.wrappedValue)) pt").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                    Text("\(Int(drafts[id] ?? value.wrappedValue)) pt").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
                 }
-                // Continuous (a stepped slider draws a dot for every step), rounded to the step.
-                Slider(value: Binding(get: { min(range.upperBound, max(range.lowerBound, value.wrappedValue)) },
-                                      set: { value.wrappedValue = ($0 / step).rounded() * step }),
+                // Continuous (a stepped slider draws a dot for every step), rounded to the step. While
+                // held, only this page follows it; a change without a drag (VoiceOver) saves at once.
+                Slider(value: Binding(get: { min(range.upperBound, max(range.lowerBound, drafts[id] ?? value.wrappedValue)) },
+                                      set: { next in
+                                          let rounded = (next / step).rounded() * step
+                                          if dragging == id { drafts[id] = rounded } else { value.wrappedValue = rounded }
+                                      }),
                        in: range) {
                     Text(label + " size")
                 } minimumValueLabel: {
                     Text("Smaller").font(.app(size: 11)).foregroundStyle(HomeStyle.secondary)
                 } maximumValueLabel: {
                     Text("Bigger").font(.app(size: 11)).foregroundStyle(HomeStyle.secondary)
+                } onEditingChanged: { editing in
+                    if editing { dragging = id; return }
+                    if let draft = drafts[id], draft != value.wrappedValue { value.wrappedValue = draft }
+                    drafts[id] = nil
+                    if dragging == id { dragging = nil }
                 }
-                .accessibilityValue("\(Int(value.wrappedValue)) points wide")
+                .accessibilityValue("\(Int(drafts[id] ?? value.wrappedValue)) points wide")
                 .accessibilityIdentifier(id)
                 Divider().opacity(0.5)
                 preview()

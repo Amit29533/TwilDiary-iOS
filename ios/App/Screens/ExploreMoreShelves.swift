@@ -293,7 +293,8 @@ private struct FeedTrack<Item: Identifiable, Tile: View>: View {
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(alignment: .top, spacing: 12) {
-                ForEach(items) { item in tile(item).containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12) }
+                // Shelf cards' width (Settings → Posters), as every sideways row.
+                ForEach(items) { item in tile(item).frame(width: posterSize.shelf) }
             }
         }.scrollIndicators(.hidden).padding(.bottom, 10)
     }

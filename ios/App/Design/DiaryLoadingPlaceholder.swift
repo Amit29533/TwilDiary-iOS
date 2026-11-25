@@ -176,11 +176,12 @@ struct DiaryLoadingPlaceholder: View {
     private func shelf(oneLine: Bool) -> some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                ForEach(0..<(posterSize.columns + 1), id: \.self) { _ in
+                // Enough at Shelf cards' width to fill the screen and run off its edge (the shelf clips them).
+                ForEach(0..<6, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: 0) {
                         RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner), style: .continuous).fill(fill).posterAspect()
                         if TilePrefs.shared.posterCaptions { caption(oneLine: oneLine) }
-                    }.containerRelativeFrame(.horizontal, count: posterSize.columns, spacing: 12)
+                    }.frame(width: posterSize.shelf)
                 }
             }
         }.scrollDisabled(true).scrollIndicators(.hidden)

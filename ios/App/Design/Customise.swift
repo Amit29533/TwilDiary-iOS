@@ -131,6 +131,7 @@ enum PosterSizes {
     static let rowRange: ClosedRange<Double> = 55...115
     static let smallRange: ClosedRange<Double> = 34...72
     static let gridRange: ClosedRange<Int> = 2...5
+    nonisolated(unsafe) private static var migrated = false
     /// A poster's height for its width (2:3).
     static func height(_ width: CGFloat) -> CGFloat { (width * 1.5).rounded() }
 
@@ -149,6 +150,10 @@ enum PosterSizes {
     /// The old Compact / Regular / Large carries over once: Compact is 4 across with 104 pt cards,
     /// Regular 3 with 120, Large 2 with 150.
     static func migrate() {
+        // Once per launch: it ran each time any view that reads poster sizes was built (two settings
+        // reads per build, constantly while scrolling).
+        guard !migrated else { return }
+        migrated = true
         let defaults = UserDefaults.standard
         guard defaults.object(forKey: gridKey) == nil, let old = defaults.string(forKey: PosterSize.key).flatMap(PosterSize.init(rawValue:)) else { return }
         defaults.set(old.columns, forKey: gridKey)
