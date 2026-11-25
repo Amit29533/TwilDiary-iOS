@@ -52,8 +52,6 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if watching.isEmpty || !showContinue { header(overArtwork: false) } else { continueSection(watching) }
                 VStack(alignment: .leading, spacing: Gap.section) {
-                    // A saved clip waiting for you to pick its title (nothing shows otherwise).
-                    HomeClipNudge()
                     // Your order and choice of sections (Settings → Customise).
                     ForEach(HomeSection.layout(homeLayout).visible.compactMap(HomeSection.init(rawValue:))) { section in
                         homeSection(section, overview: overview, recent: recent, now: now)
@@ -73,9 +71,9 @@ struct HomeView: View {
     @ViewBuilder private func homeSection(_ section: HomeSection, overview: HomeOverview, recent: [HistoryEntry], now: Date) -> some View {
         switch section {
         case .shortcuts:
-                // Explore is systematic discovery; Canvas is for browsing artwork at random; Clipt is your
-                // saved clips (shared reels and videos); Cines is next. Two at a time at their usual size;
-                // the row scrolls sideways and comes to rest on a pair (owner's call).
+                // Explore is systematic discovery; Canvas is for browsing artwork at random; Cines is
+                // trailers and clips, swiped as reels are. Two at a time at their usual size; the row
+                // scrolls sideways and comes to rest on a pair (owner's call).
                 ScrollView(.horizontal) {
                     HStack(spacing: 32) {
                         HStack(spacing: 10) {
@@ -83,8 +81,9 @@ struct HomeView: View {
                             NavigationLink(value: AppDestination.canvas) { HomeShortcut(name: "Canvas", icon: "layout-grid") }.buttonStyle(.springPress).accessibilityIdentifier("canvas-shortcut")
                         }.containerRelativeFrame(.horizontal)
                         HStack(spacing: 10) {
-                            NavigationLink(value: AppDestination.savedClips) { HomeShortcut(name: "Clipt", icon: "list-video") }.buttonStyle(.springPress).accessibilityIdentifier("clipt-shortcut")
                             NavigationLink(value: AppDestination.cines) { HomeShortcut(name: "Cines", icon: "clapperboard") }.buttonStyle(.springPress).accessibilityIdentifier("cines-shortcut")
+                            // The pair's other half, empty, so Cines keeps the size of the others.
+                            Color.clear.frame(maxWidth: .infinity).accessibilityHidden(true)
                         }.containerRelativeFrame(.horizontal)
                     }.scrollTargetLayout()
                 }

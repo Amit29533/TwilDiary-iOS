@@ -109,7 +109,7 @@ enum AppTab: String, CaseIterable, Hashable {
     }
     var systemIcon: String { switch self { case .home: "house"; case .library: "books.vertical"; case .glance: "plus.circle"; case .search: "magnifyingglass"; case .more: "person.crop.circle" } }
 }
-enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, jellyspaceSettings, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications, savedClips, textSize, cines }
+enum AppDestination: Hashable { case profile, statistics, explore, canvas, calendar, history, files, jellyfin, jellyspace, jellyspaceSettings, trash, appearance, trakt, tmdb, tvdb, mdblist, wetrakr, simkl, mainTracker, connections, backups, anilist, cloudflare, apis, favourites, about, languageRegion, syncBackup, notifications, textSize, cines }
 struct HistoryRoute: Hashable {
     var day: Date? = nil
     var unknown = false
@@ -333,8 +333,6 @@ struct RootView: View {
             }
             .task(id: scenePhase) {
                 if scenePhase == .active {
-                    // Clips shared to TwilDiary while it was away: named now (in the background).
-                    Task { await ClipInbox.shared.process(store: store) }
                     // The diary on this phone, read again if it couldn't be (started while the phone was locked).
                     if TraktDirectStore.shared.reloadIfUnread() { store.applyDiarySource() }
                     // The anime map, weekly on Wi-Fi, for Simkl's and AniList's syncs (in the background).
@@ -446,7 +444,6 @@ struct RootView: View {
                     case .languageRegion: LanguageRegionView()
                     case .syncBackup: SyncBackupView()
                     case .notifications: NotificationsSettingsView()
-                    case .savedClips: SavedClipsPage()
                     case .textSize: TextSizeView()
                     case .cines: CinesView()
                     } }.diaryPageChrome(detail: destination == .profile).diaryNavigationAppearance(tab: tab, detail: destination == .profile, router: router)

@@ -10,7 +10,6 @@ import TwilDiaryCore
 struct ConnectionsView: View {
     @Environment(DiaryStore.self) private var store
     @AppStorage("theme") private var theme = DiaryTheme.twilight
-    @AppStorage(ClipInbox.geminiKey) private var useGemini = true
     @AppStorage(MainTrackerView.key) private var mainTracker = MainTracker.trakt.rawValue
     @State private var aniList = AniListSyncAccount.shared
     @State private var aniListSync = AniListSync.shared
@@ -80,14 +79,6 @@ struct ConnectionsView: View {
                             value: nil, destination: .cloudflare, id: "settings-cloudflare")
                     }
                 }
-                Toggle(isOn: $useGemini) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Identify clips with Gemini").font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        Text("Send each clip's caption, on-screen text and up to four images to Gemini; TMDB confirms its answer.")
-                            .font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
-                    }
-                }.tint(theme.accent).padding(15).cardSurface(18)
-                    .accessibilityIdentifier("connections-clip-identification")
                 VStack(alignment: .leading, spacing: 12) {
                     SettingsGroup(label: "Keys") {
                         row(BrandLogo(service: .tmdb, size: 38), "TMDB", "", value: nil, destination: .tmdb, id: "settings-tmdb")

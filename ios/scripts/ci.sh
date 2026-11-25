@@ -62,8 +62,6 @@ PY
     # An ad-hoc signature carrying the app's permissions (Communication Notifications: a show's
     # poster in place of the app icon on its alerts). Your sideloading tool re-signs the app as before.
     codesign --force --deep --sign - --timestamp=none "$ARTIFACTS/package/Payload/TwilDiary.app"
-    # The share sheet extension carries the app group too (saved clips are handed over through it).
-    codesign --force --sign - --timestamp=none --entitlements ios/Support/Share.entitlements "$ARTIFACTS/package/Payload/TwilDiary.app/PlugIns/TwilDiaryShare.appex"
     codesign --force --sign - --timestamp=none --entitlements ios/Support/TwilDiary.entitlements "$ARTIFACTS/package/Payload/TwilDiary.app"
     codesign -d --entitlements - "$ARTIFACTS/package/Payload/TwilDiary.app" 2>&1 | tee "$ARTIFACTS/logs/entitlements.log"
     (cd "$ARTIFACTS/package" && ditto -c -k --keepParent Payload ../TwilDiary-unsigned.ipa)

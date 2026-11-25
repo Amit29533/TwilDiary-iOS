@@ -98,7 +98,6 @@ struct HomeShortcut: View {
     private static func tint(_ name: String) -> UIColor {
         switch name {
         case "Canvas": .systemPurple
-        case "Clipt": .systemTeal
         case "Cines": .systemPink
         default: .systemOrange
         }
