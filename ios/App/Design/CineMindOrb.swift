@@ -9,9 +9,12 @@ struct CineMindOrb: View {
     let size: CGFloat
     var lively = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Off screen in a scroll view (a row scrolled away), the orb stops: its 20 redraws a second
+    /// went on there and cost frames while the page scrolled.
+    @State private var onScreen = true
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion || !onScreen)) { context in
             let frames = OrbFrames.shared.frames
             if frames.isEmpty {
                 Circle().fill(LinearGradient(colors: [Color(red: 0.55, green: 0.80, blue: 1), Color(red: 0.62, green: 0.30, blue: 0.95)],
@@ -23,6 +26,7 @@ struct CineMindOrb: View {
             }
         }
         .frame(width: size, height: size)
+        .onScrollVisibilityChange(threshold: 0.01) { onScreen = $0 }
         .clipShape(Circle())
         .overlay(Circle().strokeBorder(Color(red: 1, green: 0.88, blue: 0.95).opacity(0.55), lineWidth: max(0.5, size * 0.025)))
         .accessibilityHidden(true)
