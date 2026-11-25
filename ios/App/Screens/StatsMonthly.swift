@@ -379,7 +379,8 @@ struct StatsStudiosCard: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     var body: some View {
         StatsCard(title: "Studios") {
-            if !loaded { DiaryLoadingPlaceholder(height: 120, label: "Counting studios") }
+            // The rows' own shape (a 120 pt block was half their height: the card jumped open).
+            if !loaded { DiaryLoadingPlaceholder(label: "Counting studios", layout: .bars(rows: 5)) }
             else if rows.isEmpty { Text("No studios yet.").font(.subheadline).foregroundStyle(.secondary) }
             let most = max(1, rows.first?.count ?? 1)
             ForEach(Array((all ? rows : Array(rows.prefix(5))).enumerated()), id: \.offset) { _, row in

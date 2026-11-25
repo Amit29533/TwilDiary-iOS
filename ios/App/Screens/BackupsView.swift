@@ -51,7 +51,10 @@ struct BackupsView: View {
                 }.padding(17).modifier(SettingsCard())
                 if let message { SettingsFootnote(text: message) }
                 if let failure { Text(failure).font(.app(size: 12)).foregroundStyle(Color(themed: "#ff8a8a")).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 4) }
+                // The list and its stand-in (a card of rows, as the list) share one place and cross-fade.
+                ZStack(alignment: .topLeading) {
                 if let backups {
+                    VStack(alignment: .leading, spacing: 16) {
                     if backups.isEmpty {
                         DiaryEmptyState(title: "No backups yet", description: "Back up before big changes, like switching to Trakt as your diary.")
                     } else {
@@ -67,8 +70,10 @@ struct BackupsView: View {
                             }
                         }.modifier(SettingsCard())
                     }
+                    }
                 } else if failure == nil {
-                    DiaryLoadingPlaceholder(height: 160, label: "Loading backups")
+                    DiaryLoadingPlaceholder(label: "Loading backups", layout: .list(rows: 3)).padding(.top, 4)
+                }
                 }
             }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40).smoothChange(of: backups?.count ?? -1)
         }.diaryScreenBackground().diaryPageNavigation("Backups")

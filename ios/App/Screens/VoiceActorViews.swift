@@ -31,14 +31,19 @@ struct VoiceActorCharactersView: View {
                           artwork: roles?.lazy.compactMap(\.character.image).first,
                           accessory: typeSize.isAccessibilitySize ? nil : AnyView(CollectionLayoutToggle(grid: $grid, collection: "voice-actor-characters"))) {
             VStack(alignment: .leading, spacing: 14) {
-                if let roles {
-                    LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())],
-                              alignment: .leading, spacing: Gap.gridRow) {
-                        ForEach(roles.prefix(shown)) { role in VoiceActorRoleCard(role: role, grid: usesGrid) }
-                    }
-                    if roles.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
-                } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
-                else { DiaryLoadingPlaceholder(label: "Loading characters", layout: .posterGrid(columns: 3, rows: 2)) }
+                // The characters and their stand-in share one place and cross-fade.
+                ZStack(alignment: .topLeading) {
+                    if let roles {
+                        VStack(alignment: .leading, spacing: 14) {
+                            LazyVGrid(columns: usesGrid ? Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3) : [GridItem(.flexible())],
+                                      alignment: .leading, spacing: Gap.gridRow) {
+                                ForEach(roles.prefix(shown)) { role in VoiceActorRoleCard(role: role, grid: usesGrid) }
+                            }
+                            if roles.count > shown { ScrollLoadTrigger(token: shown, loading: false) { shown += 30 } }
+                        }
+                    } else if let failure { RetryNotice(message: failure) { Task { await load() } } }
+                    else { DiaryLoadingPlaceholder(label: "Loading characters", layout: .posterGrid(columns: 3, rows: 2)) }
+                }
             }.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 40).smoothChange(of: roles == nil)
         }
             .task(id: route) { if roles == nil { await load() } }
@@ -141,7 +146,7 @@ struct AniListMostWatched: View {
     @ViewBuilder private var ranking: some View {
         if user.isEmpty { connectPrompt }
         else if let failure { RetryNotice(message: failure) { Task { await load(force: true) } } }
-        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 190, label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list") }
+        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(label: kind == .voiceActors ? "Loading your AniList stats" : "Loading your AniList list", layout: .peopleShelf) }
         else if rows.isEmpty { Text("Nothing to rank yet.").font(.app(size: 13)).foregroundStyle(.secondary) }
         else { MostWatchedShelf(ranking: rankingRoute) }
     }
@@ -262,7 +267,7 @@ struct MostWatchedCast: View {
     }
     @ViewBuilder private var ranking: some View {
         if let failure, rows.isEmpty { RetryNotice(message: failure) { Task { await load() } } }
-        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(height: 220, label: kind == .voice ? "Counting your voice actors" : "Counting your cast") }
+        else if loading && rows.isEmpty { DiaryLoadingPlaceholder(label: kind == .voice ? "Counting your voice actors" : "Counting your cast", layout: round ? .peopleRound : .peopleShelf) }
         else if rows.isEmpty {
             Text(kind == .voice ? "Watch some anime and the voice actors you hear most show up here." : "Watch a few live-action titles and the cast you see most shows up here.")
                 .font(.app(size: 13)).foregroundStyle(.secondary)

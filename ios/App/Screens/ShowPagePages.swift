@@ -1000,7 +1000,7 @@ struct RelatedCollectionsPage: View {
                     Text(model.needsKey ? "Add your TMDB key in Settings → Connections → TMDB to see related collections." : "TMDB has no related collections for this title.")
                         .font(.subheadline).foregroundStyle(HomeStyle.secondary).multilineTextAlignment(.center)
                 }
-                if !model.loaded { DiaryLoadingPlaceholder(height: 150, label: "Loading related collections") }
+                if !model.loaded { DiaryLoadingPlaceholder(label: "Loading related collections", layout: .cards(count: 3, height: 132)) }
             }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 40)
         }.diaryScreenBackground().navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
             .toolbar { ShowPageTitle(title: "Related collections", subtitle: title) }

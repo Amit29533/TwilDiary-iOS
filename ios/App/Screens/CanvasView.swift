@@ -170,8 +170,11 @@ private struct CanvasContent: View {
         let items = titles
         let loading = sort == .recommended ? (recommendations.loading || !recommendations.checked) : results.loading
         let error = sort == .recommended ? recommendations.error : results.error
-        if !items.isEmpty { CanvasMosaic(items: items) { if sort != .recommended { Task { await results.load(query, more: true) } } } }
-        if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
+        // The titles and their stand-in share one place and cross-fade.
+        ZStack(alignment: .topLeading) {
+            if !items.isEmpty { CanvasMosaic(items: items) { if sort != .recommended { Task { await results.load(query, more: true) } } } }
+            if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
+        }
         if let error { notice(error) { Task { if sort == .recommended { await recommendations.load(limit: 24, refresh: true) } else { await results.load(query) } } } }
         else if !loading && items.isEmpty {
             if sort == .recommended && !recommendations.connected {
@@ -406,8 +409,10 @@ struct CanvasListView: View {
                           artwork: ExploreBrowseHeader.artwork(in: loader?.items ?? [])) {
             VStack(alignment: .leading, spacing: 14) {
                 if let loader {
-                    if !loader.items.isEmpty { CatalogGrid(items: loader.items, showsLayoutToggle: false) }
-                    if loader.loading && loader.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
+                    ZStack(alignment: .topLeading) {
+                        if !loader.items.isEmpty { CatalogGrid(items: loader.items, showsLayoutToggle: false) }
+                        if loader.loading && loader.items.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 3)) }
+                    }
                     if let error = loader.error { Text(error).font(.app(size: 14)).foregroundStyle(.secondary) }
                     if loader.hasMore || (loader.loading && !loader.items.isEmpty) {
                         ScrollLoadTrigger(token: loader.items.count, loading: loader.loading) { Task { await loader.load(more: true) } }

@@ -47,8 +47,7 @@ struct SeriesRatingCard: View {
             } else if readFor != show {
                 // While they load: the card's shape where it will land. It took no room until then, and came
                 // in under the episodes pushing the cast and the rest down mid-scroll.
-                DiaryLoadingPlaceholder(height: 270, label: "Loading episode ratings")
-                    .padding(12).background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
+                placeholder
             } else { Color.clear.frame(height: 0).accessibilityHidden(true) }
         }
         // None for this show: the room it held closes smoothly.
@@ -58,6 +57,40 @@ struct SeriesRatingCard: View {
             ratings = await SeriesRatingsLoader.load(tmdb: show, imdbID: imdbID, store: store)
             readFor = show
         }
+    }
+
+    /// The card's own parts while it loads (heading, scores, the 128 pt chart, highest and lowest),
+    /// so it's as tall as the card that replaces it (a 270 pt block wasn't).
+    private var placeholder: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(" ").font(.app(size: 17, weight: .bold)).lineLimit(1).hidden()
+                .overlay(alignment: .leading) { Capsule().fill(SkeletonFill.line).frame(width: 110, height: 12) }
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    HStack(spacing: 7) {
+                        Circle().fill(SkeletonFill.fill).frame(width: 22, height: 22)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(" ").font(.app(size: 16, weight: .bold))
+                            Text(" ").font(.app(size: 11))
+                        }.hidden().frame(minWidth: 34, alignment: .leading)
+                            .overlay(alignment: .leading) { Capsule().fill(SkeletonFill.line).frame(width: 26, height: 10) }
+                    }
+                }
+            }.lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(SkeletonFill.fill).frame(height: 128)
+            HStack(spacing: 8) {
+                ForEach(0..<2, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(" ").font(.caption2)
+                        Text(" ").font(.caption.weight(.semibold))
+                    }.hidden().padding(.horizontal, 9).padding(.vertical, 6).frame(maxWidth: .infinity)
+                        .background(SkeletonFill.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+        }
+        .loadingPulse("Loading episode ratings")
+        .padding(12)
+        .background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 20))
     }
 
     private func card(_ ratings: SeriesRatings) -> some View {

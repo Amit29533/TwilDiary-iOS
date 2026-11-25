@@ -317,8 +317,12 @@ private struct DiscoveryShelfView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Gap.heading) {
             ExploreHeading(section: section)
-            DiscoveryTrack(items: results.items)
-            if (results.loading || results.page == 0) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf).padding(.bottom, 10) }
+            // The titles and their stand-in share one place and cross-fade (one under the other, the fade
+            // stacked both: the page grew by a row, then snapped back).
+            ZStack(alignment: .topLeading) {
+                DiscoveryTrack(items: results.items)
+                if (results.loading || results.page == 0) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterShelf).padding(.bottom, 10) }
+            }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await load() } } }
             else if !results.loading && results.page > 0 && results.items.isEmpty { DiscoveryNotice(text: "No titles available.") }
         }.smoothChange(of: results.items.isEmpty).task { if results.page == 0 { await load() } }
@@ -363,8 +367,10 @@ private struct RecommendedDiscoveryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Gap.heading) {
             ExploreHeading(section: .recommended)
-            DiscoveryTrack(items: results.items)
-            if (results.loading || !results.checked) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf).padding(.bottom, 10) }
+            ZStack(alignment: .topLeading) {
+                DiscoveryTrack(items: results.items)
+                if (results.loading || !results.checked) && results.items.isEmpty && results.error == nil { DiaryLoadingPlaceholder(label: "Loading recommendations", layout: .posterShelf).padding(.bottom, 10) }
+            }
             if let error = results.error { DiscoveryNotice(text: error) { Task { await results.load(refresh: true) } } }
             else if !results.loading && results.checked && !results.connected {
                 // A way in, not a dead end: Trakt's settings page connects it.
@@ -522,10 +528,12 @@ private struct DiscoveryBrowser: View {
         if let error = filters.error(section: section) { DiscoveryNotice(text: error) }
         else if promptForGenre && filters.genre.isEmpty { Text("Choose a genre to explore shows and movies.").font(.app(size: 13)).foregroundStyle(.secondary) }
         else {
-            if !displayed.isEmpty {
-                CatalogGrid(items: displayed, showsLayoutToggle: false)
+            ZStack(alignment: .topLeading) {
+                if !displayed.isEmpty {
+                    CatalogGrid(items: displayed, showsLayoutToggle: false)
+                }
+                if busy && displayed.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2)) }
             }
-            if busy && displayed.isEmpty { DiaryLoadingPlaceholder(label: "Loading titles", layout: .posterGrid(columns: 3, rows: 2)) }
             if let error = section == .recommended ? recommendations.error : results.error {
                 DiscoveryNotice(text: error) { Task { if section == .recommended { await recommendations.load(limit: 24, refresh: true) } else { await results.load(filters.query(section: section), more: results.page > 0) } } }
             } else if !busy && displayed.isEmpty {

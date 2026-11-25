@@ -20,6 +20,14 @@ enum PlaceholderLayout {
     case homeShelf
     /// A portrait beside a few lines, then a paragraph (person and character pages).
     case profile
+    /// Rows of a name and a count over a thin bar (Statistics' Studios).
+    case bars(rows: Int = 5)
+    /// A shelf of rounded portraits with a name and a line under each (`MostWatchedShelf`).
+    case peopleShelf
+    /// Three round photos with a name and a count, then See all (`MostWatchedShelf`'s round row).
+    case peopleRound
+    /// Cards of one height, one under another (related collections).
+    case cards(count: Int = 3, height: CGFloat = 132)
 }
 
 /// What shows while something loads: grey shapes laid out like the content that's coming, gently
@@ -53,6 +61,70 @@ struct DiaryLoadingPlaceholder: View {
         case .standardShelf: shelf(oneLine: true)
         case .homeShelf: homeShelf
         case .profile: profile
+        case .bars(let rows): bars(rows)
+        case .peopleShelf: peopleShelf
+        case .peopleRound: peopleRound
+        case .cards(let count, let height): cards(count, height: height)
+        }
+    }
+
+    private static let barWidths: [CGFloat] = [150, 120, 170, 100, 135]
+    /// Studios' rows: a 15 pt bold name and a count, a thin bar under them, 14 pt apart.
+    private func bars(_ rows: Int) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(0..<max(1, rows), id: \.self) { index in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(" ").font(.app(size: 15, weight: .bold)).lineLimit(1).hidden().frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .leading) {
+                            HStack {
+                                Capsule().fill(line).frame(width: Self.barWidths[index % Self.barWidths.count], height: 11)
+                                Spacer()
+                                Capsule().fill(faint).frame(width: 18, height: 9)
+                            }
+                        }
+                    Capsule().fill(faint).frame(height: 8)
+                }
+            }
+        }
+    }
+    /// The shelf's portraits (0.83 wide to tall, a column ~2.85 to the screen), a 16 pt name and a
+    /// 13 pt line, as `MostWatchedShelf` lays them out.
+    private var peopleShelf: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(0..<4, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 4) {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous).fill(fill).aspectRatio(0.83, contentMode: .fit).padding(.bottom, 6)
+                        Text(" ").font(.app(size: 16, weight: .bold)).lineLimit(1).hidden().frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(alignment: .leading) { Capsule().fill(line).frame(height: 11).padding(.trailing, 24) }
+                        Text(" ").font(.app(size: 13)).lineLimit(1).hidden().frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(alignment: .leading) { Capsule().fill(faint).frame(width: 50, height: 9) }
+                    }
+                    .containerRelativeFrame(.horizontal) { width, _ in min(150, max(100, (width - 36) / 2.85)) }
+                }
+            }
+        }.scrollDisabled(true).scrollIndicators(.hidden)
+    }
+    /// The round row: 64 pt photos, a 13 pt name and a 12 pt count, the last place See all.
+    private var peopleRound: some View {
+        HStack(alignment: .top, spacing: 6) {
+            ForEach(0..<4, id: \.self) { index in
+                VStack(spacing: 6) {
+                    Circle().fill(fill).frame(width: 64, height: 64)
+                    Text(" ").font(.app(size: 13, weight: .semibold)).lineLimit(1).hidden()
+                        .overlay { Capsule().fill(line).frame(width: 52, height: 10) }
+                    if index < 3 {
+                        Text(" ").font(.app(size: 12)).lineLimit(1).hidden().overlay { Capsule().fill(faint).frame(width: 30, height: 8) }
+                    }
+                }.frame(maxWidth: .infinity)
+            }
+        }
+    }
+    private func cards(_ count: Int, height: CGFloat) -> some View {
+        VStack(spacing: 14) {
+            ForEach(0..<max(1, count), id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 20, style: .continuous).fill(fill).frame(height: height)
+            }
         }
     }
 
@@ -172,4 +244,25 @@ struct DiaryLoadingPlaceholder: View {
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+/// Grey shapes built by hand for one card (when no layout above fits), pulsing as
+/// `DiaryLoadingPlaceholder`'s do.
+extension View {
+    func loadingPulse(_ label: String) -> some View { modifier(LoadingPulse(label: label)) }
+}
+private struct LoadingPulse: ViewModifier {
+    let label: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View {
+        content
+            .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.45]) { view, strength in view.opacity(strength) } animation: { _ in .easeInOut(duration: 0.9) }
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore).accessibilityLabel(label)
+    }
+}
+/// The placeholders' iOS fill colours, for hand-built ones.
+enum SkeletonFill {
+    static var fill: Color { Color(uiColor: .tertiarySystemFill) }
+    static var line: Color { Color(uiColor: .systemFill) }
 }
