@@ -66,6 +66,10 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
     // The official channels: those still to read (this tab's, shuffled), and matched clips waiting.
     private var channelsLeft: [CinesChannels.Channel]?
     private var channelClips: [CinesClip] = []
+    /// With a YouTube key: how far each channel's uploads and Shorts have been read.
+    private var channelPages: [String: ChannelPages] = [:]
+    /// With a YouTube key: diary titles whose scenes are still to be searched (For you).
+    private var sceneTitles: [Candidate]?
     /// TMDB's answer for a name in a video's title, once per name.
     @ObservationIgnored private var named: [String: [Candidate]] = [:]
 
@@ -80,6 +84,8 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         let poster: String?
         let backdrop: String?
         let popularity: Double
+        /// TMDB's original title (a Japanese channel names the show in Japanese).
+        var original: String? = nil
     }
 
     /// Clips the player refused (embedding off, removed): left out from now on.
@@ -101,6 +107,7 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         failure = nil
         let before = clips.count
         var rounds = 0
+        if tab == .forYou { await searchScenes(store, token: token) }
         while clips.count < before + 8, rounds < 4 {
             rounds += 1
             // The channels are read alongside TMDB.
@@ -132,6 +139,15 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             if fresh.isEmpty, queue.isEmpty, exhausted, channelsLeft?.isEmpty != false, channelClips.isEmpty {
                 clips += later; later = []
                 break
+            }
+            // With a YouTube key, YouTube says first which of them play here (1 unit a batch).
+            if let key = CinesYouTube.key, !fresh.isEmpty,
+               let statuses = await CinesYouTube.statuses(fresh.map(\.id), key: key, region: CinesYouTube.region) {
+                for (id, playable) in statuses {
+                    checked[id] = playable
+                    if !playable { Self.markFailed(id) }
+                }
+                fresh = fresh.filter { statuses[$0.id] != false }
             }
             clips += Self.spread(fresh.shuffled())
         }
@@ -181,12 +197,34 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         guard let left = channelsLeft, !left.isEmpty else { return }
         let next = Array(left.prefix(2))
         channelsLeft?.removeFirst(next.count)
-        let videos = await withTaskGroup(of: [CinesChannels.Video].self) { group in
-            for channel in next { group.addTask { await CinesChannels.videos(channel) } }
-            var all: [CinesChannels.Video] = []
-            for await found in group { all += found }
+        let key = CinesYouTube.key
+        let pages = channelPages
+        let read = await withTaskGroup(of: (CinesChannels.Channel, [CinesChannels.Video], ChannelPages?).self) { group in
+            for channel in next {
+                group.addTask {
+                    let (videos, after) = await Self.channelVideos(channel, pages: pages[channel.id], key: key)
+                    return (channel, videos, after)
+                }
+            }
+            var all: [(CinesChannels.Channel, [CinesChannels.Video], ChannelPages?)] = []
+            for await found in group { all.append(found) }
             return all
         }
+        var videos: [CinesChannels.Video] = []
+        for (channel, found, after) in read {
+            videos += found
+            // With a key, a channel with older videos left comes round again after the others.
+            if let after {
+                channelPages[channel.id] = after
+                if after.more { channelsLeft?.append(channel) }
+            }
+        }
+        await matchVideos(videos, token: token)
+    }
+
+    /// Matches channel (or search) videos to the titles they name and queues the ones that fit
+    /// this tab.
+    private func matchVideos(_ videos: [CinesChannels.Video], token: String, kind: String? = nil) async {
         let failed = Self.failed
         let fresh = videos.filter { !failed.contains($0.id) && !seenClips.contains($0.id) }
         let names = fresh.map { CinesChannels.names(in: $0.title, short: $0.short) }
@@ -206,10 +244,74 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         var matched: [CinesClip] = []
         for (video, tries) in zip(fresh, names) {
             guard let title = match(tries, anime: video.channel.anime), fits(title) else { continue }
-            matched.append(CinesClip(id: video.id, kind: Self.kind(video), name: title.name, year: title.year, route: title.route, anime: title.anime,
+            matched.append(CinesClip(id: video.id, kind: kind ?? Self.kind(video), name: title.name, year: title.year, route: title.route, anime: title.anime,
                                      genres: title.genres, poster: title.poster, backdrop: title.backdrop, short: video.short))
         }
         channelClips += matched.shuffled()
+    }
+
+    /// How far a channel's uploads and Shorts have been read with the YouTube key.
+    struct ChannelPages: Sendable {
+        var uploads: String?
+        var shorts: String?
+        var uploadsDone = false
+        var shortsDone = false
+        var more: Bool { !uploadsDone || !shortsDone }
+    }
+
+    /// A channel's next videos: with a key, the next 50 of its uploads and of its Shorts (going
+    /// back as far as the channel goes); without one, or if YouTube can't be asked, its feeds' newest.
+    nonisolated private static func channelVideos(_ channel: CinesChannels.Channel, pages: ChannelPages?, key: String?) async -> ([CinesChannels.Video], ChannelPages?) {
+        guard let key else { return (await CinesChannels.videos(channel), nil) }
+        let state = pages ?? ChannelPages()
+        let tail = String(channel.id.dropFirst(2))
+        async let shorts = page("UUSH" + tail, token: state.shorts, done: state.shortsDone, key: key)
+        async let uploads = page("UU" + tail, token: state.uploads, done: state.uploadsDone, key: key)
+        let short = await shorts, upload = await uploads
+        if pages == nil, short == nil, upload == nil { return (await CinesChannels.videos(channel), nil) }
+        var after = state
+        if let short { after.shorts = short.next; after.shortsDone = short.next == nil } else { after.shortsDone = true }
+        if let upload { after.uploads = upload.next; after.uploadsDone = upload.next == nil } else { after.uploadsDone = true }
+        let shortIDs = Set((short?.videos ?? []).map(\.id))
+        var found = (short?.videos ?? []).map { CinesChannels.Video(id: $0.id, title: $0.title, short: true, channel: channel) }
+        for video in upload?.videos ?? [] where !shortIDs.contains(video.id) {
+            found.append(CinesChannels.Video(id: video.id, title: video.title, short: false, channel: channel))
+        }
+        return (found, after)
+    }
+    nonisolated private static func page(_ playlist: String, token: String?, done: Bool, key: String) async -> (videos: [CinesYouTube.Video], next: String?)? {
+        if done { return ([], nil) }
+        return await CinesYouTube.playlist(playlist, page: token, key: key)
+    }
+
+    /// For you with a YouTube key: scenes from one title in your diary each time more clips load
+    /// (Planned first), found by a YouTube search (100 units; at most `CinesYouTube.searchesPerDay`).
+    /// A video is kept when its title names the show and it isn't a reaction, review, edit or the
+    /// like; the official channels' come first.
+    private func searchScenes(_ store: DiaryStore, token: String) async {
+        guard let key = CinesYouTube.key, channelClips.count < 10 else { return }
+        if sceneTitles == nil {
+            let titles = store.workspace.titles.filter { $0.deletedAt == nil && $0.tmdbId != nil }
+            let planned = titles.filter { $0.status == "planned" }.shuffled()
+            let others = titles.filter { ["watching", "completed", "paused", "on_hold"].contains($0.status) }.shuffled()
+            sceneTitles = (planned + others).prefix(60).compactMap(Self.candidate)
+        }
+        guard let title = sceneTitles?.first, CinesYouTube.takeSearch() else { return }
+        sceneTitles?.removeFirst()
+        let name = title.name
+        let found = await CinesYouTube.search(name + (title.anime ? " anime scene" : " scene"), key: key, region: CinesYouTube.region)
+        let official = Set(CinesChannels.all.map(\.id))
+        let needle = CinesChannels.comparable(name)
+        let skip = ["reaction", "react", "review", "explained", "explain", "amv", "edit", "fan made", "fanmade", "theory", "theories",
+                    "breakdown", "recap", "ranking", "ranked", "top 10", "top 5", "analysis", "podcast", "parody", "tier list", "meme"]
+        let kept = found.filter { video in
+            let words = CinesChannels.comparable(video.title)
+            return (" " + words + " ").contains(" " + needle + " ") && !skip.contains { (" " + words + " ").contains(" " + $0 + " ") }
+                && !seenClips.contains(video.id) && !Self.failed.contains(video.id)
+        }.sorted { official.contains($0.channelID) && !official.contains($1.channelID) }.prefix(3)
+        let scenes = kept.map { CinesClip(id: $0.id, kind: "Scene", name: title.name, year: title.year, route: title.route, anime: title.anime,
+                                         genres: title.genres, poster: title.poster, backdrop: title.backdrop) }
+        channelClips += scenes
     }
 
     /// The title a video names: among the names in its title, the one TMDB has under that very
@@ -219,8 +321,10 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         var exact: [Candidate] = [], close: [Candidate] = []
         for name in tries {
             let found = (named[name] ?? []).filter { !anime || $0.anime }
-            exact += found.filter { CinesChannels.same(name, $0.name, best: false) }
-            if let best = found.first, CinesChannels.same(name, best.name, best: true) { close.append(best) }
+            exact += found.filter { CinesChannels.same(name, $0.name, best: false) || $0.original.map { CinesChannels.same(name, $0, best: false) } == true }
+            if let best = found.first, CinesChannels.same(name, best.name, best: true) || best.original.map({ CinesChannels.same(name, $0, best: true) }) == true {
+                close.append(best)
+            }
         }
         return exact.max { $0.popularity < $1.popularity } ?? close.first
     }
@@ -414,7 +518,8 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
                              genres: genreIDs.compactMap { genreNames[$0] }.filter { $0 != "Animation" || !anime },
                              poster: CatalogTools.image(item["poster_path"] as? String, size: "w342"),
                              backdrop: CatalogTools.image(item["backdrop_path"] as? String, size: "w780"),
-                             popularity: item["popularity"] as? Double ?? 0)
+                             popularity: item["popularity"] as? Double ?? 0,
+                             original: (item["original_name"] ?? item["original_title"]) as? String)
         }
     }
 

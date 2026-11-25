@@ -29,7 +29,7 @@ TMDB lists mostly trailers, so Cines also reads the official YouTube channels th
 
 - **The channels:**
   - **Shows and films:** Netflix, Netflix K-Content, Prime Video, Disney+, HBO, Apple TV, Hulu, Paramount+, Peacock, A24, Universal Pictures, Sony Pictures and Marvel.
-  - **Anime:** Netflix Anime, Crunchyroll, Muse Asia, Aniplex USA, TOHO animation and GKIDS.
+  - **Anime:** Netflix Anime, Crunchyroll, Muse Asia, Aniplex USA, TOHO animation, GKIDS and KyoaniChannel (Kyoto Animation; its titles are in Japanese, so the name in 「」 is matched against TMDB's original titles).
 - **How videos are read:** two channels at a time, in a random order, as the feed loads.
 - **Matching a video to its title:** the video's title is read for names:
   - the parts between "|" ("Scene | Kakegurui | Clip | Netflix Anime" gives Kakegurui);
@@ -41,7 +41,19 @@ TMDB lists mostly trailers, so Cines also reads the official YouTube channels th
   Each name is searched on TMDB. A video joins the feed only when TMDB has a title by that very name (or its best match is clearly the same), so Plan adds the right title. An anime channel's videos match anime only, and channel promos are left out.
 - **Mixing:** up to four channel clips a round are mixed in with TMDB's, in every tab (each tab keeps its kind). A Short is vertical and fills the player's height.
 
-The feeds hold only each channel's newest videos. A YouTube Data API key could reach further back if that's wanted later.
+The feeds hold only each channel's newest videos.
+
+## With a YouTube key
+
+TwilDiary's YouTube Data API key is built in the way the TMDB key is: `TWILDIARY_YOUTUBE_KEY` is filled from the repository secret of the same name when the IPA is built, and it's never in git. Your own key can be added instead on Settings → APIs → YouTube, where it's kept in the Keychain. Code: `ios/App/Networking/CinesYouTube.swift`.
+
+With a key, Cines:
+
+- **checks each batch of clips before they show** (1 unit for up to 50): whether YouTube lets them play in the app, whether they're public, and whether they're blocked in your country. Clips that fail never appear.
+- **reads back through each channel's uploads and Shorts,** 50 at a time (1 unit a page), not just the newest 15. Channels with older videos left come round again.
+- **searches YouTube for scenes** from one title in your diary each time For you loads more (Planned first). Each search costs 100 units, and there are at most 30 a day. A video is kept when its title names the show and it isn't a reaction, review, edit or the like; the official channels' come first.
+
+The free quota is 10,000 units a day. When YouTube says it's used up, Cines carries on without the key until the next day.
 
 ## Playing
 

@@ -41,6 +41,8 @@ enum CinesChannels {
         Channel(name: "Aniplex USA", id: "UCDb0peSmF5rLX7BvuTcJfCw", anime: true),
         Channel(name: "TOHO animation", id: "UC14Yc2Qv92DMuyNRlHvpo2Q", anime: true),
         Channel(name: "GKIDS", id: "UCJXUTDi2Lc8Qub4bxICcPCA", anime: true),
+        // Kyoto Animation (owner's request); its titles are in Japanese: 「…」 holds the show's name.
+        Channel(name: "KyoaniChannel", id: "UCpGY2vcoKXf7K6tFzsbSv7w", anime: true),
     ]
 
     /// A channel's newest Shorts and uploads (a Short is in both; it's kept once, as a Short).
@@ -101,6 +103,8 @@ enum CinesChannels {
                   !found.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return }
             found.append(name)
         }
+        // A Japanese title names its show in 「」 or 『』 (TVアニメ「…」): that first.
+        matches(#"[「『]([^」』]{2,60})[」』]"#, in: title).forEach(add)
         let tags = matches(#"#([\p{L}\p{N}_]+)"#, in: title).map(spaced)
         if short { tags.forEach(add) }
         var text = title.replacingOccurrences(of: #"#[\p{L}\p{N}_]+"#, with: "", options: .regularExpression)

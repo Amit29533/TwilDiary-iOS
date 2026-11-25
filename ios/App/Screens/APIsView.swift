@@ -14,6 +14,9 @@ struct APIsView: View {
     @State private var jellyfinRevision = 0
     /// The AI service a key is being added for.
     @State private var addingAIKey: SemanticSearch.Service?
+    /// Your own YouTube key (Cines), when you've added one.
+    @State private var youtubeOwn = CinesYouTube.savedKey
+    @State private var addingYouTube = false
     @State private var aiKeys: [SemanticSearch.Service: [String]] = Dictionary(uniqueKeysWithValues: SemanticSearch.Service.allCases.map { ($0, SemanticSearch.ownKeys($0)) })
 
     var body: some View {
@@ -53,7 +56,7 @@ struct APIsView: View {
                                 info: "TwilDiary’s own app ID for MDBList. Once it’s set, MDBList’s page offers “Sign in” without your own developer keys.")
                     }
                 } else if model?.error == nil { DiaryLoadingPlaceholder(height: 160, label: "Loading your keys") }
-                if !store.phoneOnly { aiSection(.gemini); aiSection(.groq); aiSection(.requesty) }
+                if !store.phoneOnly { aiSection(.gemini); aiSection(.groq); aiSection(.requesty); youtubeSection }
                 jellyfin
                 if !store.phoneOnly { server }
             }.padding(16).padding(.bottom, 100)
@@ -192,7 +195,40 @@ struct APIsView: View {
             aiSection(.gemini)
             aiSection(.groq)
             aiSection(.requesty)
+            youtubeSection
         }
+    }
+    /// YouTube: Cines' key (TwilDiary's built in, or your own instead).
+    private var youtubeSection: some View {
+        let ready = CinesYouTube.key != nil
+        return section(nil, "YouTube", icon: "play.rectangle.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text(youtubeOwn != nil ? "Your own key" : CinesYouTube.builtIn != nil ? "TwilDiary’s key, built in" : "Cines: more clips")
+                        .font(.app(size: 14)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    status(ready, CinesYouTube.quotaUsedToday ? "Used up today" : ready ? "Ready" : "Not set")
+                }
+                HStack(spacing: 8) {
+                    Text("Older channel clips, scene search").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    SettingsInfoButton(text: "Cines uses a YouTube Data API key to read further back through the official channels, to check each clip plays here before it shows, and to find scenes from titles in your diary. Your own key is kept in this iPhone’s Keychain and sent only to YouTube; it’s used in place of TwilDiary’s.")
+                }
+                if let own = youtubeOwn {
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.fill").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
+                        Text(CinesYouTube.masked(own)).font(.app(size: 14, design: .monospaced)).foregroundStyle(HomeStyle.primary)
+                        Spacer(minLength: 0)
+                        Button(role: .destructive) { CinesYouTube.save(nil); youtubeOwn = nil } label: {
+                            Image(systemName: "trash").font(.app(size: 14)).frame(width: 36, height: 36).contentShape(Rectangle())
+                        }.buttonStyle(.plain).foregroundStyle(Color(themed: "#ff8a80")).accessibilityLabel("Remove your YouTube key")
+                    }.padding(.horizontal, 12).frame(height: 44).background(Color(themed: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
+                }
+                Button(youtubeOwn == nil ? "Add your own key" : "Replace key") { addingYouTube = true }
+                    .buttonStyle(SettingsPillButtonStyle()).accessibilityIdentifier("apis-youtube")
+            }.padding(15)
+        }
+        .sheet(isPresented: $addingYouTube, onDismiss: { youtubeOwn = CinesYouTube.savedKey }) { YouTubeKeySheet() }
     }
     private var tvdbKey: some View {
         section(.tvdb, "TheTVDB", icon: "film") {
@@ -382,5 +418,48 @@ private struct RequestyModelField: View {
             .padding(.horizontal, 12).frame(height: 44).background(Color(themed: "#17171d"), in: RoundedRectangle(cornerRadius: 12))
             .onChange(of: value) { _, now in SemanticSearch.requestyModel = now }
             .accessibilityIdentifier("apis-requesty-model")
+    }
+}
+
+/// Paste a YouTube Data API key: checked with YouTube (1 unit) before it's kept.
+private struct YouTubeKeySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var value = ""
+    @State private var checking = false
+    @State private var failure: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("YouTube API key", text: $value).font(.app(size: 15, design: .monospaced))
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().focused($focused)
+                        .accessibilityIdentifier("youtube-key-field")
+                } footer: {
+                    Text(failure ?? "From Google Cloud: enable YouTube Data API v3, then make an API key. Kept in this iPhone’s Keychain.")
+                        .foregroundStyle(failure == nil ? Color.secondary : Color(themed: "#ff8a80"))
+                }
+            }
+            .navigationTitle("YouTube key").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if checking { ProgressView() }
+                    else { Button("Save") { Task { await save() } }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                }
+            }
+            .onAppear { focused = true }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() async {
+        let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        checking = true
+        defer { checking = false }
+        if let problem = await CinesYouTube.test(key) { failure = problem; return }
+        CinesYouTube.save(key)
+        dismiss()
     }
 }

@@ -34,6 +34,8 @@
 	<string>$(TWILDIARY_GROQ_KEY)</string>
 	<key>TwilDiaryRequestyKey</key>
 	<string>$(TWILDIARY_REQUESTY_KEY)</string>
+	<key>TwilDiaryYouTubeKey</key>
+	<string>$(TWILDIARY_YOUTUBE_KEY)</string>
 	<key>TwilDiaryAccessClientID</key>
 	<string>$(TWILDIARY_CF_ACCESS_CLIENT_ID)</string>
 	<key>TwilDiaryAccessClientSecret</key>
