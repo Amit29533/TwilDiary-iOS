@@ -43,8 +43,8 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
     private(set) var clips: [CinesClip] = []
     private(set) var loading = false
     private(set) var failure: String?
-    /// The uploader's name ("Netflix", "Crunchyroll"), read from YouTube's public oEmbed.
-    private(set) var channels: [String: String] = [:]
+    /// Clips YouTube said it will play in the app (true) or won't (false).
+    @ObservationIgnored private var checked: [String: Bool] = [:]
 
     let tab: CinesTab
     private var page = 0
@@ -120,19 +120,30 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The uploader's name for a clip, once (and for the next one, ahead of time).
-    func channel(for id: String) async {
-        guard channels[id] == nil, asking.insert(id).inserted else { return }
+    /// Whether YouTube will play a clip inside the app, asked ahead of time: its public oEmbed
+    /// lookup refuses a video whose uploader switched embedding off (401, 403) or that was taken
+    /// down (404). A refused clip leaves the feed and is left out from then on. When the lookup
+    /// can't be made (offline), the clip stays and the player decides.
+    @discardableResult func check(_ id: String) async -> Bool {
+        if let known = checked[id] { return known }
+        guard asking.insert(id).inserted else { return true }
+        defer { asking.remove(id) }
         var parts = URLComponents(string: "https://www.youtube.com/oembed")!
         parts.queryItems = [URLQueryItem(name: "url", value: "https://www.youtube.com/watch?v=" + id), URLQueryItem(name: "format", value: "json")]
-        guard let url = parts.url else { return }
+        guard let url = parts.url else { return true }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let author = object["author_name"] as? String, !author.isEmpty else { return }
-        channels[id] = String(author.prefix(80))
+        guard let (_, response) = try? await URLSession.shared.data(for: request), let status = (response as? HTTPURLResponse)?.statusCode else { return true }
+        let playable = ![401, 403, 404].contains(status)
+        checked[id] = playable
+        if !playable { refuse(id) }
+        return playable
+    }
+    /// Takes a clip out of the feed (YouTube won't play it here).
+    func refuse(_ id: String) {
+        checked[id] = false
+        Self.markFailed(id)
+        clips.removeAll { $0.id == id }
     }
 
     // MARK: Titles
@@ -308,7 +319,7 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             for (index, title) in titles.enumerated() {
                 group.addTask {
                     let path = "\(title.route.kind == .movie ? "movie" : "tv")/\(title.route.id)/videos"
-                    guard let data = try? await TMDBDirect.data(path, query: ["include_video_language": "en,ja,null"], token: token) else { return (index, []) }
+                    guard let data = try? await TMDBDirect.data(path, query: ["include_video_language": title.anime ? "en,ja" : "en"], token: token) else { return (index, []) }
                     return (index, Self.pick(data, title: title))
                 }
             }
@@ -326,11 +337,16 @@ enum CinesTab: String, CaseIterable, Identifiable, Sendable {
             guard item["site"] as? String == "YouTube", let key = item["key"] as? String,
                   key.range(of: #"^[A-Za-z0-9_-]{6,20}$"#, options: .regularExpression) != nil,
                   let type = item["type"] as? String, typeRank[type] != nil else { return nil }
-            return Video(key: key, type: type, official: item["official"] as? Bool ?? false, published: item["published_at"] as? String ?? "")
+            // English videos only (owner's call, 25 Nov 2026: Alien came up with Disney+ Japan's
+            // trailer); anime may also have Japanese ones, English first.
+            let language = item["iso_639_1"] as? String ?? ""
+            guard language == "en" || (title.anime && language == "ja") else { return nil }
+            return Video(key: key, type: type, official: item["official"] as? Bool ?? false, published: item["published_at"] as? String ?? "", english: language == "en")
         }
         func best(_ types: Set<String>) -> Video? {
             videos.filter { types.contains($0.type) }.sorted {
                 if $0.official != $1.official { return $0.official }
+                if $0.english != $1.english { return $0.english }
                 if typeRank[$0.type]! != typeRank[$1.type]! { return typeRank[$0.type]! < typeRank[$1.type]! }
                 return $0.published > $1.published
             }.first
@@ -357,6 +373,7 @@ private struct Video {
     let type: String
     let official: Bool
     let published: String
+    let english: Bool
     var label: String {
         switch type {
         case "Trailer": official ? "Official trailer" : "Trailer"

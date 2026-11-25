@@ -114,7 +114,9 @@ import WebKit
         configuration.userContentController.add(CinesMessages(owner: self), name: "cines")
         let web = WKWebView(frame: .zero, configuration: configuration)
         web.isOpaque = false
-        web.backgroundColor = .black
+        // Clear, so the title's picture shows round the video where YouTube leaves it bare.
+        web.backgroundColor = .clear
+        web.scrollView.backgroundColor = .clear
         web.scrollView.isScrollEnabled = false
         web.scrollView.bounces = false
         web.allowsLinkPreview = false
@@ -128,7 +130,7 @@ import WebKit
     private static var html: String {
         """
         <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-        <style>html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden}#player{position:absolute;top:0;left:0;width:100%;height:100%}</style>
+        <style>html,body{margin:0;padding:0;background:transparent;width:100%;height:100%;overflow:hidden}#player{position:absolute;top:0;left:0;width:100%;height:100%}</style>
         </head><body><div id="player"></div><script>
         var player,ready=false;
         function send(m){try{window.webkit.messageHandlers.cines.postMessage(m)}catch(e){}}

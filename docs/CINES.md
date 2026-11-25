@@ -32,13 +32,18 @@ The clips play in YouTube's own embedded player (the IFrame API) in one web view
 
 Nothing is downloaded or re-hosted.
 
-Each clip starts muted, and Sound turns the sound on. A tap pauses. A clip loops at its end. If YouTube refuses a clip (for example, the uploader switched embedding off), the page offers "Watch on YouTube", and that clip is left out from then on. The channel name under the title comes from YouTube's public oEmbed.
+YouTube's player gets the middle of the screen to itself, with its own title at the top and its logo at the bottom, and nothing of ours over it. This follows the anime.com app (owner's call, 25 Nov 2026, after the first layout's buttons covered the video). The title's blurred picture shows around the video.
 
-## The buttons
+Each clip starts muted, and Sound (top right) turns the sound on. A tap pauses, and a clip loops at its end.
 
-`ios/App/Screens/CinesView.swift`:
+Only English videos are used; anime may also use Japanese ones, with English first. Before a clip comes on screen, YouTube's public oEmbed lookup is asked about it and the next few. A video whose uploader switched embedding off, or that was taken down, is dropped from the feed and left out from then on. If YouTube still refuses a clip while it plays (for example, a region block), the feed moves on to the next one.
 
-- **Plan:** adds the title to Planned, the same way Search's + does. While the title is Planned, it shows a green tick, and a tap takes it back out (to Trash, after asking). A title you're watching or have watched shows its state instead.
-- **Details:** opens the title's page.
-- **Sound:** turns the sound on or off.
-- **Share:** shares the YouTube link.
+## The panel
+
+Below the video (`ios/App/Screens/CinesView.swift`):
+
+- what the clip is;
+- the title, with a › that opens its page;
+- "Show · year · genres";
+- **Share:** shares the YouTube link;
+- **Plan:** adds the title to Planned, the same way Search's + does. While the title is Planned, it shows a green **Planned**, and a tap takes it back out (to Trash, after asking). A title you're watching or have watched shows its state instead.

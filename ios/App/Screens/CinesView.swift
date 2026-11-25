@@ -1,12 +1,14 @@
 import SwiftUI
 import TwilDiaryCore
 
-/// Cines (Home → Cines; owner's drawing, 25 Nov 2026): trailers and scenes, one a screen, swiped
-/// up as reels are. The video plays in the middle over its title's blurred picture (trailers are
-/// landscape), muted until Sound is on. On the right: Plan (a green tick once it's Planned; a tap
-/// takes it out again), Details (the title's page), Sound and Share. Below: what the clip is, the
-/// title, "Show · 2021 · genres" and the channel that posted it. For you, Shows, Movies and Anime
-/// at the top. Titles already in the diary come up less often (`CinesFeed`).
+/// Cines (Home → Cines; owner's drawing, 25 Nov 2026, after the anime.com app's): trailers and
+/// scenes, one a screen, swiped up as reels are. YouTube's player has the middle to itself, its own
+/// title at its top and its logo at its bottom, with nothing of ours over it (the first drawing's
+/// buttons sat on the video). Round the video, the title's picture, blurred. Below it a panel: what
+/// the clip is, the title (› opens its page), "Show · 2021 · genres", Share, and Plan (green once
+/// it's Planned; a tap takes it out again). At the top: For you, Shows, Movies, Anime and Sound
+/// (muted until it's on), and a thin line for how far the clip has played. Clips YouTube won't play
+/// here are skipped (`CinesFeed.check`); titles already in the diary come up less often.
 struct CinesView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -22,38 +24,56 @@ struct CinesView: View {
     @State private var removing: CinesClip?
 
     private var feed: CinesFeed { feeds[tab]! }
+    private static let panel = Color(white: 0.07)
 
     var body: some View {
-        GeometryReader { outer in
-            let insets = outer.safeAreaInsets
-            let size = CGSize(width: outer.size.width, height: outer.size.height + insets.top + insets.bottom)
+        GeometryReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     ForEach(feed.clips) { clip in
-                        page(clip, size: size, insets: insets).frame(width: size.width, height: size.height).id(clip.id)
+                        page(clip).frame(width: proxy.size.width, height: proxy.size.height).id(clip.id)
                     }
                     if feed.clips.isEmpty || feed.loading || feed.failure != nil {
-                        status.frame(width: size.width, height: feed.clips.isEmpty ? size.height : 160)
+                        status.frame(width: proxy.size.width, height: feed.clips.isEmpty ? proxy.size.height : 160)
                     }
                 }.scrollTargetLayout()
             }
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $current)
             .scrollIndicators(.hidden)
-            .ignoresSafeArea()
         }
-        .background(Color.black)
+        .safeAreaInset(edge: .top, spacing: 0) { progressLine }
+        .background(Color.black.ignoresSafeArea())
         .environment(\.colorScheme, .dark)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar { ToolbarItem(placement: .principal) { chips } }
+        .toolbar {
+            ToolbarItem(placement: .principal) { chips }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { player.muted.toggle() } label: {
+                    Image(systemName: player.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                }
+                .accessibilityLabel(player.muted ? "Sound off. Turn sound on" : "Sound on. Turn sound off")
+                .accessibilityIdentifier("cines-sound")
+            }
+        }
         .task { await open(tab) }
         .onChange(of: current) { _, id in settle(on: id) }
         .onChange(of: tab) { old, new in
             positions[old] = current
             player.stop()
             Task { await open(new) }
+        }
+        .onChange(of: player.refused) { _, refused in
+            // YouTube wouldn't play the clip after all (a region block, say): on to the next one.
+            guard let current, refused.contains(current), let index = feed.clips.firstIndex(where: { $0.id == current }),
+                  index + 1 < feed.clips.count else { return }
+            let next = feed.clips[index + 1].id
+            Task {
+                try? await Task.sleep(for: .seconds(1.2))
+                if self.current == current { withAnimation(.smooth) { self.current = next } }
+            }
         }
         .onAppear { player.back() }
         .onDisappear { player.leave() }
@@ -63,15 +83,15 @@ struct CinesView: View {
         } message: { _ in Text("It moves to Trash.") }
     }
 
-    // MARK: Pieces
+    // MARK: Top
 
     private var chips: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ForEach(CinesTab.allCases) { item in
                 Button { if tab != item { tab = item } } label: {
-                    Text(item.name).font(.app(size: 13, weight: .semibold))
+                    Text(item.name).font(.app(size: 13, weight: .semibold)).lineLimit(1)
                         .foregroundStyle(tab == item ? Color.black : Color.white)
-                        .padding(.horizontal, 11).padding(.vertical, 6)
+                        .padding(.horizontal, 9).padding(.vertical, 6)
                         .background(tab == item ? Color.white : Color.white.opacity(0.16), in: Capsule())
                 }.buttonStyle(.plain)
                     .accessibilityAddTraits(tab == item ? .isSelected : [])
@@ -80,67 +100,68 @@ struct CinesView: View {
         }.fixedSize()
     }
 
+    /// How far the clip on screen has played.
+    private var progressLine: some View {
+        Capsule().fill(.white.opacity(0.22)).frame(height: 3)
+            .overlay(alignment: .leading) {
+                GeometryReader { line in Capsule().fill(.white).frame(width: line.size.width * player.progress) }
+            }
+            .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 6)
+            .accessibilityHidden(true)
+    }
+
     @ViewBuilder private var status: some View {
         if let failure = feed.failure {
             VStack(spacing: 12) {
                 Text(failure).font(.app(size: 14)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
-                Button("Try again") { Task { await feed.loadMore(store); if current == nil { current = feed.clips.first?.id } } }
-                    .buttonStyle(.bordered).tint(.white)
+                Button("Try again") { Task { await open(tab) } }.buttonStyle(.bordered).tint(.white)
             }.padding(.horizontal, 32)
         } else if feed.loading || feed.clips.isEmpty {
             ProgressView().tint(.white)
         }
     }
 
-    private func page(_ clip: CinesClip, size: CGSize, insets: EdgeInsets) -> some View {
-        let active = clip.id == current
-        let videoHeight = size.width * 9 / 16
-        return ZStack(alignment: .bottom) {
-            Color.black
-            // The title's picture, blurred, fills the screen behind the landscape video.
-            Artwork(path: clip.backdrop ?? clip.poster, title: clip.name, initialsOnly: false)
-                .frame(width: size.width, height: size.height).blur(radius: 36).opacity(0.5)
-                .overlay(LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
-                .accessibilityHidden(true)
-            video(clip, active: active).frame(width: size.width, height: videoHeight)
-                .position(x: size.width / 2, y: size.height * 0.42)
-            HStack(alignment: .bottom, spacing: 12) {
-                info(clip)
-                Spacer(minLength: 0)
-                rail(clip)
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, insets.bottom + 18)
-            if active {
-                Capsule().fill(.white.opacity(0.22)).frame(height: 3)
-                    .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: size.width * player.progress, height: 3) }
-                    .padding(.bottom, insets.bottom + 4).padding(.horizontal, 14)
-                    .accessibilityHidden(true)
-            }
-        }.clipped()
+    // MARK: A clip
+
+    private func page(_ clip: CinesClip) -> some View {
+        VStack(spacing: 0) {
+            stage(clip, active: clip.id == current)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            panel(clip)
+        }
     }
 
-    /// The video (the clip's own still until it plays), a tap pausing it.
-    private func video(_ clip: CinesClip, active: Bool) -> some View {
+    /// The player's area: YouTube's whole player fills it (its title and logo at its edges). Until
+    /// the video plays, the clip's own still in its place; a tap pauses or plays.
+    private func stage(_ clip: CinesClip, active: Bool) -> some View {
         let refused = player.refused.contains(clip.id)
+        let showing = active && !refused && player.playing
         return ZStack {
             Color.black
-            AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg")) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: { Color.black }
-            .clipped()
+            Artwork(path: clip.backdrop ?? clip.poster, title: clip.name, initialsOnly: false)
+                .blur(radius: 36).opacity(0.5)
+                .overlay(LinearGradient(colors: [.black.opacity(0.4), .clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom))
+                .accessibilityHidden(true)
+            if !showing {
+                Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                    .overlay {
+                        AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg")) { image in
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } placeholder: { Color.black }
+                    }
+                    .clipped()
+            }
             if active, !refused { CinesPlayerHost(player: player).opacity(player.playing ? 1 : 0) }
             if refused {
                 VStack(spacing: 10) {
                     Text("This clip can't play in the app.").font(.app(size: 14, weight: .semibold))
                     Button("Watch on YouTube") { openURL(clip.watchURL) }.buttonStyle(.bordered).tint(.white)
                 }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black.opacity(0.6))
-            } else if active, player.paused {
-                Image(systemName: "play.fill").font(.system(size: 34)).foregroundStyle(.white.opacity(0.9)).accessibilityHidden(true)
             } else if active, !player.playing {
                 ProgressView().tint(.white)
             }
         }
+        .clipped()
         .contentShape(Rectangle())
         .onTapGesture { if active { player.toggle() } }
         .accessibilityElement(children: .ignore)
@@ -149,73 +170,75 @@ struct CinesView: View {
         .accessibilityAddTraits(.startsMediaSession)
     }
 
-    private func info(_ clip: CinesClip) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(clip.kind).font(.app(size: 11, weight: .semibold)).padding(.horizontal, 7).padding(.vertical, 3)
-                .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 6)).padding(.bottom, 2)
-            Text(clip.name).font(.app(size: 18, weight: .semibold)).lineLimit(2)
-            Text(clip.detail).font(.app(size: 13)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
-            if let channel = feed.channels[clip.id] {
-                Label(channel, systemImage: "play.rectangle.fill").font(.app(size: 13)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+    /// Below the video: what it is and its title (› its page), then Share and Plan.
+    private func panel(_ clip: CinesClip) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(clip.kind).font(.app(size: 11, weight: .semibold)).padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+                Button { details(clip) } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(clip.name).font(.app(size: 18, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                    .accessibilityHint("Opens its page")
+                    .accessibilityIdentifier("cines-details")
+                Text(clip.detail).font(.app(size: 13)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                if let failure = failures[clip.id] {
+                    Text(failure).font(.app(size: 12)).foregroundStyle(.orange).lineLimit(2)
+                }
             }
-            if let failure = failures[clip.id] {
-                Text(failure).font(.app(size: 12)).foregroundStyle(.orange).lineLimit(2)
-            }
-        }.foregroundStyle(.white)
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: The rail
-
-    private func rail(_ clip: CinesClip) -> some View {
-        VStack(spacing: 16) {
-            planButton(clip)
-            railButton("Details", symbol: "info.circle") { details(clip) }.accessibilityIdentifier("cines-details")
-            railButton("Sound", symbol: player.muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { player.muted.toggle() }
-                .accessibilityLabel(player.muted ? "Sound off. Turn sound on" : "Sound on. Turn sound off")
-                .accessibilityIdentifier("cines-sound")
+            Spacer(minLength: 0)
             ShareLink(item: clip.watchURL, subject: Text(clip.name), message: Text(clip.name + " · " + clip.kind)) {
-                railLabel("Share", symbol: "square.and.arrow.up")
-            }.buttonStyle(.springPress).accessibilityIdentifier("cines-share")
+                Image(systemName: "square.and.arrow.up").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 42, height: 42).background(.white.opacity(0.14), in: Circle())
+            }.buttonStyle(.springPress).accessibilityLabel("Share").accessibilityIdentifier("cines-share")
+            planButton(clip)
         }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(Self.panel)
     }
 
-    /// Plan: + adds the title to Planned; a green tick while it's Planned (a tap takes it out); a
+    // MARK: Plan
+
+    /// "+ Plan" adds the title to Planned; "✓ Planned" (green) while it is, a tap taking it out; a
     /// title you've watched or are watching says so instead.
     @ViewBuilder private func planButton(_ clip: CinesClip) -> some View {
         let id = libraryID(clip)
         let status = id.flatMap { store.title($0)?.status }
-        let working = busy.contains(clip.route.kind.rawValue + ":" + String(clip.route.id))
+        let working = busy.contains(Self.key(clip))
         if let status, status != "planned" {
-            railLabel(Self.stateName(status), symbol: status == "completed" ? "eye.fill" : "play.circle.fill", fill: .white.opacity(0.16))
+            pill(Self.stateName(status), symbol: status == "completed" ? "eye.fill" : "play.fill", fill: .white.opacity(0.14))
                 .accessibilityElement(children: .combine).accessibilityIdentifier("cines-state")
         } else if status == "planned" {
-            railButton("Planned", symbol: "checkmark", fill: Color(themed: "#30d158"), working: working) {
-                if confirmDeletions { removing = clip } else { Task { await removePlanned(clip) } }
-            }
-            .accessibilityLabel("Planned. Remove " + clip.name + " from Planned")
-            .accessibilityIdentifier("cines-planned")
+            Button { if confirmDeletions { removing = clip } else { Task { await removePlanned(clip) } } } label: {
+                pill("Planned", symbol: "checkmark", fill: Color(themed: "#30d158"), working: working)
+            }.buttonStyle(.springPress).disabled(working)
+                .accessibilityLabel("Planned. Remove " + clip.name + " from Planned")
+                .accessibilityIdentifier("cines-planned")
         } else {
-            railButton("Plan", symbol: failures[clip.id] == nil ? "plus" : "arrow.clockwise", fill: failures[clip.id] == nil ? .accentColor : .orange, working: working) {
-                Task { await add(clip) }
-            }
-            .accessibilityLabel("Add " + clip.name + " to Planned")
-            .accessibilityIdentifier("cines-plan")
+            let retry = failures[clip.id] != nil
+            Button { Task { await add(clip) } } label: {
+                pill(retry ? "Retry" : "Plan", symbol: retry ? "arrow.clockwise" : "plus", fill: retry ? .orange : .accentColor, working: working)
+            }.buttonStyle(.springPress).disabled(working)
+                .accessibilityLabel("Add " + clip.name + " to Planned")
+                .accessibilityIdentifier("cines-plan")
         }
     }
 
-    private func railButton(_ title: String, symbol: String, fill: Color = .white.opacity(0.16), working: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) { railLabel(title, symbol: symbol, fill: fill, working: working) }
-            .buttonStyle(.springPress).disabled(working)
-    }
-    private func railLabel(_ title: String, symbol: String, fill: Color = .white.opacity(0.16), working: Bool = false) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: symbol).font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
-                .opacity(working ? 0 : 1)
-                .overlay { if working { ProgressView().tint(.white) } }
-                .frame(width: 46, height: 46).background(fill, in: Circle())
-            Text(title).font(.app(size: 11, weight: .medium)).foregroundStyle(.white)
-        }.frame(minWidth: 52)
+    private func pill(_ title: String, symbol: String, fill: Color, working: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold))
+            Text(title).font(.app(size: 15, weight: .semibold))
+        }
+        .foregroundStyle(.white)
+        .opacity(working ? 0 : 1)
+        .overlay { if working { ProgressView().tint(.white) } }
+        .padding(.horizontal, 16).frame(height: 42)
+        .background(fill, in: Capsule())
+        .fixedSize()
     }
 
     private static func stateName(_ status: String) -> String {
@@ -227,25 +250,30 @@ struct CinesView: View {
         default: "In library"
         }
     }
+    private static func key(_ clip: CinesClip) -> String { clip.route.kind.rawValue + ":" + String(clip.route.id) }
 
     // MARK: Actions
 
+    /// A tab's clips: the first few checked with YouTube before the first one plays.
     private func open(_ tab: CinesTab) async {
         let feed = feeds[tab]!
         if feed.clips.isEmpty { await feed.loadMore(store) }
+        await withTaskGroup(of: Void.self) { group in
+            for clip in feed.clips.prefix(3) { let id = clip.id; group.addTask { _ = await feed.check(id) } }
+        }
         guard self.tab == tab else { return }
         let id = positions[tab].flatMap { saved in feed.clips.contains { $0.id == saved } ? saved : nil } ?? feed.clips.first?.id
         if current == id { settle(on: id) } else { current = id }
     }
 
-    /// A clip came on screen: play it, read its channel (and the next one's), and load more near the end.
+    /// A clip came on screen: play it, check the next few with YouTube, and load more near the end.
     private func settle(on id: String?) {
         guard let id, let index = feed.clips.firstIndex(where: { $0.id == id }) else { return }
         player.play(id)
         let feed = feed
-        Task { await feed.channel(for: id) }
-        if index + 1 < feed.clips.count { let next = feed.clips[index + 1].id; Task { await feed.channel(for: next) } }
-        if index >= feed.clips.count - 3 { Task { await feed.loadMore(store) } }
+        let ahead = feed.clips.dropFirst(index + 1).prefix(3).map(\.id)
+        Task { for next in ahead { _ = await feed.check(next) } }
+        if index >= feed.clips.count - 4 { Task { await feed.loadMore(store) } }
     }
 
     private func libraryID(_ clip: CinesClip) -> String? {
@@ -259,7 +287,7 @@ struct CinesView: View {
 
     /// Plan: the title joins the diary as Planned, as Search's + does (its full details read first).
     private func add(_ clip: CinesClip) async {
-        let key = clip.route.kind.rawValue + ":" + String(clip.route.id)
+        let key = Self.key(clip)
         guard store.canMutate, busy.insert(key).inserted else { return }
         defer { busy.remove(key) }
         failures[clip.id] = nil
@@ -274,7 +302,7 @@ struct CinesView: View {
     }
 
     private func removePlanned(_ clip: CinesClip) async {
-        let key = clip.route.kind.rawValue + ":" + String(clip.route.id)
+        let key = Self.key(clip)
         guard let id = libraryID(clip), let title = store.title(id), title.status == "planned", busy.insert(key).inserted else { return }
         defer { busy.remove(key) }
         if await store.trash(title) { Haptics.play(.light) }
