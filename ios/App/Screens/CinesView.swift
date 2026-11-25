@@ -3,13 +3,14 @@ import TwilDiaryCore
 
 /// Cines (Home → Cines; owner's drawing, 25 Nov 2026): trailers, scenes and Shorts, one a screen,
 /// swiped up as reels are.
-/// - A wide clip plays around the middle of the screen, where anime.com puts it, over its title's
-///   blurred picture, with the buttons on the right starting below it so nothing covers it.
+/// - A wide clip's player fills the space from under the tabs down to the buttons, as anime.com's
+///   does: YouTube centres the video in it and puts its own title, seek bar and logo at its edges,
+///   not on the picture. The title's blurred picture is behind it, and the buttons on the right
+///   start below it, so nothing of ours covers it.
 /// - A Short fills the screen. Its tabs, buttons and title show when it starts and fade after
-///   three seconds (owner's call: a personal app); a tap brings them back, and a tap while they
-///   show pauses.
-/// - YouTube's own buttons over a starting or paused clip (a big pause button, Share, "More
-///   videos") are kept out of sight under the clip's still (`CinesPlayer.revealed`).
+///   three seconds (owner's call: a personal app); a tap brings them back, and they stay while
+///   it's paused.
+/// - YouTube's normal controls (`CinesPlayer`): a tap or a pause shows them, and they fade again.
 /// - On the right: Plan (a green tick once Planned; a tap takes it out again), Details, Sound,
 ///   Share. Bottom left: what the clip is, the title, "Show · 2021 · genres" and the channel.
 /// - At the top: back, then For you, Shows, Movies and Anime as plain text tabs.
@@ -65,6 +66,9 @@ struct CinesView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task { await open(tab) }
         .onChange(of: current) { _, id in settle(on: id); showChrome() }
+        // A tap on YouTube's player, or a pause, brings a Short's buttons back.
+        .onChange(of: player.taps) { _, _ in showChrome() }
+        .onChange(of: player.paused) { _, _ in showChrome() }
         .onChange(of: tab) { old, new in
             positions[old] = current
             player.stop()
@@ -136,9 +140,9 @@ struct CinesView: View {
         let shown = !clip.short || !active || chromeShown
         let bottom = insets.bottom + 18
         let railTop = size.height - bottom - Self.railHeight
-        let videoHeight = size.width * 9 / 16
-        // Around the middle, as anime.com has it, but always clear of the buttons.
-        let centre = min(size.height * 0.45, railTop - 12 - videoHeight / 2)
+        // A wide clip's player: from under the tabs to just above the buttons.
+        let stageTop = insets.top + 56
+        let stageHeight = max(size.width * 9 / 16, railTop - 10 - stageTop)
         return ZStack(alignment: .bottom) {
             Color.black
             if clip.short {
@@ -148,8 +152,8 @@ struct CinesView: View {
                     .frame(width: size.width, height: size.height).blur(radius: 36).opacity(0.5)
                     .overlay(LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
                     .accessibilityHidden(true)
-                stage(clip, active: active).frame(width: size.width, height: videoHeight)
-                    .position(x: size.width / 2, y: max(insets.top + 60 + videoHeight / 2, centre))
+                stage(clip, active: active).frame(width: size.width, height: stageHeight)
+                    .position(x: size.width / 2, y: stageTop + stageHeight / 2)
             }
             Group {
                 if clip.short {
@@ -180,43 +184,38 @@ struct CinesView: View {
             }
         }
         .clipped()
-        .contentShape(Rectangle())
-        .onTapGesture { tapped(clip) }
     }
 
-    /// The player, or the clip's still in its place: until YouTube's own buttons have gone after it
-    /// starts, and while it's paused (with a play button of ours).
+    /// The player, with the clip's own still in the video's place until it plays. YouTube centres
+    /// the video in the player (a Short is tall, a trailer wide), so the still is placed the same way.
     private func stage(_ clip: CinesClip, active: Bool) -> some View {
         let refused = player.refused.contains(clip.id)
-        let showing = active && !refused && player.revealed && !player.paused
+        let showing = active && !refused && player.playing
         return ZStack {
-            Color.black
-            if active, !refused { CinesPlayerHost(player: player).opacity(showing ? 1 : 0) }
+            if !clip.short { Color.clear } else { Color.black }
             if !showing {
-                AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg")) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: { Color.black }
-                .clipped()
-                .allowsHitTesting(false)
+                Color.clear.aspectRatio(clip.short ? CGFloat(9) / 16 : CGFloat(16) / 9, contentMode: .fit)
+                    .overlay {
+                        AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg")) { image in
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } placeholder: { Color.black }
+                    }
+                    .clipped()
+                    .allowsHitTesting(false)
             }
+            if active, !refused { CinesPlayerHost(player: player).opacity(showing ? 1 : 0) }
             if refused {
                 VStack(spacing: 10) {
                     Text("This clip can't play in the app.").font(.app(size: 14, weight: .semibold))
                     Button("Watch on YouTube") { openURL(clip.watchURL) }.buttonStyle(.bordered).tint(.white)
                 }.padding(16).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black.opacity(0.6))
-            } else if active, player.paused {
-                Image(systemName: "play.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 64, height: 64).background(.black.opacity(0.5), in: Circle())
-                    .accessibilityHidden(true)
             } else if active, !showing {
-                ProgressView().tint(.white)
+                ProgressView().tint(.white).allowsHitTesting(false)
             }
         }
         .clipped()
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: active && showing ? .contain : .ignore)
         .accessibilityLabel(clip.kind + ", " + clip.name)
-        .accessibilityHint(active ? "Double-tap to pause or play" : "")
-        .accessibilityAddTraits(.startsMediaSession)
     }
 
     private func info(_ clip: CinesClip) -> some View {
@@ -305,14 +304,6 @@ struct CinesView: View {
     private static func key(_ clip: CinesClip) -> String { clip.route.kind.rawValue + ":" + String(clip.route.id) }
 
     // MARK: Taps and fading
-
-    /// A tap: over a Short whose buttons have faded, they come back; otherwise it pauses or plays.
-    private func tapped(_ clip: CinesClip) {
-        guard clip.id == current else { return }
-        if clip.short, !chromeShown { showChrome(); return }
-        player.toggle()
-        showChrome()
-    }
 
     /// Shows a Short's tabs, buttons and title, and fades them again three seconds later (not
     /// while it's paused). Wide clips keep theirs.

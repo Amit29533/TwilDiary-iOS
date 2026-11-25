@@ -66,9 +66,9 @@ Nothing is downloaded or re-hosted.
 
 The layout (owner's drawing, 25 Nov 2026):
 
-- **A wide clip** plays around the middle of the screen, where the anime.com app puts it, over the title's blurred picture. The buttons on the right start below it, so nothing covers it.
-- **A Short** fills the screen. Its tabs, buttons and title show when it starts and fade after three seconds (owner's call: a personal app). A tap brings them back, and a tap while they show pauses.
-- **YouTube's own buttons**, which it puts over a clip for its first seconds and while it's paused (a big pause button, Share, "More videos"), stay out of sight under the clip's still. Paused, the still shows with a play button of ours.
+- **A wide clip's** player fills the space from under the tabs down to the buttons, as the anime.com app's does. YouTube centres the video in it and puts its own title, seek bar and logo at its edges, not on the picture. The title's blurred picture is behind it, and the buttons on the right start below it, so nothing of ours covers it.
+- **A Short** fills the screen. Its tabs, buttons and title show when it starts and fade after three seconds (owner's call: a personal app). A tap brings them back, and they stay while it's paused.
+- **YouTube's normal controls,** as YouTubePlayerKit and youtube_player_iframe have them by default and as anime.com shows them: a clip that starts by itself plays clean, and a tap or a pause brings up YouTube's controls (time, seek bar, Share), which fade again by themselves. The "no controls" mode used before put a big pause button, Share and "More videos" over the start of every clip on a phone.
 
 Each clip starts muted, and Sound turns the sound on. A clip loops at its end.
 

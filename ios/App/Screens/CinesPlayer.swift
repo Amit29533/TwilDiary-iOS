@@ -7,20 +7,22 @@ import WebKit
 /// the player (YouTube refuses embeds that don't say which app they're in), inline playback, and no
 /// tap needed to start. One web view serves the whole feed: the page on screen holds it and a swipe
 /// loads the next video into it, rather than a web view per clip.
+///
+/// YouTube's normal controls, as YouTubePlayerKit and youtube_player_iframe have by default and as
+/// the anime.com app shows them (owner's call, 25 Nov 2026): a clip that starts by itself plays
+/// clean, and a tap or a pause brings up YouTube's controls (time, seek bar, Share), which fade
+/// again by themselves. "No controls" mode, used before, put a big pause button, Share and "More
+/// videos" over the start of every clip on a phone. Taps reach YouTube's player; the feed hears
+/// them too (`taps`), to bring a Short's buttons back.
 @MainActor @Observable final class CinesPlayer {
     /// The video playing (or about to).
     private(set) var current: String?
     private(set) var progress: Double = 0
     private(set) var playing = false
+    /// Paused, by YouTube's own controls or by leaving the page.
     private(set) var paused = false
-    /// Whether the video shows. YouTube puts its own buttons over a clip for its first seconds
-    /// (a big pause button, Share, "More videos") and while it's paused; the page keeps the clip's
-    /// still over the player until they've gone (owner's call, 25 Nov 2026), and shows it with its
-    /// own play button while paused.
-    private(set) var revealed = false
-    @ObservationIgnored private var revealTask: Task<Void, Never>?
-    /// How long YouTube's buttons stay at the start (and, shorter, after a resume).
-    @ObservationIgnored private var revealDelay: Duration = .seconds(3)
+    /// Taps on the player, counted (YouTube handles them; the page only listens).
+    private(set) var taps = 0
     /// The clips the player refused (embedding switched off, removed).
     private(set) var refused = Set<String>()
     var muted = true { didSet { if muted != oldValue { run(muted ? "player.mute()" : "player.unMute()") } } }
@@ -29,6 +31,7 @@ import WebKit
     @ObservationIgnored private var started = false
     @ObservationIgnored private var away = false
     @ObservationIgnored private var made: WKWebView?
+    @ObservationIgnored private var tapCatcher: CinesTapCatcher?
     /// Made on first use, then kept for the whole feed.
     var web: WKWebView {
         if let made { return made }
@@ -46,20 +49,12 @@ import WebKit
         progress = 0
         playing = false
         paused = false
-        hide(for: .seconds(3))
         guard ready else { start(); return }
         load(id)
     }
     func toggle() {
         guard current != nil else { return }
         if paused { resume() } else { paused = true; run("player.pauseVideo()") }
-    }
-    /// Keeps the still over the player until YouTube's buttons have gone: `delay` after it plays.
-    private func hide(for delay: Duration) {
-        revealTask?.cancel()
-        revealTask = nil
-        revealed = false
-        revealDelay = delay
     }
     /// Leaving the page (a title's page pushed over it, or back to Home).
     func leave() {
@@ -75,11 +70,9 @@ import WebKit
         current = nil
         progress = 0
         playing = false
-        hide(for: .seconds(3))
     }
     private func resume() {
         paused = false
-        hide(for: .seconds(1.2))
         run("player.playVideo()")
     }
     private func load(_ id: String) {
@@ -99,6 +92,7 @@ import WebKit
         started = true
         web.loadHTMLString(Self.html, baseURL: URL(string: Self.origin))
     }
+    fileprivate func tapped() { taps += 1 }
     fileprivate func received(_ body: Any) {
         guard let message = body as? [String: Any], let event = message["e"] as? String else { return }
         switch event {
@@ -107,18 +101,8 @@ import WebKit
             if let current { load(current) }
         case "state":
             let state = message["v"] as? Int ?? -1
-            if state == 1 { // playing
-                playing = true
-                if !revealed, revealTask == nil {
-                    let clip = current, delay = revealDelay
-                    revealTask = Task { [weak self] in
-                        try? await Task.sleep(for: delay)
-                        guard let self, !Task.isCancelled, self.current == clip, !self.paused else { return }
-                        self.revealed = true
-                        self.revealTask = nil
-                    }
-                }
-            }
+            if state == 1 { playing = true; paused = false } // playing
+            if state == 2 { paused = true } // paused (YouTube's own button, or leaving the page)
             if state == 0 { run("player.seekTo(0, true);player.playVideo()") } // ended: loop, as a reel does
         case "time":
             guard let time = message["t"] as? Double, let duration = message["d"] as? Double, duration > 0 else { return }
@@ -150,9 +134,14 @@ import WebKit
         web.scrollView.bounces = false
         web.allowsLinkPreview = false
         web.allowsBackForwardNavigationGestures = false
-        // Taps and swipes belong to the feed (a tap pauses), not to YouTube's page.
-        web.isUserInteractionEnabled = false
-        web.accessibilityElementsHidden = true
+        // Taps go to YouTube's player (its controls); the feed is told of each one as well.
+        let catcher = CinesTapCatcher(owner: self)
+        tapCatcher = catcher
+        let tap = UITapGestureRecognizer(target: catcher, action: #selector(CinesTapCatcher.tapped))
+        tap.cancelsTouchesInView = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = catcher
+        web.addGestureRecognizer(tap)
         return web
     }
 
@@ -166,7 +155,7 @@ import WebKit
         var tag=document.createElement('script');tag.src="https://www.youtube.com/iframe_api";tag.onerror=function(){send({e:'apiFailed'})};document.head.appendChild(tag);
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{width:'100%',height:'100%',
-            playerVars:{playsinline:1,controls:0,rel:0,fs:0,iv_load_policy:3,disablekb:1,enablejsapi:1,autoplay:1,mute:1,origin:'\(origin)'},
+            playerVars:{playsinline:1,controls:1,rel:0,fs:0,iv_load_policy:3,disablekb:1,enablejsapi:1,autoplay:1,mute:1,origin:'\(origin)'},
             events:{onReady:function(){ready=true;send({e:'ready'})},
                     onStateChange:function(ev){send({e:'state',v:ev.data})},
                     onError:function(ev){send({e:'error',v:ev.data})}}});
@@ -186,13 +175,20 @@ import WebKit
     }
 }
 
+/// Hears taps on the player alongside YouTube's own handling of them.
+@MainActor private final class CinesTapCatcher: NSObject, UIGestureRecognizerDelegate {
+    weak var owner: CinesPlayer?
+    init(owner: CinesPlayer) { self.owner = owner }
+    @objc func tapped() { owner?.tapped() }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+}
+
 /// Where the player shows: the page on screen holds the one web view.
 struct CinesPlayerHost: UIViewRepresentable {
     let player: CinesPlayer
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .clear
-        view.isUserInteractionEnabled = false
         attach(to: view)
         return view
     }
