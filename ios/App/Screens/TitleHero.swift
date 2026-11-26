@@ -42,6 +42,11 @@ struct TitleHero<Ratings: View>: View {
     @State private var trailer: CinesPlayer?
     /// Each start of the trailer (a stop or a new start ends the one before's retries).
     @State private var trailerRun = 0
+    /// The X over a playing trailer: it goes after a few seconds, as a video's controls do, and a tap
+    /// on the trailer brings it back (owner's request). Always there while loading or paused, and
+    /// with VoiceOver.
+    @State private var trailerCloseShown = true
+    @State private var trailerCloseHiding: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
     /// The sources with a synopsis of their own, TMDB's first.
     private var synopsisSources: [SynopsisSource] {
@@ -136,10 +141,12 @@ struct TitleHero<Ratings: View>: View {
         // strip: that strip carries the press-and-hold layer (a UIKit context menu), and taps on a
         // button inside it sometimes never reached the button (owner's video, several taps).
         .overlay(alignment: .topTrailing) {
-            if trailerKey != nil {
-                trailerButton.padding(.top, max(0, coverStrip - 20 - 44))
+            if trailerKey != nil, trailerCloseVisible {
+                trailerButton.padding(.top, max(0, coverStrip - 20 - 44)).transition(.opacity)
             }
         }
+        // The trailer's picture is up: its X goes in a few seconds.
+        .onChange(of: trailer?.pictureShowing == true) { _, showing in if showing { showTrailerClose() } }
         .onChange(of: synopsisText) { _, _ in measureSynopsis() }
         // Another source found (or gone): the last line makes room for More, or stops giving it.
         .onChange(of: synopsisSources.count > 1) { _, _ in measureSynopsis() }
@@ -225,8 +232,31 @@ struct TitleHero<Ratings: View>: View {
             if trailerRun == run, trailer != nil, !player.playing, !player.paused { stopTrailer() }
         }
     }
+    /// Play (no trailer), or the X while it loads, while it's paused, after a tap, or with VoiceOver.
+    private var trailerCloseVisible: Bool {
+        guard let trailer else { return true }
+        return trailerCloseShown || !trailer.pictureShowing || trailer.paused || UIAccessibility.isVoiceOverRunning
+    }
+    /// The X back, and gone again in 3 s if the trailer is still playing.
+    private func showTrailerClose() {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { trailerCloseShown = true }
+        trailerCloseHiding?.cancel()
+        trailerCloseHiding = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, let trailer, trailer.pictureShowing, !trailer.paused else { return }
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) { trailerCloseShown = false }
+        }
+    }
+    /// A tap on the trailer: the X back if it had gone; else play or pause (the X stays while paused).
+    private func trailerTapped(_ player: CinesPlayer) {
+        guard trailerCloseShown else { showTrailerClose(); return }
+        player.toggle()
+        if player.paused { trailerCloseHiding?.cancel() } else { showTrailerClose() }
+    }
     private func stopTrailer() {
         guard let trailer else { return }
+        trailerCloseHiding?.cancel()
+        trailerCloseShown = true
         trailerRun += 1
         trailer.stop()
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { self.trailer = nil }
@@ -258,7 +288,7 @@ struct TitleHero<Ratings: View>: View {
                                          .init(color: .black.opacity(0.12), location: 0.94), .init(color: .clear, location: 1)],
                                  startPoint: .top, endPoint: .bottom))
             .contentShape(Rectangle())
-            .onTapGesture { player.toggle() }
+            .onTapGesture { trailerTapped(player) }
             .offset(x: -inset, y: coverStrip - 6 - height)
         }
         .frame(height: coverStrip)
