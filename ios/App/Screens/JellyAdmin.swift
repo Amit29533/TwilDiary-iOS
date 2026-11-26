@@ -104,6 +104,8 @@ extension JellyfinClient {
     func runTask(_ id: String) async throws { try await post("ScheduledTasks/Running/\(id)", [], body: nil) }
     func stopTask(_ id: String) async throws { try await post("ScheduledTasks/Running/\(id)", [], body: nil, method: "DELETE") }
     func scanAllLibraries() async throws { try await post("Library/Refresh", [], body: nil) }
+    /// Jellyfin restarts itself (it comes back on its own where a service manager or Docker runs it).
+    func restartServer() async throws { try await post("System/Restart", [], body: nil) }
     /// One library looked through again for new and changed files (the dashboard's Scan library).
     func scanLibrary(_ id: String) async throws {
         try await post("Items/\(id)/Refresh", [URLQueryItem(name: "Recursive", value: "true"),
@@ -156,6 +158,10 @@ struct JellyServerGroups: View {
     @State private var libraries: Int?
     @State private var storage: Double?
     @State private var failure: String?
+    /// Asked to restart, waiting for it to answer again.
+    @State private var restarting = false
+    @State private var confirmRestart = false
+    @State private var restartNotice: String?
 
     private var playing: [JellyfinClient.AdminSession] { sessions.filter { $0.NowPlayingItem != nil } }
     private var converting: Int { playing.filter { $0.PlayState?.PlayMethod == "Transcode" }.count }
@@ -194,6 +200,26 @@ struct JellyServerGroups: View {
                     SettingsDivider()
                     JellyAdminLink(title: "Libraries", symbol: "books.vertical", route: .libraries)
                 }
+                SettingsGroup {
+                    Button { confirmRestart = true } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "arrow.clockwise").font(.app(size: 16, weight: .medium)).foregroundStyle(HomeStyle.chipText)
+                                .frame(width: 34, height: 34).background(HomeStyle.chip, in: RoundedRectangle(cornerRadius: 10)).accessibilityHidden(true)
+                            Text(restarting ? "Restarting…" : "Restart server").font(.app(size: 15, weight: .semibold))
+                                .foregroundStyle(restarting ? HomeStyle.secondary : HomeStyle.primary)
+                            Spacer(minLength: 4)
+                            if restarting { ProgressView() }
+                        }
+                        .settingsRowFrame().contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(restarting).accessibilityIdentifier("jellyspace-server-restart")
+                }
+                .confirmationDialog("Restart \(info.ServerName ?? "Jellyfin")?", isPresented: $confirmRestart, titleVisibility: .visible) {
+                    Button("Restart", role: .destructive) { Task { await restart() } }
+                } message: {
+                    Text(playing.isEmpty ? "It's back in a minute or so." : playing.count.counted("stream is", "streams are") + " playing; they'll stop. It's back in a minute or so.")
+                }
+                if let restartNotice { Text(restartNotice).font(.footnote).foregroundStyle(HomeStyle.secondary).padding(.horizontal, 4) }
             } else {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 160)
             }
@@ -203,7 +229,7 @@ struct JellyServerGroups: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled else { return }
-                await loadLive()
+                if !restarting { await loadLive() }
             }
         }
     }
@@ -212,10 +238,10 @@ struct JellyServerGroups: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(info.ServerName ?? "Jellyfin").font(.app(size: 22, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
             HStack(spacing: 8) {
-                chip("Online", color: .green)
+                if restarting { chip("Restarting", color: .orange) } else { chip("Online", color: .green) }
                 if let version = info.Version { Text(version).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary) }
                 if info.HasUpdateAvailable == true { chip("Update available", color: .orange) }
-                if info.HasPendingRestart == true { chip("Restart needed", color: .orange) }
+                if info.HasPendingRestart == true, !restarting { chip("Restart needed", color: .orange) }
             }
         }.accessibilityElement(children: .combine)
     }
@@ -248,6 +274,31 @@ struct JellyServerGroups: View {
         } catch {
             failure = JellyAdmin.reason(error)
         }
+    }
+    /// Asks for the restart, then waits for the server to answer again: after it has gone away, or
+    /// once 10 s have passed (it can answer for a moment before it stops). Gives up after 3 minutes.
+    private func restart() async {
+        guard let client else { return }
+        restartNotice = nil
+        do { try await client.restartServer() } catch { restartNotice = JellyAdmin.reason(error); return }
+        withAnimation { restarting = true }
+        let started = Date.now
+        var wentAway = false
+        while Date.now.timeIntervalSince(started) < 180 {
+            try? await Task.sleep(for: .seconds(3))
+            if Task.isCancelled { return }
+            if let read = try? await client.adminInfo() {
+                guard wentAway || Date.now.timeIntervalSince(started) > 10 else { continue }
+                info = read
+                withAnimation { restarting = false }
+                restartNotice = nil
+                await loadLive()
+                return
+            }
+            wentAway = true
+        }
+        withAnimation { restarting = false }
+        restartNotice = "Jellyfin hasn't come back after 3 minutes. It may need starting on the server's computer."
     }
     private func loadLive() async {
         guard let client else { return }
