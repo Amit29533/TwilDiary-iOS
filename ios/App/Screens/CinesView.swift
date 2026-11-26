@@ -143,6 +143,8 @@ struct CinesView: View {
 
     // MARK: A clip
 
+    /// How much smaller the backdrop's wash is drawn than it shows.
+    private static let washScale: CGFloat = 8
     /// How much bigger a pinch makes the video's box (its sides are cut by the screen).
     private static let zoom: CGFloat = 1.25
 
@@ -168,8 +170,14 @@ struct CinesView: View {
                 stage(clip, active: active).frame(width: size.width * scale, height: size.height * scale)
                     .frame(width: size.width, height: size.height)
             } else {
+                // The backdrop as a soft wash: drawn at an eighth of the screen, blurred there and
+                // flattened, then scaled up (a full-screen blur on every page, two or three of them
+                // on screen while swiping, cost the most of anything in the app).
                 Artwork(path: clip.backdrop ?? clip.poster, title: clip.name, initialsOnly: false)
-                    .frame(width: size.width, height: size.height).blur(radius: 36).opacity(0.5)
+                    .frame(width: size.width / Self.washScale, height: size.height / Self.washScale)
+                    .blur(radius: 36 / Self.washScale, opaque: true).drawingGroup()
+                    .scaleEffect(Self.washScale)
+                    .frame(width: size.width, height: size.height).clipped().opacity(0.5)
                     .overlay(LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
                     .accessibilityHidden(true)
                 stage(clip, active: active).frame(width: size.width * scale, height: boxHeight)
@@ -222,9 +230,10 @@ struct CinesView: View {
             if !showing {
                 Color.clear.aspectRatio(clip.short ? CGFloat(9) / 16 : CGFloat(16) / 9, contentMode: .fit)
                     .overlay {
-                        AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg")) { image in
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        } placeholder: { Color.black }
+                        // Through the app's picture cache (decoded at the screen's size and kept): the
+                        // system loader kept nothing, so a clip swiped back to loaded and flashed again.
+                        Artwork(path: "https://i.ytimg.com/vi/\(clip.id)/hqdefault.jpg", title: clip.name, plainPlaceholder: true)
+                            .background(Color.black)
                     }
                     .clipped()
                     .allowsHitTesting(false)

@@ -28,6 +28,8 @@ enum SynopsisSource: String, CaseIterable, Sendable {
     private enum Outcome { case text(String), none, failed }
     private static var kept: [String: String] = load()
     private static var asking: [String: Task<String?, Never>] = [:]
+    /// A save waiting (the cache is written at most every few seconds, not on every answer).
+    private static var saving: Task<Void, Never>?
     private static let file = URL.cachesDirectory.appending(path: "synopses.json")
     private static let limit = 3000
 
@@ -103,9 +105,15 @@ enum SynopsisSource: String, CaseIterable, Sendable {
     private static func remember(_ key: String, _ text: String) {
         if kept.count >= limit { kept.removeAll() }
         kept[key] = text
-        let snapshot = kept, file = file
-        Task.detached(priority: .utility) {
-            if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: file, options: .atomic) }
+        // Written once a few seconds on (paging through episodes rewrote the whole cache for each).
+        guard saving == nil else { return }
+        saving = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            let snapshot = kept, file = file
+            saving = nil
+            await Task.detached(priority: .utility) {
+                if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: file, options: .atomic) }
+            }.value
         }
     }
     private static func load() -> [String: String] {

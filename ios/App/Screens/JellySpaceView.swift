@@ -1891,11 +1891,7 @@ struct JellyEpisodeRow: View {
     /// phone's own time zone, not cut to its first ten characters.
     static func aired(_ text: String?) -> String? {
         guard let text, text.count >= 19 else { return nil }
-        let parser = DateFormatter()
-        parser.locale = Locale(identifier: "en_US_POSIX")
-        parser.timeZone = TimeZone(identifier: "UTC")
-        parser.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        guard let date = parser.date(from: String(text.prefix(19))) else { return nil }
+        guard let date = DateParsers.utcSeconds.date(from: String(text.prefix(19))) else { return nil }
         return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 }

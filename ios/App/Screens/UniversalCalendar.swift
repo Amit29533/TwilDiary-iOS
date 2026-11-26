@@ -313,8 +313,7 @@ struct UniversalCalendarSection: View {
         let today = DiaryDate.day(now)
         if day == today { return "Today" }
         if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: now), day == DiaryDate.day(tomorrow) { return "Tomorrow" }
-        let parser = DateFormatter(); parser.calendar = Calendar(identifier: .gregorian); parser.dateFormat = "yyyy-MM-dd"
-        guard let date = parser.date(from: day) else { return day }
+        guard let date = DateParsers.day.date(from: day) else { return day }
         return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
     }
 }
@@ -339,10 +338,7 @@ private struct ReleaseRow: View {
                 await EpisodeAirTimes.shared.load(tmdb: id, day: item.day, store: store)
             }
     }
-    private var date: Date? {
-        let parser = DateFormatter(); parser.calendar = Calendar(identifier: .gregorian); parser.dateFormat = "yyyy-MM-dd"
-        return parser.date(from: item.day)
-    }
+    private var date: Date? { DateParsers.day.date(from: item.day) }
     private var time: Date? {
         if let time = item.time { return time }
         guard item.kind == .show, let id = item.route?.id else { return nil }

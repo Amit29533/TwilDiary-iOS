@@ -40,6 +40,8 @@ struct TitleHero<Ratings: View>: View {
     @State private var trailerKey: String?
     /// Playing over the cover (made on the first tap; one web view, as Cines').
     @State private var trailer: CinesPlayer?
+    /// Each start of the trailer (a stop or a new start ends the one before's retries).
+    @State private var trailerRun = 0
     @Environment(\.openURL) private var openURL
     /// The sources with a synopsis of their own, TMDB's first.
     private var synopsisSources: [SynopsisSource] {
@@ -151,9 +153,15 @@ struct TitleHero<Ratings: View>: View {
     }
     private func loadTrailer() async {
         guard let tmdbID, !store.isPreview, let token = TMDBDirect.token(store) else { return }
+        // Asked once a session per title (each visit asked TMDB again).
+        let place = (series ? "tv:" : "movie:") + String(tmdbID)
+        if let kept = TitleTrailer.found[place] { trailerKey = kept; TitleTrailer.player.prepare(); return }
         let key = await CinesFeed.trailer(tmdb: tmdbID, series: series, anime: category.lowercased().contains("anime"), token: token)
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, let key else { return }
+        TitleTrailer.found[place] = key
         trailerKey = key
+        // YouTube's player loaded ahead (once for the whole app), so the tap starts the video at once.
+        TitleTrailer.player.prepare()
     }
     /// Round, on glass, at the cover's foot: play the trailer; while it plays, close it.
     private var trailerButton: some View {
@@ -177,30 +185,35 @@ struct TitleHero<Ratings: View>: View {
     }
     private func startTrailer() {
         guard let trailerKey else { return }
-        let player = CinesPlayer()
-        player.loops = false
+        // One player for every title page, kept with YouTube's player loaded: a new web view and
+        // player script on every tap were most of the wait before the video began.
+        let player = TitleTrailer.player
+        trailerRun += 1
+        let run = trailerRun
         // With sound (the trailer was asked for), also with the ringer off, as a film plays. It
         // starts muted (YouTube's player often won't start unmuted by itself, so a tap seemed to do
         // nothing) and the sound comes on as it plays.
+        player.muted = true
         player.unmutesOnStart = true
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { trailer = player }
         Task {
             await JellyAudioSession.activate()
-            guard trailer === player else { return }
+            guard trailerRun == run, trailer != nil else { return }
             player.play(trailerKey)
             // Not started after a while (the page was slow, or YouTube held it): asked to play again.
             for _ in 0..<3 {
                 try? await Task.sleep(for: .seconds(4))
-                guard trailer === player, !player.playing, !player.paused, !player.ended else { return }
+                guard trailerRun == run, trailer != nil, !player.playing, !player.paused, !player.ended else { return }
                 player.play(trailerKey)
             }
             // Still nothing after that: the cover back (a spinner that a tap can't close helps no one).
             try? await Task.sleep(for: .seconds(4))
-            if trailer === player, !player.playing, !player.paused { stopTrailer() }
+            if trailerRun == run, trailer != nil, !player.playing, !player.paused { stopTrailer() }
         }
     }
     private func stopTrailer() {
         guard let trailer else { return }
+        trailerRun += 1
         trailer.stop()
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { self.trailer = nil }
         // Music or a podcast that was playing before carries on.
@@ -279,6 +292,17 @@ struct TitleHero<Ratings: View>: View {
     }
 
 }
+/// The cover trailer's one player (shared by every title page, YouTube's player kept loaded) and
+/// the trailers found this session.
+@MainActor enum TitleTrailer {
+    static let player: CinesPlayer = {
+        let player = CinesPlayer()
+        player.loops = false
+        return player
+    }()
+    static var found: [String: String] = [:]
+}
+
 /// The sources of a synopsis as their logos (the size of the ratings' marks), the one shown lit.
 struct SynopsisSwitcher: View {
     let sources: [SynopsisSource]

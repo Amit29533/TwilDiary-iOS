@@ -63,6 +63,9 @@ import WebKit
         guard ready else { start(); return }
         load(id)
     }
+    /// The page and YouTube's player loaded ahead, nothing played (a title page with a trailer
+    /// gets it ready, so a tap starts the video at once).
+    func prepare() { start() }
     /// To this point of the clip (0 to 1): the bar at the bottom, dragged.
     func seek(to fraction: Double) {
         guard duration > 0 else { return }

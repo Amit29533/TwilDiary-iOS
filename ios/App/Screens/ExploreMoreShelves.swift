@@ -205,12 +205,17 @@ import TwilDiaryCore
         func image(_ show: [String: Any], _ kind: String) -> String? {
             ((show["images"] as? [String: Any])?[kind] as? [String])?.first.map { $0.hasPrefix("http") ? $0 : "https://" + $0 }
         }
+        // Trakt's times, with or without fractions of a second: the two parsers made once for the
+        // whole reply (they were made for every show in it).
+        let fractional = ISO8601DateFormatter(), whole = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        func parsed(_ text: String) -> Date? { fractional.date(from: text) ?? whole.date(from: text) }
         var seen = Set<Int>()
         let found = rows.compactMap { row -> (Upcoming, Int)? in
             guard let show = row["show"] as? [String: Any], let ids = show["ids"] as? [String: Any], let tmdb = ids["tmdb"] as? Int, tmdb > 0,
                   let name = show["title"] as? String, let aired = row["first_aired"] as? String, let episode = row["episode"] as? [String: Any],
                   let season = episode["season"] as? Int, season > 0, seen.insert(tmdb).inserted else { return nil }
-            let date = ISO8601DateFormatter.flexible(aired).map { DiaryDate.day($0) } ?? String(aired.prefix(10))
+            let date = parsed(aired).map { DiaryDate.day($0) } ?? String(aired.prefix(10))
             let item = CatalogItem(id: tmdb, mediaType: .tv, name: name, year: show["year"] as? Int, overview: show["overview"] as? String ?? "",
                                    rating: (show["rating"] as? NSNumber).map { $0.doubleValue }.flatMap { $0 > 0 ? $0 : nil },
                                    poster: image(show, "poster"), backdrop: image(show, "fanart"))
@@ -220,16 +225,6 @@ import TwilDiaryCore
     }
 }
 
-private extension ISO8601DateFormatter {
-    /// Trakt's times, with or without fractions of a second.
-    static func flexible(_ text: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: text) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: text)
-    }
-}
 
 // MARK: Shared pieces
 

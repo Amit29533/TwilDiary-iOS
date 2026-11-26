@@ -365,7 +365,9 @@ struct LibraryView: View {
     }
     private func checkCircle(_ on: Bool) -> some View {
         Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.app(size: 22)).contentTransition(ThemeStore.current.native ? .symbolEffect(.replace) : .identity)
-            .foregroundStyle(on ? theme.accent : .white).shadow(color: .black.opacity(0.7), radius: 3)
+            .foregroundStyle(on ? theme.accent : .white)
+            // A dark disc behind it, not a blurred shadow (a render pass per poster while selecting).
+            .background(Circle().fill(Color.black.opacity(0.4)).padding(1))
     }
 
     // MARK: Select mode

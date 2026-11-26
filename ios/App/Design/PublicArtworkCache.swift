@@ -44,6 +44,8 @@ struct PublicArtworkRequest: Hashable, Sendable {
             || (url.host == "artworks.thetvdb.com" && url.path.hasPrefix("/banners/"))
             // Trakt's posters and fanart (Explore's Coming soon shows): media.trakt.tv/shows/<id>/medium/poster.webp.
             || (url.host == "media.trakt.tv" && ["/shows/", "/movies/", "/images/"].contains { url.path.hasPrefix($0) })
+            // YouTube's video stills (Cines, before a clip plays): i.ytimg.com/vi/<id>/hqdefault.jpg.
+            || (url.host == "i.ytimg.com" && url.path.hasPrefix("/vi/"))
     }
     /// Large tiles and full-width backdrops ask TMDb for a bigger rendition than the saved
     /// w500/w780 URL (w780 up to 1024 px, w1280 above), so they are not upscaled. Never smaller.

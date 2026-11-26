@@ -651,9 +651,11 @@ struct PosterCard: View {
                 .frame(width: 26, height: 26).background(Color(themed: "#080a10e8"), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.42))).padding(6)
         } else if title.status == "completed" && !archived {
-            Image(systemName: "checkmark").font(.app(size: 17, weight: .heavy))
-                .foregroundStyle(theme.accent).shadow(color: .black.opacity(0.8), radius: 3)
-                .frame(width: 26, height: 26).padding(8)
+            // On a dark disc, not a blurred shadow: a shadow costs a render pass of its own for every
+            // completed poster in a grid as it scrolls.
+            Image(systemName: "checkmark").font(.app(size: 15, weight: .heavy))
+                .foregroundStyle(theme.accent)
+                .frame(width: 26, height: 26).background(Color.black.opacity(0.5), in: Circle()).padding(8)
         }
     }
     private var availabilityBadges: some View {

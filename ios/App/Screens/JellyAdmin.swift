@@ -23,10 +23,8 @@ enum JellyAdminRoute: Hashable { case tasks, libraries }
     /// "2 min ago", "Yesterday" for a time Jellyfin gives (seven decimal places, so read to the second).
     static func ago(_ utc: String?) -> String? {
         guard let utc, utc.count >= 19, !utc.hasPrefix("0001") else { return nil }
-        guard let date = ISO8601DateFormatter().date(from: String(utc.prefix(19)) + "Z") else { return nil }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: .now)
+        guard let date = DateParsers.internet.date(from: String(utc.prefix(19)) + "Z") else { return nil }
+        return DateParsers.relative.localizedString(for: date, relativeTo: .now)
     }
 }
 
