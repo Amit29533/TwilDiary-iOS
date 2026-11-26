@@ -41,6 +41,21 @@ import OSLog
             // Settle the bar if appearance ran before this page was attached.
             applyTabBarVisibility(animated: false)
             publishWhenAttached()
+            slideBackAfterZoom()
+        }
+        /// A page that zoomed open goes back with the plain slide (owner's choice): the zoom back
+        /// looked finished well before UIKit had ended it (0.86 s after Back, the slide 0.52 s:
+        /// NavigationRoundTripProbe), and the next title couldn't open until it had, so taps seemed
+        /// ignored. UIKit reads the page's transition as each one starts, so clearing it once the
+        /// zoom in has ended leaves the way back to the slide (and its edge swipe).
+        private func slideBackAfterZoom() {
+            guard let navigation = owningNavigation(), navigation.viewControllers.count > 1,
+                  let page = navigation.viewControllers.last(where: { view.isDescendant(of: $0.view) }),
+                  page !== navigation.viewControllers.first, page.preferredTransition != nil else { return }
+            page.preferredTransition = nil
+            #if DEBUG
+            NavigationTiming.zoomedIn()
+            #endif
         }
         override func viewIsAppearing(_ animated: Bool) {
             super.viewIsAppearing(animated)

@@ -11,6 +11,9 @@ import QuartzCore
     static let enabled = ProcessInfo.processInfo.arguments.contains("--ui-nav-timing")
     private static var backAt: CFTimeInterval = 0
     private static var popMS: Int?
+    /// Pages that zoomed open and were then set to go back with the slide.
+    private static var zooms = 0
+    static func zoomedIn() { zooms += 1 }
     static func popStarted() {
         guard enabled else { return }
         backAt = CACurrentMediaTime()
@@ -24,7 +27,7 @@ import QuartzCore
     static var report: String {
         guard backAt > 0 else { return "none" }
         let held = MainThreadStalls.shared.summary(from: backAt, to: backAt + 2.5)
-        return "pop=\(popMS.map { String($0) } ?? "?")ms stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
+        return "pop=\(popMS.map { String($0) } ?? "?")ms zoomed-in=\(zooms) stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
     }
 }
 
