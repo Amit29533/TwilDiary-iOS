@@ -218,8 +218,6 @@ struct RootView: View {
     @AppStorage(NativeAppearance.key) private var nativeAppearance = NativeAppearance.automatic
     /// Settings → Customise: the tab bar's order, and whether Glance shows.
     @AppStorage(TabLayout.key) private var tabLayout = ""
-    /// Posters zoom into the title pages they open (and back), as in the Photos and App Store apps.
-    @Namespace private var zoom
     @State private var askAlerts = false
     /// The animated splash: shown at launch (not in UI tests unless asked), lifted once it has
     /// played and there's something to show (your diary, the first screen, or why it can't open).
@@ -389,7 +387,7 @@ struct RootView: View {
                 .navigationDestination(for: SavedTitleRoute.self) {
                     savedTitlePage(TitleDetailView(id: $0.id, linkedSeason: $0.season, focusEpisodes: $0.focusEpisodes), tab: tab)
                 }
-                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.catalog($0)), in: zoom)).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
+                .navigationDestination(for: CatalogRoute.self) { CatalogDetailView(route: $0).diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router) }
                 .navigationDestination(for: ExploreSectionRoute.self) { ExploreSectionView(route: $0, store: store).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: SearchBrowseRoute.self) { SearchBrowseDestination(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
                 .navigationDestination(for: PeopleRankingRoute.self) { PeopleRankingView(route: $0).diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router) }
@@ -467,20 +465,14 @@ struct RootView: View {
                 }
         }
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })
-            .environment(\.zoomNamespace, zoom).environment(\.zoomScope, tab.rawValue)
     }
 
+    /// Title pages open and close with iOS's standard push and slide (owner's choice: the official
+    /// transition that's done soonest). The zoom from the poster looked finished well before UIKit
+    /// had ended it, both ways (0.87 s to open, 0.86 s back; the slide 0.52 s each:
+    /// NavigationRoundTripProbe), and Back or the next title couldn't act until then.
     private func savedTitlePage(_ page: TitleDetailView, tab: AppTab) -> some View {
-        Group {
-            // "--ui-no-zoom": the navigation probe's comparison run (NavigationRoundTripProbe).
-            if tab == .glance || ProcessInfo.processInfo.arguments.contains("--ui-no-zoom") {
-                // A Glance card can move between the hero and the scrolling list as
-                // activity changes. Use the standard push and pop for this route.
-                page
-            } else {
-                page.navigationTransition(.zoom(sourceID: ZoomID.scoped(tab.rawValue, ZoomID.title(page.id)), in: zoom))
-            }
-        }.diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router)
+        page.diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router)
     }
 }
 

@@ -119,7 +119,8 @@ extension View {
     func shelfTransition() -> some View { modifier(ShelfTransition()) }
     /// For a collection a list/grid switch changes: it fades into the new layout when `value` changes.
     func layoutFade<V: Equatable & Sendable>(_ value: V) -> some View { modifier(LayoutFade(value: value)) }
-    /// Marks the artwork a title page zooms out of, and back into on return.
+    /// Marks the artwork a title page would zoom out of. Title pages now open with the standard push
+    /// (TwilDiaryApp.savedTitlePage), so no zoom namespace is set and this leaves the view as it is.
     func zoomSource(_ id: String) -> some View { modifier(ZoomSource(id: id)) }
     /// A sideways swipe moves between All, Movies, Shows and Anime; it never changes app tabs.
     /// `ignoring` is a sideways-scrolling row (in `Motion.swipeSpace`): drags that start there scroll it instead.
