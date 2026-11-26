@@ -42,9 +42,9 @@ struct TitleHero<Ratings: View>: View {
     @State private var trailer: CinesPlayer?
     /// Each start of the trailer (a stop or a new start ends the one before's retries).
     @State private var trailerRun = 0
-    /// The X over a playing trailer (and the page's Back and •••): they go after a few seconds, as a
-    /// video's controls do, and a tap on the trailer brings them back (owner's request). Always there
-    /// while loading or paused, and with VoiceOver.
+    /// The X over a playing trailer: it goes after a few seconds, as a video's controls do, and a tap
+    /// on the trailer brings it back (owner's request). Always there while loading or paused, and
+    /// with VoiceOver. (The page's Back and ••• stay: owner's choice.)
     @State private var trailerCloseShown = true
     @State private var trailerCloseHiding: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
@@ -145,9 +145,6 @@ struct TitleHero<Ratings: View>: View {
                 trailerButton.padding(.top, max(0, coverStrip - 20 - 44)).transition(.opacity)
             }
         }
-        // The page's Back and ••• go with the X, and come back with it on a tap: nothing over a playing
-        // trailer (owner's request).
-        .background(NavigationBarFade(hidden: trailer != nil && !trailerCloseVisible))
         // The trailer's picture is up: its X goes in a few seconds.
         .onChange(of: trailer?.pictureShowing == true) { _, showing in if showing { showTrailerClose() } }
         .onChange(of: synopsisText) { _, _ in measureSynopsis() }
@@ -284,7 +281,7 @@ struct TitleHero<Ratings: View>: View {
             }
             .frame(width: width, height: height)
             .background(Color.black.opacity(player.pictureShowing ? 1 : 0))
-            // Nothing over the picture, its foot included (owner: no fade, no shade, no buttons on a video).
+            // No fade or shade over the picture, its foot included (owner's request).
             .contentShape(Rectangle())
             .onTapGesture { trailerTapped(player) }
             .offset(x: -inset, y: coverStrip - 6 - height)
@@ -373,37 +370,6 @@ struct SynopsisSwitcher: View {
             }
         }
         .sensoryFeedback(.selection, trigger: shown)
-    }
-}
-
-/// Fades the navigation bar of the page it's in (its Back and ••• buttons) out and back in. Gone, the
-/// bar takes no touches (a tap there reaches what's under it).
-struct NavigationBarFade: UIViewRepresentable {
-    let hidden: Bool
-    final class Coordinator {
-        var hidden = false
-        weak var bar: UINavigationBar?
-    }
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.isUserInteractionEnabled = false
-        view.isAccessibilityElement = false
-        return view
-    }
-    func updateUIView(_ view: UIView, context: Context) {
-        let coordinator = context.coordinator
-        guard coordinator.hidden != hidden else { return }
-        guard let bar = coordinator.bar ?? CardTransition.navigationController(of: view)?.navigationBar else { return }
-        coordinator.hidden = hidden
-        coordinator.bar = bar
-        let shown: CGFloat = hidden ? 0 : 1
-        if context.transaction.disablesAnimations || UIAccessibility.isReduceMotionEnabled { bar.alpha = shown; return }
-        UIView.animate(withDuration: hidden ? 0.35 : 0.25, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { bar.alpha = shown }
-    }
-    /// Gone with the page: the bar back for the page under it.
-    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
-        if coordinator.hidden { coordinator.bar?.alpha = 1 }
     }
 }
 
