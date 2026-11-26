@@ -1775,27 +1775,44 @@ struct JellyPlayerView: View {
     private var controls: some View {
         let compact = verticalSizeClass == .compact
         let side: CGFloat = compact ? 28 : 16
+        let titleSide = HStack(alignment: .center, spacing: 10) {
+            Image("jellyfin-mark").resizable().scaledToFit().frame(width: 26, height: 26).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(playerTitle).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                if !infoLine.isEmpty {
+                    Text(infoLine).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                }
+            }
+            .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+        }
+        let buttonSide = HStack(alignment: .center, spacing: 10) {
+            AnyView(sleepBadge)
+            // The status bar's battery, the number inside it: as narrow upright as sideways.
+            if batteryOn { JellyBattery() }
+            if pip.available, !usesMPV {
+                topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
+            }
+            // AirPlay sideways (upright there's no room), and for a picture AVPlayer plays: nothing else can go to a TV.
+            JellyTVButtons(airPlay: compact && !usesMPV && engine?.nativePlayerLayer != nil)
+            topIcon("lock.open", label: "Lock screen") { lockScreen() }.accessibilityIdentifier("jellyspace-lock-screen")
+            topIcon("xmark", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
+        }
         return VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                Image("jellyfin-mark").resizable().scaledToFit().frame(width: 26, height: 26).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(playerTitle).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(1)
-                    if !infoLine.isEmpty {
-                        Text(infoLine).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+            // The time now at the top middle: sideways between the title and the buttons (each side
+            // takes half of what's left, so it stays in the middle), upright just under them.
+            Group {
+                if compact {
+                    HStack(alignment: .center, spacing: 10) {
+                        titleSide.frame(maxWidth: .infinity, alignment: .leading)
+                        JellyClock()
+                        buttonSide.frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                } else {
+                    VStack(spacing: 2) {
+                        HStack(alignment: .center, spacing: 10) { titleSide; Spacer(minLength: 10); buttonSide }
+                        JellyClock()
                     }
                 }
-                .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 10)
-                AnyView(sleepBadge)
-                // The status bar's battery, the number inside it: as narrow upright as sideways.
-                if batteryOn { JellyBattery() }
-                if pip.available, !usesMPV {
-                    topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
-                }
-                // AirPlay sideways (upright there's no room), and for a picture AVPlayer plays: nothing else can go to a TV.
-                JellyTVButtons(airPlay: compact && !usesMPV && engine?.nativePlayerLayer != nil)
-                topIcon("lock.open", label: "Lock screen") { lockScreen() }.accessibilityIdentifier("jellyspace-lock-screen")
-                topIcon("xmark", label: "Close player") { dismiss() }.accessibilityIdentifier("jellyspace-close")
             }
             .shadow(color: .black.opacity(0.45), radius: 6)
             .padding(.horizontal, side).padding(.top, 10)
@@ -3116,6 +3133,18 @@ private struct JellySeekArrows: View {
 struct JellyStretch {
     let range: ClosedRange<Double>
     let color: Color
+}
+
+/// The time now, at the top middle of the player (12 or 24 hour, as the phone is set).
+private struct JellyClock: View {
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            Text(context.date, format: .dateTime.hour().minute())
+                .font(.system(size: 15, weight: .semibold)).monospacedDigit().foregroundStyle(.white)
+                .lineLimit(1).fixedSize()
+        }
+        .accessibilityIdentifier("jellyspace-clock")
+    }
 }
 
 /// The phone's battery, by the player's top buttons.
