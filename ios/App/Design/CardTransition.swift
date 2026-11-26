@@ -8,7 +8,8 @@ import UIKit.UIGestureRecognizerSubclass
 /// one, so navigation is free at once, and the card's growing and shrinking is drawn on top:
 /// opening, the page itself grows out of the poster over a still of the screen it left; closing, a
 /// still of the page shrinks into the poster over the screen it returns to, letting every touch
-/// through. Swiping back from the edge stays UIKit's slide. Off with Reduce Motion.
+/// through. A swipe right closes it the same way, the card following the finger (CardSwipe). Off
+/// with Reduce Motion.
 @MainActor enum CardTransition {
     /// How long the card grows (a critically damped spring: no tail after it).
     static let duration: TimeInterval = 0.45
@@ -71,7 +72,9 @@ import UIKit.UIGestureRecognizerSubclass
         for still in closing { still.removeFromSuperview() }
         closing = []
         lastTouch = nil
-        pending = Opening(source: best.view, rect: best.rect, backdrop: window.snapshotView(afterScreenUpdates: false), navigation: navigation)
+        // The screen without the tab bar (the window's still had one, which the glass tab bar on top
+        // showed as a ghost while the card grew).
+        pending = Opening(source: best.view, rect: best.rect, backdrop: navigation.view.snapshotView(afterScreenUpdates: false), navigation: navigation)
         #if DEBUG
         NavigationTiming.cardOpened()
         #endif
@@ -105,7 +108,7 @@ import UIKit.UIGestureRecognizerSubclass
         // Behind: the screen it left (exactly what's on screen now), dimming as the card grows.
         var behind: [UIView] = []
         if let backdrop = opening.backdrop {
-            backdrop.frame = container.convert(CGRect(origin: .zero, size: backdrop.bounds.size), from: nil)
+            backdrop.frame = container.convert(navigation.view.bounds, from: navigation.view)
             container.insertSubview(backdrop, belowSubview: pageView)
             behind.append(backdrop)
         }
@@ -288,7 +291,7 @@ import UIKit.UIGestureRecognizerSubclass
         switch gesture.state {
         case .began:
             if let backdrop = opening.backdrop {
-                backdrop.frame = container.convert(CGRect(origin: .zero, size: backdrop.bounds.size), from: nil)
+                backdrop.frame = container.convert(navigation.view.bounds, from: navigation.view)
                 backdrop.alpha = 1
                 container.insertSubview(backdrop, belowSubview: pageView)
                 behind.append(backdrop)
