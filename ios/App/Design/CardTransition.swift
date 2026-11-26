@@ -256,10 +256,15 @@ import UIKit.UIGestureRecognizerSubclass
         guard let view = page?.view else { return }
         pan.delegate = self
         view.addGestureRecognizer(pan)
-        navigation?.interactivePopGestureRecognizer?.require(toFail: pan)
-        navigation?.interactiveContentPopGestureRecognizer?.require(toFail: pan)
     }
     func detach() { pan.view?.removeGestureRecognizer(pan) }
+
+    /// UIKit's swipes back wait for this one to fail (asked each time: nothing stays on them once the
+    /// page is gone, as `require(toFail:)` would).
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        guard let navigation else { return false }
+        return other === navigation.interactivePopGestureRecognizer || other === navigation.interactiveContentPopGestureRecognizer
+    }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let view = pan.view, navigation?.topViewController === page else { return false }
