@@ -2213,8 +2213,12 @@ struct JellyPlayerView: View {
             // network wait (buffering) gets twenty seconds more first. Not after you paused it.
             for wait in [0, 20] {
                 if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                // Stuck means the clock isn't moving now: it was "still before where it opened", so
+                // Start over (or skipping back) in the first 20 s moved a video that played fine.
+                let before = mpv.time
+                try? await Task.sleep(for: .seconds(2))
                 guard usesMPV, startRun == run, current.id == id, mpv.hasLoaded, mpv.failure == nil, failure == nil,
-                      mpv.state != .paused, mpv.state != .ended, mpv.time < (start ?? 0) + 1 else { break }
+                      mpv.state != .paused, mpv.state != .ended, scrub == nil, abs(mpv.time - before) < 0.25 else { break }
                 if mpv.buffering && wait == 0 { continue }
                 JellyMPV.log.error("mpv opened but didn't play in \(20 + wait, privacy: .public) s: \(mpv.diagnosis, privacy: .public)")
                 let reason = mpv.lastMessage ?? "nothing played"
