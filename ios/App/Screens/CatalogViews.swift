@@ -590,6 +590,8 @@ struct CatalogDetailView: View {
     @State private var details: CatalogBrowse?
     @State private var failure: String?
     @State private var loading = false
+    /// The cover's trailer is showing (the cover under it is drawn blurred).
+    @State private var trailerShowing = false
     @State private var showOverview = false
     @State private var showInformation = false
     @State private var showAddToList = false
@@ -648,8 +650,9 @@ struct CatalogDetailView: View {
                 }.padding(.horizontal, 16).padding(.bottom, 32)
                     .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: extras == nil)
                     .background(alignment: .top) {
-                        if let details { TitleArtworkBackdrop(path: CatalogTools.image(details.details.backdropPath, size: "w780"), name: details.details.name, topExtension: geometry.safeAreaInsets.top) }
+                        if let details { TitleArtworkBackdrop(path: CatalogTools.image(details.details.backdropPath, size: "w780"), name: details.details.name, topExtension: geometry.safeAreaInsets.top, softened: trailerShowing) }
                     }
+                    .onPreferenceChange(TitleTrailerShowing.self) { showing in trailerShowing = showing }
             }.scrollClipDisabled().diaryScreenBackground(path: details.flatMap { CatalogTools.image($0.details.backdropPath, size: "w780") }, name: details?.details.name ?? "").navigationTitle("").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .overlay(alignment: .top) { CompactHeaderBackdrop(state: headerState, topInset: geometry.safeAreaInsets.top) }

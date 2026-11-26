@@ -69,6 +69,8 @@ struct TitleHero<Ratings: View>: View {
                 .fullScreenArtwork(backdrop, title: name, aspect: 16.0 / 9.0)
                 // The trailer, over the cover art exactly: the screen's width, from the top of the screen.
                 .overlay(alignment: .topLeading) { if let trailer { trailerView(trailer) } }
+                // Its picture showing: the page draws the cover blurred under it (TitleArtworkBackdrop).
+                .preference(key: TitleTrailerShowing.self, value: trailer?.playing == true)
         VStack(alignment: .leading, spacing: 20) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the
@@ -345,6 +347,13 @@ struct SynopsisSwitcher: View {
     }
 }
 
+/// The cover's trailer is showing its picture (from TitleHero up to the page, which draws its cover
+/// blurred under it meanwhile).
+struct TitleTrailerShowing: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
 /// The title page's cover: the whole artwork at 16:9 of the screen width (the shape of TMDB's
 /// backdrops, so nothing is cropped or covered), then its own colours spilling down as a soft glow
 /// that fades into the page. No panel edge or outline, so there is no line between cover and page.
@@ -360,7 +369,12 @@ struct TitleArtworkBackdrop: View {
     let path: String?
     let name: String
     var topExtension: CGFloat = 0
+    /// A trailer plays over the cover: the cover is drawn blurred, so the trailer's foot fades into
+    /// colour (as the cover's own foot fades into the wash), not into the cover's picture under it
+    /// (two pictures at once there: owner's screenshots).
+    var softened = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         GeometryReader { proxy in cover(width: proxy.size.width) }
             .offset(y: -topExtension).allowsHitTesting(false).accessibilityHidden(true)
@@ -405,7 +419,20 @@ struct TitleArtworkBackdrop: View {
             ground.frame(height: 4000).offset(y: artwork + 229)
             // The cover itself, crisp; only a light shade behind the status bar and buttons, and a
             // short soft foot so it melts into the wash instead of ending on a line.
-            art.frame(width: width, height: artwork).clipped()
+            // Under a trailer, blurred the wash's way (drawn small, blurred and flattened once, scaled up).
+            Group {
+                if softened {
+                    art.frame(width: width / Self.washScale, height: artwork / Self.washScale)
+                        .blur(radius: 40 / Self.washScale, opaque: true)
+                        .drawingGroup()
+                        .scaleEffect(Self.washScale)
+                        .frame(width: width, height: artwork)
+                } else {
+                    art.frame(width: width, height: artwork)
+                }
+            }
+            .clipped()
+            .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: softened)
                 .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0), location: 0.3)], startPoint: .top, endPoint: .bottom))
                 .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.88), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
         }.frame(width: width, alignment: .top)

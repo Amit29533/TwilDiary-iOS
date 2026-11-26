@@ -7,6 +7,8 @@ struct TitleDetailView: View {
     var linkedSeason: Int? = nil
     var focusEpisodes = false
     @State private var pendingScrollTarget: String?
+    /// The cover's trailer is showing (the cover under it is drawn blurred).
+    @State private var trailerShowing = false
     @State private var contentHeight: CGFloat = 0
     @State private var choosingWatchDate = false
     /// The film's views, each with its date, to change one.
@@ -106,8 +108,9 @@ struct TitleDetailView: View {
                                 // appeared, which stuttered the first scroll through a season.
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in if pendingScrollTarget != nil { contentHeight = height } }
                                 .background(alignment: .top) {
-                                    TitleArtworkBackdrop(path: ["again", "night", "severance"].contains(title.id) ? "scene:" + title.id : title.backdrop ?? title.poster, name: title.name, topExtension: geometry.safeAreaInsets.top)
+                                    TitleArtworkBackdrop(path: ["again", "night", "severance"].contains(title.id) ? "scene:" + title.id : title.backdrop ?? title.poster, name: title.name, topExtension: geometry.safeAreaInsets.top, softened: trailerShowing)
                                 }
+                                .onPreferenceChange(TitleTrailerShowing.self) { showing in trailerShowing = showing }
                         }.scrollClipDisabled().scrollDismissesKeyboard(.interactively).diaryScreenBackground(path: title.backdrop ?? title.poster, name: title.name)
                             .onScrollPhaseChange { _, phase in if phase == .tracking || phase == .interacting { pendingScrollTarget = nil } }
                             .task(id: ScrollFocus(target: pendingScrollTarget, height: contentHeight, notes: showNotes, files: showLocation)) {
