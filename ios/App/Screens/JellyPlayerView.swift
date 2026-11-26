@@ -1787,9 +1787,8 @@ struct JellyPlayerView: View {
                 .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 10)
                 AnyView(sleepBadge)
-                // Upright there's no room for the number beside the buttons (it wrapped a digit a line):
-                // the symbol alone there.
-                if batteryOn { JellyBattery(showsPercent: compact) }
+                // The status bar's battery, the number inside it: as narrow upright as sideways.
+                if batteryOn { JellyBattery() }
                 if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
                 }
@@ -3121,20 +3120,15 @@ struct JellyStretch {
 
 /// The phone's battery, by the player's top buttons.
 private struct JellyBattery: View {
-    /// The number beside the symbol (sideways; upright only the symbol fits).
-    var showsPercent = true
     @State private var level = UIDevice.current.batteryLevel
     @State private var charging = false
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     var body: some View {
         Group {
             if level >= 0 {
-                HStack(spacing: 4) {
-                    if showsPercent { Text("\(Int((level * 100).rounded()))%").monospacedDigit() }
-                    Image(systemName: symbol)
-                }
-                .lineLimit(1).fixedSize()
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
-                .accessibilityElement(children: .ignore).accessibilityLabel("Battery \(Int((level * 100).rounded())) percent")
+                JellyBatteryGlyph(level: CGFloat(level), fill: fill)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Battery \(Int((level * 100).rounded())) percent" + (charging ? ", charging" : ""))
             } else {
                 // Until monitoring is on, iOS reports the level as unknown (-1). Something has to be
                 // here for onAppear to run and turn it on: with nothing, it never appeared, never
@@ -3145,14 +3139,49 @@ private struct JellyBattery: View {
         .onAppear { UIDevice.current.isBatteryMonitoringEnabled = true; read() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in read() }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in read() }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange).receive(on: DispatchQueue.main)) { _ in read() }
     }
-    private var symbol: String {
-        if charging { return "battery.100.bolt" }
-        return level > 0.87 ? "battery.100" : level > 0.62 ? "battery.75" : level > 0.37 ? "battery.50" : level > 0.12 ? "battery.25" : "battery.0"
+    /// As the status bar colours it: green charging, yellow in Low Power Mode, red at 20% or less, else white.
+    private var fill: Color {
+        if charging { return Color(red: 0.2, green: 0.78, blue: 0.35) }
+        if lowPower { return Color(red: 1, green: 0.8, blue: 0) }
+        if level <= 0.2 { return Color(red: 1, green: 0.23, blue: 0.19) }
+        return .white
     }
     private func read() {
         level = UIDevice.current.batteryLevel
         charging = [.charging, .full].contains(UIDevice.current.batteryState)
+        lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+}
+
+/// The status bar's battery: the number inside a battery filled to the level, dark over the fill
+/// and light over the rest, with the terminal nub.
+private struct JellyBatteryGlyph: View {
+    let level: CGFloat
+    let fill: Color
+    private static let size = CGSize(width: 31, height: 15)
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        let filled = Self.size.width * min(1, max(0.06, level))
+        let number = Text("\(Int((level * 100).rounded()))").font(.system(size: 11.5, weight: .bold)).monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.7).frame(width: Self.size.width, height: Self.size.height)
+        HStack(spacing: 1.5) {
+            ZStack(alignment: .leading) {
+                shape.fill(.white.opacity(0.32))
+                number.foregroundStyle(.white)
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(fill)
+                    number.foregroundStyle(.black.opacity(0.85))
+                }
+                .mask(alignment: .leading) { Rectangle().frame(width: filled) }
+            }
+            .frame(width: Self.size.width, height: Self.size.height)
+            .clipShape(shape)
+            RoundedRectangle(cornerRadius: 1, style: .continuous).fill(level >= 1 ? fill : .white.opacity(0.32))
+                .frame(width: 2, height: 5)
+        }
+        .fixedSize()
     }
 }
 
