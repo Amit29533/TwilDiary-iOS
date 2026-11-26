@@ -435,12 +435,16 @@ struct JellyAdminTasksPage: View {
     @State private var client: JellyfinClient? = JellyAdmin.client
     @State private var tasks: [JellyfinClient.AdminTask]?
     @State private var failure: String?
+    /// A start or stop that failed, shown over the list (it went into `failure`, which shows only
+    /// before the list has come, so nothing said it failed).
+    @State private var notice: String?
     @State private var asked: Set<String> = []
 
     var body: some View {
         EdgeToEdgeScroll {
             LazyVStack(alignment: .leading, spacing: 22) {
                 if let tasks {
+                    if let notice { Text(notice).font(.footnote).foregroundStyle(.red).padding(.horizontal, 4) }
                     let categories = Dictionary(grouping: tasks, by: { $0.Category ?? "Other" })
                     ForEach(categories.keys.sorted(), id: \.self) { category in
                         SettingsGroup(label: category) {
@@ -503,9 +507,10 @@ struct JellyAdminTasksPage: View {
         defer { asked.remove(task.Id) }
         do {
             if task.running { try await client.stopTask(task.Id) } else { try await client.runTask(task.Id) }
+            notice = nil
             await load()
         } catch {
-            failure = JellyAdmin.reason(error)
+            notice = (task.running ? "Couldn't stop " : "Couldn't start ") + (task.Name ?? "the task") + ": " + JellyAdmin.reason(error)
         }
     }
     private func load() async {

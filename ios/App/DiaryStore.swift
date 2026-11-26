@@ -1276,8 +1276,11 @@ import TwilDiaryCore
         let done = await perform(refreshing: [titleID]) { moved = try await self.serviceRedate(event, to: date) }
         guard done, let moved else { return done }
         if let before {
+            let episodeID = event.episodeId
             undoAction = { [weak self] in
-                guard let self, let now = self.undoablePlays(titleID: titleID, at: moved).first else {
+                // This episode's play (another episode moved to the same day sits at the same noon,
+                // and Undo moved that one back instead).
+                guard let self, let now = self.undoablePlays(titleID: titleID, at: moved).first(where: { $0.episodeId == episodeID }) else {
                     throw APIError.message("That watch isn’t in your diary any more.")
                 }
                 _ = try await self.serviceRedate(now, to: before)

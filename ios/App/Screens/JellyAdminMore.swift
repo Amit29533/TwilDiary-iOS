@@ -328,6 +328,9 @@ struct JellyAdminActivityPage: View {
     @State private var users: [JellyfinClient.AdminUser] = []
     @State private var failure: String?
     @State private var loadingMore = false
+    /// The entries under their time headings, worked out once when the entries change (it was
+    /// worked out again on every redraw, copying each heading's whole list for every entry added).
+    @State private var groups: [TimeGroup] = []
 
     var body: some View {
         EdgeToEdgeScroll {
@@ -351,8 +354,8 @@ struct JellyAdminActivityPage: View {
                     Spacer(minLength: 0)
                     if let total { Text("\(entries.count.formatted()) of \(total.formatted())").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).monospacedDigit() }
                 }
-                if let failure, entries.isEmpty {
-                    RetryNotice(message: failure) { Task { await reload() } }
+                if let failure {
+                    RetryNotice(message: failure) { Task { await reload(fresh: entries.isEmpty) } }
                 } else if total == nil {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 160)
                 } else if entries.isEmpty {
@@ -364,24 +367,32 @@ struct JellyAdminActivityPage: View {
                         VStack(spacing: 0) {
                             ForEach(Array(group.items.enumerated()), id: \.element.id) { index, entry in
                                 if index > 0 { SettingsDivider() }
-                                row(entry).onAppear { if entry.id == entries.last?.id { Task { await loadMore() } } }
+                                row(entry)
                             }
                         }.modifier(SettingsCard())
                     }
+                }
+                // More as this comes on screen, below every heading (the last row asked for them, but a
+                // heading's rows all come at once, so its last row "appeared" as soon as the heading did
+                // and the whole log was read page after page). New for each page, so it asks again while
+                // it's still in sight.
+                if let total, entries.count < total, failure == nil {
+                    Color.clear.frame(height: 1).id(entries.count).onAppear { Task { await loadMore() } }
                 }
                 if loadingMore { ProgressView().frame(maxWidth: .infinity, minHeight: 44) }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
         }
         .diaryScreenBackground().diaryPageNavigation("Activity")
         .jellyFaceLock().jellyPage()
-        .task(id: "\(kind.rawValue)|\(severity ?? "")|\(user ?? "")") { await reload() }
+        .task(id: "\(kind.rawValue)|\(severity ?? "")|\(user ?? "")") { await reload(fresh: true) }
         .task { if let client { users = (try? await client.adminUsers()) ?? [] } }
-        .refreshable { await reload() }
+        .refreshable { await reload(fresh: false) }
     }
 
-    private struct TimeGroup { let title: String; let items: [JellyfinClient.AdminActivity] }
-    /// Consecutive entries in the same stretch of time, in order.
-    private var groups: [TimeGroup] {
+    private struct TimeGroup { let title: String; var items: [JellyfinClient.AdminActivity] }
+    /// Consecutive entries in the same stretch of time, in order (each added to its heading's list
+    /// in place).
+    private static func grouped(_ entries: [JellyfinClient.AdminActivity]) -> [TimeGroup] {
         var result: [TimeGroup] = []
         let now = Date.now, calendar = Calendar.current
         for entry in entries {
@@ -395,7 +406,7 @@ struct JellyAdminActivityPage: View {
                 else if age < 7 * 86_400 { title = "This week" }
                 else { title = "Earlier" }
             } else { title = "Earlier" }
-            if result.last?.title == title { result[result.count - 1] = TimeGroup(title: title, items: result[result.count - 1].items + [entry]) }
+            if result.last?.title == title { result[result.count - 1].items.append(entry) }
             else { result.append(TimeGroup(title: title, items: [entry])) }
         }
         return result
@@ -429,15 +440,22 @@ struct JellyAdminActivityPage: View {
         .padding(.horizontal, 14).padding(.vertical, 12).accessibilityElement(children: .combine)
     }
 
-    private func reload() async {
+    /// `fresh`: another filter chosen, so the last one's entries go at once (they stayed until the new
+    /// ones came, and when those failed they stayed on as if they were the answer).
+    private func reload(fresh: Bool) async {
         guard let client else { failure = "Add your Jellyfin server in Settings → JellySpace first."; return }
+        if fresh { show([]); total = nil; failure = nil }
         do {
             let page = try await client.adminActivity(start: 0, limit: Self.pageSize, system: system, severity: severity, user: user)
             guard !Task.isCancelled else { return }
-            entries = page.Items; total = page.TotalRecordCount; failure = nil
+            show(page.Items); total = page.TotalRecordCount; failure = nil
         } catch {
             if !Task.isCancelled { failure = JellyAdmin.reason(error); if entries.isEmpty { total = 0 } }
         }
+    }
+    private func show(_ list: [JellyfinClient.AdminActivity]) {
+        entries = list
+        groups = Self.grouped(list)
     }
     private func loadMore() async {
         guard let client, !loadingMore, let total, entries.count < total else { return }
@@ -446,7 +464,7 @@ struct JellyAdminActivityPage: View {
         guard let page = try? await client.adminActivity(start: entries.count, limit: Self.pageSize, system: filters.0, severity: filters.1, user: filters.2),
               filters == (system, severity, user) else { return }
         let known = Set(entries.map(\.id))
-        entries += page.Items.filter { !known.contains($0.id) }
+        show(entries + page.Items.filter { !known.contains($0.id) })
         self.total = page.TotalRecordCount
     }
     private var system: Bool? { kind == .all ? nil : kind == .system }
@@ -474,6 +492,8 @@ struct JellyAdminAnalyticsPage: View {
     @State private var libraries: [Library] = []
     @State private var library: Library?
     @State private var totals: [String: Int] = [:]
+    /// The library the tiles' numbers are for (nil: all of them).
+    @State private var totalsShownFor: String?
     @State private var shares: [(String, Int)] = []
     /// The first read (libraries, totals, shares) is in: until then one spinner, then all of it at
     /// once (each part arrived on its own and pushed the rest down).
@@ -574,13 +594,18 @@ struct JellyAdminAnalyticsPage: View {
             shares = each
             ready = true
         }
+        totalsShownFor = library?.id
     }
     /// Another library picked: its totals, filled into the same five tiles.
     private func loadCounts() async {
         guard let client else { return }
         let parent = library?.id
+        // The last library's numbers go at once (dashes in the same five tiles): when the new ones
+        // failed, the old ones stayed on as if they were this library's.
+        if totalsShownFor != parent { totals = [:] }
         guard let found = await Self.totals(client, parent: parent), !Task.isCancelled, parent == library?.id else { return }
         totals = found
+        totalsShownFor = parent
     }
     /// The five totals. All libraries: Jellyfin's own totals (as its dashboard counts them), photos
     /// counted; one library: each counted under it. Nil when the server answers none of them.
@@ -619,7 +644,7 @@ struct JellyAdminAnalyticsPage: View {
     /// Every item's container and first video and audio track, read once in pages and kept.
     private func loadFormats(fresh: Bool) async {
         guard let client else { return }
-        let key = library?.id ?? "all"
+        let key = formatsKey(client)
         if !fresh, let kept = Self.keptFormats[key] { formats = kept; return }
         if !fresh, let saved = Self.saved(key) { formats = saved; Self.keptFormats[key] = saved; return }
         reading = true; defer { reading = false }
@@ -627,7 +652,11 @@ struct JellyAdminAnalyticsPage: View {
         formats = nil
         var start = 0
         while !Task.isCancelled {
-            guard let page = try? await client.adminFormats(parent: library?.id, start: start, limit: 400) else { return }
+            guard let page = try? await client.adminFormats(parent: library?.id, start: start, limit: 400) else {
+                // Failed part way: not shown as if it were the whole count.
+                if !Task.isCancelled, key == formatsKey(client) { formats = nil }
+                return
+            }
             tally.total = page.TotalRecordCount
             for item in page.Items {
                 if let container = item.Container?.split(separator: ",").first.map(String.init), !container.isEmpty {
@@ -641,9 +670,14 @@ struct JellyAdminAnalyticsPage: View {
             formats = tally
             if page.Items.isEmpty || start >= page.TotalRecordCount { break }
         }
-        guard !Task.isCancelled, key == (library?.id ?? "all") else { return }
+        guard !Task.isCancelled, key == formatsKey(client) else { return }
         Self.keptFormats[key] = tally
         Self.save(tally, key)
+    }
+    /// One library's id (unique to its server), or all of a server's libraries: by its address (the
+    /// key was "all" for every server, so another server's chart could show).
+    private func formatsKey(_ client: JellyfinClient) -> String {
+        library?.id ?? ("all|" + client.base.absoluteString)
     }
     static func codec(_ raw: String) -> String {
         switch raw.lowercased() {

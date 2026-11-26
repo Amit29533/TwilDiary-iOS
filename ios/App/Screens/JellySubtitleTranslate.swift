@@ -69,6 +69,15 @@ import NaturalLanguage
         lines = [:]; waiting = []; inFlight = []; fedAt = -10; fedCount = -1
         generation += 1; stopped = false; problem = nil
     }
+    /// The player closed: the translating ends with it (it ran on, checking for lines several times
+    /// a second, after the video was gone). The language chosen is kept for the next video.
+    func close() {
+        runner?.cancel()
+        runner = nil
+        pairKey = nil
+        translating = false
+        clear()
+    }
 
     /// Whether to hand over the next lines: every two seconds, and at once after a seek or when the
     /// lines change.

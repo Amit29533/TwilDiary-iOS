@@ -488,6 +488,7 @@ struct JellyPlayerView: View {
             JellyCast.shared.handoff = (current.id, exactTime, current.source, .now)
             engine?.stop()
             mpv.stop()
+            translator.close()
             heavy.system.end()
             // The sound let go, so music that was playing before carries on (not while JellySpace's
             // own music plays).

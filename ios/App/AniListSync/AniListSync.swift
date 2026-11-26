@@ -809,9 +809,17 @@ struct AniListSyncAPI: Sendable {
     /// The AniList id for a TMDB id from the community anime lists (arm.haglund.dev, as CrossWatch
     /// uses them): a film's entry, or a show's first season. Nil when it isn't listed.
     static func mappedID(tmdb: Int, film: Bool) async -> Int? {
-        guard let url = URL(string: "https://arm.haglund.dev/api/v2/themoviedb?id=\(tmdb)"),
-              let reply = try? await URLSession.shared.data(from: url), (reply.1 as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        return mappedID(from: reply.0, film: film)
+        try? await lookUpMappedID(tmdb: tmdb, film: film)
+    }
+    /// The same, with a failed request (offline, the map down) thrown rather than taken for "not
+    /// listed", for an answer that's kept.
+    static func lookUpMappedID(tmdb: Int, film: Bool) async throws -> Int? {
+        guard let url = URL(string: "https://arm.haglund.dev/api/v2/themoviedb?id=\(tmdb)") else { return nil }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 404 { return nil }
+        guard status == 200 else { throw URLError(.badServerResponse) }
+        return mappedID(from: data, film: film)
     }
     /// From the id map's reply: entries of the right kind (TMDB's movie and TV ids overlap) with an
     /// AniList id; a show's first season (or its lowest), a film's first.

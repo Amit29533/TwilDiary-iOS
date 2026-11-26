@@ -1317,6 +1317,9 @@ struct JellyFolderPage: View {
     @State private var total = 0
     @State private var fetched = 0
     @State private var loadingMore = false
+    /// Counts each read from the start: a next page asked for before it (another sort or view
+    /// chosen meanwhile) is dropped rather than added to the new list.
+    @State private var loadRun = 0
     private let pageSize = 200
     private var music: Bool { route.type == "music" }
     private var options: JellyBrowseOptions { JellyBrowseOptions.decode(optionsRaw) }
@@ -1409,6 +1412,7 @@ struct JellyFolderPage: View {
 
     private func load() async {
         guard let client = JellySpace.client else { return }
+        loadRun += 1
         loading = true; failure = nil
         defer { loading = false }
         do {
@@ -1450,11 +1454,12 @@ struct JellyFolderPage: View {
     }
     /// The next 200, when you near the end.
     private func loadMore() async {
-        guard !loadingMore, !showsTiles, fetched < total, !(music && musicView != "Folders"), let client = JellySpace.client else { return }
+        guard !loadingMore, !loading, !showsTiles, fetched < total, !(music && musicView != "Folders"), let client = JellySpace.client else { return }
         loadingMore = true
         defer { loadingMore = false }
+        let run = loadRun
         let user = await JellyfinUser.id(client)
-        guard let next = try? await page(client, user: user, start: fetched) else { return }
+        guard let next = try? await page(client, user: user, start: fetched), run == loadRun else { return }
         fetched += next.Items.count
         total = next.TotalRecordCount
         let known = Set(items.map(\.Id))

@@ -69,7 +69,13 @@ enum SynopsisSource: String, CaseIterable, Sendable {
     /// with its spoilers left out.
     static func aniList(tmdb: Int, film: Bool) async -> String? {
         await cached("anilist|\(film ? "movie" : "tv")|\(tmdb)") {
-            guard let id = await AniListSync.mappedID(tmdb: tmdb, film: film) else { return .none }
+            // Not listed: none. Offline or the map down: failed, so it's asked again next time (it
+            // was kept as "none", and the synopsis never came once back online).
+            let id: Int
+            do {
+                guard let found = try await AniListSync.lookUpMappedID(tmdb: tmdb, film: film) else { return .none }
+                id = found
+            } catch { return .failed }
             let raw: String?
             do { raw = try await AniListClient.shared.mediaDescription(id) } catch { return .failed }
             return outcome(raw.map { AniListText.readable($0, hideSpoilers: true) })

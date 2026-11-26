@@ -40,6 +40,9 @@ struct JellyListPage: View {
     @State private var fetched = 0
     @State private var total = 0
     @State private var loadingMore = false
+    /// Counts each read from the start: a next page asked for before it (another sort chosen
+    /// meanwhile) is dropped rather than added to the new list.
+    @State private var listRun = 0
 
     var body: some View {
         EdgeToEdgeScroll(frosted: true) {
@@ -48,7 +51,7 @@ struct JellyListPage: View {
                     if route.kind == .person, let person { personHeader(person, client: client).padding(.horizontal, 6) }
                     if let failure { RetryNotice(message: failure) { Task { await load(fresh: true) } } }
                     else if loading && items.isEmpty { DiaryLoadingPlaceholder(label: "Loading", layout: .posterGrid(columns: 3, rows: 3)) }
-                    else if items.isEmpty {
+                    else if items.isEmpty && !loadingMore {
                         Text(JellyBrowseOptions.decode(optionsRaw).filtering ? "Nothing matches these filters." : "Nothing here.")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -112,6 +115,7 @@ struct JellyListPage: View {
         let options = JellyBrowseOptions.decode(optionsRaw)
         // A random list read again is another list: it stays as it was drawn.
         if !fresh, options.sort == .random { return }
+        listRun += 1
         loading = true; failure = nil
         defer { if !Task.isCancelled { loading = false } }
         let user = await JellyfinUser.id(client)
@@ -153,6 +157,12 @@ struct JellyListPage: View {
             request = next
             fetched = page.Items.count
             total = options.sort == .random ? fetched : page.TotalRecordCount
+            // Every title of the first page hidden: the next ones now (with no poster on screen,
+            // nothing asked for them and the list said "Nothing here").
+            if items.isEmpty, fetched < total {
+                loading = false
+                await loadMore()
+            }
         } catch {
             if !Task.isCancelled { failure = FriendlyError.message(error) }
         }
@@ -164,13 +174,15 @@ struct JellyListPage: View {
         loadingMore = true
         defer { loadingMore = false }
         let options = JellyBrowseOptions.decode(optionsRaw)
+        let run = listRun
         let user = await JellyfinUser.id(client)
         let hidden = JellyHidden.decode(hiddenRaw)
         // Pages until one adds something to show (a page of only hidden titles added nothing, and with no
         // new last poster to come on screen the list stopped there).
         while fetched < total {
             guard let page = try? await client.itemsPage(request.extra, filters: request.filters, user: user, sort: options.sort,
-                                                         ascending: options.isAscending, start: fetched), !Task.isCancelled else { return }
+                                                         ascending: options.isAscending, start: fetched),
+                  !Task.isCancelled, run == listRun else { return }
             fetched += page.Items.count
             total = page.Items.isEmpty ? fetched : page.TotalRecordCount
             let known = Set(items.map(\.Id))
