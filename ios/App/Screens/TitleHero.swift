@@ -42,9 +42,9 @@ struct TitleHero<Ratings: View>: View {
     @State private var trailer: CinesPlayer?
     /// Each start of the trailer (a stop or a new start ends the one before's retries).
     @State private var trailerRun = 0
-    /// The X over a playing trailer: it goes after a few seconds, as a video's controls do, and a tap
-    /// on the trailer brings it back (owner's request). Always there while loading or paused, and
-    /// with VoiceOver.
+    /// The X over a playing trailer (and the page's Back and •••): they go after a few seconds, as a
+    /// video's controls do, and a tap on the trailer brings them back (owner's request). Always there
+    /// while loading or paused, and with VoiceOver.
     @State private var trailerCloseShown = true
     @State private var trailerCloseHiding: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
@@ -145,6 +145,9 @@ struct TitleHero<Ratings: View>: View {
                 trailerButton.padding(.top, max(0, coverStrip - 20 - 44)).transition(.opacity)
             }
         }
+        // The page's Back and ••• go with the X, and come back with it on a tap: nothing over a playing
+        // trailer (owner's request).
+        .background(NavigationBarFade(hidden: trailer != nil && !trailerCloseVisible))
         // The trailer's picture is up: its X goes in a few seconds.
         .onChange(of: trailer?.pictureShowing == true) { _, showing in if showing { showTrailerClose() } }
         .onChange(of: synopsisText) { _, _ in measureSynopsis() }
@@ -263,8 +266,8 @@ struct TitleHero<Ratings: View>: View {
         // Music or a podcast that was playing before carries on.
         if !JellyMusic.shared.playing { JellyAudioSession.release() }
     }
-    /// The trailer over the cover: no controls (a tap pauses and plays), its foot melting into the page
-    /// as the cover's does; the cover shows until the video's picture comes.
+    /// The trailer over the cover: no controls (a tap pauses and plays) and nothing over it, ending on
+    /// the page's dark; the cover shows until the video's picture comes.
     private func trailerView(_ player: CinesPlayer) -> some View {
         GeometryReader { proxy in
             let inset = max(0, proxy.frame(in: .global).minX)
@@ -281,12 +284,7 @@ struct TitleHero<Ratings: View>: View {
             }
             .frame(width: width, height: height)
             .background(Color.black.opacity(player.pictureShowing ? 1 : 0))
-            // The lower part fades out gradually into the cover and its wash below (over the last tenth
-            // only, a bright frame ended almost on a line above the wash, owner's screenshot).
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
-                                         .init(color: .black.opacity(0.75), location: 0.72), .init(color: .black.opacity(0.4), location: 0.84),
-                                         .init(color: .black.opacity(0.12), location: 0.94), .init(color: .clear, location: 1)],
-                                 startPoint: .top, endPoint: .bottom))
+            // Nothing over the picture, its foot included (owner: no fade, no shade, no buttons on a video).
             .contentShape(Rectangle())
             .onTapGesture { trailerTapped(player) }
             .offset(x: -inset, y: coverStrip - 6 - height)
@@ -378,8 +376,39 @@ struct SynopsisSwitcher: View {
     }
 }
 
-/// The cover's trailer is showing its picture (from TitleHero up to the page, which draws its cover
-/// blurred under it meanwhile).
+/// Fades the navigation bar of the page it's in (its Back and ••• buttons) out and back in. Gone, the
+/// bar takes no touches (a tap there reaches what's under it).
+struct NavigationBarFade: UIViewRepresentable {
+    let hidden: Bool
+    final class Coordinator {
+        var hidden = false
+        weak var bar: UINavigationBar?
+    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.isAccessibilityElement = false
+        return view
+    }
+    func updateUIView(_ view: UIView, context: Context) {
+        let coordinator = context.coordinator
+        guard coordinator.hidden != hidden else { return }
+        guard let bar = coordinator.bar ?? CardTransition.navigationController(of: view)?.navigationBar else { return }
+        coordinator.hidden = hidden
+        coordinator.bar = bar
+        let shown: CGFloat = hidden ? 0 : 1
+        if context.transaction.disablesAnimations || UIAccessibility.isReduceMotionEnabled { bar.alpha = shown; return }
+        UIView.animate(withDuration: hidden ? 0.35 : 0.25, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { bar.alpha = shown }
+    }
+    /// Gone with the page: the bar back for the page under it.
+    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+        if coordinator.hidden { coordinator.bar?.alpha = 1 }
+    }
+}
+
+/// The cover's trailer is showing its picture (from TitleHero up to the page, which draws the page's
+/// dark over its cover meanwhile).
 struct TitleTrailerShowing: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
@@ -401,7 +430,7 @@ struct TitleArtworkBackdrop: View {
     let name: String
     var topExtension: CGFloat = 0
     /// A trailer plays over the cover: the cover and its wash give way to the page's dark, so the
-    /// video fades into plain dark, as Netflix's does. Into the cover's picture it showed two pictures
+    /// video ends on plain dark, as Netflix's does. Into the cover's picture it showed two pictures
     /// at once, and into the cover's colours (blurred) they mixed with the video's (owner's
     /// screenshots: yellow-green under a blue scene, purple under black).
     var softened = false
