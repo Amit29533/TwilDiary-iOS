@@ -112,6 +112,19 @@ extension JellyfinClient {
                                                URLQueryItem(name: "replaceAllMetadata", value: "false"),
                                                URLQueryItem(name: "replaceAllImages", value: "false")], body: nil)
     }
+    struct AdminCounts: Decodable, Sendable {
+        let MovieCount: Int?
+        let SeriesCount: Int?
+        let EpisodeCount: Int?
+    }
+    /// The whole server's films, shows and episodes.
+    func adminCounts() async throws -> AdminCounts { try await get("Items/Counts") }
+    /// Films and episodes on the whole server matching one filter ("is4K", "isHd"), the count alone.
+    func adminVideoCount(_ filter: String, _ value: Bool) async throws -> Int {
+        let page: Page = try await get("Items", [URLQueryItem(name: "Recursive", value: "true"), URLQueryItem(name: "IncludeItemTypes", value: "Movie,Episode"),
+                                                 URLQueryItem(name: filter, value: value ? "true" : "false"), URLQueryItem(name: "Limit", value: "0")])
+        return page.TotalRecordCount
+    }
     /// How many items of these types are under a library (the count alone; nothing is downloaded).
     func adminCount(parent: String, types: String) async throws -> Int {
         let page: Page = try await get("Items", [URLQueryItem(name: "ParentId", value: parent), URLQueryItem(name: "Recursive", value: "true"),
@@ -531,10 +544,14 @@ struct JellyAdminLibrariesPage: View {
     @State private var scanned: Set<String> = []
     @State private var failure: String?
     @State private var notice: String?
+    /// The card at the top: the server's name and version, its films, shows and episodes, and how
+    /// many films and episodes are 4K, HD and SD.
+    @State private var overview: JellyServerOverview.Numbers?
 
     var body: some View {
         EdgeToEdgeScroll {
             LazyVStack(alignment: .leading, spacing: 22) {
+                if let overview { JellyServerOverview(numbers: overview) }
                 if let libraries {
                     SettingsGroup {
                         HStack(spacing: 12) {
@@ -608,6 +625,7 @@ struct JellyAdminLibrariesPage: View {
             }
             libraries = found
             await readScan()
+            overview = await JellyServerOverview.load(client)
             for library in found { await count(library) }
         } catch {
             failure = JellyAdmin.reason(error)
@@ -668,5 +686,68 @@ struct JellyAdminLibrariesPage: View {
             }
             notice = JellyAdmin.reason(error)
         }
+    }
+}
+
+/// The Libraries page's top card: the server's name and version, then its films, shows and episodes,
+/// then how many films and episodes are 4K, HD and SD (Jellyfin counts 4K as HD too, so HD is HD
+/// without 4K, and the three add up).
+struct JellyServerOverview: View {
+    struct Numbers: Equatable {
+        var name: String
+        var version: String?
+        var movies: Int?
+        var series: Int?
+        var episodes: Int?
+        var uhd: Int?
+        var hd: Int?
+        var sd: Int?
+    }
+    let numbers: Numbers
+
+    /// All asked together; a count the server doesn't answer shows as a dash.
+    static func load(_ client: JellyfinClient) async -> Numbers? {
+        async let info = try? client.adminInfo()
+        async let counts = try? client.adminCounts()
+        async let uhd = try? client.adminVideoCount("is4K", true)
+        async let hd = try? client.adminVideoCount("isHd", true)
+        async let sd = try? client.adminVideoCount("isHd", false)
+        let (server, totals, fourK, hdAll, standard) = await (info, counts, uhd, hd, sd)
+        guard server != nil || totals != nil else { return nil }
+        return Numbers(name: server?.ServerName ?? "Jellyfin", version: server?.Version,
+                       movies: totals?.MovieCount, series: totals?.SeriesCount, episodes: totals?.EpisodeCount,
+                       uhd: fourK, hd: hdAll.map { max(0, $0 - (fourK ?? 0)) }, sd: standard)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(numbers.name).font(.app(size: 17, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
+                if let version = numbers.version { Text("(\(version))").font(.app(size: 17)).foregroundStyle(HomeStyle.secondary) }
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            SettingsDivider()
+            row([("Movies", numbers.movies), ("Series", numbers.series), ("Episodes", numbers.episodes)])
+            SettingsDivider()
+            row([("4K", numbers.uhd), ("HD", numbers.hd), ("SD", numbers.sd)])
+        }
+        .modifier(SettingsCard())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("jellyspace-server-overview")
+    }
+    private func row(_ items: [(String, Int?)]) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(items.indices, id: \.self) { index in
+                let item = items[index]
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.1.map { $0.formatted() } ?? "–").font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.primary)
+                        .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    Text(item.0).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
     }
 }
