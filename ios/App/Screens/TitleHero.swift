@@ -135,7 +135,7 @@ struct TitleHero<Ratings: View>: View {
         // button inside it sometimes never reached the button (owner's video, several taps).
         .overlay(alignment: .topTrailing) {
             if trailerKey != nil {
-                trailerButton.padding(.top, max(0, coverStrip - 20 - 46))
+                trailerButton.padding(.top, max(0, coverStrip - 20 - 44))
             }
         }
         .onChange(of: synopsisText) { _, _ in measureSynopsis() }
@@ -177,15 +177,16 @@ struct TitleHero<Ratings: View>: View {
             Group {
                 if loading { ProgressView().tint(.white) }
                 else {
-                    Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(.white)
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .frame(width: 30, height: 30)
+            // The size of the back and ••• buttons (about 44 pt with the glass's own padding).
+            .frame(width: 20, height: 20)
         }
         // iOS's own glass button: an "interactive" glass on a plain button's label tracked the touch
         // itself (it lit up) and sometimes kept the tap from the button.
-        .buttonStyle(.glass).buttonBorderShape(.circle).controlSize(.large)
+        .buttonStyle(.glass).buttonBorderShape(.circle)
         .contentShape(Circle())
         .accessibilityLabel(trailer == nil ? "Play trailer" : "Close trailer")
         .accessibilityIdentifier("title-trailer")
