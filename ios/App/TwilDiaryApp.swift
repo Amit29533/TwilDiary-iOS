@@ -466,7 +466,8 @@ struct RootView: View {
 
     private func savedTitlePage(_ page: TitleDetailView, tab: AppTab) -> some View {
         Group {
-            if tab == .glance {
+            // "--ui-no-zoom": the navigation probe's comparison run (NavigationRoundTripProbe).
+            if tab == .glance || ProcessInfo.processInfo.arguments.contains("--ui-no-zoom") {
                 // A Glance card can move between the hero and the scrolling list as
                 // activity changes. Use the standard push and pop for this route.
                 page
