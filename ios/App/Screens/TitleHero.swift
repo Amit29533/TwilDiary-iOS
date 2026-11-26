@@ -179,12 +179,13 @@ struct TitleHero<Ratings: View>: View {
             Group {
                 if loading { ProgressView().tint(.white) }
                 else {
-                    Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-            // The size of the back and ••• buttons (about 44 pt with the glass's own padding).
-            .frame(width: 20, height: 20)
+            // The size of the back and ••• buttons: 44 pt with the glass's own padding (about 7 pt a
+            // side; at 20 pt it came out about 34 pt, smaller than them: owner's screenshots).
+            .frame(width: 30, height: 30)
         }
         // iOS's own glass button: an "interactive" glass on a plain button's label tracked the touch
         // itself (it lit up) and sometimes kept the tap from the button.
