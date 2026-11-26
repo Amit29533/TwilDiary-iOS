@@ -70,7 +70,15 @@ struct VoiceActorRoleCard: View {
             NavigationLink(value: CharacterRoute(id: role.character.id, sourceTitle: nil)) {
                 if grid {
                     VStack(alignment: .leading, spacing: 6) {
+                        // The anime's score on the picture's corner, as posters show it (it follows
+                        // Posters → Ratings and Design Lab's rating badge).
                         artwork.posterAspect()
+                            .overlay(alignment: Studio.badgeCorner(.bottomLeading)) {
+                                if let score = role.rating, score > 0 {
+                                    PosterScoreBadge(score: score)
+                                        .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")
+                                }
+                            }
                         ProfileCardCaption(title: role.character.name)
                     }
                 } else {
@@ -95,7 +103,9 @@ struct VoiceActorRoleCard: View {
                                 .accessibilityLabel("and \(role.moreAnime) more")
                         }
                     }
-                    if let score = role.rating, score > 0 {
+                    // The list's small picture has no room for it: the score under the anime, there
+                    // only, and only while poster ratings are on.
+                    if !grid, TilePrefs.shared.posterRatings, Studio.showsBadge, let score = role.rating, score > 0 {
                         RatingBadge(score: score, source: "AniList")
                             .accessibilityIdentifier("voice-actor-anime-rating-\(role.animeID)-\(role.character.id)")
                     }

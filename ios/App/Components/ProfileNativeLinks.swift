@@ -133,7 +133,7 @@ struct ProfileWatchedShelf: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Artwork(path: title.poster, title: title.name).frame(width: posterSize.shelf, height: posterSize.shelfHeight)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .overlay(alignment: .bottomLeading) { if let score = title.communityScore, score > 0 { RatingBadge(score: score).padding(5) } }
+                                        .overlay(alignment: Studio.badgeCorner(.bottomLeading)) { if let score = title.communityScore, score > 0 { PosterScoreBadge(score: score) } }
                                     ProfileCardCaption(title: title.name)
                                 }.frame(width: posterSize.shelf).foregroundStyle(.primary).shelfTransition()
                             }

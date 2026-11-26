@@ -178,9 +178,9 @@ struct CharacterView: View {
                         } else {
                             VStack(alignment: .leading, spacing: 6) {
                                 Artwork(path: item.cover, title: item.title).frame(width: 104, height: 156).clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(alignment: .bottomLeading) {
+                                    .overlay(alignment: Studio.badgeCorner(.bottomLeading)) {
                                         if let score = item.rating, score > 0 {
-                                            RatingBadge(score: score, source: "AniList").padding(5)
+                                            PosterScoreBadge(score: score)
                                                 .accessibilityIdentifier("character-appearance-rating-\(item.id)")
                                         }
                                     }

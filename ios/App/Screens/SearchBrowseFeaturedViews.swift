@@ -251,8 +251,8 @@ struct SearchAnimeTagTitlesPage: View {
                                     Color.clear.aspectRatio(2 / 3, contentMode: .fit)
                                         .overlay { Artwork(path: item.cover, title: item.title) }
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .overlay(alignment: .bottomLeading) {
-                                            if let rating = item.rating { RatingBadge(score: rating, source: "AniList").padding(5) }
+                                        .overlay(alignment: Studio.badgeCorner(.bottomLeading)) {
+                                            if let rating = item.rating, rating > 0 { PosterScoreBadge(score: rating) }
                                         }
                                     ProfileCardCaption(title: item.title)
                                     if let year = item.year {
