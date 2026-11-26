@@ -75,6 +75,12 @@ import TwilDiaryCore
                     applyWindowStyle()
                 }
                 .onChange(of: nativeAppearance) { _, _ in applyWindowStyle() }
+                #if DEBUG
+                // The navigation probe's timing (UI tests with --ui-nav-timing only).
+                .overlay(alignment: .topLeading) {
+                    if NavigationTiming.enabled { NavigationTimingProbe().frame(width: 2, height: 2).opacity(0.02).allowsHitTesting(false) }
+                }
+                #endif
         }
     }
 }

@@ -21,7 +21,7 @@ import XCTest
     private func probe(zoom: Bool, slow: Bool = false) {
         executionTimeAllowance = 300
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-upcoming"] + (zoom ? [] : ["--ui-no-zoom"]) + (slow ? ["--ui-slow-metadata"] : [])
+        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"] + (zoom ? [] : ["--ui-no-zoom"]) + (slow ? ["--ui-slow-metadata"] : [])
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
@@ -45,6 +45,11 @@ import XCTest
             Thread.sleep(forTimeInterval: visit)
             app.navigationBars.buttons.element(boundBy: 0).tap()
             let back = Date()
+            // The app's own timing: how long UIKit took to finish going back, and the main thread's
+            // hold-ups after Back (nothing asked of the app meanwhile).
+            Thread.sleep(forTimeInterval: 3)
+            let timing = app.descendants(matching: .any)["nav-timing"]
+            print("NAV-PROBE zoom=\(zoom ? "on" : "off") round=\(round) app: " + (timing.exists ? timing.label : "no timing element"))
             app.buttons[ids[(round + 1) % 2]].tap()
             let tapped = Date().timeIntervalSince(back)
             let shown = page.waitForExistence(timeout: 8)

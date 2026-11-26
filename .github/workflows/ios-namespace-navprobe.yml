@@ -61,35 +61,22 @@ jobs:
         run: |
           xcrun simctl boot "$SIMULATOR_ID" || true
           bash ios/scripts/ci.sh build-simulator
-      - name: Navigation probe, the app's main thread sampled
+      - name: Navigation probe (the app's own timing of going back)
         run: |
           set -o pipefail
-          # The zoom run only, with the app sampled (macOS `sample`, every millisecond) while its rounds
-          # run: what the main thread was doing around each Back and the next tap.
-          ( TEST_RUNNER_NAV_PROBE=1 xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+          # Zoom on and off; each round prints how long UIKit took to finish going back and the main
+          # thread's hold-ups after Back, measured inside the app (--ui-nav-timing, Debug builds only).
+          # (A sampled run: ios/tools/perf/main_thread_tree.py reads a macOS `sample` report.)
+          TEST_RUNNER_NAV_PROBE=1 xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
             -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
             -parallel-testing-enabled NO -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 1200 -maximum-test-execution-time-allowance 1500 \
-            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testWithZoomSlowMetadata -derivedDataPath "$PWD/ios/.derived/simulator" \
-            -resultBundlePath ios/.artifacts/NavProbe.xcresult 2>&1 | tee ios/.artifacts/logs/nav-probe.log ) &
-          test=$!
-          pid=""
-          for i in $(seq 1 600); do pid=$(pgrep -x TwilDiary | head -1 || true); [ -n "$pid" ] && break; sleep 0.5; done
-          echo "app pid: ${pid:-none}"
-          if [ -n "$pid" ]; then
-            sleep 7
-            sample "$pid" 26 1 -mayDie -file ios/.artifacts/logs/sample.txt || echo "sample failed"
-          fi
-          wait $test
-      - name: Main thread while sampled
-        if: always()
-        run: |
-          if [ -f ios/.artifacts/logs/sample.txt ]; then
-            python3 ios/tools/perf/main_thread_tree.py ios/.artifacts/logs/sample.txt 0.01 | tee ios/.artifacts/logs/main-thread.txt
-          else
-            echo "no sample"
-          fi
+            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testWithZoom \
+            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testWithoutZoom \
+            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testWithZoomSlowMetadata \
+            -derivedDataPath "$PWD/ios/.derived/simulator" \
+            -resultBundlePath ios/.artifacts/NavProbe.xcresult 2>&1 | tee ios/.artifacts/logs/nav-probe.log
       - name: Probe results
         if: always()
         run: grep -E 'NAV-PROBE' ios/.artifacts/logs/nav-probe.log || echo "no probe lines"
