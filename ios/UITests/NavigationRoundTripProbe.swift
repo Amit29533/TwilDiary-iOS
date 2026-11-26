@@ -22,16 +22,15 @@ import XCTest
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
-        let posters = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home-planned-'"))
-        // Up next's posters on screen.
+        // Library's posters (they zoom into their pages, as Home's Up next does; the test diary has
+        // one title planned, so Home's row has a single poster).
+        app.tabBars.buttons["Library"].tap()
+        let posters = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'title-'"))
         let second = posters.element(boundBy: 1)
-        for _ in 0..<18 {
-            if second.exists, second.isHittable, second.frame.maxY < app.tabBars.firstMatch.frame.minY { break }
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.76))
-                .press(forDuration: 0.02, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
-        }
-        guard posters.count >= 2, posters.element(boundBy: 1).isHittable else {
-            XCTFail("Up next has fewer than two posters on screen"); return
+        _ = second.waitForExistence(timeout: 10)
+        guard posters.count >= 2, second.isHittable else {
+            print("NAV-PROBE hierarchy: " + String(app.debugDescription.prefix(6000)))
+            XCTFail("Library has fewer than two posters on screen"); return
         }
         let ids = [posters.element(boundBy: 0).identifier, posters.element(boundBy: 1).identifier]
         let page = app.buttons["title-personal-rating"]
