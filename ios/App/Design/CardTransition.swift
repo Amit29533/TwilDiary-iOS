@@ -20,7 +20,9 @@ import UIKit.UIGestureRecognizerSubclass
     @MainActor final class Opening {
         weak var source: UIView?
         let rect: CGRect
-        let backdrop: UIView?
+        /// The still of the screen it left, behind the card while it grows (let go after: it's a
+        /// screen-sized picture).
+        var backdrop: UIView?
         init(source: UIView, rect: CGRect, backdrop: UIView?) { self.source = source; self.rect = rect; self.backdrop = backdrop }
         /// The poster's place on screen now (it's back in the window once the page is gone).
         var currentRect: CGRect {
@@ -111,6 +113,7 @@ import UIKit.UIGestureRecognizerSubclass
             pageView.transform = .identity
             bar.alpha = 1
             behind.forEach { $0.removeFromSuperview() }
+            opening.backdrop = nil
         }
         return opening
     }
