@@ -1173,13 +1173,12 @@ private struct JellyHomeSkeleton: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var height: CGFloat = 470
-    @State private var dim = false
 
     var body: some View {
-        let fill = Color.primary.opacity(dim ? 0.06 : 0.1)
+        let fill = Color.primary.opacity(0.1)
         VStack(alignment: .leading, spacing: 22) {
             ZStack(alignment: .bottom) {
-                Rectangle().fill(Color.primary.opacity(dim ? 0.05 : 0.08))
+                Rectangle().fill(Color.primary.opacity(0.08))
                     .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55), .init(color: .clear, location: 1)],
                                          startPoint: .top, endPoint: .bottom))
                 VStack(spacing: 10) {
@@ -1205,7 +1204,11 @@ private struct JellyHomeSkeleton: View {
                 }
             }.padding(.horizontal, 14)
         }
-        .onAppear { withAnimation(.easeInOut(duration: reduceMotion ? 1.6 : 0.9).repeatForever(autoreverses: true)) { dim = true } }
+        // The breathing is the whole skeleton's opacity, and only that animates: an endless animation
+        // started as it appeared also carried the skeleton's own settling into place, so its shapes
+        // could keep drifting with each breath.
+        .transaction { $0.animation = nil }
+        .phaseAnimator([1.0, 0.6]) { view, strength in view.opacity(strength) } animation: { _ in .easeInOut(duration: reduceMotion ? 1.6 : 0.9) }
         .accessibilityElement(children: .ignore).accessibilityLabel("Loading Jellyfin")
     }
 }

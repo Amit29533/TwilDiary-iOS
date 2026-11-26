@@ -424,7 +424,6 @@ struct SearchField: View {
     /// On Liquid Glass (see-through, for a field floating over a page) instead of the theme's fill.
     var glass = false
     @State private var didAutoFocus = false
-    @State private var spin = 0.0
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Gemini's blue, violet, rose and gold, round the border and back to blue.
@@ -451,11 +450,6 @@ struct SearchField: View {
             // The assistant's glow while AI search is on, in every theme (owner's request).
             .overlay { if aiOn { geminiGlow.transition(.opacity) } }
             .animation(.smooth(duration: 0.3), value: aiOn)
-            .onChange(of: aiOn, initial: true) { _, on in
-                spin = 0
-                guard on, !reduceMotion else { return }
-                withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) { spin = 360 }
-            }
             .onDisappear { focused = false }
             .onChange(of: focusRevision) { _, _ in
                 focused = true
@@ -480,10 +474,14 @@ struct SearchField: View {
     }
     /// The border in Gemini's colours, turning slowly, with a soft glow outside it.
     private var geminiGlow: some View {
-        let gradient = AngularGradient(colors: Self.geminiColors, center: .center, angle: .degrees(spin))
-        return ZStack {
-            RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).stroke(gradient, lineWidth: 6).blur(radius: 9).opacity(0.75)
-            RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).strokeBorder(gradient, lineWidth: 1.8)
+        // A turn every 4 s, from the clock (an endless animation started with AI search also carried
+        // whatever moved then: the field could keep swaying with the ring).
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let gradient = AngularGradient(colors: Self.geminiColors, center: .center, angle: .degrees(reduceMotion ? 0 : CineGlow.turn(context.date, period: 4)))
+            ZStack {
+                RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).stroke(gradient, lineWidth: 6).blur(radius: 9).opacity(0.75)
+                RoundedRectangle(cornerRadius: fieldRadius, style: .continuous).strokeBorder(gradient, lineWidth: 1.8)
+            }
         }.allowsHitTesting(false)
     }
 }

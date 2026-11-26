@@ -194,7 +194,9 @@ struct DiaryLoadingPlaceholder: View {
             }
         }
         .fixedSize(horizontal: true, vertical: false)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // minWidth 0 as well: with a maximum only, the frame took the row's own width (wider than the
+        // phone) and the whole page grew past the screen's edge (CastPlaceholder's note).
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
     /// The caption's height comes from hidden text in the real fonts (it follows Dynamic Type as the
     /// real caption does); the grey bars sit over it.

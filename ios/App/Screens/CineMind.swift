@@ -148,6 +148,9 @@ private struct CineEdgeGlow: View {
     var body: some View {
         Color.clear
             .cineGlow(RoundedRectangle(cornerRadius: 36, style: .continuous), active: true, lineWidth: 2.4)
+            // Only the breathing animates (it also carried the sheet's resizing: the glow trailed behind
+            // a detent change).
+            .transaction { $0.animation = nil }
             .phaseAnimator(reduceMotion ? [1.0] : [0.5, 1.0]) { view, strength in view.opacity(strength) } animation: { _ in .smooth(duration: 1.2) }
             .ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
     }
@@ -161,6 +164,12 @@ private struct CineEdgeGlow: View {
 enum CineGlow {
     static let colours = [Color(webHex: "#ff9f43"), Color(webHex: "#ff4fa3"), Color(webHex: "#a35cff"), Color(webHex: "#4f8bff"), Color(webHex: "#3fd9f2")]
     static var linear: LinearGradient { LinearGradient(colors: colours, startPoint: .leading, endPoint: .trailing) }
+    /// The ring's angle now, a whole turn every `period` seconds (read from the clock by a timeline: an
+    /// endless animation started as a ring appeared also carried whatever moved at that moment, so a
+    /// chip or the field could keep swaying with it).
+    static func turn(_ date: Date, period: Double) -> Double {
+        date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period * 360
+    }
 }
 
 extension View {
@@ -176,29 +185,25 @@ private struct CineGlowRing<S: InsettableShape>: ViewModifier {
     let active: Bool
     let lineWidth: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var spin = 0.0
     func body(content: Content) -> some View {
         content
             .background {
-                // The halo: the ring blurred outward, only while active.
-                ring(width: lineWidth * 5).blur(radius: 9).opacity(active ? 0.55 : 0)
+                // The halo: the ring blurred outward, only while active (and only turning then).
+                ring(width: lineWidth * 5, turning: active).blur(radius: 9).opacity(active ? 0.55 : 0)
             }
-            .overlay { ring(width: active ? lineWidth * 1.6 : lineWidth).opacity(active ? 1 : 0.65) }
+            .overlay { ring(width: active ? lineWidth * 1.6 : lineWidth, turning: true).opacity(active ? 1 : 0.65) }
             .animation(.smooth(duration: 0.35), value: active)
-            .onAppear {
-                guard !reduceMotion else { return }
-                // From the start each time it shows (a ring seen again would otherwise stay still at 360°).
-                spin = 0
-                Task { @MainActor in withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) { spin = 360 } }
-            }
     }
-    private func ring(width: CGFloat) -> some View {
+    private func ring(width: CGFloat, turning: Bool) -> some View {
         GeometryReader { proxy in
             let side = max(proxy.size.width, proxy.size.height) * 1.6
-            AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .zero)
-                .frame(width: side, height: side)
-                .rotationEffect(.degrees(spin))
-                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            // A turn every 6 s, from the clock (CineGlow.turn), at most 30 times a second.
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !turning)) { context in
+                AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .zero)
+                    .frame(width: side, height: side)
+                    .rotationEffect(.degrees(reduceMotion ? 0 : CineGlow.turn(context.date, period: 6)))
+            }
+            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
         .mask(shape.strokeBorder(lineWidth: width))
         .allowsHitTesting(false).accessibilityHidden(true)
