@@ -124,9 +124,9 @@ struct JellyfinEntryCard: View {
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }.multilineTextAlignment(.leading).accessibilityElement(children: .combine)
         if let id = entry.diaryID {
-            NavigationLink(value: id) { label }.buttonStyle(.springPress).accessibilityIdentifier("jellyfin-item-" + entry.id)
+            CardLink(value: id) { label }.buttonStyle(.springPress).accessibilityIdentifier("jellyfin-item-" + entry.id)
         } else if let tmdb = entry.tmdb {
-            NavigationLink(value: CatalogRoute(kind: entry.movie ? .movie : .tv, id: tmdb)) { label }.buttonStyle(.springPress).accessibilityIdentifier("jellyfin-item-" + entry.id)
+            CardLink(value: CatalogRoute(kind: entry.movie ? .movie : .tv, id: tmdb)) { label }.buttonStyle(.springPress).accessibilityIdentifier("jellyfin-item-" + entry.id)
         } else {
             label.accessibilityIdentifier("jellyfin-item-" + entry.id)
         }

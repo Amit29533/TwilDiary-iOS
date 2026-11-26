@@ -441,9 +441,9 @@ private struct AwardNomineeRow: View {
                 } else {
                     let route = CatalogRoute(kind: subject.kind == .movie ? .movie : .tv, id: subject.id)
                     if let saved = store.libraryIdentity(CatalogItem(id: route.id, mediaType: route.kind, name: title)) {
-                        NavigationLink(value: saved) { row }.buttonStyle(.springPress)
+                        CardLink(value: saved) { row }.buttonStyle(.springPress)
                     } else {
-                        NavigationLink(value: route) { row }.buttonStyle(.springPress)
+                        CardLink(value: route) { row }.buttonStyle(.springPress)
                     }
                 }
             } else if nominee.work != nil || nominee.character?.peopleId != nil {

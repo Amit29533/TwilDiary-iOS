@@ -325,7 +325,7 @@ struct StatsMonthHallOfFame: View {
         }.padding(14).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsMonth.Moment) -> some View {
-        NavigationLink(value: value.title.id) {
+        CardLink(value: value.title.id) {
             VStack(spacing: 6) {
                 Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 9))
                 Text(value.date.formatted(.dateTime.day().month(.abbreviated))).font(.app(size: 12)).foregroundStyle(.secondary)

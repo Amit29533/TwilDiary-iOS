@@ -352,7 +352,7 @@ struct StatsHallOfFameCard: View {
         }.padding(14).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
     private func moment(_ value: StatsInsights.Moment) -> some View {
-        NavigationLink(value: value.title.id) {
+        CardLink(value: value.title.id) {
             VStack(spacing: 6) {
                 Artwork(path: value.title.poster, title: value.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 9))
                 Text(value.date.formatted(.dateTime.day().month(.abbreviated).year())).font(.app(size: 12)).foregroundStyle(.secondary)
@@ -376,7 +376,7 @@ struct StatsMarathonsCard: View {
         if !marathons.isEmpty {
             StatsCard(title: "Longest marathons") {
                 ForEach(marathons) { item in
-                    NavigationLink(value: item.title.id) {
+                    CardLink(value: item.title.id) {
                         HStack(spacing: 12) {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 9))
                             VStack(alignment: .leading, spacing: 3) {
@@ -417,7 +417,7 @@ struct StatsPosterRow: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(items) { item in
-                        NavigationLink(value: item.title.id) {
+                        CardLink(value: item.title.id) {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight).clipShape(RoundedRectangle(cornerRadius: 14))
                                 .overlay(alignment: .bottomLeading) {
                                     VStack(alignment: .leading, spacing: 0) {
@@ -498,16 +498,16 @@ struct StatsGlanceCard: View {
             VStack(spacing: 0) {
                 if let runtime = insights.averageRuntime { row("Avg runtime", "\(runtime) min") }
                 if let movie = insights.longestMovie, let runtime = movie.runtimeMinutes {
-                    NavigationLink(value: movie.id) { row("Longest movie", "\(runtime) min", detail: movie.name, link: true) }.buttonStyle(.plain)
+                    CardLink(value: movie.id) { row("Longest movie", "\(runtime) min", detail: movie.name, link: true) }.buttonStyle(.plain)
                 }
                 if let value = insights.movieAverage { row("Movies avg", value.formatted(.number.precision(.fractionLength(1)))) }
                 if let value = insights.showAverage { row("Shows avg", value.formatted(.number.precision(.fractionLength(1)))) }
                 row("Rewatches", insights.rewatches.formatted())
                 if let first = insights.first {
-                    NavigationLink(value: first.title.id) { row("First watch", first.date.formatted(.dateTime.month(.abbreviated).year()), detail: first.title.name, link: true) }.buttonStyle(.plain)
+                    CardLink(value: first.title.id) { row("First watch", first.date.formatted(.dateTime.month(.abbreviated).year()), detail: first.title.name, link: true) }.buttonStyle(.plain)
                 }
                 if let latest = insights.latest {
-                    NavigationLink(value: latest.title.id) { row("Latest watch", latest.date.formatted(.dateTime.month(.abbreviated).year()), detail: latest.title.name, last: true, link: true) }.buttonStyle(.plain)
+                    CardLink(value: latest.title.id) { row("Latest watch", latest.date.formatted(.dateTime.month(.abbreviated).year()), detail: latest.title.name, last: true, link: true) }.buttonStyle(.plain)
                 }
             }
         }

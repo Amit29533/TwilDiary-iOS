@@ -49,7 +49,7 @@ struct FilesView: View {
         return layout {
             if location.deviceId == "jellyfin" { BrandLogo(service: .jellyfin, size: 22) } else { DiaryIcon(name: "folder", size: 20).foregroundStyle(.tint) }
             VStack(alignment: .leading, spacing: 7) {
-                NavigationLink(value: location.titleId) { HStack(spacing: 5) { Text(store.title(location.titleId)?.name ?? "Unmatched title").font(.app(size: 14, weight: .semibold)); DiaryIcon(name: "chevron-right", size: 14) } }.buttonStyle(.plain)
+                CardLink(value: location.titleId) { HStack(spacing: 5) { Text(store.title(location.titleId)?.name ?? "Unmatched title").font(.app(size: 14, weight: .semibold)); DiaryIcon(name: "chevron-right", size: 14) } }.buttonStyle(.plain)
                 Text("\(location.season.map { "Season \($0)" } ?? "Title folder") · \(location.fileCount.counted("file", "files")) · \(location.sizeBytes.map { String(format: "%.1f GB", Double($0) / 1e9) } ?? "Size unknown")").font(.app(size: 11)).foregroundStyle(.secondary)
                 Text(location.path).font(.app(size: 11, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 Text(evidence(location.evidence)).font(.app(size: 11)).foregroundStyle(.secondary)

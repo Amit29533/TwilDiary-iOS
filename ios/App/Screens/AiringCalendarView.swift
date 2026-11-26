@@ -254,7 +254,7 @@ struct AiringCalendarView: View {
         let summary = hideSpoilers ? item.title.overview : (item.episode.overview.isEmpty ? item.title.overview : item.episode.overview)
         let when = when(item)
         return HStack(alignment: .top, spacing: 14) {
-            NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
+            CardLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
                 CalendarStyle.row(poster: item.title.poster, name: item.title.name, when: when.text, line: episodeLine(item)) {
                     if let score = item.title.communityScore, score > 0 { scoreBadge(score) }
                     CalendarStyle.badge(away(when.away))
@@ -355,14 +355,14 @@ struct AiringCalendarView: View {
             : "S\(first.episode.season) E\(first.episode.number) – S\(last.episode.season) E\(last.episode.number)"
         let progress = watchedProgress(group.title)
         return HStack(alignment: .top, spacing: 14) {
-            NavigationLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) { poster(group.title) }.buttonStyle(.plain)
+            CardLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) { poster(group.title) }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(airedText).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     badge("\(group.items.count) behind", strong: true)
                 }
-                NavigationLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) {
+                CardLink(value: SavedTitleRoute(id: group.title.id, season: first.episode.season)) {
                     Text(group.title.name).font(.app(size: 17, weight: .bold)).foregroundStyle(HomeStyle.primary).lineLimit(1).truncationMode(.tail)
                 }.buttonStyle(.plain)
                 Text(group.title.categoryName + " · " + span).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.chipText).lineLimit(1)
@@ -426,7 +426,7 @@ struct AiringCalendarView: View {
         if upcoming.isEmpty && aired.isEmpty { empty("No \(kindWord) episodes to show with these filters.") }
     }
     private func compactRow(_ item: UpcomingSchedule.Item, badge text: String, strong: Bool) -> some View {
-        NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
+        CardLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season)) {
             CalendarStyle.row(poster: item.title.poster, name: item.title.name, when: when(item).text, line: episodeLine(item)) {
                 badge(text, strong: strong)
             } extra: { EmptyView() }

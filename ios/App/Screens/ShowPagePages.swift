@@ -1038,9 +1038,9 @@ struct TMDbCollectionPage: View {
     }
     @ViewBuilder private func link(_ item: CatalogItem) -> some View {
         if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {
-            NavigationLink(value: saved) { poster(item) }.buttonStyle(.springPress)
+            CardLink(value: saved) { poster(item) }.buttonStyle(.springPress)
         } else {
-            NavigationLink(value: item.route) { poster(item) }.buttonStyle(.springPress)
+            CardLink(value: item.route) { poster(item) }.buttonStyle(.springPress)
         }
     }
     private func poster(_ item: CatalogItem) -> some View {

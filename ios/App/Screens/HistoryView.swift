@@ -56,7 +56,7 @@ struct HistoryView: View {
                     } else if grid && !typeSize.isAccessibilitySize {
                         CollectionLayout(grid: true, spacing: 12) {
                             ForEach(entries.prefix(limit)) { entry in
-                                NavigationLink(value: entry.title.id) { HistoryRow(entry: entry, grid: true) }.buttonStyle(.plain).accessibilityIdentifier("history-event-" + entry.id)
+                                CardLink(value: entry.title.id) { HistoryRow(entry: entry, grid: true) }.buttonStyle(.plain).accessibilityIdentifier("history-event-" + entry.id)
                             }
                         }
                     } else {
@@ -70,7 +70,7 @@ struct HistoryView: View {
                                 VStack(spacing: 0) {
                                     ForEach(Array(day.entries.enumerated()), id: \.element.id) { index, entry in
                                         if index > 0 { SettingsDivider() }
-                                        NavigationLink(value: entry.title.id) { HistoryDayRow(entry: entry) }.buttonStyle(.plain)
+                                        CardLink(value: entry.title.id) { HistoryDayRow(entry: entry) }.buttonStyle(.plain)
                                             .accessibilityIdentifier("history-event-" + entry.id)
                                     }
                                 }.modifier(SettingsCard())

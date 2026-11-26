@@ -157,7 +157,7 @@ struct TrashView: View {
                 // A tap opens the title's page (as from Search), where it can be restored.
                 Group {
                     if let tmdb = title.tmdbId {
-                        NavigationLink(value: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb)) { card(title) }.buttonStyle(.springPress)
+                        CardLink(value: CatalogRoute(kind: title.isSeries ? .tv : .movie, id: tmdb)) { card(title) }.buttonStyle(.springPress)
                             .accessibilityIdentifier("trash-open-" + title.id)
                     } else { card(title) }
                 }.contextMenu { Button("Select", systemImage: "checkmark.circle") { selecting = true; selected = [title.id] } }

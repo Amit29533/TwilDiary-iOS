@@ -653,7 +653,7 @@ struct SemanticSearchSection: View {
     }
 
     private func row(_ match: SemanticSearch.Match) -> some View {
-        NavigationLink(value: match.item.route) {
+        CardLink(value: match.item.route) {
             HStack(alignment: .top, spacing: 14) {
                 Artwork(path: match.item.artwork, title: match.item.name, initialsOnly: false).frame(width: posterSize.row, height: posterSize.rowHeight)
                     .clipShape(RoundedRectangle(cornerRadius: 10))

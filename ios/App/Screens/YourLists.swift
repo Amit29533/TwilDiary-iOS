@@ -360,8 +360,8 @@ struct YourListPage: View {
 
     private func tile(_ entry: YourListEntry) -> some View {
         Group {
-            if let id = entry.item.inLibraryId ?? store.libraryIdentity(entry.item) { NavigationLink(value: id) { CatalogPoster(item: entry.item) } }
-            else { NavigationLink(value: entry.item.route) { CatalogPoster(item: entry.item) } }
+            if let id = entry.item.inLibraryId ?? store.libraryIdentity(entry.item) { CardLink(value: id) { CatalogPoster(item: entry.item) } }
+            else { CardLink(value: entry.item.route) { CatalogPoster(item: entry.item) } }
         }.buttonStyle(.springPress).accessibilityIdentifier("your-list-item-\(entry.item.key)")
     }
 

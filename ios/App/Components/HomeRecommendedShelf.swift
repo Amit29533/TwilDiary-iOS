@@ -47,9 +47,9 @@ struct HomeRecommendedShelf: View {
     }
     @ViewBuilder private func link(_ item: CatalogItem) -> some View {
         if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {
-            NavigationLink(value: saved) { card(item) }.buttonStyle(.springPress).accessibilityIdentifier("home-recommended-\(item.id)")
+            CardLink(value: saved) { card(item) }.buttonStyle(.springPress).accessibilityIdentifier("home-recommended-\(item.id)")
         } else {
-            NavigationLink(value: item.route) { card(item) }.buttonStyle(.springPress).accessibilityIdentifier("home-recommended-\(item.id)")
+            CardLink(value: item.route) { card(item) }.buttonStyle(.springPress).accessibilityIdentifier("home-recommended-\(item.id)")
         }
     }
     private func card(_ item: CatalogItem) -> some View {

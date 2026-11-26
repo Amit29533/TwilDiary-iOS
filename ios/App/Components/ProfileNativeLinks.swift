@@ -126,7 +126,7 @@ struct ProfileWatchedShelf: View {
             else {
                 ProfileShelf {
                     ForEach(titles) { title in
-                        NavigationLink(value: title.id) {
+                        CardLink(value: title.id) {
                             if typeSize.isAccessibilitySize {
                                 ProfileMediaRow(image: title.poster, name: title.name, score: title.communityScore, provider: "TMDB")
                             } else {

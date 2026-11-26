@@ -74,6 +74,7 @@ struct RecentlyViewedShelf: View {
                                     Text(item.name).font(.app(size: 13, weight: .semibold)).foregroundStyle(HomeStyle.primary)
                                         .lineLimit(2).multilineTextAlignment(.leading)
                                 }.frame(width: posterSize.shelf, alignment: .leading)
+                                    .background(CardSourceMarker())
                             }.buttonStyle(.springPress).accessibilityIdentifier("search-viewed-" + item.key)
                                 .contextMenu {
                                     Button("Remove", systemImage: "xmark", role: .destructive) {
@@ -88,10 +89,11 @@ struct RecentlyViewedShelf: View {
     }
     private func open(_ item: RecentlyViewedTitle) {
         // The library title when it's (still or now) in the diary, else TMDB's page.
-        if let id = item.libraryID, store.title(id) != nil { router.openTitle(id, tab: .search); return }
+        // As a card from its poster (openFromPoster opens in the tab on screen: Search).
+        if let id = item.libraryID, store.title(id) != nil { router.openFromPoster(id); return }
         if let route = item.route {
-            if let id = store.libraryIdentity(CatalogItem(id: route.id, mediaType: route.kind, name: item.name)) { router.openTitle(id, tab: .search) }
-            else { router.paths[.search, default: NavigationPath()].append(route) }
+            if let id = store.libraryIdentity(CatalogItem(id: route.id, mediaType: route.kind, name: item.name)) { router.openFromPoster(id) }
+            else { router.openFromPoster(route) }
         }
     }
 }

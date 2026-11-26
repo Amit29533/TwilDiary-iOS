@@ -84,8 +84,8 @@ struct SearchLandingView: View {
                                 LazyHStack(alignment: .top, spacing: Gap.item) {
                                     ForEach(Array(shows.prefix(10).enumerated()), id: \.element.key) { index, item in
                                         Group {
-                                            if let id = store.libraryIdentity(item) { NavigationLink(value: id) { rankedPoster(index: index, item: item) } }
-                                            else { NavigationLink(value: item.route) { rankedPoster(index: index, item: item) } }
+                                            if let id = store.libraryIdentity(item) { CardLink(value: id) { rankedPoster(index: index, item: item) } }
+                                            else { CardLink(value: item.route) { rankedPoster(index: index, item: item) } }
                                         }.buttonStyle(.springPress).frame(width: posterSize.shelf)
                                             .accessibilityIdentifier("trending-show-\(index + 1)")
                                     }

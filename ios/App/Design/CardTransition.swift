@@ -175,14 +175,15 @@ import UIKit.UIGestureRecognizerSubclass
     }
 }
 
-/// A poster that opens its title (a library id or a TMDB route), as a card (AppRouter.openFromPoster):
-/// a NavigationLink's push always slid, whatever the transaction, so the card never opened.
+/// Anything that opens a title (a poster, a card, a row: a library id, a TMDB route or a season), as a
+/// card growing out of it (AppRouter.openFromPoster): a NavigationLink's push always slid, whatever the
+/// transaction, so the card never opened. Its label is the card's source.
 struct CardLink<Value: Hashable, Label: View>: View {
     let value: Value
     @ViewBuilder var label: () -> Label
     @Environment(AppRouter.self) private var router
     var body: some View {
-        Button { router.openFromPoster(value) } label: { label() }
+        Button { router.openFromPoster(value) } label: { label().background(CardSourceMarker()) }
     }
 }
 

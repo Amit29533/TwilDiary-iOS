@@ -259,7 +259,7 @@ private struct DailyDiscoveryHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            NavigationLink(value: title.id) {
+            CardLink(value: title.id) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title.name)
                         .font(.largeTitle.bold())

@@ -536,7 +536,7 @@ struct PersonalProfileView: View {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(recent)) { title in
-                        NavigationLink(value: title.id) {
+                        CardLink(value: title.id) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Artwork(path: title.poster, title: title.name, initialsOnly: false).frame(width: posterSize.shelf, height: posterSize.shelfHeight).clipShape(RoundedRectangle(cornerRadius: 14))
                                 Text(title.name).font(.app(size: 14.5, weight: .semibold)).foregroundStyle(HomeStyle.ink).lineLimit(2).frame(width: posterSize.shelf, alignment: .leading)
@@ -666,7 +666,7 @@ struct OnThisDayView: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 12) {
                     ForEach(days) { day in
-                        NavigationLink(value: day.entries[0].title.id) { memoryCard(day) }.buttonStyle(.springPress)
+                        CardLink(value: day.entries[0].title.id) { memoryCard(day) }.buttonStyle(.springPress)
                             .containerRelativeFrame(.horizontal).id(day.id)
                     }
                 }.scrollTargetLayout()
@@ -733,7 +733,7 @@ struct OnThisDayView: View {
                 Text(day.date.formatted(.dateTime.weekday(.wide).day().month(.wide).year())).font(.app(size: 14)).foregroundStyle(HomeStyle.secondary)
             }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
             ForEach(day.entries) { entry in
-                NavigationLink(value: entry.title.id) { row(entry) }.buttonStyle(.plain)
+                CardLink(value: entry.title.id) { row(entry) }.buttonStyle(.plain)
             }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).diaryPanel(padding: 0, radius: 22)
             .accessibilityElement(children: .contain).accessibilityIdentifier("on-this-day-" + day.id)

@@ -287,7 +287,7 @@ struct StatsView: View {
             if ids.isEmpty { caption("No watches logged in this period.") }
             // Lazy: a year's titles can be hundreds, all made at once as the period was tapped.
             ScrollView(.horizontal) { LazyHStack(alignment: .top, spacing: 12) { ForEach(ids, id: \.self) { id in if let title = store.title(id) {
-                VStack(alignment: .leading, spacing: 6) { NavigationLink(value: id) { PosterCard(title: title) }.buttonStyle(.plain); caption("\(grouped[id]?.count ?? 0) \(grouped[id]?.count == 1 ? "watch" : "watches")", size: 12) }.frame(width: 112)
+                VStack(alignment: .leading, spacing: 6) { CardLink(value: id) { PosterCard(title: title) }.buttonStyle(.plain); caption("\(grouped[id]?.count ?? 0) \(grouped[id]?.count == 1 ? "watch" : "watches")", size: 12) }.frame(width: 112)
             } } } }.scrollIndicators(.hidden)
         }
     }
@@ -404,7 +404,7 @@ struct StatsView: View {
             if stale.isEmpty { caption("Nothing has stalled. Everything you're watching moved in the last 30 days.") }
             ForEach(Array(stale.prefix(staleLimit))) { item in
                 HStack(spacing: 12) {
-                    NavigationLink(value: item.id) {
+                    CardLink(value: item.id) {
                         HStack(spacing: 12) {
                             Artwork(path: item.title.poster, title: item.title.name, initialsOnly: false).frame(width: posterSize.small, height: posterSize.smallHeight).clipShape(RoundedRectangle(cornerRadius: 8))
                             VStack(alignment: .leading, spacing: 3) {

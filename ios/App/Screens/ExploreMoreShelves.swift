@@ -381,8 +381,8 @@ private struct CatalogTile: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
         Group {
-            if let id = item.inLibraryId ?? store.libraryIdentity(item) { NavigationLink(value: id) { label } }
-            else { NavigationLink(value: item.route) { label } }
+            if let id = item.inLibraryId ?? store.libraryIdentity(item) { CardLink(value: id) { label } }
+            else { CardLink(value: item.route) { label } }
         }.buttonStyle(.springPress).accessibilityIdentifier("explore-feed-" + item.key)
     }
     @ViewBuilder private var label: some View {
@@ -648,7 +648,7 @@ private struct ComingTile: View {
         let removable = saved.flatMap { store.title($0) }?.status == "planned"
         ZStack(alignment: .topTrailing) {
             Group {
-                if let saved { NavigationLink(value: saved) { poster } } else { NavigationLink(value: entry.item.route) { poster } }
+                if let saved { CardLink(value: saved) { poster } } else { CardLink(value: entry.item.route) { poster } }
             }.buttonStyle(.springPress).accessibilityIdentifier("explore-coming-" + entry.id)
             // Over the poster, outside the link, so it doesn't open the page.
             Button {

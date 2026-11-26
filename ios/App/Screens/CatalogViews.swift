@@ -1066,9 +1066,9 @@ struct CastAndRelated: View {
     }
     @ViewBuilder private func relatedLink(_ item: CatalogItem) -> some View {
         if let saved = CatalogTools.libraryIdentity(item, in: store.workspace) {
-            NavigationLink(value: saved) { relatedPoster(item) }.buttonStyle(.springPress)
+            CardLink(value: saved) { relatedPoster(item) }.buttonStyle(.springPress)
         } else {
-            NavigationLink(value: item.route) { relatedPoster(item) }.buttonStyle(.springPress)
+            CardLink(value: item.route) { relatedPoster(item) }.buttonStyle(.springPress)
         }
     }
     /// Design: a 111 x 167 poster, the name in 14 pt semibold and the year under it.

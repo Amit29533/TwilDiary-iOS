@@ -364,10 +364,10 @@ private struct SearchTVDBTitleCard: View {
                 if let id = title.tmdbID {
                     let item = CatalogItem(id: id, mediaType: entry.kind, name: title.name)
                     if let savedID = store.libraryIdentity(item) {
-                        NavigationLink(value: savedID) { card(title) }.buttonStyle(.springPress)
+                        CardLink(value: savedID) { card(title) }.buttonStyle(.springPress)
                             .accessibilityIdentifier("catalog-\(item.key)")
                     } else {
-                        NavigationLink(value: item.route) { card(title) }.buttonStyle(.springPress)
+                        CardLink(value: item.route) { card(title) }.buttonStyle(.springPress)
                             .accessibilityIdentifier("catalog-\(item.key)")
                     }
                 } else {

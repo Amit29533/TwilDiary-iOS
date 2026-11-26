@@ -244,8 +244,8 @@ struct PersonView: View {
             }
         }.padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
         return Group {
-            if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { row } }
-            else { NavigationLink(value: item.route) { row } }
+            if let saved = store.libraryIdentity(item) { CardLink(value: saved) { row } }
+            else { CardLink(value: item.route) { row } }
         }.buttonStyle(.plain).accessibilityIdentifier("person-watched-row-\(item.key)")
     }
     private func sectionHeading(_ label: String, count: Int? = nil, route: PersonFilmographyRoute) -> some View {
@@ -384,8 +384,8 @@ struct PersonCreditShelf: View {
                 if typeSize.isAccessibilitySize {
                     let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
                     let label = ProfileMediaRow(image: item.artwork, name: item.name, detail: [item.year.map(String.init), ProfileText.line(role)].compactMap { $0 }.joined(separator: " · "), score: item.rating ?? store.libraryIdentity(item).flatMap({ store.title($0)?.communityScore }), provider: "TMDB")
-                    if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { label } }
-                    else { NavigationLink(value: item.route) { label } }
+                    if let saved = store.libraryIdentity(item) { CardLink(value: saved) { label } }
+                    else { CardLink(value: item.route) { label } }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""

@@ -394,7 +394,7 @@ private struct FavouriteTitlesSection: View {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(items) { title in
-                            NavigationLink(value: title.id) {
+                            CardLink(value: title.id) {
                                 HomePoster(artwork: title.poster, name: title.name,
                                            subtitle: [title.year.map(String.init), title.category == "anime-movie" ? "Movie" : nil].compactMap { $0 }.joined(separator: " · "))
                             }.buttonStyle(.springPress).accessibilityIdentifier("favourite-show-" + title.id)

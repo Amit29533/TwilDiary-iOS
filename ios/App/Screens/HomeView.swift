@@ -133,7 +133,7 @@ struct HomeView: View {
                             LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(favouriteShows.prefix(6)) { show in
                                     // Home's standard poster, the size of the characters and people beside it.
-                                    NavigationLink(value: show.id) {
+                                    CardLink(value: show.id) {
                                         HomePoster(artwork: show.poster, name: show.name,
                                                    subtitle: [show.year.map(String.init), show.category == "anime" ? "Anime" : show.category == "anime-movie" ? "Anime movie" : show.isSeries ? "Show" : "Movie"].compactMap { $0 }.joined(separator: " · "),
                                                    score: show.communityScore)
@@ -160,7 +160,7 @@ struct HomeView: View {
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(overview.upcoming.prefix(12)) { item in
-                                    NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeCard(item: item) }
+                                    CardLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeCard(item: item) }
                                         .buttonStyle(.springPress).accessibilityIdentifier("home-upcoming-" + item.title.id)
                                 }
                             }.scrollTargetLayout()
@@ -168,7 +168,7 @@ struct HomeView: View {
                     } else {
                         VStack(spacing: 10) {
                             ForEach(overview.upcoming.prefix(upcomingLimit)) { item in
-                                NavigationLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
+                                CardLink(value: SavedTitleRoute(id: item.title.id, season: item.episode.season, focusEpisodes: false)) { HomeNewEpisodeRow(item: item) }
                                     .buttonStyle(.plain).accessibilityIdentifier("home-upcoming-" + item.title.id)
                             }
                             if overview.upcoming.count > upcomingLimit { Button("Show more episodes") { upcomingLimit += 5 }.font(.app(size: 14, weight: .semibold)) }
@@ -188,7 +188,7 @@ struct HomeView: View {
                             ScrollView(.horizontal) {
                                 LazyHStack(alignment: .top, spacing: 12) {
                                     ForEach(groups) { group in
-                                        NavigationLink(value: group.title.id) { HomeRecentCard(group: group) }.buttonStyle(.springPress).accessibilityIdentifier("home-history-event-" + group.id)
+                                        CardLink(value: group.title.id) { HomeRecentCard(group: group) }.buttonStyle(.springPress).accessibilityIdentifier("home-history-event-" + group.id)
                                     }
                                 }
                             }.scrollIndicators(.hidden).scrollClipDisabled()
@@ -197,14 +197,14 @@ struct HomeView: View {
                             VStack(spacing: 0) {
                                 ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
                                     if index > 0 { Rectangle().fill(Color(uiColor: .separator)).frame(height: 1 / 3).padding(.leading, 94) }
-                                    NavigationLink(value: group.title.id) { StudioRecentRow(group: group) }
+                                    CardLink(value: group.title.id) { StudioRecentRow(group: group) }
                                         .buttonStyle(.plain).accessibilityIdentifier("home-history-event-" + group.id)
                                 }
                             }.background(HomeStyle.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         } else {
                             VStack(spacing: 10) {
                                 ForEach(groups) { group in
-                                    NavigationLink(value: group.title.id) {
+                                    CardLink(value: group.title.id) {
                                         HomeRow(artwork: group.title.backdrop ?? group.title.poster, name: group.title.name, chip: group.episodeText,
                                                 detail: group.count > 1 ? group.count.counted("episode", "episodes") : nil,
                                                 date: group.date?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))

@@ -304,7 +304,7 @@ struct UniversalCalendarSection: View {
     @ViewBuilder private func row(_ item: UniversalRelease, saved: Bool) -> some View {
         let label = ReleaseRow(item: item, saved: saved)
         if let route = item.route {
-            NavigationLink(value: route) { label }.buttonStyle(.plain).accessibilityIdentifier("everything-" + item.id)
+            CardLink(value: route) { label }.buttonStyle(.plain).accessibilityIdentifier("everything-" + item.id)
         } else if let anime = item.anime {
             AnimeAppearanceButton(appearance: anime) { label }.buttonStyle(.plain).accessibilityIdentifier("everything-" + item.id)
         }

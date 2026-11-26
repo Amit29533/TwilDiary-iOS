@@ -118,7 +118,7 @@ struct HomeSavedShelves: View {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 12) {
                         ForEach(titles.prefix(12)) { title in
-                            NavigationLink(value: title.id) {
+                            CardLink(value: title.id) {
                                 HomePoster(artwork: title.poster, name: title.name, subtitle: subtitle(title), score: title.communityScore)
                             }.buttonStyle(.springPress).accessibilityIdentifier("saved-shelf-title-" + title.id).shelfTransition()
                         }

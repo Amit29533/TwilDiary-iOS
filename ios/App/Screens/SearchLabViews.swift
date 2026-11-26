@@ -409,8 +409,8 @@ struct SearchLabResultsView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: 3), spacing: 18) {
                     ForEach(shown, id: \.key) { item in
                         Group {
-                            if let id = CatalogTools.libraryIdentity(item, in: store.workspace) { NavigationLink(value: id) { CatalogPoster(item: item) } }
-                            else { NavigationLink(value: item.route) { CatalogPoster(item: item) } }
+                            if let id = CatalogTools.libraryIdentity(item, in: store.workspace) { CardLink(value: id) { CatalogPoster(item: item) } }
+                            else { CardLink(value: item.route) { CatalogPoster(item: item) } }
                         }.buttonStyle(.springPress).accessibilityIdentifier("search-lab-title-" + item.key)
                     }
                 }

@@ -866,6 +866,8 @@ struct ProgressCard: View {
                 .background { if ThemeStore.current.native && !compact && !hero && !studioGroupedRow { Color.clear.nativeCard(radius: cornerRadius) } }
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(compact || studioGroupedRow || (ThemeStore.current.native && !hero) ? 0 : 0.17)))
         }.clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            // The card a title opened from it grows out of (CardTransition).
+            .background(CardSourceMarker())
             .task(id: store.cardRevision(title.id)) { await loadCard() }
             .haptic(.success, trigger: watchFeedback)
             .sheet(isPresented: $showNotes) { TitleNotesSheet(titleID: title.id) }
@@ -1297,7 +1299,12 @@ struct ProgressCard: View {
         catch is CancellationError { }
         catch { if !Task.isCancelled { store.error = FriendlyError.message(error) } }
     }
-    private func openTitle() { guard Date.now >= suppressNavigationUntil else { return }; router.openTitle(title.id, tab: router.selectedTab) }
+    private func openTitle() {
+        guard Date.now >= suppressNavigationUntil else { return }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        // As a card from this card (Glance's tab keeps the slide: openFromPoster).
+        router.openFromPoster(title.id)
+    }
     private func markWatch() async {
         guard canMark else { return }
         let previous = card?.progress.watched
