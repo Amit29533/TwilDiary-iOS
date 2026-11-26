@@ -136,16 +136,23 @@ struct PersonProfilePage<Content: View>: View {
                 } else if let backdrop {
                     // The cover stays clear around the buttons; below that it darkens behind the name so
                     // a white first name never sits on bright artwork (owner's fix).
+                    // The darkening runs on past the photo's foot until the cover's own wash is the page's
+                    // ground, ending in that ground: it stopped at the foot, on a line, with the lighter
+                    // wash showing below it (owner's screenshots).
+                    let ground = ThemeStore.current.native ? Color.black : Color(themed: "#0a0a0e")
+                    let foot = topInset + 64 + photoWidth * 1.45
+                    let span = max(foot, TitleCover.artworkHeight(width: width) + 229) + 8
                     TitleArtworkBackdrop(path: backdrop, name: name)
                         .overlay(alignment: .top) {
                             LinearGradient(stops: [
-                                .init(color: Color(themed: "#0a0a0e").opacity(0), location: 0),
-                                .init(color: Color(themed: "#0a0a0e").opacity(0.08), location: 0.28),
-                                .init(color: Color(themed: "#0a0a0e").opacity(0.55), location: 0.45),
-                                .init(color: Color(themed: "#0a0a0e").opacity(0.78), location: 0.65),
-                                .init(color: Color(themed: "#0a0a0e").opacity(0.88), location: 1)
+                                .init(color: ground.opacity(0), location: 0),
+                                .init(color: ground.opacity(0.08), location: 0.28 * foot / span),
+                                .init(color: ground.opacity(0.55), location: 0.45 * foot / span),
+                                .init(color: ground.opacity(0.78), location: 0.65 * foot / span),
+                                .init(color: ground.opacity(0.88), location: foot / span),
+                                .init(color: ground, location: 1)
                             ], startPoint: .top, endPoint: .bottom)
-                            .frame(height: topInset + 64 + photoWidth * 1.45).allowsHitTesting(false).accessibilityHidden(true)
+                            .frame(height: span).allowsHitTesting(false).accessibilityHidden(true)
                         }
                         // Press and hold the cover for a peek and View full screen, as on posters.
                         .overlay(alignment: .top) {
