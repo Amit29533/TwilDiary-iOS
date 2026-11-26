@@ -617,3 +617,34 @@ private struct Video {
         }
     }
 }
+
+// MARK: A title's trailer
+
+extension CinesFeed {
+    /// A title's trailer for its page's cover: TMDB's YouTube trailer (else teaser), official first,
+    /// English (anime: Japanese too, English first), the newest.
+    static func trailer(tmdb: Int, series: Bool, anime: Bool, token: String) async -> String? {
+        let path = "\(series ? "tv" : "movie")/\(tmdb)/videos"
+        guard let data = try? await TMDBDirect.data(path, query: ["include_video_language": anime ? "en,ja" : "en"], token: token) else { return nil }
+        return bestTrailer(data, anime: anime)
+    }
+    nonisolated static func bestTrailer(_ data: Data, anime: Bool) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        struct Found { let key: String; let trailer: Bool; let official: Bool; let english: Bool; let published: String }
+        let found = (object["results"] as? [[String: Any]] ?? []).compactMap { item -> Found? in
+            guard item["site"] as? String == "YouTube", let key = item["key"] as? String,
+                  key.range(of: #"^[A-Za-z0-9_-]{6,20}$"#, options: .regularExpression) != nil,
+                  let type = item["type"] as? String, type == "Trailer" || type == "Teaser" else { return nil }
+            let language = item["iso_639_1"] as? String ?? ""
+            guard language == "en" || (anime && language == "ja") else { return nil }
+            return Found(key: key, trailer: type == "Trailer", official: item["official"] as? Bool ?? false,
+                         english: language == "en", published: item["published_at"] as? String ?? "")
+        }
+        return found.sorted {
+            if $0.official != $1.official { return $0.official }
+            if $0.english != $1.english { return $0.english }
+            if $0.trailer != $1.trailer { return $0.trailer }
+            return $0.published > $1.published
+        }.first?.key
+    }
+}

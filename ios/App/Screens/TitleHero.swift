@@ -36,6 +36,11 @@ struct TitleHero<Ratings: View>: View {
     /// TheTVDB's and AniList's synopses, each only where it says something TMDB's (and the other's) doesn't.
     @State private var otherSynopses: [SynopsisSource: String] = [:]
     @State private var chosenSource: SynopsisSource?
+    /// The title's trailer on YouTube (TMDB's), found when the page opens.
+    @State private var trailerKey: String?
+    /// Playing over the cover (made on the first tap; one web view, as Cines').
+    @State private var trailer: CinesPlayer?
+    @Environment(\.openURL) private var openURL
     /// The sources with a synopsis of their own, TMDB's first.
     private var synopsisSources: [SynopsisSource] {
         (summary.isEmpty ? [] : [.tmdb]) + [SynopsisSource.tvdb, .anilist].filter { otherSynopses[$0] != nil }
@@ -60,6 +65,13 @@ struct TitleHero<Ratings: View>: View {
             // (TitleCover.panelTop + 18, measured from the safe area).
             Color.clear.frame(maxWidth: .infinity).frame(height: coverStrip).contentShape(Rectangle())
                 .fullScreenArtwork(backdrop, title: name, aspect: 16.0 / 9.0)
+                // The trailer, over the cover art exactly: the screen's width, from the top of the screen.
+                .overlay(alignment: .topLeading) { if let trailer { trailerView(trailer) } }
+                .overlay(alignment: .bottomTrailing) {
+                    if trailerKey != nil {
+                        trailerButton.padding(.bottom, 20)
+                    }
+                }
         VStack(alignment: .leading, spacing: 20) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the
@@ -122,6 +134,86 @@ struct TitleHero<Ratings: View>: View {
         }
         }.onChange(of: synopsisText) { _, _ in measureSynopsis() }
         .task(id: tmdbID) { await loadOtherSynopses() }
+        .task(id: tmdbID) { await loadTrailer() }
+        .onDisappear { stopTrailer() }
+        .onChange(of: trailer?.ended == true) { _, ended in if ended { stopTrailer() } }
+        .onChange(of: trailerRefused) { _, refused in
+            // Embedding switched off for this video: it opens on YouTube instead.
+            guard refused, let key = trailerKey else { return }
+            stopTrailer()
+            if let url = URL(string: "https://www.youtube.com/watch?v=" + key) { openURL(url) }
+        }
+    }
+    /// YouTube refused the trailer here (embedding switched off).
+    private var trailerRefused: Bool {
+        guard let trailer, let id = trailer.current else { return false }
+        return trailer.refused.contains(id)
+    }
+    private func loadTrailer() async {
+        guard let tmdbID, !store.isPreview, let token = TMDBDirect.token(store) else { return }
+        let key = await CinesFeed.trailer(tmdb: tmdbID, series: series, anime: category.lowercased().contains("anime"), token: token)
+        guard !Task.isCancelled else { return }
+        trailerKey = key
+    }
+    /// Round, on glass, at the cover's foot: play the trailer; while it plays, close it.
+    private var trailerButton: some View {
+        Button {
+            if trailer == nil { startTrailer() } else { stopTrailer() }
+        } label: {
+            Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 46, height: 46).glassEffect(.regular.interactive(), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(trailer == nil ? "Play trailer" : "Close trailer")
+        .accessibilityIdentifier("title-trailer")
+    }
+    private func startTrailer() {
+        guard let trailerKey else { return }
+        let player = CinesPlayer()
+        player.loops = false
+        // With sound (the trailer was asked for), also with the ringer off, as a film plays.
+        player.muted = false
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { trailer = player }
+        Task {
+            await JellyAudioSession.activate()
+            guard trailer === player else { return }
+            player.play(trailerKey)
+        }
+    }
+    private func stopTrailer() {
+        guard let trailer else { return }
+        trailer.stop()
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { self.trailer = nil }
+        // Music or a podcast that was playing before carries on.
+        if !JellyMusic.shared.playing { JellyAudioSession.release() }
+    }
+    /// The trailer over the cover: no controls (a tap pauses and plays), its foot melting into the page
+    /// as the cover's does; the cover shows until the video's picture comes.
+    private func trailerView(_ player: CinesPlayer) -> some View {
+        GeometryReader { proxy in
+            let inset = max(0, proxy.frame(in: .global).minX)
+            let width = proxy.size.width + inset * 2
+            let height = (width * 9 / 16).rounded()
+            ZStack {
+                CinesPlayerHost(player: player).opacity(player.playing ? 1 : 0)
+                if !player.playing && !player.paused { ProgressView().tint(.white) }
+                if player.paused {
+                    Image(systemName: "play.fill").font(.system(size: 24, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 58, height: 58).background(.black.opacity(0.5), in: Circle()).allowsHitTesting(false)
+                }
+            }
+            .frame(width: width, height: height)
+            .background(Color.black.opacity(player.playing ? 1 : 0))
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+            .contentShape(Rectangle())
+            .onTapGesture { player.toggle() }
+            .offset(x: -inset, y: coverStrip - 6 - height)
+        }
+        .frame(height: coverStrip)
+        .transition(.opacity)
+        .accessibilityElement().accessibilityLabel("Trailer").accessibilityAddTraits(.startsMediaSession)
+        .accessibilityAction { player.toggle() }
     }
     /// TheTVDB's synopsis, and AniList's for anime (each asked once and kept on the phone): a page
     /// whose TMDB synopsis is empty shows one of them, and More offers the choice where they differ.

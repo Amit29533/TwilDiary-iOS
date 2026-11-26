@@ -29,6 +29,10 @@ import WebKit
     /// The clips the player refused (embedding switched off, removed).
     private(set) var refused = Set<String>()
     var muted = true { didSet { if muted != oldValue { run(muted ? "player.mute()" : "player.unMute()") } } }
+    /// Starts again at its end, as a reel does (Cines); off for a title's trailer, which then ends.
+    var loops = true
+    /// Played to its end (with `loops` off).
+    private(set) var ended = false
 
     @ObservationIgnored private var ready = false
     @ObservationIgnored private var started = false
@@ -52,6 +56,7 @@ import WebKit
         duration = 0
         playing = false
         paused = false
+        ended = false
         guard ready else { start(); return }
         load(id)
     }
@@ -112,7 +117,10 @@ import WebKit
             let state = message["v"] as? Int ?? -1
             if state == 1 { playing = true; paused = false } // playing
             if state == 2 { paused = true } // paused (YouTube's own button, or leaving the page)
-            if state == 0 { run("player.seekTo(0, true);player.playVideo()") } // ended: loop, as a reel does
+            if state == 0 {
+                // Ended: again from the start, as a reel does; a trailer just ends.
+                if loops { run("player.seekTo(0, true);player.playVideo()") } else { ended = true; playing = false }
+            }
         case "time":
             guard let time = message["t"] as? Double, let duration = message["d"] as? Double, duration > 0 else { return }
             if self.duration != duration { self.duration = duration }
