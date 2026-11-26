@@ -41,24 +41,15 @@ import OSLog
             // Settle the bar if appearance ran before this page was attached.
             applyTabBarVisibility(animated: false)
             publishWhenAttached()
-            // Opened as a card: Back closes it into its poster (the edge swipe still slides).
-            if let opening = cardOpening, let navigation = owningNavigation(),
-               let page = navigation.viewControllers.last(where: { view.isDescendant(of: $0.view) }) {
-                page.navigationItem.backAction = UIAction { [weak page, weak navigation] _ in
-                    guard let page, let navigation else { return }
-                    CardTransition.close(page: page, navigation: navigation, opening: opening)
-                }
-            }
         }
-        /// This page opened as a card from a poster (CardTransition): where it goes back to.
-        private var cardOpening: CardTransition.Opening?
         override func viewIsAppearing(_ animated: Bool) {
             super.viewIsAppearing(animated)
-            if cardOpening == nil, let navigation = owningNavigation(), navigation.viewControllers.count > 1,
-               let page = navigation.topViewController, page !== navigation.viewControllers.first, view.isDescendant(of: page.view) {
-                cardOpening = CardTransition.open(page: page, navigation: navigation)
-                // The card fades the bar in itself.
-                if cardOpening != nil { applyTabBarVisibility(animated: animated); return }
+            // A page asked for from a poster grows out of it as a card (CardTransition), which fades the
+            // bar in itself (and sets up its Back and swipe).
+            if let navigation = owningNavigation(), navigation.viewControllers.count > 1,
+               let page = navigation.topViewController, page !== navigation.viewControllers.first, view.isDescendant(of: page.view),
+               CardTransition.open(page: page, navigation: navigation) != nil {
+                applyTabBarVisibility(animated: animated); return
             }
             fadeNavigationBar(appearing: true)
             // viewWillAppear runs before the page is in the hierarchy, so the old

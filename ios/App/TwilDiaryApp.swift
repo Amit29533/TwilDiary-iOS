@@ -201,6 +201,8 @@ struct SavedTitleRoute: Hashable {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { paths[tab, default: NavigationPath()].append(value) }
+        // The page usually starts its card as it appears; if it didn't, it starts once it's there.
+        Task { @MainActor in CardTransition.openIfStillPending() }
     }
     /// A show or movie by its TMDB page (yours, if it's in your diary), in the tab you're on.
     func openCatalog(_ route: CatalogRoute) {

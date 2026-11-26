@@ -24,10 +24,14 @@ import ObjectiveC
     func testTapDuringZoomBack() { tapDuringBack(zoom: true) }
     /// Pictures of a title opening as a card and closing into its poster, a few moments apart (for
     /// looking at: the card growing out of the right poster and shrinking back into it).
-    func testCardFrames() {
+    func testCardFrames() { cardFrames(animationsOff: false) }
+    /// The same with UIKit's animations off while the page appears, as on the owner's iPhone (the
+    /// card jumped to full size there).
+    func testCardFramesAnimationsOff() { cardFrames(animationsOff: true) }
+    private func cardFrames(animationsOff: Bool) {
         executionTimeAllowance = 200
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"]
+        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"] + (animationsOff ? ["--ui-card-animations-off"] : [])
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
@@ -54,8 +58,19 @@ import ObjectiveC
         for _ in 0..<5 { shot(String(format: "close %.2fs", Date().timeIntervalSince(back))) }
         Thread.sleep(forTimeInterval: 1)
         shot("close done")
+        // Opened again and swiped right across the page (how the owner goes back): it shrinks into its poster.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.midX, dy: frame.midY)).tap()
+        Thread.sleep(forTimeInterval: 1.2)
+        shot("reopened")
+        let swiped = Date()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.55))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.6)),
+                   withVelocity: .fast, thenHoldForDuration: 0)
+        for _ in 0..<4 { shot(String(format: "swipe close %.2fs", Date().timeIntervalSince(swiped))) }
+        Thread.sleep(forTimeInterval: 1)
+        shot("swipe done")
         let timing = app.descendants(matching: .any)["nav-timing"]
-        print("NAV-PROBE card frames app: " + (timing.exists ? timing.label : "no timing element"))
+        print("NAV-PROBE card frames (animations " + (animationsOff ? "off" : "on") + ") app: " + (timing.exists ? timing.label : "no timing element"))
     }
     func testTapDuringSlideBack() { tapDuringBack(zoom: false) }
 
