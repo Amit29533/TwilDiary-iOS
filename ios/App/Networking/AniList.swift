@@ -972,3 +972,17 @@ struct SeasonalAnime: Hashable, Sendable, Identifiable {
     }
     var appearance: AniAppearance { AniAppearance(id: id, title: name, cover: cover, year: year, role: nil, voiceActor: nil, format: format) }
 }
+
+// MARK: Synopses
+
+extension AniListClient {
+    /// An anime's description as AniList writes it (markdown, spoilers marked), nil when it has none.
+    func mediaDescription(_ id: Int) async throws -> String? {
+        struct Reply: Decodable {
+            struct Node: Decodable { let description: String? }
+            let Media: Node
+        }
+        let reply: Reply = try await query("query($id: Int) { Media(id: $id, type: ANIME) { description(asHtml: false) } }", ["id": id])
+        return reply.Media.description
+    }
+}

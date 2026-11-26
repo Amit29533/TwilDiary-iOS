@@ -55,6 +55,12 @@ struct EpisodeInfoSheet: View {
     @State private var rating = false
     /// The episode whose watch dates are open (to change one).
     @State private var dating: Episode?
+    /// TheTVDB's synopsis by episode, where it says something TMDB's doesn't.
+    @State private var tvdbSummaries: [String: String] = [:]
+    /// The source picked per episode (TMDB's unless changed).
+    @State private var summarySource: [String: SynopsisSource] = [:]
+    /// What the pages show when TMDB has no synopsis.
+    static let noSummary = "No episode summary available."
 
     private var myRating: Int? { myRating(episode) }
     private func myRating(_ item: Episode) -> Int? { myRatings[item.id] ?? savedRatings[item.id] }
@@ -83,7 +89,7 @@ struct EpisodeInfoSheet: View {
                 } message: { Text("Saved to Trakt.") }
         }.background(HomeStyle.round.ignoresSafeArea())
             .onChange(of: episode.id) { _, id in if position != id { position = id } }
-            .task(id: episode.id) { ratingError = nil }
+            .task(id: episode.id) { ratingError = nil; await loadTVDBSummary(episode) }
             .sheet(item: $dating) { item in WatchDatesSheet(titleID: title.id, episodeID: item.id, heading: "Episode \(item.number)") }
             .accessibilityAction(named: "Next episode") { go(true) }
             .accessibilityAction(named: "Previous episode") { go(false) }
@@ -180,17 +186,42 @@ struct EpisodeInfoSheet: View {
     }
 
     @ViewBuilder private func summaryText(_ item: Episode, _ p: Page) -> some View {
-        let text = p.hidden ? "Watch it or tap Reveal on the show page to read this summary." : p.summary
+        // TMDB's synopsis, and TheTVDB's where it differs (it stands in when TMDB has none).
+        let tmdb = p.summary == Self.noSummary ? "" : p.summary
+        let tvdb = tvdbSummaries[item.id]
+        let sources: [SynopsisSource] = (tmdb.isEmpty ? [] : [.tmdb]) + (tvdb == nil ? [] : [.tvdb])
+        let shown = summarySource[item.id].flatMap { sources.contains($0) ? $0 : nil } ?? sources.first ?? .tmdb
+        let synopsis = shown == .tvdb ? (tvdb ?? p.summary) : p.summary
+        let text = p.hidden ? "Watch it or tap Reveal on the show page to read this summary." : synopsis
         let expanded = expanded.contains(item.id)
+        let choice = !p.hidden && sources.count > 1
         VStack(alignment: .leading, spacing: 2) {
             Text(text).font(.app(size: 16)).lineSpacing(3).foregroundStyle(HomeStyle.soft)
                 .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                .id(shown).transition(.opacity)
                 .accessibilityIdentifier("episode-summary-\(item.number)")
-            if !expanded && text.count > 150 {
+            if !expanded && (text.count > 150 || choice) {
                 Button("More") { withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { _ = self.expanded.insert(item.id) } }
                     .font(.app(size: 16, weight: .semibold)).foregroundStyle(theme.accent).frame(minHeight: 32)
+            } else if expanded && choice {
+                HStack {
+                    Spacer(minLength: 0)
+                    SynopsisSwitcher(sources: sources, shown: shown) { source in
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { summarySource[item.id] = source }
+                    }
+                }.padding(.top, 6)
             }
         }
+    }
+    /// TheTVDB's synopsis of the episode on screen (asked once, kept on the phone), unless it's
+    /// hidden as a spoiler or says the same as TMDB's.
+    private func loadTVDBSummary(_ item: Episode) async {
+        guard let tmdb = title.tmdbId, title.isSeries, tvdbSummaries[item.id] == nil, !store.isPreview else { return }
+        let p = page(item)
+        guard !p.hidden else { return }
+        guard let text = await Synopses.tvdbEpisode(tmdb: tmdb, season: season, number: item.number, store: store), !Task.isCancelled else { return }
+        let tmdbText = p.summary == Self.noSummary ? "" : p.summary
+        if !Synopses.same(text, as: tmdbText) { tvdbSummaries[item.id] = text }
     }
 
     private struct History { let latest: Date?; let plays: Int }

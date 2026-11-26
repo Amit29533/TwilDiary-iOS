@@ -24,13 +24,29 @@ struct TitleHero<Ratings: View>: View {
     let ratingsBelow: Bool
     /// The clear space above the poster (TitleCover.strip for this phone).
     var coverStrip: CGFloat = 167
-    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, extras: TitleExtras? = nil, ratingsBelow: Bool = false, coverStrip: CGFloat = 167, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
-        self.coverStrip = coverStrip
+    /// The title's TMDB id: TheTVDB's synopsis (and AniList's, for anime) is found by it.
+    var tmdbID: Int? = nil
+    init(name: String, poster: String?, backdrop: String? = nil, genres: [String] = [], year: Int?, category: String, runtime: Int?, series: Bool, summary: String, expanded: Binding<Bool>, extras: TitleExtras? = nil, ratingsBelow: Bool = false, coverStrip: CGFloat = 167, tmdbID: Int? = nil, onNameScrolled: ((CGFloat) -> Void)? = nil, @ViewBuilder ratings: () -> Ratings) {
+        self.coverStrip = coverStrip; self.tmdbID = tmdbID
         self.name = name; self.poster = poster; self.backdrop = backdrop; self.genres = genres; self.year = year; self.category = category; self.runtime = runtime; self.series = series; self.summary = summary; self._expanded = expanded; self.extras = extras; self.ratingsBelow = ratingsBelow; self.onNameScrolled = onNameScrolled; self.ratings = ratings()
     }
     @State private var synopsisWidth: CGFloat = 0
     @State private var synopsisParts = SynopsisTextLayout.Parts(leading: "", continuation: "")
-    private var synopsisText: String { summary.isEmpty ? "Add your own thoughts in Notes." : summary }
+    @Environment(DiaryStore.self) private var store
+    /// TheTVDB's and AniList's synopses, each only where it says something TMDB's (and the other's) doesn't.
+    @State private var otherSynopses: [SynopsisSource: String] = [:]
+    @State private var chosenSource: SynopsisSource?
+    /// The sources with a synopsis of their own, TMDB's first.
+    private var synopsisSources: [SynopsisSource] {
+        (summary.isEmpty ? [] : [.tmdb]) + [SynopsisSource.tvdb, .anilist].filter { otherSynopses[$0] != nil }
+    }
+    /// The source shown: the one picked, else TMDB's, else (TMDB has none) TheTVDB's or AniList's.
+    private var shownSource: SynopsisSource {
+        if let chosenSource, synopsisSources.contains(chosenSource) { return chosenSource }
+        return synopsisSources.first ?? .tmdb
+    }
+    private var shownSummary: String { shownSource == .tmdb ? summary : otherSynopses[shownSource] ?? summary }
+    private var synopsisText: String { shownSummary.isEmpty ? "Add your own thoughts in Notes." : shownSummary }
     private var runtimeText: String? {
         if let minutes = [runtime, extras?.runtimeMinutes].compactMap({ $0 }).first(where: { $0 > 0 }) {
             return series ? "\(minutes) min/ep" : DiaryDate.duration(minutes)
@@ -79,13 +95,23 @@ struct TitleHero<Ratings: View>: View {
             }
             if ratingsBelow { ratings }
             VStack(alignment: .leading, spacing: 4) {
-                if expanded && !synopsisParts.continuation.isEmpty {
+                if expanded && (!synopsisParts.continuation.isEmpty || synopsisSources.count > 1) {
                     Text(synopsisText.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(.app(size: 15)).lineSpacing(4).foregroundStyle(Color(themed: "#C4C4CC"))
                         .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                        .id(shownSource).transition(.opacity)
                         .accessibilityIdentifier("title-synopsis-text")
-                    Button("Less") { setExpanded(false) }.font(.app(size: 15, weight: .semibold)).frame(minHeight: 44)
-                        .accessibilityIdentifier("title-synopsis-expanded")
+                    HStack(spacing: 8) {
+                        Button("Less") { setExpanded(false) }.font(.app(size: 15, weight: .semibold)).frame(minHeight: 44)
+                            .accessibilityIdentifier("title-synopsis-expanded")
+                        Spacer(minLength: 8)
+                        // Where the synopsis comes from, when more than one says something of its own.
+                        if synopsisSources.count > 1 {
+                            SynopsisSwitcher(sources: synopsisSources, shown: shownSource) { source in
+                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { chosenSource = source }
+                            }
+                        }
+                    }
                 } else {
                     synopsisLead
                 }
@@ -95,20 +121,45 @@ struct TitleHero<Ratings: View>: View {
             }
         }
         }.onChange(of: synopsisText) { _, _ in measureSynopsis() }
+        .task(id: tmdbID) { await loadOtherSynopses() }
+    }
+    /// TheTVDB's synopsis, and AniList's for anime (each asked once and kept on the phone): a page
+    /// whose TMDB synopsis is empty shows one of them, and More offers the choice where they differ.
+    private func loadOtherSynopses() async {
+        guard let tmdbID, !store.isPreview else { return }
+        let film = !series, anime = category.lowercased().contains("anime")
+        async let tvdb = Synopses.tvdbTitle(tmdb: tmdbID, series: series, store: store)
+        async let ani: String? = anime ? await Synopses.aniList(tmdb: tmdbID, film: film) : nil
+        let found = [(SynopsisSource.tvdb, await tvdb), (SynopsisSource.anilist, await ani)]
+        var kept: [SynopsisSource: String] = [:]
+        for (source, text) in found {
+            guard let text else { continue }
+            if ([summary] + Array(kept.values)).contains(where: { Synopses.same(text, as: $0) }) { continue }
+            kept[source] = text
+        }
+        guard !Task.isCancelled, kept != otherSynopses else { return }
+        otherSynopses = kept
     }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var synopsisLead: some View {
         let hasOverflow = !synopsisParts.continuation.isEmpty
-        return Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
-            .font(.app(size: 15)).lineSpacing(4).foregroundStyle(Color(themed: "#C4C4CC"))
-            .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("title-synopsis-text")
-            .overlay(alignment: .bottomTrailing) {
-                if !expanded && hasOverflow {
-                    Button("More") { setExpanded(true) }.font(.app(size: 15, weight: .semibold))
-                        .frame(width: 52, height: 44).offset(y: 10)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(synopsisParts.leading.isEmpty ? synopsisText : synopsisParts.leading.trimmingCharacters(in: .whitespacesAndNewlines) + (expanded || !hasOverflow ? "" : "…"))
+                .font(.app(size: 15)).lineSpacing(4).foregroundStyle(Color(themed: "#C4C4CC"))
+                .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("title-synopsis-text")
+                .overlay(alignment: .bottomTrailing) {
+                    if !expanded && hasOverflow {
+                        Button("More") { setExpanded(true) }.font(.app(size: 15, weight: .semibold))
+                            .frame(width: 52, height: 44).offset(y: 10)
+                    }
                 }
+            // A synopsis that fits but has another source: More on a line of its own (its last line
+            // has no room kept for it).
+            if !expanded && !hasOverflow && synopsisSources.count > 1 {
+                Button("More") { setExpanded(true) }.font(.app(size: 15, weight: .semibold)).frame(minHeight: 36)
             }
+        }
     }
     private func setExpanded(_ value: Bool) {
         withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.88)) { expanded = value }
@@ -120,6 +171,33 @@ struct TitleHero<Ratings: View>: View {
     }
 
 }
+/// The sources of a synopsis as their logos (the size of the ratings' marks), the one shown lit.
+struct SynopsisSwitcher: View {
+    let sources: [SynopsisSource]
+    let shown: SynopsisSource
+    let pick: (SynopsisSource) -> Void
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(sources, id: \.self) { source in
+                let on = source == shown
+                Button { pick(source) } label: {
+                    BrandLogo(service: source.logo, size: 22)
+                        .frame(width: 44, height: 32)
+                        .background(on ? Color.white.opacity(0.14) : Color.clear, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(on ? 0.35 : 0.1), lineWidth: 1))
+                        .opacity(on ? 1 : 0.5)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(source.name + " synopsis")
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier("synopsis-source-" + source.rawValue)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: shown)
+    }
+}
+
 /// The title page's cover: the whole artwork at 16:9 of the screen width (the shape of TMDB's
 /// backdrops, so nothing is cropped or covered), then its own colours spilling down as a soft glow
 /// that fades into the page. No panel edge or outline, so there is no line between cover and page.

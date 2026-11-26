@@ -286,3 +286,30 @@ import TwilDiaryCore
         catch { throw APIError.message("TheTVDB sent an unexpected reply.") }
     }
 }
+
+// MARK: Synopses
+
+extension TVDBDirect {
+    private struct DataReply<Value: Decodable>: Decodable { let data: Value? }
+    /// A translation's synopsis ("series/123/translations/eng"); nil when there's none in that language.
+    static func overview(_ path: String, key: String) async throws -> String? {
+        struct Translation: Decodable { let overview: String? }
+        do {
+            let reply = try await authorized(path, key: key, as: DataReply<Translation>.self)
+            let text = reply.data?.overview?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return text.isEmpty ? nil : text
+        } catch APIError.message(let text) where text.contains("(404)") || text.contains("(400)") {
+            // No translation in that language (or no such record): none, not a failure.
+            return nil
+        }
+    }
+    /// A film's TheTVDB id from another site's id (IMDb's "tt…").
+    static func movieID(remote: String, key: String) async throws -> Int? {
+        struct Hit: Decodable {
+            struct Movie: Decodable { let id: Int }
+            let movie: Movie?
+        }
+        let reply = try await authorized("search/remoteid/\(remote)", key: key, as: DataReply<[Hit]>.self)
+        return reply.data?.compactMap { $0.movie?.id }.first
+    }
+}
