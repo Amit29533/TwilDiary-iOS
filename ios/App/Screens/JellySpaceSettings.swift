@@ -50,6 +50,8 @@ enum JellyPrefs {
     static let mpvCompositeKey = "jellyspace.mpv.compositeOSD"
     static let upscaleKey = "jellyspace.upscale"
     static let upscaleModeKey = "jellyspace.upscaleMode"
+    /// 1080p upscaled too (AetherEngine's Lanczos), while Upscaling is on.
+    static let upscaleFullHDKey = "jellyspace.upscale1080"
     static let skipDelayKey = "jellyspace.skip.delay"
     static let batteryKey = "jellyspace.battery"
     /// The Cast and AirPlay buttons at the top of the player (both shown unless turned off).
@@ -826,6 +828,7 @@ private struct JellySubtitlesGroups: View {
             JellySubtitleBoxGroup()
             JellySubtitlePositionGroup()
             JellySubtitleStyledGroup()
+            JellySubtitlePictureGroup()
             JellySubtitleTimingGroup()
         }
     }
@@ -1040,6 +1043,16 @@ private struct JellySubtitleStyledGroup: View {
     }
 }
 
+/// Picture subtitles (PGS, DVD): as made, or read on the phone and drawn as text in the look set above.
+private struct JellySubtitlePictureGroup: View {
+    @AppStorage(JellySubtitlePrefs.picturesKey) private var pictures = "full"
+    var body: some View {
+        SettingsGroup(label: "Picture subtitles (PGS)") {
+            JellySettingsRows.choice("Draw them", $pictures, JellySubtitleChoices.styled)
+        }
+    }
+}
+
 private struct JellySubtitleTimingGroup: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(JellySubtitlePrefs.rememberDelayKey) private var rememberDelay = true
@@ -1062,6 +1075,7 @@ struct JellyEnginesGroups: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(JellyPrefs.engineKey) private var engine = JellyDecoder.auto.rawValue
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
+    @AppStorage(JellyPrefs.upscaleFullHDKey) private var upscaleFullHD = false
     @AppStorage(JellyPrefs.dialogueKey) private var dialogue = 0
     @AppStorage(JellyPrefs.nightKey) private var night = false
     @AppStorage(JellyPrefs.boostKey) private var boost = 0
@@ -1088,6 +1102,9 @@ struct JellyEnginesGroups: View {
             JellyDecoderNote(text: "Auto: AetherEngine with the phone's hardware decoder where it can. AetherEngine: its own decoder for everything. A video you moved to the other engine in the player stays on it.")
             SettingsGroup(label: "AetherEngine") {
                 JellySettingsRows.choice("Upscaling", $upscale, Self.upscales)
+                SettingsDivider()
+                JellySettingsRows.toggle("Upscale 1080p", $upscaleFullHD, accent: accent)
+                    .disabled(upscale == .off).opacity(upscale == .off ? 0.45 : 1)
                 SettingsDivider()
                 JellySettingsRows.choice("Dialogue boost", $dialogue, JellySound.dialogue)
                 SettingsDivider()

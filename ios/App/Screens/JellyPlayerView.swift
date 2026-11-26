@@ -54,6 +54,10 @@ struct JellyPlayerView: View {
     /// Upscaling: Off, Auto (not 50/60 fps) or Always. It only acts on SDR below 1080p, on iOS 26 GPUs
     /// that can, with Apple's super resolution and MetalFX (as Infuse does).
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscaleMode = JellyUpscale.initial
+    /// 1080p upscaled too (Lanczos), while Upscaling applies.
+    @AppStorage(JellyPrefs.upscaleFullHDKey) private var upscaleFullHD = false
+    /// The last episode's picture held over the video while the next one loads (fades as it shows).
+    @State private var stillShown = false
     // Sound (Settings → JellySpace, and the gear menu): kept for every video.
     @AppStorage(JellyPrefs.dialogueKey) private var dialogueBoost = 0
     @AppStorage(JellyPrefs.nightKey) private var nightMode = false
@@ -582,6 +586,10 @@ struct JellyPlayerView: View {
 
     @ViewBuilder private func picture(_ engine: AetherEngine) -> some View {
         let surface = AetherPlayerSurface(engine: engine)
+            .overlay {
+                JellyStillSurface(view: heavy.outgoingStill).opacity(stillShown ? 1 : 0).allowsHitTesting(false)
+            }
+            .onReceive(engine.$hasFirstFrameReadyForDisplay) { nextFrame($0) }
             .onReceive(engine.$state) { engineState($0) }
             .onReceive(engine.clock.$currentTime) { seconds in tick(seconds) }
             // The subtitles' clock only while some show (it redrew them ten times a second for nothing).
@@ -685,7 +693,7 @@ struct JellyPlayerView: View {
     private func feedTranslator() {
         let from = subtitleClock.time - subtitleDelay - 1
         let texts = cues.filter { $0.endTime >= from }.sorted { $0.startTime < $1.startTime }.prefix(40).compactMap { cue -> String? in
-            if case .image = cue.body { return nil }
+            if case .image = cue.body { return JellyPlainLines.readText(cue, look: subtitleLook) }
             return cue.text.map(JellyPlainLines.plain)
         }
         translator.want(texts)
@@ -1120,10 +1128,16 @@ struct JellyPlayerView: View {
             }
             options.upscalesLowResolutionVideo = upscaleWanted
             options.upscaleScaler = .automatic
+            options.upscalesFullHDVideo = upscaleWanted && upscaleFullHD
+            // Picture subtitles read as text on the phone, to be drawn in your look (Settings → Subtitles).
+            options.recognizesBitmapSubtitleText = subtitleLook.pictures == "mine"
             options.preferredDecodePath = decodePath
             options.audioShaping = Self.shaping(dialogue: dialogueBoost, night: nightMode, boost: volumeBoost)
             upscale = nil
             engine.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+            // The picture is the bare video layer (no AVKit view), so the engine turns the sound on itself
+            // before it plays, and again after a call or another app's sound ends.
+            engine.nativeAudioSessionActivationEnabled = true
             // Picture subtitles (PGS) are kept decoded either side of the playhead as far as a subtitle
             // delay can reach; the delay control stops at 15 s, so that's all that's kept (the default 60 s
             // of full-colour pictures each way, on a busy track, is enough to run the phone out of memory).
@@ -1553,7 +1567,32 @@ struct JellyPlayerView: View {
             usesMPV = onMPV
         }
         heavy.movedItself = false
-        current = next
+        // Staying on AetherEngine: this episode's last picture stays up while the next one loads, then
+        // fades as its first frame shows (not black between them).
+        guard !usesMPV, let engine else { current = next; return }
+        let still = heavy.outgoingStill
+        still.videoGravity = fill == .fill ? .resizeAspectFill : .resizeAspect
+        heavy.stillAwaitsNext = false
+        Task {
+            if await engine.holdOutgoingPicture(on: still) {
+                heavy.stillAwaitsNext = true; heavy.stillSawReset = false
+                stillShown = true
+            }
+            current = next
+        }
+    }
+    /// The next episode's first frame is up (after its load reset it): the held picture fades out.
+    private func nextFrame(_ ready: Bool) {
+        guard heavy.stillAwaitsNext else { return }
+        guard ready else { heavy.stillSawReset = true; return }
+        guard heavy.stillSawReset else { return }
+        heavy.stillAwaitsNext = false
+        withAnimation(.easeOut(duration: 0.35)) { stillShown = false }
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            // A newer hold went up meanwhile: that one's to keep.
+            if !heavy.stillAwaitsNext { engine?.releaseOutgoingPicture() }
+        }
     }
 
     private func startCountdown() {
@@ -1907,7 +1946,7 @@ struct JellyPlayerView: View {
         JellyMenuState(subtitles: subtitleTracks.map { JellyTrackChoice(id: $0.id, label: Self.label($0, audio: false)) },
                        audio: audioTracks.count > 1 ? audioTracks.map { JellyTrackChoice(id: $0.id, label: Self.label($0, audio: true)) } : [],
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
-                       upscale: upscaleMode, episode: current.item.kind == "Episode",
+                       upscale: upscaleMode, upscaleFullHD: upscaleFullHD, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
                        fill: fill, pictures: pictureChoices, rotationLocked: rotationLocked, info: showsInfo,
                        chapters: current.item.kind == "Episode" && chapters.count > 1,
@@ -1926,6 +1965,7 @@ struct JellyPlayerView: View {
             sleep: { choice in me.view.menuUsed(); me.view.setSleep(choice < 0 ? nil : choice) },
             speed: { value in me.view.menuUsed(); me.view.speed = Float(value); me.view.engineRate(Float(value)) },
             upscale: { mode in me.view.menuUsed(); me.view.setUpscale(mode) },
+            upscaleFullHD: { on in me.view.menuUsed(); me.view.setUpscaleFullHD(on) },
             subtitle: { id in me.view.pickSubtitle(id) },
             audio: { id in me.view.pickAudio(id) },
             download: { me.view.openPanel(.subtitleSearch) },
@@ -2219,7 +2259,7 @@ struct JellyPlayerView: View {
         guard constrained, !usesMPV, upscaleMode == .auto, let upscale, upscale.disabledReason == nil,
               let engine, state != .idle, state != .loading else { return }
         show("Upscaling paused " + reason, for: 3)
-        Task { _ = try? await engine.reloadAtCurrentPosition { $0.upscalesLowResolutionVideo = false } }
+        Task { _ = try? await engine.reloadAtCurrentPosition { $0.upscalesLowResolutionVideo = false; $0.upscalesFullHDVideo = false } }
     }
     private func setUpscale(_ mode: JellyUpscale) {
         guard mode != upscaleMode else { return }
@@ -2228,12 +2268,26 @@ struct JellyPlayerView: View {
         show(mode == .auto && !after ? "Upscaling: Auto (not for this video now)" : "Upscaling: " + mode.title)
         // Only a change that turns it on or off for this video reloads it.
         guard before != after, let engine, state != .idle, state != .loading else { return }
+        let fullHD = after && upscaleFullHD
         Task {
             _ = try? await engine.reloadAtCurrentPosition { options in
                 options.upscalesLowResolutionVideo = after
                 options.upscaleScaler = .automatic
+                options.upscalesFullHDVideo = fullHD
             }
         }
+    }
+    /// 1080p upscaling on or off: a 1080p video playing with Upscaling on reloads where it is.
+    private func setUpscaleFullHD(_ on: Bool) {
+        guard on != upscaleFullHD else { return }
+        upscaleFullHD = on
+        show(on ? "Upscale 1080p: On" : "Upscale 1080p: Off")
+        guard upscaleWanted, Self.isFullHD(videoSize), let engine, state != .idle, state != .loading else { return }
+        Task { _ = try? await engine.reloadAtCurrentPosition { $0.upscalesFullHDVideo = on } }
+    }
+    /// The sizes AetherEngine's 1080p upscaling takes: bigger than 720p, at most 1920x1080 (cropped rips too).
+    static func isFullHD(_ size: CGSize) -> Bool {
+        (size.width > 1280 || size.height > 720) && size.width <= 1920 && size.height <= 1080
     }
     /// Dialogue boost, night mode and volume boost, as the engine's audio shaping: the dialogue lift
     /// in dB; night mode's compressor (whispers up, explosions down); a boost as a plain gain into the
@@ -3152,6 +3206,11 @@ private struct JellyAirPlayButton: UIViewRepresentable {
     var trickplay: (info: JellyfinClient.PlayerInfo.TrickplayInfo, source: String)?
     var sheet: (index: Int, image: UIImage)?
     var openMenus: JellyMenuState?
+    /// Where AetherEngine holds an episode's last picture while the next one loads.
+    let outgoingStill = AetherStillView(frame: .zero)
+    /// A held picture waits for the next episode's first frame (seen reset by its load first).
+    @ObservationIgnored var stillAwaitsNext = false
+    @ObservationIgnored var stillSawReset = false
     /// This video moved to the other engine by itself, because its own couldn't play it (the next one
     /// isn't, for that).
     @ObservationIgnored var movedItself = false
@@ -3276,7 +3335,7 @@ private struct JellySubtitles: View {
         var swap: [String: String] = [:]
         if let translated {
             for cue in now {
-                if let text = cue.text.map(JellyPlainLines.plain), let done = translated[text] { swap[text] = done }
+                if let text = cue.text.map(JellyPlainLines.plain) ?? JellyPlainLines.readText(cue, look: look), let done = translated[text] { swap[text] = done }
             }
         }
         return JellySubtitleCanvas(now: now, look: look, insets: insets, fill: fill, videoPixels: videoPixels,
@@ -3306,7 +3365,8 @@ private struct JellySubtitleCanvas: View, Equatable {
     var replace: [String: String] = [:]
 
     nonisolated static func == (lhs: JellySubtitleCanvas, rhs: JellySubtitleCanvas) -> Bool {
-        lhs.now.map(\.id) == rhs.now.map(\.id) && lhs.look == rhs.look && lhs.insets == rhs.insets && lhs.fill == rhs.fill
+        // Whole cues: a picture cue comes again, same id, once its words are read.
+        lhs.now == rhs.now && lhs.look == rhs.look && lhs.insets == rhs.insets && lhs.fill == rhs.fill
             && lhs.videoPixels == rhs.videoPixels && lhs.pixelAspect == rhs.pixelAspect && lhs.originalSize == rhs.originalSize && lhs.lift == rhs.lift && lhs.sheet == rhs.sheet
             && lhs.replace == rhs.replace
     }
@@ -3318,7 +3378,8 @@ private struct JellySubtitleCanvas: View, Equatable {
                               height: max(0, proxy.size.height - insets.top - insets.bottom - 16 - up))
             ZStack {
                 ForEach(now) { cue in
-                    if case .image(let picture) = cue.body {
+                    // (Read as text only where plain lines are drawn: never with a styled sheet up.)
+                    if case .image(let picture) = cue.body, sheet != nil || JellyPlainLines.readText(cue, look: look) == nil {
                         let frame = Self.keep(Self.place(picture, in: proxy.size, fill: fill, videoPixels: videoPixels, originalSize: originalSize), inside: safe)
                         Image(decorative: picture.cgImage, scale: 1).resizable()
                             .frame(width: frame.width, height: frame.height).position(x: frame.midX, y: frame.midY)
@@ -3386,6 +3447,13 @@ private struct JellySubtitleCanvas: View, Equatable {
         out.origin.y = min(max(out.minY, safe.minY), safe.maxY - out.height)
         return out
     }
+}
+
+/// The last episode's picture, which AetherEngine holds over the video while the next one loads.
+private struct JellyStillSurface: UIViewRepresentable {
+    let view: AetherStillView
+    func makeUIView(context: Context) -> AetherStillView { view }
+    func updateUIView(_ view: AetherStillView, context: Context) {}
 }
 
 /// The screen's brightness (put back when the player closes).
@@ -3506,6 +3574,7 @@ private struct JellyMenuState: Equatable, Sendable {
     var sleep: Int
     var speed: Double
     var upscale: JellyUpscale
+    var upscaleFullHD: Bool
     var episode: Bool
     var dialogue: Int
     var night: Bool
@@ -3530,6 +3599,7 @@ private struct JellyMenuActions {
     let sleep: (Int) -> Void
     let speed: (Double) -> Void
     let upscale: (JellyUpscale) -> Void
+    let upscaleFullHD: (Bool) -> Void
     let subtitle: (Int) -> Void
     let audio: (Int) -> Void
     let download: () -> Void
@@ -3604,6 +3674,9 @@ private struct JellyMoreMenu: View, Equatable {
                         Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
                             ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
                         } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
+                        Toggle(isOn: Binding(get: { state.upscaleFullHD }, set: { actions.upscaleFullHD($0) })) {
+                            Label("Upscale 1080p", systemImage: "arrow.up.left.and.arrow.down.right")
+                        }.disabled(state.upscale == .off)
                     }
                     Picker(selection: Binding(get: { state.decoder }, set: { actions.decoder($0) })) {
                         ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }

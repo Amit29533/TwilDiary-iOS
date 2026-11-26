@@ -17,6 +17,9 @@ enum JellySubtitlePrefs {
     /// "full" (drawn as made) or "mine" (as plain text, in the look set here).
     static let styledKey = "jellyspace.subtitle.styled"
     static let styledSizeKey = "jellyspace.subtitle.styledSize"
+    /// Picture subtitles (PGS, DVD): "full" (the pictures) or "mine" (read on the phone, as text in
+    /// this look; a picture that couldn't be read surely stays a picture).
+    static let picturesKey = "jellyspace.subtitle.pictures"
     /// ISO 639-2 codes ("" for the file's own choice).
     static let languageKey = "jellyspace.subtitle.language"
     static let secondLanguageKey = "jellyspace.subtitle.language2"
@@ -100,6 +103,7 @@ struct JellySubtitleLook: Equatable, Sendable {
     var lift = true
     var styled = "full"
     var styledSize = true
+    var pictures = "full"
 
     static var current: JellySubtitleLook {
         let defaults = UserDefaults.standard
@@ -119,6 +123,7 @@ struct JellySubtitleLook: Equatable, Sendable {
         look.lift = read(JellySubtitlePrefs.liftKey, look.lift)
         look.styled = read(JellySubtitlePrefs.styledKey, look.styled)
         look.styledSize = read(JellySubtitlePrefs.styledSizeKey, look.styledSize)
+        look.pictures = read(JellySubtitlePrefs.picturesKey, look.pictures)
         return look
     }
 
@@ -245,12 +250,25 @@ enum JellyPlainLines {
     /// The lines showing (picture cues left out; translated ones in their translation).
     static func lines(_ cues: [SubtitleCue], replace: [String: String], look: JellySubtitleLook, points: CGFloat) -> [Line] {
         cues.compactMap { cue -> Line? in
-            if case .image = cue.body { return nil }
+            if case .image(let picture) = cue.body {
+                // A picture subtitle as text in your look, once it's read surely enough (else the
+                // picture shows); at the top if the disc put it in the picture's top part.
+                guard let text = readText(cue, look: look) else { return nil }
+                return Line(text: replace[text] ?? text, alignment: picture.position.midY < 0.4 ? 8 : 2)
+            }
             guard let text = cue.text.map(plain), !text.isEmpty else { return nil }
             let place = cue.placement?.alignment ?? 2
             if let translated = replace[text] { return Line(text: translated, alignment: place) }
             return Line(text: text, alignment: place, styled: styled(cue, look: look, points: points))
         }
+    }
+    /// A picture subtitle's words (PGS, DVD), read on the phone by AetherEngine, when picture
+    /// subtitles are set to Mine and every line was read with good confidence; nil keeps the picture.
+    static func readText(_ cue: SubtitleCue, look: JellySubtitleLook) -> String? {
+        guard look.pictures == "mine", let read = cue.recognizedText, !read.lines.isEmpty,
+              read.lines.allSatisfy({ $0.confidence >= 0.5 }) else { return nil }
+        let text = read.lines.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
     }
     /// The lines by place.
     static func blocks(_ lines: [Line]) -> [Block] {
