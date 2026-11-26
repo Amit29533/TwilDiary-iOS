@@ -41,17 +41,9 @@ struct SettingsView: View {
                     // Owner's reorganisation (Nov 2026): how it looks; your library and tracking;
                     // shortcuts to screens; sync and data; then general settings.
                     settingsSection("LOOK AND LAYOUT") {
+                        // A row like the others (the themes' colours are chosen on the Theme page).
                         NavigationLink(value: AppDestination.appearance) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                settingsRow("paintpalette.fill", .pink, "Theme", value: theme.name, disclosure: true, padded: false)
-                                // A glance at every theme; choosing one happens on the Theme page.
-                                HStack(spacing: 12) {
-                                    ForEach(DiaryTheme.allCases) { item in
-                                        Circle().fill(item.accent).frame(width: 26, height: 26)
-                                            .overlay { if item == theme { Circle().strokeBorder(HomeStyle.primary, lineWidth: 2).padding(-3) } }
-                                    }
-                                }.padding(.leading, 52).padding(.bottom, 6).accessibilityHidden(true)
-                            }.padding(.horizontal, 15).padding(.vertical, 12)
+                            settingsRow("paintpalette.fill", .pink, "Theme", value: theme.name, disclosure: true)
                         }.accessibilityIdentifier("settings-theme")
                         divider
                         // Design Lab: how each part of the app looks, in any theme.
