@@ -143,8 +143,8 @@ struct CinesView: View {
 
     // MARK: A clip
 
-    /// How much a pinch enlarges the video.
-    private static let zoom: CGFloat = 1.15
+    /// How much bigger a pinch makes the video's box (its sides are cut by the screen).
+    private static let zoom: CGFloat = 1.25
 
     /// The right-hand buttons' height (three 46 pt circles with their names, 10 pt apart).
     private static let railHeight: CGFloat = 3 * (46 + 4 + 16) + 2 * 10
@@ -157,17 +157,22 @@ struct CinesView: View {
         // A wide clip's player is just the video (16:9, no black above or below it), centred on the
         // screen (owner's call, 25 Nov 2026), or as near the centre as clears the buttons.
         let videoHeight = size.width * 9 / 16
-        let centre = max(insets.top + 56 + videoHeight / 2, min(size.height / 2, railTop - 8 - videoHeight / 2))
+        // Zoomed (a pinch out): the box itself a quarter bigger, so the video is drawn taller and its
+        // sides go past the screen's edges (scaling the picture inside the box left it the same size).
+        let scale = zoomed ? Self.zoom : 1
+        let boxHeight = videoHeight * scale
+        let centre = max(insets.top + 56 + boxHeight / 2, min(size.height / 2, railTop - 8 - boxHeight / 2))
         return ZStack(alignment: .bottom) {
             Color.black
             if clip.short {
-                stage(clip, active: active).frame(width: size.width, height: size.height)
+                stage(clip, active: active).frame(width: size.width * scale, height: size.height * scale)
+                    .frame(width: size.width, height: size.height)
             } else {
                 Artwork(path: clip.backdrop ?? clip.poster, title: clip.name, initialsOnly: false)
                     .frame(width: size.width, height: size.height).blur(radius: 36).opacity(0.5)
                     .overlay(LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.75)], startPoint: .top, endPoint: .bottom))
                     .accessibilityHidden(true)
-                stage(clip, active: active).frame(width: size.width, height: videoHeight)
+                stage(clip, active: active).frame(width: size.width * scale, height: boxHeight)
                     .position(x: size.width / 2, y: centre)
             }
             Group {
@@ -222,10 +227,9 @@ struct CinesView: View {
                         } placeholder: { Color.black }
                     }
                     .clipped()
-                    .scaleEffect(zoomed ? Self.zoom : 1)
                     .allowsHitTesting(false)
             }
-            if active, !refused { CinesPlayerHost(player: player).scaleEffect(zoomed ? Self.zoom : 1).opacity(showing ? 1 : 0) }
+            if active, !refused { CinesPlayerHost(player: player).opacity(showing ? 1 : 0) }
             if refused {
                 VStack(spacing: 10) {
                     Text("This clip can't play in the app.").font(.app(size: 14, weight: .semibold))
