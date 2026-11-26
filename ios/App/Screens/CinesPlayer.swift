@@ -36,6 +36,9 @@ import WebKit
     /// Sound on as soon as it plays (YouTube's player often won't start unmuted on its own, so it
     /// starts muted and turns the sound on once it's playing).
     var unmutesOnStart = false
+    /// Asks YouTube to play again whenever it holds the video loaded but unstarted or cued (a title's
+    /// trailer sometimes loaded and then sat waiting for a tap inside the video).
+    var keepsStarting = false
 
     @ObservationIgnored private var ready = false
     @ObservationIgnored private var started = false
@@ -66,6 +69,13 @@ import WebKit
     /// The page and YouTube's player loaded ahead, nothing played (a title page with a trailer
     /// gets it ready, so a tap starts the video at once).
     func prepare() { start() }
+    /// The clip loaded again from the start and asked to play (a start YouTube didn't take).
+    func reload() {
+        guard let current else { return }
+        ended = false
+        load(current)
+        run("player.playVideo()")
+    }
     /// To this point of the clip (0 to 1): the bar at the bottom, dragged.
     func seek(to fraction: Double) {
         guard duration > 0 else { return }
@@ -126,6 +136,8 @@ import WebKit
                 if unmutesOnStart { unmutesOnStart = false; muted = false }
             }
             if state == 2 { paused = true } // paused (YouTube's own button, or leaving the page)
+            // Loaded but not started (-1) or cued (5): asked to play at once, not at the next retry.
+            if keepsStarting, state == -1 || state == 5, current != nil, !away { run("player.playVideo()") }
             if state == 0 {
                 // Ended: again from the start, as a reel does; a trailer just ends.
                 if loops { run("player.seekTo(0, true);player.playVideo()") } else { ended = true; playing = false }

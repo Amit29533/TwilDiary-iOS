@@ -200,14 +200,15 @@ struct TitleHero<Ratings: View>: View {
             await JellyAudioSession.activate()
             guard trailerRun == run, trailer != nil else { return }
             player.play(trailerKey)
-            // Not started after a while (the page was slow, or YouTube held it): asked to play again.
-            for _ in 0..<3 {
-                try? await Task.sleep(for: .seconds(4))
+            // Not started after a while (the page was slow, or YouTube held it): loaded again from the
+            // start and asked to play (asking it to play only didn't always wake it).
+            for _ in 0..<5 {
+                try? await Task.sleep(for: .seconds(2.5))
                 guard trailerRun == run, trailer != nil, !player.playing, !player.paused, !player.ended else { return }
-                player.play(trailerKey)
+                player.reload()
             }
             // Still nothing after that: the cover back (a spinner that a tap can't close helps no one).
-            try? await Task.sleep(for: .seconds(4))
+            try? await Task.sleep(for: .seconds(2.5))
             if trailerRun == run, trailer != nil, !player.playing, !player.paused { stopTrailer() }
         }
     }
@@ -298,6 +299,7 @@ struct TitleHero<Ratings: View>: View {
     static let player: CinesPlayer = {
         let player = CinesPlayer()
         player.loops = false
+        player.keepsStarting = true
         return player
     }()
     static var found: [String: String] = [:]
