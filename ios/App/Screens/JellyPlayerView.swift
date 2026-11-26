@@ -1787,7 +1787,9 @@ struct JellyPlayerView: View {
                 .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 10)
                 AnyView(sleepBadge)
-                if batteryOn { JellyBattery() }
+                // Upright there's no room for the number beside the buttons (it wrapped a digit a line):
+                // the symbol alone there.
+                if batteryOn { JellyBattery(showsPercent: compact) }
                 if pip.available, !usesMPV {
                     topIcon("pip.enter", label: "Picture in Picture") { pip.start() }.accessibilityIdentifier("jellyspace-pip")
                 }
@@ -3119,15 +3121,18 @@ struct JellyStretch {
 
 /// The phone's battery, by the player's top buttons.
 private struct JellyBattery: View {
+    /// The number beside the symbol (sideways; upright only the symbol fits).
+    var showsPercent = true
     @State private var level = UIDevice.current.batteryLevel
     @State private var charging = false
     var body: some View {
         Group {
             if level >= 0 {
                 HStack(spacing: 4) {
-                    Text("\(Int((level * 100).rounded()))%").monospacedDigit()
+                    if showsPercent { Text("\(Int((level * 100).rounded()))%").monospacedDigit() }
                     Image(systemName: symbol)
                 }
+                .lineLimit(1).fixedSize()
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
                 .accessibilityElement(children: .ignore).accessibilityLabel("Battery \(Int((level * 100).rounded())) percent")
             } else {
