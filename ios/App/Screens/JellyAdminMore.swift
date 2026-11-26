@@ -458,7 +458,10 @@ struct JellyAdminActivityPage: View {
 /// video codecs and audio codecs of its films, episodes and songs. The formats need every item's
 /// tracks, so they're read once in the background (pages of 400) and kept until read again.
 struct JellyAdminAnalyticsPage: View {
-    private struct Library: Identifiable, Hashable { let id: String; let name: String }
+    private struct Library: Identifiable, Hashable, Sendable { let id: String; let name: String }
+    /// The five totals, always all five in this order (a tile appearing later moved the rest).
+    private static let kinds: [(label: String, symbol: String)] = [("Movies", "film"), ("Series", "tv"), ("Episodes", "play.rectangle.on.rectangle"),
+                                                                  ("Songs", "music.note"), ("Photos", "photo")]
     struct Formats: Codable, Equatable {
         var containers: [String: Int] = [:]
         var video: [String: Int] = [:]
@@ -470,8 +473,11 @@ struct JellyAdminAnalyticsPage: View {
     @State private var client: JellyfinClient? = JellyAdmin.client
     @State private var libraries: [Library] = []
     @State private var library: Library?
-    @State private var totals: [(String, String, Int)] = []
+    @State private var totals: [String: Int] = [:]
     @State private var shares: [(String, Int)] = []
+    /// The first read (libraries, totals, shares) is in: until then one spinner, then all of it at
+    /// once (each part arrived on its own and pushed the rest down).
+    @State private var ready = false
     @State private var formats: Formats?
     @State private var reading = false
     @State private var failure: String?
@@ -492,39 +498,41 @@ struct JellyAdminAnalyticsPage: View {
                         Image(systemName: "chevron.up.chevron.down").font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
                     }.padding(.horizontal, 16).frame(height: 50).modifier(SettingsCard())
                 }
-                if let failure, totals.isEmpty { RetryNotice(message: failure) { Task { await loadCounts() } } }
-                if !totals.isEmpty {
+                if let failure, !ready {
+                    RetryNotice(message: failure) { Task { await firstRead() } }
+                } else if !ready {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+                } else {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
-                        ForEach(totals.indices, id: \.self) { index in tile(totals[index].0, totals[index].1, totals[index].2) }
+                        ForEach(Self.kinds.indices, id: \.self) { index in tile(Self.kinds[index].label, Self.kinds[index].symbol, totals[Self.kinds[index].label]) }
                     }
-                }
-                if library == nil, !shares.isEmpty {
-                    JellyAdminBreakdown(title: "Share of items by library", rows: shares)
-                }
-                if let formats {
-                    if reading { progress(formats) }
-                    if !formats.containers.isEmpty { JellyAdminBreakdown(title: "Containers", rows: Self.top(formats.containers)) }
-                    if !formats.video.isEmpty { JellyAdminBreakdown(title: "Video codecs", rows: Self.top(formats.video)) }
-                    if !formats.audio.isEmpty { JellyAdminBreakdown(title: "Audio codecs", rows: Self.top(formats.audio)) }
-                } else if reading {
-                    progress(Formats())
+                    if library == nil, !shares.isEmpty {
+                        JellyAdminBreakdown(title: "Share of items by library", rows: shares)
+                    }
+                    if let formats {
+                        if reading { progress(formats) }
+                        if !formats.containers.isEmpty { JellyAdminBreakdown(title: "Containers", rows: Self.top(formats.containers)) }
+                        if !formats.video.isEmpty { JellyAdminBreakdown(title: "Video codecs", rows: Self.top(formats.video)) }
+                        if !formats.audio.isEmpty { JellyAdminBreakdown(title: "Audio codecs", rows: Self.top(formats.audio)) }
+                    } else if reading {
+                        progress(Formats())
+                    }
                 }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
         }
         .diaryScreenBackground().diaryPageNavigation("Analytics")
         .jellyFaceLock().jellyPage()
-        .task { await loadLibraries() }
         .task(id: library?.id ?? "") {
-            await loadCounts()
+            if ready { await loadCounts() } else { await firstRead() }
             await loadFormats(fresh: false)
         }
         .refreshable { await loadCounts(); await loadFormats(fresh: true) }
     }
 
-    private func tile(_ label: String, _ symbol: String, _ value: Int) -> some View {
+    private func tile(_ label: String, _ symbol: String, _ value: Int?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(label, systemImage: symbol).font(.app(size: 13)).foregroundStyle(HomeStyle.secondary)
-            Text(value.formatted()).font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
+            Text(value.map { $0.formatted() } ?? "–").font(.app(size: 24, weight: .bold)).foregroundStyle(HomeStyle.primary).monospacedDigit()
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading).modifier(SettingsCard())
         .accessibilityElement(children: .combine)
@@ -545,42 +553,68 @@ struct JellyAdminAnalyticsPage: View {
         return sorted.prefix(5).map { ($0.key, $0.value) } + [("Other: " + rest.prefix(3).map(\.key).joined(separator: ", "), rest.reduce(0) { $0 + $1.value })]
     }
 
-    private func loadLibraries() async {
-        guard let client, let data = try? await client.virtualFoldersJSON(),
-              let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return }
-        libraries = rows.compactMap { row in
-            guard let id = row["ItemId"] as? String, let name = row["Name"] as? String else { return nil }
-            return Library(id: id, name: name)
-        }
-        if library == nil { await loadShares() }
-    }
-    private func loadCounts() async {
+    /// The libraries, then the totals and each library's share side by side; shown together.
+    private func firstRead() async {
         guard let client else { failure = "Add your Jellyfin server in Settings → JellySpace first."; return }
+        if libraries.isEmpty, let data = try? await client.virtualFoldersJSON(),
+           let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
+            libraries = rows.compactMap { row in
+                guard let id = row["ItemId"] as? String, let name = row["Name"] as? String else { return nil }
+                return Library(id: id, name: name)
+            }
+        }
+        async let counted = Self.totals(client, parent: library?.id)
+        async let shared = Self.shares(client, libraries: libraries)
+        let (found, each) = await (counted, shared)
+        guard !Task.isCancelled else { return }
+        guard let found else { failure = JellyAdmin.notAdmin; return }
+        failure = nil
+        withTransaction(Transaction(animation: nil)) {
+            totals = found
+            shares = each
+            ready = true
+        }
+    }
+    /// Another library picked: its totals, filled into the same five tiles.
+    private func loadCounts() async {
+        guard let client else { return }
         let parent = library?.id
+        guard let found = await Self.totals(client, parent: parent), !Task.isCancelled, parent == library?.id else { return }
+        totals = found
+    }
+    /// The five totals. All libraries: Jellyfin's own totals (as its dashboard counts them), photos
+    /// counted; one library: each counted under it. Nil when the server answers none of them.
+    nonisolated private static func totals(_ client: JellyfinClient, parent: String?) async -> [String: Int]? {
+        async let photos = try? client.adminItemCount(types: "Photo", parent: parent)
+        if parent == nil {
+            async let counts = try? client.adminCounts()
+            let (all, pictures) = await (counts, photos)
+            guard let all else { return nil }
+            var found: [String: Int] = [:]
+            found["Movies"] = all.MovieCount; found["Series"] = all.SeriesCount; found["Episodes"] = all.EpisodeCount
+            found["Songs"] = all.SongCount; found["Photos"] = pictures
+            return found
+        }
         async let movies = try? client.adminItemCount(types: "Movie", parent: parent)
         async let series = try? client.adminItemCount(types: "Series", parent: parent)
         async let episodes = try? client.adminItemCount(types: "Episode", parent: parent)
         async let songs = try? client.adminItemCount(types: "Audio", parent: parent)
-        async let photos = try? client.adminItemCount(types: "Photo", parent: parent)
-        let found = await [("Movies", "film", movies), ("Series", "tv", series), ("Episodes", "play.rectangle.on.rectangle", episodes),
-                           ("Songs", "music.note", songs), ("Photos", "photo", photos)]
-        guard !Task.isCancelled, parent == library?.id else { return }
-        if found.allSatisfy({ $0.2 == nil }) { failure = JellyAdmin.notAdmin; return }
-        failure = nil
-        var shown: [(String, String, Int)] = []
-        for (label, symbol, count) in found { if let count, count > 0 { shown.append((label, symbol, count)) } }
-        totals = shown
+        let (m, s, e, a, p) = await (movies, series, episodes, songs, photos)
+        guard [m, s, e, a, p].contains(where: { $0 != nil }) else { return nil }
+        var found: [String: Int] = [:]
+        found["Movies"] = m; found["Series"] = s; found["Episodes"] = e; found["Songs"] = a; found["Photos"] = p
+        return found
     }
-    /// Each library's films, episodes, videos, songs, photos and books.
-    private func loadShares() async {
-        guard let client else { return }
-        var found: [(String, Int)] = []
-        for item in libraries {
-            if let count = try? await client.adminItemCount(types: "Movie,Episode,Video,MusicVideo,Audio,Photo,Book", parent: item.id), count > 0 {
-                found.append((item.name, count))
+    /// Each library's films, episodes, videos, songs, photos and books, asked side by side, largest first.
+    nonisolated private static func shares(_ client: JellyfinClient, libraries: [Library]) async -> [(String, Int)] {
+        await withTaskGroup(of: (String, Int?).self) { group in
+            for item in libraries {
+                group.addTask { (item.name, try? await client.adminItemCount(types: "Movie,Episode,Video,MusicVideo,Audio,Photo,Book", parent: item.id)) }
             }
+            var found: [(String, Int)] = []
+            for await (name, count) in group { if let count, count > 0 { found.append((name, count)) } }
+            return found.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
         }
-        shares = found.sorted { $0.1 > $1.1 }
     }
     /// Every item's container and first video and audio track, read once in pages and kept.
     private func loadFormats(fresh: Bool) async {

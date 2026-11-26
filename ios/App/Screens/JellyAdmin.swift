@@ -116,6 +116,7 @@ extension JellyfinClient {
         let MovieCount: Int?
         let SeriesCount: Int?
         let EpisodeCount: Int?
+        let SongCount: Int?
     }
     /// The whole server's films, shows and episodes.
     func adminCounts() async throws -> AdminCounts { try await get("Items/Counts") }
@@ -563,7 +564,8 @@ struct JellyAdminLibrariesPage: View {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(library.name).font(.app(size: 15, weight: .semibold)).foregroundStyle(HomeStyle.primary).lineLimit(1)
-                                    if let count = counts[library.id] { Text(count).font(.app(size: 12)).foregroundStyle(HomeStyle.secondary) }
+                                    // Always a line (a library with no count keeps the same height as the rest).
+                                    Text(counts[library.id] ?? " ").font(.app(size: 12)).foregroundStyle(HomeStyle.secondary)
                                 }
                                 Spacer(minLength: 8)
                                 let id = library.id
@@ -604,26 +606,41 @@ struct JellyAdminLibrariesPage: View {
                 guard let id = row["ItemId"] as? String, let name = row["Name"] as? String else { return nil }
                 return Library(id: id, name: name, type: (row["CollectionType"] as? String)?.lowercased())
             }
-            libraries = found
+            // The card, every library's count and the scan, read side by side and shown together: they
+            // arrived one after another, each pushing the page down as it came.
+            async let card = JellyServerOverview.load(client)
+            async let perLibrary = Self.libraryCounts(found, client: client)
             await readScan()
-            overview = await JellyServerOverview.load(client)
-            for library in found { await count(library) }
+            let (numbers, each) = await (card, perLibrary)
+            withTransaction(Transaction(animation: nil)) {
+                overview = numbers
+                counts = each
+                libraries = found
+            }
         } catch {
             failure = JellyAdmin.reason(error)
         }
     }
-    /// "842 films", "182 shows", "96 albums" (other kinds: nothing).
-    private func count(_ library: Library) async {
-        guard let client else { return }
-        let kind: (types: String, one: String, many: String)? = switch library.type {
-        case "movies": ("Movie", "film", "films")
-        case "tvshows": ("Series", "show", "shows")
-        case "music": ("MusicAlbum", "album", "albums")
-        case "homevideos", "musicvideos", nil: ("Video,Movie,MusicVideo", "video", "videos")
-        default: nil
+    /// "842 films", "182 shows", "96 albums" by library (other kinds: none), all asked at once.
+    nonisolated private static func libraryCounts(_ libraries: [Library], client: JellyfinClient) async -> [String: String] {
+        await withTaskGroup(of: (String, String?).self) { group in
+            for library in libraries {
+                group.addTask {
+                    let kind: (types: String, one: String, many: String)? = switch library.type {
+                    case "movies": ("Movie", "film", "films")
+                    case "tvshows": ("Series", "show", "shows")
+                    case "music": ("MusicAlbum", "album", "albums")
+                    case "homevideos", "musicvideos", nil: ("Video,Movie,MusicVideo", "video", "videos")
+                    default: nil
+                    }
+                    guard let kind, let total = try? await client.adminCount(parent: library.id, types: kind.types) else { return (library.id, nil) }
+                    return (library.id, total.counted(kind.one, kind.many))
+                }
+            }
+            var found: [String: String] = [:]
+            for await (id, text) in group { if let text { found[id] = text } }
+            return found
         }
-        guard let kind, let total = try? await client.adminCount(parent: library.id, types: kind.types) else { return }
-        counts[library.id] = total.counted(kind.one, kind.many)
     }
     /// The Scan media library task, while it runs (each library's Scan ends with it).
     private func readScan() async {
