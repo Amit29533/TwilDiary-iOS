@@ -49,6 +49,8 @@ struct JellyPlayerView: View {
     @AppStorage(JellyPrefs.holdKey) private var holdOn = true
     @AppStorage(JellyPrefs.skipDelayKey) private var skipDelay = 0
     @AppStorage(JellyPrefs.batteryKey) private var batteryOn = true
+    /// Pictures over the bar while seeking (Settings → JellySpace → Playback).
+    @AppStorage(JellyPrefs.seekPreviewsKey) private var seekPreviews = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.subtitleLanguageKey) private var subtitleLanguage = "eng"
     /// Upscaling: Off, Auto (not 50/60 fps) or Always. It only acts on SDR below 1080p, on iOS 26 GPUs
@@ -1095,9 +1097,10 @@ struct JellyPlayerView: View {
             // first frame. The fonts come from Jellyfin instead (JellyASSFonts, fetched alongside and
             // kept), so the file opens without them: a quicker start and less memory (as Swiftly does).
             options.skipsContainerAttachments = true
-            // The scrub bar's pictures come from Jellyfin's trickplay: AetherEngine's own (a second
-            // reader downloading and decoding frames in the background) went unused.
-            options.generatesBackgroundScrubPreviews = false
+            // The scrub bar's pictures: Jellyfin's trickplay where the server has made it; else
+            // AetherEngine's own, a sparse set of stills across the file read while the link is idle
+            // (with Seek previews off, or the server's in use, that reader isn't started).
+            options.generatesBackgroundScrubPreviews = seekPreviews && (extras?.Trickplay?.isEmpty ?? true)
             // As Sodalite (AetherEngine's own Jellyfin app) opens a file on the server: the first read
             // capped at 16 MB and 10 seconds (the engine reads up to 50 MB and 60 s, slow where a file
             // ends in sparse picture subtitles or cover art); not for a link to elsewhere (.strm).
@@ -1425,17 +1428,39 @@ struct JellyPlayerView: View {
     private var currentChapter: Int { chapters.lastIndex { Double($0.StartPositionTicks) / 10_000_000 <= time } ?? 0 }
 
     /// Which scrubbing thumbnail the bar is on while you drag it.
+    /// Jellyfin's thumbnails count from 0; AetherEngine's (no trickplay on the server) are negative,
+    /// one per `enginePreviewStep` seconds of the bar, so the two never share a number.
     private var thumbnailIndex: Int? {
-        guard let scrub, let trickplay else { return nil }
-        return min(Int(scrub * 1000) / max(1, trickplay.info.Interval), max(0, trickplay.info.ThumbnailCount - 1))
+        guard seekPreviews, let scrub else { return nil }
+        if let trickplay {
+            return min(Int(scrub * 1000) / max(1, trickplay.info.Interval), max(0, trickplay.info.ThumbnailCount - 1))
+        }
+        guard !usesMPV, engine != nil else { return nil }
+        return -1 - Int(max(0, scrub) / Self.enginePreviewStep)
     }
+    /// How far apart AetherEngine's pictures are asked for along the bar.
+    private static let enginePreviewStep: Double = 2
     private var thumbnailHeight: CGFloat {
-        guard let info = trickplay?.info, info.Width > 0 else { return 90 }
+        guard let info = trickplay?.info, info.Width > 0 else {
+            // AetherEngine's picture keeps its own shape (16:9 until one comes).
+            if let thumbnail, thumbnail.size.width > 0 { return 160 * thumbnail.size.height / thumbnail.size.width }
+            return 90
+        }
         return 160 * CGFloat(info.Height) / CGFloat(info.Width)
+    }
+    /// AetherEngine's picture at a point of the bar: from what's downloaded around where you are, else
+    /// its stills across the file. None there yet: the time alone (not a picture from elsewhere).
+    private func loadEnginePreview(_ seconds: Double) async {
+        guard let engine else { thumbnail = nil; return }
+        let frame = await engine.scrubPreviewFrame(atSeconds: seconds, refined: false, maxWidth: 320, isCancelled: { false })
+        guard !Task.isCancelled else { return }
+        thumbnail = frame.map { UIImage(cgImage: $0.image) }
     }
     /// The thumbnail cut from its sheet (each sheet holds TileWidth x TileHeight of them).
     private func loadThumbnail(_ index: Int?) async {
-        guard let index, let trickplay else { thumbnail = nil; return }
+        guard let index else { thumbnail = nil; return }
+        if index < 0 { await loadEnginePreview(Double(-1 - index) * Self.enginePreviewStep); return }
+        guard let trickplay else { thumbnail = nil; return }
         let info = trickplay.info, perSheet = max(1, info.TileWidth * info.TileHeight)
         let number = index / perSheet
         if sheet?.index != number {

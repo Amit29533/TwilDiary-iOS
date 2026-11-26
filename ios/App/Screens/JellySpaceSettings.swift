@@ -56,6 +56,9 @@ enum JellyPrefs {
     static let batteryKey = "jellyspace.battery"
     /// The Cast and AirPlay buttons at the top of the player (both shown unless turned off).
     static let castButtonKey = "jellyspace.button.cast"
+    /// Pictures over the bar while seeking: Jellyfin's trickplay where the server has it, else
+    /// AetherEngine's own.
+    static let seekPreviewsKey = "jellyspace.seekPreviews"
     static let airPlayButtonKey = "jellyspace.button.airplay"
     static let timeModeKey = "jellyspace.timeMode"
     static let subtitleLanguageKey = "jellyspace.subtitleSearchLanguage"
@@ -639,6 +642,7 @@ private struct JellyPlaybackGroups: View {
     @AppStorage(JellyPrefs.ratingCardKey) private var ratingCard = true
     @AppStorage(JellyPrefs.timeModeKey) private var timeMode = "left"
     @AppStorage(JellyPrefs.batteryKey) private var battery = true
+    @AppStorage(JellyPrefs.seekPreviewsKey) private var seekPreviews = true
     @AppStorage(JellyPrefs.castButtonKey) private var castButton = true
     @AppStorage(JellyPrefs.airPlayButtonKey) private var airPlayButton = true
 
@@ -660,6 +664,8 @@ private struct JellyPlaybackGroups: View {
                 JellySettingsRows.toggle("Rating at the start", $ratingCard, accent: accent)
                 SettingsDivider()
                 JellySettingsRows.choice("Time shown", $timeMode, [("Time left", "left"), ("Total time", "total")])
+                SettingsDivider()
+                JellySettingsRows.toggle("Seek previews", $seekPreviews, accent: accent)
                 SettingsDivider()
                 JellySettingsRows.toggle("Battery", $battery, accent: accent)
             }
