@@ -1850,6 +1850,9 @@ struct JellyPlayerView: View {
             // The bar, red as far as you've watched, and the time left beside it (a tap shows the whole
             // length instead).
             HStack(spacing: 14) {
+                // Where you are, at the bar's left (the time left, or the length, at its right).
+                JellyTimeElapsed(clock: barClock, scrub: scrub)
+                    .accessibilityIdentifier("jellyspace-time-elapsed")
                 JellyScrubber(clock: barClock, duration: duration, marks: chapterMarks, stretches: coloredStretches,
                               tint: Self.red, knob: Self.red, scrub: $scrub, released: { scheduleHide() }) { target in
                     // Only its own: a drag begun before this one landed keeps the bar.
@@ -3398,9 +3401,23 @@ private struct JellyTimeLeft: View {
     let total: Bool
 
     var body: some View {
-        Text(total ? JellyPlayerView.clock(duration) : JellyPlayerView.clock(max(0, duration - (scrub ?? clock.time))))
+        // The time left with a minus, as players show it; the length plain.
+        Text(total ? JellyPlayerView.clock(duration) : "-" + JellyPlayerView.clock(max(0, duration - (scrub ?? clock.time))))
             .font(.system(size: 14, weight: .medium)).monospacedDigit().foregroundStyle(.white)
             .frame(minHeight: 30).contentShape(Rectangle())
+    }
+}
+
+/// Where you are in the video (or where the bar is being dragged to), at the bar's left. A view of
+/// its own, so the clock ticking redraws just this.
+private struct JellyTimeElapsed: View {
+    let clock: JellyPlayClock
+    let scrub: Double?
+    var body: some View {
+        Text(JellyPlayerView.clock(max(0, scrub ?? clock.time)))
+            .font(.system(size: 14, weight: .medium)).monospacedDigit().foregroundStyle(.white)
+            .frame(minHeight: 30)
+            .accessibilityLabel("Position")
     }
 }
 
