@@ -70,7 +70,7 @@ struct TitleHero<Ratings: View>: View {
                 // The trailer, over the cover art exactly: the screen's width, from the top of the screen.
                 .overlay(alignment: .topLeading) { if let trailer { trailerView(trailer) } }
                 // Its picture showing: the page draws the cover blurred under it (TitleArtworkBackdrop).
-                .preference(key: TitleTrailerShowing.self, value: trailer?.playing == true)
+                .preference(key: TitleTrailerShowing.self, value: trailer?.pictureShowing == true)
         VStack(alignment: .leading, spacing: 20) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the
@@ -174,7 +174,7 @@ struct TitleHero<Ratings: View>: View {
     /// Round, on glass, at the cover's foot: play the trailer; while it plays, close it.
     private var trailerButton: some View {
         // While it loads: a spinner, and a tap does nothing (it closed the trailer before it began).
-        let loading = trailer.map { !$0.playing && !$0.paused } ?? false
+        let loading = trailer.map { !$0.pictureShowing && !$0.paused } ?? false
         return Button {
             if trailer == nil { startTrailer() } else if !loading { stopTrailer() }
         } label: {
@@ -241,15 +241,16 @@ struct TitleHero<Ratings: View>: View {
             let width = proxy.size.width + inset * 2
             let height = (width * 9 / 16).rounded()
             ZStack {
-                CinesPlayerHost(player: player).opacity(player.playing ? 1 : 0)
-                if !player.playing && !player.paused { ProgressView().tint(.white) }
+                // Shown once its picture is up: the cover stays meanwhile (YouTube's first moments are black).
+                CinesPlayerHost(player: player).opacity(player.pictureShowing ? 1 : 0)
+                if !player.pictureShowing && !player.paused { ProgressView().tint(.white) }
                 if player.paused {
                     Image(systemName: "play.fill").font(.system(size: 24, weight: .semibold)).foregroundStyle(.white)
                         .frame(width: 58, height: 58).background(.black.opacity(0.5), in: Circle()).allowsHitTesting(false)
                 }
             }
             .frame(width: width, height: height)
-            .background(Color.black.opacity(player.playing ? 1 : 0))
+            .background(Color.black.opacity(player.pictureShowing ? 1 : 0))
             // The lower part fades out gradually into the cover and its wash below (over the last tenth
             // only, a bright frame ended almost on a line above the wash, owner's screenshot).
             .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
@@ -369,9 +370,10 @@ struct TitleArtworkBackdrop: View {
     let path: String?
     let name: String
     var topExtension: CGFloat = 0
-    /// A trailer plays over the cover: the cover is drawn blurred, so the trailer's foot fades into
-    /// colour (as the cover's own foot fades into the wash), not into the cover's picture under it
-    /// (two pictures at once there: owner's screenshots).
+    /// A trailer plays over the cover: the cover and its wash give way to the page's dark, so the
+    /// video fades into plain dark, as Netflix's does. Into the cover's picture it showed two pictures
+    /// at once, and into the cover's colours (blurred) they mixed with the video's (owner's
+    /// screenshots: yellow-green under a blue scene, purple under black).
     var softened = false
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -419,22 +421,14 @@ struct TitleArtworkBackdrop: View {
             ground.frame(height: 4000).offset(y: artwork + 229)
             // The cover itself, crisp; only a light shade behind the status bar and buttons, and a
             // short soft foot so it melts into the wash instead of ending on a line.
-            // Under a trailer, blurred the wash's way (drawn small, blurred and flattened once, scaled up).
-            Group {
-                if softened {
-                    art.frame(width: width / Self.washScale, height: artwork / Self.washScale)
-                        .blur(radius: 40 / Self.washScale, opaque: true)
-                        .drawingGroup()
-                        .scaleEffect(Self.washScale)
-                        .frame(width: width, height: artwork)
-                } else {
-                    art.frame(width: width, height: artwork)
-                }
-            }
-            .clipped()
-            .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: softened)
+            art.frame(width: width, height: artwork).clipped()
                 .overlay(LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .black.opacity(0), location: 0.3)], startPoint: .top, endPoint: .bottom))
                 .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.88), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+            // Under a trailer: the page's dark over the cover and its wash, down to where the page is
+            // dark anyway (the video fades into it).
+            ground.frame(width: width, height: artwork + 230)
+                .opacity(softened ? 1 : 0)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: softened)
         }.frame(width: width, alignment: .top)
     }
     @ViewBuilder private var art: some View {

@@ -55,6 +55,9 @@ import WebKit
     static var origin: String { "https://" + (Bundle.main.bundleIdentifier?.lowercased() ?? "twildiary") }
 
     /// Plays a clip (muted until Sound is turned on).
+    /// The video's picture is up: playing for a moment already (YouTube reports playing a little
+    /// before its first frames, black until then).
+    var pictureShowing: Bool { playing && progress * duration > 0.3 }
     func play(_ id: String) {
         guard id != current else { if !away { resume() }; return }
         current = id
