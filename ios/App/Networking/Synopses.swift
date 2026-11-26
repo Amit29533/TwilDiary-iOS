@@ -68,7 +68,8 @@ enum SynopsisSource: String, CaseIterable, Sendable {
     static func aniList(tmdb: Int, film: Bool) async -> String? {
         await cached("anilist|\(film ? "movie" : "tv")|\(tmdb)") {
             guard let id = await AniListSync.mappedID(tmdb: tmdb, film: film) else { return .none }
-            guard let raw = try? await AniListClient.shared.mediaDescription(id) else { return .failed }
+            let raw: String?
+            do { raw = try await AniListClient.shared.mediaDescription(id) } catch { return .failed }
             return outcome(raw.map { AniListText.readable($0, hideSpoilers: true) })
         }
     }

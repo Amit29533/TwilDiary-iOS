@@ -655,7 +655,8 @@ struct JellyAdminLibrariesPage: View {
         let name = list[index].name
         var options = list[index].options
         options["EnableTrickplayImageExtraction"] = on
-        guard let body = try? JSONSerialization.data(withJSONObject: ["Id": id, "LibraryOptions": options]) else { return }
+        let payload: [String: Any] = ["Id": id, "LibraryOptions": options]
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
         list[index].options = options
         libraries = list
         do {
