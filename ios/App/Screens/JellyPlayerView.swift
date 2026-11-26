@@ -3783,9 +3783,12 @@ private struct JellyMoreMenu: View, Equatable {
                         Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
                             ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
                         } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
-                        Toggle(isOn: Binding(get: { state.upscaleFullHD }, set: { actions.upscaleFullHD($0) })) {
-                            Label("Upscale 1080p", systemImage: "arrow.up.left.and.arrow.down.right")
-                        }.disabled(state.upscale == .off)
+                        // On and Off as a submenu, like the rows around it (a toggle's tick sits on the left).
+                        Picker(selection: Binding(get: { state.upscaleFullHD }, set: { actions.upscaleFullHD($0) })) {
+                            Text("On").tag(true)
+                            Text("Off").tag(false)
+                        } label: { Label("Upscale 1080p", systemImage: "arrow.up.left.and.arrow.down.right") }.pickerStyle(.menu)
+                            .disabled(state.upscale == .off)
                     }
                     Picker(selection: Binding(get: { state.decoder }, set: { actions.decoder($0) })) {
                         ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -3796,13 +3799,19 @@ private struct JellyMoreMenu: View, Equatable {
                     Picker(selection: Binding(get: { state.dialogue }, set: { actions.dialogue($0) })) {
                         ForEach(JellySound.dialogue, id: \.1) { Text($0.0).tag($0.1) }
                     } label: { Label("Dialogue boost", systemImage: "person.wave.2") }.pickerStyle(.menu)
-                    Toggle(isOn: Binding(get: { state.night }, set: { actions.night($0) })) { Label("Night mode", systemImage: "moon.stars") }
+                    Picker(selection: Binding(get: { state.night }, set: { actions.night($0) })) {
+                        Text("On").tag(true)
+                        Text("Off").tag(false)
+                    } label: { Label("Night mode", systemImage: "moon.stars") }.pickerStyle(.menu)
                     Picker(selection: Binding(get: { state.boost }, set: { actions.boost($0) })) {
                         ForEach(JellySound.boost, id: \.1) { Text($0.0).tag($0.1) }
                     } label: { Label("Volume boost", systemImage: "speaker.plus") }.pickerStyle(.menu)
                 }
                 if !state.mpv {
-                    Toggle(isOn: Binding(get: { state.info }, set: { actions.info($0) })) { Label("Playback info", systemImage: "info.circle") }
+                    Picker(selection: Binding(get: { state.info }, set: { actions.info($0) })) {
+                        Text("On").tag(true)
+                        Text("Off").tag(false)
+                    } label: { Label("Playback info", systemImage: "info.circle") }.pickerStyle(.menu)
                 }
                 }
                 if state.chapters {
