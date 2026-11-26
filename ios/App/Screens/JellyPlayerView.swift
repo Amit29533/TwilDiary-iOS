@@ -1435,7 +1435,7 @@ struct JellyPlayerView: View {
         if let trickplay {
             return min(Int(scrub * 1000) / max(1, trickplay.info.Interval), max(0, trickplay.info.ThumbnailCount - 1))
         }
-        guard !usesMPV, engine != nil else { return nil }
+        // AetherEngine's pictures, else a frame read from the file itself (mpv's videos too).
         return -1 - Int(max(0, scrub) / Self.enginePreviewStep)
     }
     /// How far apart AetherEngine's pictures are asked for along the bar.
@@ -1462,13 +1462,27 @@ struct JellyPlayerView: View {
             defer { heavy.previewReading = nil }
             while let target = heavy.previewWanted {
                 heavy.previewWanted = nil
-                guard let engine, seekPreviews, scrub != nil else { return }
-                let frame = await engine.scrubPreviewFrame(atSeconds: target, refined: false, maxWidth: 320, isCancelled: { false })
+                guard seekPreviews, scrub != nil else { return }
+                // What AetherEngine has (from what's downloaded, or its stills a minute apart) when it's
+                // close to the point; else the frame there read straight from the file on the server,
+                // so a point nothing has reached yet shows at once.
+                var image: CGImage?, at: Double?
+                var engineFrame: ScrubFrame?
+                if !usesMPV, let engine {
+                    engineFrame = await engine.scrubPreviewFrame(atSeconds: target, refined: false, maxWidth: 320, isCancelled: { false })
+                }
+                if let frame = engineFrame, abs(frame.actualSeconds - target) <= 20 {
+                    image = frame.image; at = frame.actualSeconds
+                } else if let still = await previewExtractor().thumbnail(at: target, maxWidth: 320) {
+                    image = still; at = target
+                } else if let frame = engineFrame, abs(frame.actualSeconds - target) <= 90 {
+                    image = frame.image; at = frame.actualSeconds
+                }
                 // Let go of the bar meanwhile: nothing to show.
                 guard scrub != nil else { return }
-                if let frame, abs(frame.actualSeconds - target) <= 90 {
-                    thumbnail = UIImage(cgImage: frame.image)
-                    heavy.previewShownAt = frame.actualSeconds
+                if let image, let at {
+                    thumbnail = UIImage(cgImage: image)
+                    heavy.previewShownAt = at
                 } else if heavy.previewWanted == nil, let shown = heavy.previewShownAt, abs(shown - target) > 90 {
                     thumbnail = nil
                     heavy.previewShownAt = nil
@@ -1476,8 +1490,17 @@ struct JellyPlayerView: View {
             }
         }
     }
+    /// The reader that takes single frames straight from this video's file on the server (its own
+    /// connection, opened on first use and closed after a short idle); a new one for each video.
+    private func previewExtractor() -> FrameExtractor {
+        if let kept = heavy.previewExtractor, heavy.previewExtractorURL == current.url { return kept }
+        if let old = heavy.previewExtractor { Task { await old.shutdown() } }
+        let extractor = FrameExtractor(url: current.url)
+        heavy.previewExtractor = extractor
+        heavy.previewExtractorURL = current.url
+        return extractor
+    }
     /// The thumbnail cut from its sheet (each sheet holds TileWidth x TileHeight of them).
-    private func loadThumbnail(_ index: Int?) async {
         guard let index else {
             thumbnail = nil
             heavy.previewWanted = nil; heavy.previewShownAt = nil
@@ -3335,6 +3358,9 @@ private struct JellyAirPlayButton: UIViewRepresentable {
     @ObservationIgnored var previewWanted: Double?
     @ObservationIgnored var previewReading: Task<Void, Never>?
     @ObservationIgnored var previewShownAt: Double?
+    /// Single frames read straight from the file (a point nothing has reached yet), for this video.
+    @ObservationIgnored var previewExtractor: FrameExtractor?
+    @ObservationIgnored var previewExtractorURL: URL?
     /// This video moved to the other engine by itself, because its own couldn't play it (the next one
     /// isn't, for that).
     @ObservationIgnored var movedItself = false
