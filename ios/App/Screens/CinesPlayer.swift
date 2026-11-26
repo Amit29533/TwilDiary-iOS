@@ -33,6 +33,9 @@ import WebKit
     var loops = true
     /// Played to its end (with `loops` off).
     private(set) var ended = false
+    /// Sound on as soon as it plays (YouTube's player often won't start unmuted on its own, so it
+    /// starts muted and turns the sound on once it's playing).
+    var unmutesOnStart = false
 
     @ObservationIgnored private var ready = false
     @ObservationIgnored private var started = false
@@ -115,7 +118,10 @@ import WebKit
             if let current { load(current) }
         case "state":
             let state = message["v"] as? Int ?? -1
-            if state == 1 { playing = true; paused = false } // playing
+            if state == 1 { // playing
+                playing = true; paused = false
+                if unmutesOnStart { unmutesOnStart = false; muted = false }
+            }
             if state == 2 { paused = true } // paused (YouTube's own button, or leaving the page)
             if state == 0 {
                 // Ended: again from the start, as a reel does; a trailer just ends.

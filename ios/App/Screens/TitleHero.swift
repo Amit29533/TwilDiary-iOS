@@ -157,12 +157,19 @@ struct TitleHero<Ratings: View>: View {
     }
     /// Round, on glass, at the cover's foot: play the trailer; while it plays, close it.
     private var trailerButton: some View {
-        Button {
-            if trailer == nil { startTrailer() } else { stopTrailer() }
+        // While it loads: a spinner, and a tap does nothing (it closed the trailer before it began).
+        let loading = trailer.map { !$0.playing && !$0.paused } ?? false
+        return Button {
+            if trailer == nil { startTrailer() } else if !loading { stopTrailer() }
         } label: {
-            Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 46, height: 46).glassEffect(.regular.interactive(), in: Circle())
+            Group {
+                if loading { ProgressView().tint(.white) }
+                else {
+                    Image(systemName: trailer == nil ? "play.fill" : "xmark").font(.app(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+            }
+            .frame(width: 46, height: 46).glassEffect(.regular.interactive(), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(trailer == nil ? "Play trailer" : "Close trailer")
@@ -172,13 +179,21 @@ struct TitleHero<Ratings: View>: View {
         guard let trailerKey else { return }
         let player = CinesPlayer()
         player.loops = false
-        // With sound (the trailer was asked for), also with the ringer off, as a film plays.
-        player.muted = false
+        // With sound (the trailer was asked for), also with the ringer off, as a film plays. It
+        // starts muted (YouTube's player often won't start unmuted by itself, so a tap seemed to do
+        // nothing) and the sound comes on as it plays.
+        player.unmutesOnStart = true
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { trailer = player }
         Task {
             await JellyAudioSession.activate()
             guard trailer === player else { return }
             player.play(trailerKey)
+            // Not started after a while (the page was slow, or YouTube held it): asked to play again.
+            for _ in 0..<3 {
+                try? await Task.sleep(for: .seconds(4))
+                guard trailer === player, !player.playing, !player.paused, !player.ended else { return }
+                player.play(trailerKey)
+            }
         }
     }
     private func stopTrailer() {
@@ -223,12 +238,10 @@ struct TitleHero<Ratings: View>: View {
         async let tvdb = Synopses.tvdbTitle(tmdb: tmdbID, series: series, store: store)
         async let ani: String? = anime ? await Synopses.aniList(tmdb: tmdbID, film: film) : nil
         let found = [(SynopsisSource.tvdb, await tvdb), (SynopsisSource.anilist, await ani)]
+        // Every source with a synopsis, the same words as TMDB's or not: TMDB took many of its
+        // synopses from TheTVDB, and hiding the matching ones left most titles without the choice.
         var kept: [SynopsisSource: String] = [:]
-        for (source, text) in found {
-            guard let text else { continue }
-            if ([summary] + Array(kept.values)).contains(where: { Synopses.same(text, as: $0) }) { continue }
-            kept[source] = text
-        }
+        for (source, text) in found { if let text, !text.isEmpty { kept[source] = text } }
         guard !Task.isCancelled, kept != otherSynopses else { return }
         otherSynopses = kept
     }

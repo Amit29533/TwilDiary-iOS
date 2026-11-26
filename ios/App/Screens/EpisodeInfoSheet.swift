@@ -220,8 +220,8 @@ struct EpisodeInfoSheet: View {
         let p = page(item)
         guard !p.hidden else { return }
         guard let text = await Synopses.tvdbEpisode(tmdb: tmdb, season: season, number: item.number, store: store), !Task.isCancelled else { return }
-        let tmdbText = p.summary == Self.noSummary ? "" : p.summary
-        if !Synopses.same(text, as: tmdbText) { tvdbSummaries[item.id] = text }
+        // Also when it says the same as TMDB's (TMDB took many from TheTVDB): the choice is there.
+        tvdbSummaries[item.id] = text
     }
 
     private struct History { let latest: Date?; let plays: Int }
