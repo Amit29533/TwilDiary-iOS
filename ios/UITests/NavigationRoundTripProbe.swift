@@ -22,6 +22,41 @@ import ObjectiveC
     /// tap waited for the pop's end (0.86 s; the title opened about 1.2 s after Back); with the card
     /// (CardTransition) the pop is immediate. ("--ui-no-zoom" no longer changes anything.)
     func testTapDuringZoomBack() { tapDuringBack(zoom: true) }
+    /// Pictures of a title opening as a card and closing into its poster, a few moments apart (for
+    /// looking at: the card growing out of the right poster and shrinking back into it).
+    func testCardFrames() {
+        executionTimeAllowance = 200
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"]
+        app.launchEnvironment["TZ"] = "Asia/Kolkata"
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["Library"].tap()
+        let posters = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'title-'"))
+        guard posters.element(boundBy: 1).waitForExistence(timeout: 10) else { XCTFail("no posters"); return }
+        let frame = posters.element(boundBy: 1).frame
+        Thread.sleep(forTimeInterval: 1)
+        func shot(_ name: String) {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        shot("0 before")
+        Self.stopWaitingForIdle()
+        let start = Date()
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frame.midX, dy: frame.midY)).tap()
+        for _ in 0..<5 { shot(String(format: "open %.2fs", Date().timeIntervalSince(start))) }
+        Thread.sleep(forTimeInterval: 1)
+        shot("open done")
+        let back = Date()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        for _ in 0..<5 { shot(String(format: "close %.2fs", Date().timeIntervalSince(back))) }
+        Thread.sleep(forTimeInterval: 1)
+        shot("close done")
+        let timing = app.descendants(matching: .any)["nav-timing"]
+        print("NAV-PROBE card frames app: " + (timing.exists ? timing.label : "no timing element"))
+    }
     func testTapDuringSlideBack() { tapDuringBack(zoom: false) }
 
     private func tapDuringBack(zoom: Bool) {

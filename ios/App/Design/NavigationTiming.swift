@@ -31,7 +31,7 @@ import QuartzCore
     }
     /// "pop=812ms stalls=3 total=140ms longest=90ms".
     static var report: String {
-        guard backAt > 0 else { return "none" }
+        guard backAt > 0 else { return "no slide timed cards-opened=\(cards.opened) cards-closed=\(cards.closed)" }
         let held = MainThreadStalls.shared.summary(from: backAt, to: backAt + 2.5)
         return "pop=\(popMS.map { String($0) } ?? "?")ms open=\(pushMS.map { String($0) } ?? "?")ms cards-opened=\(cards.opened) cards-closed=\(cards.closed) stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
     }

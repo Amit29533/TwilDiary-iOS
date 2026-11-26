@@ -73,12 +73,15 @@ jobs:
             -parallel-testing-enabled NO -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 1200 -maximum-test-execution-time-allowance 1500 \
             -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testTapDuringZoomBack \
-            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testWithZoom \
+            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testCardFrames \
             -derivedDataPath "$PWD/ios/.derived/simulator" \
             -resultBundlePath ios/.artifacts/NavProbe.xcresult 2>&1 | tee ios/.artifacts/logs/nav-probe.log
       - name: Probe results
         if: always()
         run: grep -E 'NAV-PROBE' ios/.artifacts/logs/nav-probe.log || echo "no probe lines"
+      - name: Screenshots
+        if: always()
+        run: xcrun xcresulttool export attachments --path ios/.artifacts/NavProbe.xcresult --output-path ios/.artifacts/frames || echo "no screenshots"
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -86,6 +89,6 @@ jobs:
           name: TwilDiary-nav-probe
           path: |
             ios/.artifacts/logs
-            ios/.artifacts/NavProbe.xcresult
+            ios/.artifacts/frames
           include-hidden-files: true
           retention-days: 7
