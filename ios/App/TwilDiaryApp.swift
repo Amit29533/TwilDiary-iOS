@@ -192,6 +192,16 @@ struct SavedTitleRoute: Hashable {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         selectedTab = tab; paths[tab, default: NavigationPath()].append(id)
     }
+    /// A title from its poster (CardLink), in the tab you're on: as a card (CardTransition), pushed
+    /// without UIKit's animation so Back answers at once; otherwise (VoiceOver, Reduce Motion, Glance's
+    /// moving cards) with the usual slide.
+    func openFromPoster<V: Hashable>(_ value: V) {
+        let tab = selectedTab
+        guard tab != .glance, CardTransition.prepareOpen() else { paths[tab, default: NavigationPath()].append(value); return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { paths[tab, default: NavigationPath()].append(value) }
+    }
     /// A show or movie by its TMDB page (yours, if it's in your diary), in the tab you're on.
     func openCatalog(_ route: CatalogRoute) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -378,17 +388,7 @@ struct RootView: View {
         }
     }
     private func diaryStack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
-        NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { path in
-            // A title opened from its poster opens as a card (CardTransition): pushed without UIKit's
-            // animation, so Back answers at once. Glance's cards move about, so its pages slide.
-            if tab != .glance, path.count == (router.paths[tab]?.count ?? 0) + 1, CardTransition.prepareOpen() {
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) { router.paths[tab] = path }
-                return
-            }
-            router.paths[tab] = path
-        })) {
+        NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
             // Tab pages draw their own pinned header and status-bar shade. Without this, the bar of a page
             // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
             content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(themed: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)

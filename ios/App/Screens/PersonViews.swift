@@ -390,8 +390,8 @@ struct PersonCreditShelf: View {
                     VStack(alignment: .leading, spacing: 4) {
                         let role = (item.character?.isEmpty == false ? item.character : item.job) ?? ""
                         // The role joins the year line ("2008 · Marcus Pike"), so every caption is one height.
-                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.title(saved)) } }
-                        else { NavigationLink(value: item.route) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.catalog(item.route)) } }
+                        if let saved = store.libraryIdentity(item) { CardLink(value: saved) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.title(saved)) } }
+                        else { CardLink(value: item.route) { CatalogPoster(item: item, role: role).zoomSource(ZoomID.catalog(item.route)) } }
                     }.frame(width: posterSize.shelf).buttonStyle(.springPress).shelfTransition()
                 }
             }

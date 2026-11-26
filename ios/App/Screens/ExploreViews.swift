@@ -288,7 +288,7 @@ private struct DailyDiscoveryHero: View {
         .frame(maxWidth: .infinity, alignment: .bottomLeading)
         .frame(height: verticalSizeClass == .compact ? 240 : min(height, 520), alignment: .bottomLeading)
         .background {
-            NavigationLink(value: title.id) {
+            CardLink(value: title.id) {
                 Artwork(path: title.backdrop ?? title.poster, initialsOnly: false)
                     .overlay {
                         LinearGradient(stops: [
@@ -339,8 +339,8 @@ private struct DiscoveryTrack: View {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(items, id: \.displayKey) { item in
                         Group {
-                            if let id = item.inLibraryId { NavigationLink(value: id) { CatalogPoster(item: item).zoomSource(ZoomID.title(id)) } }
-                            else { NavigationLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
+                            if let id = item.inLibraryId { CardLink(value: id) { CatalogPoster(item: item).zoomSource(ZoomID.title(id)) } }
+                            else { CardLink(value: item.route) { CatalogPoster(item: item).zoomSource(ZoomID.catalog(item.route)) } }
                         }.buttonStyle(.springPress).frame(width: posterSize.shelf).shelfTransition().accessibilityIdentifier("catalog-" + item.displayKey)
                     }
                 }

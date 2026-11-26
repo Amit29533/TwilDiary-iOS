@@ -348,7 +348,7 @@ struct LibraryView: View {
             }.buttonStyle(.plain).disabled(store.busy || (!on && selected.count >= CollectionRequest.limit))
                 .accessibilityIdentifier("select-title-" + title.id).accessibilityAddTraits(on ? .isSelected : [])
         } else {
-            NavigationLink(value: title.id) { Group { if row { LibraryListRow(title: title) } else { LibraryPosterCard(title: title) } }.zoomSource(ZoomID.title(title.id)) }
+            CardLink(value: title.id) { Group { if row { LibraryListRow(title: title) } else { LibraryPosterCard(title: title) } }.zoomSource(ZoomID.title(title.id)) }
                 .buttonStyle(.springPress).contentShape(Rectangle()).accessibilityIdentifier("title-" + title.id)
                 .contextMenu {
                     Button("Select", systemImage: "checkmark.circle") { selecting = true; selected = [title.id] }

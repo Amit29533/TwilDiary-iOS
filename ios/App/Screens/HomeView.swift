@@ -103,7 +103,7 @@ struct HomeView: View {
                         ScrollView(.horizontal) {
                             LazyHStack(alignment: .top, spacing: 12) {
                                 ForEach(overview.planned.prefix(12)) { title in
-                                    NavigationLink(value: title.id) {
+                                    CardLink(value: title.id) {
                                         HomePoster(artwork: title.poster, name: title.name,
                                                    subtitle: title.isSeries ? title.categoryName : ([title.category == "anime-movie" ? "Anime movie" : "Movie"] + [title.runtimeMinutes.map(DiaryDate.duration)].compactMap { $0 }).joined(separator: " · "),
                                                    score: title.communityScore)

@@ -18,8 +18,8 @@ struct CatalogGrid: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), alignment: .leading, spacing: useGrid ? Gap.gridRow : 10) {
                 ForEach(items, id: \.displayKey) { item in
                     Group {
-                        if let saved = store.libraryIdentity(item) { NavigationLink(value: saved) { card(item).zoomSource(ZoomID.title(saved)) } }
-                        else { NavigationLink(value: item.route) { card(item).zoomSource(ZoomID.catalog(item.route)) } }
+                        if let saved = store.libraryIdentity(item) { CardLink(value: saved) { card(item).zoomSource(ZoomID.title(saved)) } }
+                        else { CardLink(value: item.route) { card(item).zoomSource(ZoomID.catalog(item.route)) } }
                     }.buttonStyle(.springPress).accessibilityIdentifier("catalog-" + item.displayKey)
                 }
             }

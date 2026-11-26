@@ -171,6 +171,17 @@ import UIKit.UIGestureRecognizerSubclass
     }
 }
 
+/// A poster that opens its title (a library id or a TMDB route), as a card (AppRouter.openFromPoster):
+/// a NavigationLink's push always slid, whatever the transaction, so the card never opened.
+struct CardLink<Value: Hashable, Label: View>: View {
+    let value: Value
+    @ViewBuilder var label: () -> Label
+    @Environment(AppRouter.self) private var router
+    var body: some View {
+        Button { router.openFromPoster(value) } label: { label() }
+    }
+}
+
 /// Notes where each touch starts (for the card's poster) and claims none: it fails at once, delaying
 /// or cancelling nothing.
 final class CardTouchSpy: UIGestureRecognizer, UIGestureRecognizerDelegate {
