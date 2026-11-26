@@ -18,9 +18,9 @@ import ObjectiveC
     /// The title's details, cast and related titles answering 0.7 s late, as a phone's network does:
     /// they arrive around Back and after it.
     func testWithZoomSlowMetadata() { probe(zoom: true, slow: true) }
-    /// Back, then the other title tapped while the zoom back is still finishing (0.45 s in: it looks
-    /// done by then), as in the owner's video. Found: the tap isn't lost, UIKit hands it over once the
-    /// pop has ended (0.86 s with the zoom), so the title opens about 1.2 s after Back.
+    /// Back, then the other title tapped 0.15 s later, as in the owner's videos. With UIKit's zoom the
+    /// tap waited for the pop's end (0.86 s; the title opened about 1.2 s after Back); with the card
+    /// (CardTransition) the pop is immediate. ("--ui-no-zoom" no longer changes anything.)
     func testTapDuringZoomBack() { tapDuringBack(zoom: true) }
     func testTapDuringSlideBack() { tapDuringBack(zoom: false) }
 
@@ -60,7 +60,7 @@ import ObjectiveC
             let next = (round + 1) % 2
             app.navigationBars.buttons.element(boundBy: 0).tap()
             let back = Date()
-            Thread.sleep(forTimeInterval: 0.45)
+            Thread.sleep(forTimeInterval: 0.15)
             tap(next)
             var at: Double?
             let deadline = Date().addingTimeInterval(3)

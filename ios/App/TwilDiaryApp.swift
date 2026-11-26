@@ -378,7 +378,17 @@ struct RootView: View {
         }
     }
     private func diaryStack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
-        NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
+        NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { path in
+            // A title opened from its poster opens as a card (CardTransition): pushed without UIKit's
+            // animation, so Back answers at once. Glance's cards move about, so its pages slide.
+            if tab != .glance, path.count == (router.paths[tab]?.count ?? 0) + 1, CardTransition.prepareOpen() {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { router.paths[tab] = path }
+                return
+            }
+            router.paths[tab] = path
+        })) {
             // Tab pages draw their own pinned header and status-bar shade. Without this, the bar of a page
             // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
             content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(themed: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)
@@ -467,10 +477,10 @@ struct RootView: View {
             .environment(\.diaryBack, DiaryBackAction { router.goBack(tab: tab) })
     }
 
-    /// Title pages open and close with iOS's standard push and slide (owner's choice: the official
-    /// transition that's done soonest). The zoom from the poster looked finished well before UIKit
-    /// had ended it, both ways (0.87 s to open, 0.86 s back; the slide 0.52 s each:
-    /// NavigationRoundTripProbe), and Back or the next title couldn't act until then.
+    /// Title pages open as a card from their poster and close back into it (CardTransition, owner's
+    /// choice, as Netflix's): UIKit's zoom looked finished well before it had ended (0.87 s to open,
+    /// 0.86 s back; its slide 0.52 s each: NavigationRoundTripProbe), and Back or the next title
+    /// couldn't act until then. Opened any other way, a page slides.
     private func savedTitlePage(_ page: TitleDetailView, tab: AppTab) -> some View {
         page.diaryPageChrome(detail: true).diaryNavigationAppearance(tab: tab, detail: true, router: router)
     }

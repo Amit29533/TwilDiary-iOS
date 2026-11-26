@@ -35,6 +35,8 @@ import UIKit
         // iOS shrinks the bar on scroll down but only brings it back at the end of a page;
         // this brings it back as soon as you scroll up.
         if controller.tabBarMinimizeBehavior == .onScrollDown { coordinator.scrollUp.attach(to: controller) }
+        // Where each touch starts, for a title's card to grow out of its poster (CardTransition).
+        controller.view.addGestureRecognizer(CardTouchSpy(target: nil, action: nil))
         controller.delegate = coordinator
         // No content swipe between tabs: a sideways swipe belongs to the page (All, Movies, Shows, Anime).
         controller.selectedIndex = tabs.firstIndex(of: selection) ?? 0

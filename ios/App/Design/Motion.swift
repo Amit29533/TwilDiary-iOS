@@ -64,11 +64,8 @@ extension EnvironmentValues {
 
 private struct ZoomSource: ViewModifier {
     let id: String
-    @Environment(\.zoomNamespace) private var namespace
-    @Environment(\.zoomScope) private var scope
-    @ViewBuilder func body(content: Content) -> some View {
-        if let namespace { content.matchedTransitionSource(id: ZoomID.scoped(scope, id), in: namespace) } else { content }
-    }
+    /// The poster the title's card grows out of and shrinks back into (CardTransition).
+    func body(content: Content) -> some View { content.background(CardSourceMarker()) }
 }
 
 /// Changes to the content animate with `Motion.smooth` when `value` changes (never under Reduce Motion).
@@ -119,8 +116,7 @@ extension View {
     func shelfTransition() -> some View { modifier(ShelfTransition()) }
     /// For a collection a list/grid switch changes: it fades into the new layout when `value` changes.
     func layoutFade<V: Equatable & Sendable>(_ value: V) -> some View { modifier(LayoutFade(value: value)) }
-    /// Marks the artwork a title page would zoom out of. Title pages now open with the standard push
-    /// (TwilDiaryApp.savedTitlePage), so no zoom namespace is set and this leaves the view as it is.
+    /// Marks the poster a title page opens out of as a card, and closes back into (CardTransition).
     func zoomSource(_ id: String) -> some View { modifier(ZoomSource(id: id)) }
     /// A sideways swipe moves between All, Movies, Shows and Anime; it never changes app tabs.
     /// `ignoring` is a sideways-scrolling row (in `Motion.swipeSpace`): drags that start there scroll it instead.

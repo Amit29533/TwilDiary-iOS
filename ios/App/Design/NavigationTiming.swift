@@ -11,6 +11,10 @@ import QuartzCore
     static let enabled = ProcessInfo.processInfo.arguments.contains("--ui-nav-timing")
     private static var backAt: CFTimeInterval = 0
     private static var popMS: Int?
+    /// Title pages opened and closed as a card (CardTransition).
+    private static var cards = (opened: 0, closed: 0)
+    static func cardOpened() { cards.opened += 1 }
+    static func cardClosed() { cards.closed += 1 }
     /// The last opening of a title page, from its start to the end of UIKit's transition.
     private static var pushAt: CFTimeInterval = 0
     private static var pushMS: Int?
@@ -29,7 +33,7 @@ import QuartzCore
     static var report: String {
         guard backAt > 0 else { return "none" }
         let held = MainThreadStalls.shared.summary(from: backAt, to: backAt + 2.5)
-        return "pop=\(popMS.map { String($0) } ?? "?")ms open=\(pushMS.map { String($0) } ?? "?")ms stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
+        return "pop=\(popMS.map { String($0) } ?? "?")ms open=\(pushMS.map { String($0) } ?? "?")ms cards-opened=\(cards.opened) cards-closed=\(cards.closed) stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
     }
 }
 
