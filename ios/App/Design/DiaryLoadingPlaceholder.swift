@@ -44,6 +44,10 @@ struct DiaryLoadingPlaceholder: View {
     @PosterSizing private var posterSize
     var body: some View {
         shapes
+            // Only the pulse animates. Its animation also carried any change of the shapes' size or
+            // place, so a shelf that settled a moment after appearing grew and slid up into place
+            // over most of a second (Search's Most searched today, owner's video).
+            .transaction { $0.animation = nil }
             .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.45]) { view, strength in view.opacity(strength) } animation: { _ in .easeInOut(duration: 0.9) }
             .allowsHitTesting(false)
             .accessibilityElement(children: .ignore).accessibilityLabel(label)
@@ -178,17 +182,19 @@ struct DiaryLoadingPlaceholder: View {
     /// The shelf's own geometry (a sideways scroll view holding column-wide posters), so the real
     /// posters land exactly where the shapes were and nothing under the shelf moves.
     private func shelf(oneLine: Bool) -> some View {
-        ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: 12) {
-                // Enough at Shelf cards' width to fill the screen and run off its edge (the shelf clips them).
-                ForEach(0..<6, id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: 0) {
-                        RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner), style: .continuous).fill(fill).posterAspect()
-                        if TilePrefs.shared.posterCaptions { caption(oneLine: oneLine) }
-                    }.frame(width: posterSize.shelf)
-                }
+        // A plain row, not a scroll view: the scroll view took a smaller size on its first pass (low
+        // under its heading, the second poster a sliver) and only then its own.
+        HStack(alignment: .top, spacing: 12) {
+            // Enough at Shelf cards' width to fill the screen and run off its edge, as the real shelf does.
+            ForEach(0..<6, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 0) {
+                    RoundedRectangle(cornerRadius: Studio.corner(Gap.posterCorner), style: .continuous).fill(fill).posterAspect()
+                    if TilePrefs.shared.posterCaptions { caption(oneLine: oneLine) }
+                }.frame(width: posterSize.shelf)
             }
-        }.scrollDisabled(true).scrollIndicators(.hidden)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
     /// The caption's height comes from hidden text in the real fonts (it follows Dynamic Type as the
     /// real caption does); the grey bars sit over it.
@@ -286,6 +292,8 @@ private struct LoadingPulse: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
         content
+            // Only the pulse animates (as DiaryLoadingPlaceholder).
+            .transaction { $0.animation = nil }
             .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.45]) { view, strength in view.opacity(strength) } animation: { _ in .easeInOut(duration: 0.9) }
             .allowsHitTesting(false)
             .accessibilityElement(children: .ignore).accessibilityLabel(label)
