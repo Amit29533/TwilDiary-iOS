@@ -1501,6 +1501,7 @@ struct JellyPlayerView: View {
         return extractor
     }
     /// The thumbnail cut from its sheet (each sheet holds TileWidth x TileHeight of them).
+    private func loadThumbnail(_ index: Int?) async {
         guard let index else {
             thumbnail = nil
             heavy.previewWanted = nil; heavy.previewShownAt = nil
