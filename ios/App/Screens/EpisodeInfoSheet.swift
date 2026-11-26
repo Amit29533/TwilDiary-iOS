@@ -53,6 +53,8 @@ struct EpisodeInfoSheet: View {
     }
     @State private var ratingError: String?
     @State private var rating = false
+    /// The episode whose watch dates are open (to change one).
+    @State private var dating: Episode?
 
     private var myRating: Int? { myRating(episode) }
     private func myRating(_ item: Episode) -> Int? { myRatings[item.id] ?? savedRatings[item.id] }
@@ -82,6 +84,7 @@ struct EpisodeInfoSheet: View {
         }.background(HomeStyle.round.ignoresSafeArea())
             .onChange(of: episode.id) { _, id in if position != id { position = id } }
             .task(id: episode.id) { ratingError = nil }
+            .sheet(item: $dating) { item in WatchDatesSheet(titleID: title.id, episodeID: item.id, heading: "Episode \(item.number)") }
             .accessibilityAction(named: "Next episode") { go(true) }
             .accessibilityAction(named: "Previous episode") { go(false) }
     }
@@ -220,6 +223,9 @@ struct EpisodeInfoSheet: View {
             Menu {
                 Button(watched ? "Mark unwatched" : "Mark watched", systemImage: watched ? "xmark.circle" : "checkmark.circle") { onToggleWatched(item) }
                     .disabled(store.writesBlocked)
+                if watched, store.canChangeWatchDates {
+                    Button("Watch date…", systemImage: "calendar") { dating = item }.disabled(store.writesBlocked)
+                }
                 ShareLink(item: shareText(item, p)) { Label("Share", systemImage: "square.and.arrow.up") }
                 Button("Watch history", systemImage: "clock.arrow.circlepath") {
                     onClose()

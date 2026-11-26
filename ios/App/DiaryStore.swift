@@ -1264,6 +1264,31 @@ import TwilDiaryCore
         undoTitles = [titleID]
         undoLabel = "Watch marked"
     }
+    /// Whether a view's date can be changed: the diary's service keeps every play (Trakt, WeTrakr).
+    /// MDBList keeps one watch per film or episode, so taking the old one off would leave none.
+    var canChangeWatchDates: Bool { diaryService?.capabilities.keepsRewatches ?? false }
+    /// A view moved to another day, or given its first date. Undo moves it back when it had a date
+    /// (a play can't be sent without one).
+    @discardableResult func changeWatchDate(_ event: WatchEvent, to date: Date) async -> Bool {
+        guard canChangeWatchDates else { return false }
+        let titleID = event.titleId, before = DiaryDate.parse(event.watchedAt)
+        var moved: String?
+        let done = await perform(refreshing: [titleID]) { moved = try await self.serviceRedate(event, to: date) }
+        guard done, let moved else { return done }
+        if let before {
+            undoAction = { [weak self] in
+                guard let self, let now = self.undoablePlays(titleID: titleID, at: moved).first else {
+                    throw APIError.message("That watch isn’t in your diary any more.")
+                }
+                _ = try await self.serviceRedate(now, to: before)
+            }
+            undoTitles = [titleID]
+        } else {
+            undoAction = nil
+        }
+        undoLabel = "Date changed"
+        return true
+    }
     func markNext(_ title: MediaTitle, season: Int? = nil, expectedEpisode: String? = nil) async {
         guard diaryFromService else { return }
         await perform(cardID: title.id, cardAction: .mark) {

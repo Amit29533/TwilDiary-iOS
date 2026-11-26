@@ -9,6 +9,8 @@ struct TitleDetailView: View {
     @State private var pendingScrollTarget: String?
     @State private var contentHeight: CGFloat = 0
     @State private var choosingWatchDate = false
+    /// The film's views, each with its date, to change one.
+    @State private var showingViewDates = false
     @State private var didFocusEpisodes = false
     @Environment(DiaryStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -178,12 +180,27 @@ struct TitleDetailView: View {
             }
             .onChange(of: selectedEpisode) { _, episode in if let episode { sheetEpisode = episode } }
             .sheet(isPresented: $choosingWatchDate) {
+                // A film with a view logged without a date: the date can go on that view, or wait for the next.
+                let undated = store.canChangeWatchDates ? movieViewings.first(where: { $0.watchedAt == nil }) : nil
                 NavigationStack {
-                    EdgeToEdgeScroll { DatePicker("Watch date", selection: Binding(get: { watchDate ?? store.now }, set: { day in watchDate = DiaryDate.calendar().isDate(day, inSameDayAs: store.now) ? nil : day }), in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical).padding(16) }
+                    EdgeToEdgeScroll {
+                        VStack(spacing: 12) {
+                            DatePicker("Watch date", selection: Binding(get: { watchDate ?? store.now }, set: { day in watchDate = DiaryDate.calendar().isDate(day, inSameDayAs: store.now) ? nil : day }), in: ...store.now, displayedComponents: .date).datePickerStyle(.graphical)
+                            if let undated {
+                                Button { dateUndated(undated) } label: {
+                                    Text("Date my view").font(.app(size: 16, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                                }.buttonStyle(.borderedProminent).disabled(store.writesBlocked).accessibilityIdentifier("watch-date-my-view")
+                                Button { choosingWatchDate = false } label: {
+                                    Text("Use for next watch").font(.app(size: 16, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                                }.buttonStyle(.bordered).accessibilityIdentifier("watch-date-next")
+                            }
+                        }.padding(16)
+                    }
                         .navigationTitle("Watch date").navigationBarTitleDisplayMode(.inline)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } }
+                        .toolbar { if undated == nil { ToolbarItem(placement: .confirmationAction) { Button("Done") { choosingWatchDate = false } } } }
                 }.presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showingViewDates) { WatchDatesSheet(titleID: id, heading: "Views") }
             .sheet(isPresented: $showNotes) { notesSheet(title) }
             .sheet(isPresented: $showAddToList) { if title.tmdbId != nil { AddToListSheet(item: DiscoveryTools.item(title)) } }
             .sheet(isPresented: $showLocation) { locationsSheet(title) }
@@ -342,6 +359,9 @@ struct TitleDetailView: View {
                     }
                     Divider()
                     Button("Watch date…", systemImage: "calendar") { choosingWatchDate = true }
+                    if store.canChangeWatchDates, !movieViewings.isEmpty {
+                        Button("View dates…", systemImage: "calendar.badge.clock") { showingViewDates = true }
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         if store.seasonStatus(title, season: season) == "watching" { Image(systemName: "play.fill").font(.app(size: 12)) }
@@ -369,6 +389,10 @@ struct TitleDetailView: View {
                     Text("\(displayedPercent)%").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
                         .contentTransition(.numericText()).animation(.smooth, value: displayedPercent)
                 }.frame(minHeight: 29).padding(.bottom, 14)
+                    // A film's views: tap to see each one's date and change it.
+                    .contentShape(Rectangle())
+                    .onTapGesture { if !title.isSeries, !movieViewings.isEmpty, store.canChangeWatchDates { showingViewDates = true } }
+                    .accessibilityAddTraits(!title.isSeries && !movieViewings.isEmpty && store.canChangeWatchDates ? .isButton : [])
                 if title.isSeries {
                     episodeSlider(title, card: card)
                 } else {
@@ -620,10 +644,13 @@ struct TitleDetailView: View {
     }
     private var movieViewings: [WatchEvent] { scope.activeEvents.filter { $0.titleId == id && $0.episodeId == nil }.sorted { ($0.recordedAt, $0.id) > ($1.recordedAt, $1.id) } }
     private var displayedWatched: Int { sliderDraft.map(Int.init) ?? card?.progress.watched ?? 0 }
-    private var watchInstant: Date {
-        guard let watchDate else { return store.now }
-        let calendar = DiaryDate.calendar()
-        return calendar.isDate(watchDate, inSameDayAs: store.now) ? store.now : calendar.date(bySettingHour: 12, minute: 0, second: 0, of: watchDate) ?? watchDate
+    private var watchInstant: Date { WatchDateEditor.instant(watchDate ?? store.now, now: store.now) }
+    /// The day chosen goes on the view logged without a date (the sheet closes; the pending date clears).
+    private func dateUndated(_ event: WatchEvent) {
+        let day = watchInstant
+        choosingWatchDate = false
+        watchDate = nil
+        Task { await store.changeWatchDate(event, to: day) }
     }
     private var displayedPercent: Int { guard let total = card?.progress.total, total > 0 else { return 0 }; return Int((Double(displayedWatched) / Double(total) * 100).rounded()) }
     private func ratingPanel(_ title: MediaTitle) -> some View {

@@ -215,7 +215,31 @@ extension DiaryStore {
         guard let first = DiaryDate.parse(a), let second = DiaryDate.parse(b) else { return false }
         return abs(first.timeIntervalSince(second)) < 1
     }
-    func serviceRemoveWatches(_ events: [WatchEvent]) async throws {
+    /// A watch moved to another day (or given its first date): the play at the new time goes in
+    /// first, then the old play comes off by its own id, so a failure leaves two plays, never none.
+    /// The mirrors get the same pair, the removal saying another play stays (none of them takes the
+    /// title or episode off). Returns the new play's time.
+    func serviceRedate(_ event: WatchEvent, to date: Date) async throws -> String {
+        guard let title = title(event.titleId) else { throw APIError.message("This watch’s title isn’t in your diary any more.") }
+        // The old play is found by its id, else by its time: with neither, it couldn't be taken off
+        // after the new one went in (checked first, so nothing is sent).
+        if (servicePlayID(event) ?? 0) <= 0, event.watchedAt == nil {
+            throw APIError.message("\(service.name) can’t tell which play this is, so its date can’t be changed here.")
+        }
+        var numbers: [(season: Int, number: Int)] = []
+        if let episodeID = event.episodeId {
+            guard let episode = workspace.episodes.first(where: { $0.id == episodeID && $0.titleId == title.id }) else {
+                throw APIError.message("This episode isn’t in your diary any more.")
+            }
+            numbers = [(season: episode.season, number: episode.number)]
+        }
+        let when = try await serviceAddPlays(title, episodes: numbers, at: date)
+        try await serviceRemoveWatches([event], replaced: true)
+        return when
+    }
+    /// `replaced`: each watch has just been logged again at another time (serviceRedate), so its
+    /// movie or episode stays watched on the mirrors.
+    func serviceRemoveWatches(_ events: [WatchEvent], replaced: Bool = false) async throws {
         guard !events.isEmpty else { throw APIError.message("There’s no watch to remove.") }
         let ids = events.compactMap(servicePlayID)
         if service == .trakt, TraktDirectStore.shared.localOnly {
@@ -229,7 +253,7 @@ extension DiaryStore {
             let path = service == .mdblist ? "/sync/watched/remove" : service == .wetrakr ? "/sync/tracking/remove" : "/sync/history/remove"
             try send(path, try playsBody(events, timed: service == .wetrakr))
         }
-        mirrorRemovals(events)
+        mirrorRemovals(events, replaced: replaced)
         let going = Set(ids)
         updateCopy { library in library.plays.removeAll { going.contains($0.historyId) } }
         refreshCopySoon()
@@ -237,7 +261,7 @@ extension DiaryStore {
     /// The mirrors lose the same plays. Called before the phone's copy changes: the diary is rebuilt
     /// from that copy, so afterwards the watch (and perhaps its episode or title) isn't there to
     /// look up; each removal carries what the mirrors need itself (`DetachedWatch`).
-    private func mirrorRemovals(_ events: [WatchEvent]) {
+    private func mirrorRemovals(_ events: [WatchEvent], replaced: Bool = false) {
         let going = Set(events.map(\.id)), when = stamp(now)
         // The diary gone through once for all of them: each removal went through every watch and every
         // episode in it, which for a long show's hundreds of watches held up the screen.
@@ -247,6 +271,10 @@ extension DiaryStore {
         for event in workspace.activeEvents where !going.contains(event.id) {
             staying.insert(place(event))
             stillWatched.insert(event.titleId)
+        }
+        // Their new plays aren't in the diary yet (it's rebuilt from the copy in the background).
+        if replaced {
+            for event in events { staying.insert(place(event)); stillWatched.insert(event.titleId) }
         }
         mirrorAll(events.compactMap { event -> OptimisticMutation? in
             guard let title = self.title(event.titleId), let tmdb = title.tmdbId else { return nil }
