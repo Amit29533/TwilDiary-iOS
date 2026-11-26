@@ -225,7 +225,10 @@ private struct JellyZoomImage: UIViewRepresentable {
                     }
                     close()
                 } else {
-                    UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0) {
+                    // The photo can be caught again as it springs back (UIKit ignores touches on an
+                    // animating view otherwise, until the spring settles).
+                    UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0,
+                                   options: [.allowUserInteraction, .beginFromCurrentState]) {
                         imageView.transform = .identity
                     }
                     pulled(0)

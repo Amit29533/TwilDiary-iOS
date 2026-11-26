@@ -94,14 +94,14 @@ import OSLog
             let bar = navigation.navigationBar
             if appearing { bar.alpha = 0 }
             #if DEBUG
-            if !appearing { NavigationTiming.popStarted() }
+            if appearing { NavigationTiming.pushStarted() } else { NavigationTiming.popStarted() }
             #endif
             coordinator.animate(alongsideTransition: { _ in
                 MainActor.assumeIsolated { bar.alpha = appearing ? 1 : 0 }
             }, completion: { context in
                 MainActor.assumeIsolated {
                     #if DEBUG
-                    if !appearing { NavigationTiming.popEnded(cancelled: context.isCancelled) }
+                    if appearing { NavigationTiming.pushEnded() } else { NavigationTiming.popEnded(cancelled: context.isCancelled) }
                     #endif
                     if appearing || context.isCancelled { bar.alpha = 1; return }
                     // Back on the main tab: keep the bar invisible until UIKit has hidden it, then

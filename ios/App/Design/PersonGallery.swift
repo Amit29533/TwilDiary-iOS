@@ -308,7 +308,10 @@ private struct ZoomablePhoto: UIViewRepresentable {
                     }
                     parent.onClose()
                 } else {
-                    UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) { view.transform = .identity }
+                    // The photo can be caught again as it springs back (UIKit ignores touches on an
+                    // animating view otherwise, until the spring settles).
+                    UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0,
+                                   options: [.allowUserInteraction, .beginFromCurrentState]) { view.transform = .identity }
                     parent.onPull(0)
                 }
             default: break

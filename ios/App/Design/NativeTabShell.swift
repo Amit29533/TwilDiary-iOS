@@ -71,7 +71,9 @@ import UIKit
         // Watchlist, a stat opening Library, Search): a tap on the bar has already switched. A short
         // cross-fade instead of a cut (owner's request); none with Reduce Motion or off screen.
         guard controller.view.window != nil, !UIAccessibility.isReduceMotionEnabled else { controller.selectedIndex = index; return }
-        UIView.transition(with: controller.view, duration: 0.3, options: [.transitionCrossDissolve, .allowAnimatedContent, .beginFromCurrentState]) {
+        // Taps reach the page during the fade (UIKit ignores them on an animating view otherwise: the
+        // tab just opened didn't answer for its first 0.3 s).
+        UIView.transition(with: controller.view, duration: 0.3, options: [.transitionCrossDissolve, .allowAnimatedContent, .beginFromCurrentState, .allowUserInteraction]) {
             controller.selectedIndex = index
         }
     }
