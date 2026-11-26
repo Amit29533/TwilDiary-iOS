@@ -131,8 +131,7 @@ extension JellyfinClient {
                                                  URLQueryItem(name: "IncludeItemTypes", value: types), URLQueryItem(name: "Limit", value: "0")])
         return page.TotalRecordCount
     }
-    /// The libraries with all their options, as the server's own JSON (it's sent back whole when an
-    /// option changes, so nothing this app doesn't know about is lost).
+    /// The libraries as the server's own JSON.
     func virtualFoldersJSON() async throws -> Data {
         var request = URLRequest(url: base.appending(path: "Library/VirtualFolders"), timeoutInterval: 20)
         request.setValue(JellyDevice.header + ", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
@@ -142,17 +141,6 @@ extension JellyfinClient {
         if status == 401 || status == 403 { throw APIError.message(JellyAdmin.notAdmin) }
         guard (200..<300).contains(status) else { throw APIError.message("Jellyfin answered \(status).") }
         return data
-    }
-    /// A library's options saved (`body`: {"Id": …, "LibraryOptions": {…}} as JSON).
-    func saveLibraryOptions(_ body: Data) async throws {
-        var request = URLRequest(url: base.appending(path: "Library/VirtualFolders/LibraryOptions"), timeoutInterval: 20)
-        request.httpMethod = "POST"
-        request.setValue(JellyDevice.header + ", Token=\"\(key)\"", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        let (_, response) = try await URLSession.shared.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(status) else { throw APIError.message("Jellyfin answered \(status).") }
     }
 }
 
@@ -526,15 +514,12 @@ struct JellyAdminTasksPage: View {
 
 // MARK: Libraries
 
-/// The server's libraries: how much each holds, Scan for one or all, and whether Jellyfin makes
-/// trickplay pictures for it (the seek previews; the Trickplay images task makes them).
+/// The server's libraries: the server's card, how much each library holds, and Scan for one or all.
 struct JellyAdminLibrariesPage: View {
-    private struct Library: Identifiable {
+    private struct Library: Identifiable, Sendable {
         let id: String
         let name: String
         let type: String?
-        var options: [String: Any]
-        var trickplay: Bool { options["EnableTrickplayImageExtraction"] as? Bool ?? false }
     }
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @State private var client: JellyfinClient? = JellyAdmin.client
@@ -583,16 +568,6 @@ struct JellyAdminLibrariesPage: View {
                             }.padding(.horizontal, 16).padding(.vertical, 12)
                         }
                     }
-                    SettingsGroup(label: "Trickplay pictures") {
-                        ForEach(Array(libraries.enumerated()), id: \.element.id) { index, library in
-                            if index > 0 { SettingsDivider() }
-                            let id = library.id
-                            SettingsLine(title: library.name) {
-                                Toggle("", isOn: Binding(get: { library.trickplay }, set: { on in Task { await setTrickplay(id, on) } }))
-                                    .labelsHidden().tint(theme.accent).accessibilityLabel("Trickplay pictures for " + library.name)
-                            }
-                        }
-                    }
                     if let notice { Text(notice).font(.footnote).foregroundStyle(HomeStyle.secondary).padding(.horizontal, 4) }
                 } else if let failure {
                     RetryNotice(message: failure) { Task { await load() } }
@@ -621,7 +596,7 @@ struct JellyAdminLibrariesPage: View {
             let rows = (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
             let found = rows.compactMap { row -> Library? in
                 guard let id = row["ItemId"] as? String, let name = row["Name"] as? String else { return nil }
-                return Library(id: id, name: name, type: (row["CollectionType"] as? String)?.lowercased(), options: row["LibraryOptions"] as? [String: Any] ?? [:])
+                return Library(id: id, name: name, type: (row["CollectionType"] as? String)?.lowercased())
             }
             libraries = found
             await readScan()
@@ -664,28 +639,6 @@ struct JellyAdminLibrariesPage: View {
         // The scan runs on the server; the button reads Scanning for a while.
         try? await Task.sleep(for: .seconds(20))
         scanned.remove(id)
-    }
-    /// Trickplay on or off for one library: its options go back whole with that one changed.
-    private func setTrickplay(_ id: String, _ on: Bool) async {
-        guard let client, var list = libraries, let index = list.firstIndex(where: { $0.id == id }) else { return }
-        let name = list[index].name
-        var options = list[index].options
-        options["EnableTrickplayImageExtraction"] = on
-        let payload: [String: Any] = ["Id": id, "LibraryOptions": options]
-        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
-        list[index].options = options
-        libraries = list
-        do {
-            try await client.saveLibraryOptions(body)
-            notice = on ? "\(name): the pictures are made when the Trickplay images task runs (Tasks)." : nil
-        } catch {
-            // Put back as it was, read again from what's on screen now.
-            if var now = libraries, let at = now.firstIndex(where: { $0.id == id }) {
-                now[at].options["EnableTrickplayImageExtraction"] = !on
-                libraries = now
-            }
-            notice = JellyAdmin.reason(error)
-        }
     }
 }
 
