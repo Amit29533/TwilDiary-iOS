@@ -1449,17 +1449,41 @@ struct JellyPlayerView: View {
         return 160 * CGFloat(info.Height) / CGFloat(info.Width)
     }
     /// AetherEngine's picture at a point of the bar: from what's downloaded around where you are, else
-    /// its stills across the file. None there yet: the time alone (not a picture from elsewhere).
-    private func loadEnginePreview(_ seconds: Double) async {
-        guard let engine else { thumbnail = nil; return }
-        let frame = await engine.scrubPreviewFrame(atSeconds: seconds, refined: false, maxWidth: 320, isCancelled: { false })
-        guard !Task.isCancelled else { return }
-        thumbnail = frame.map { UIImage(cgImage: $0.image) }
+    /// its stills across the file (one about a minute apart, read in the background).
+    ///
+    /// One picture is read at a time and each read finishes: the next point asked for waits and is
+    /// read straight after (only the newest). Before, every new point cancelled the read in hand, and
+    /// a drag asks for a new point on almost every move, so a picture showed only when the finger
+    /// stood still. A miss keeps the last picture while it's within a minute and a half of the point.
+    private func requestEnginePreview(_ seconds: Double) {
+        heavy.previewWanted = seconds
+        guard heavy.previewReading == nil else { return }
+        heavy.previewReading = Task { @MainActor in
+            defer { heavy.previewReading = nil }
+            while let target = heavy.previewWanted {
+                heavy.previewWanted = nil
+                guard let engine, seekPreviews, scrub != nil else { return }
+                let frame = await engine.scrubPreviewFrame(atSeconds: target, refined: false, maxWidth: 320, isCancelled: { false })
+                // Let go of the bar meanwhile: nothing to show.
+                guard scrub != nil else { return }
+                if let frame, abs(frame.actualSeconds - target) <= 90 {
+                    thumbnail = UIImage(cgImage: frame.image)
+                    heavy.previewShownAt = frame.actualSeconds
+                } else if heavy.previewWanted == nil, let shown = heavy.previewShownAt, abs(shown - target) > 90 {
+                    thumbnail = nil
+                    heavy.previewShownAt = nil
+                }
+            }
+        }
     }
     /// The thumbnail cut from its sheet (each sheet holds TileWidth x TileHeight of them).
     private func loadThumbnail(_ index: Int?) async {
-        guard let index else { thumbnail = nil; return }
-        if index < 0 { await loadEnginePreview(Double(-1 - index) * Self.enginePreviewStep); return }
+        guard let index else {
+            thumbnail = nil
+            heavy.previewWanted = nil; heavy.previewShownAt = nil
+            return
+        }
+        if index < 0 { requestEnginePreview(Double(-1 - index) * Self.enginePreviewStep); return }
         guard let trickplay else { thumbnail = nil; return }
         let info = trickplay.info, perSheet = max(1, info.TileWidth * info.TileHeight)
         let number = index / perSheet
@@ -3306,6 +3330,11 @@ private struct JellyAirPlayButton: UIViewRepresentable {
     /// A held picture waits for the next episode's first frame (seen reset by its load first).
     @ObservationIgnored var stillAwaitsNext = false
     @ObservationIgnored var stillSawReset = false
+    /// Seek previews from AetherEngine: the newest point waiting to be read, the read in hand, and
+    /// where the picture on screen is from.
+    @ObservationIgnored var previewWanted: Double?
+    @ObservationIgnored var previewReading: Task<Void, Never>?
+    @ObservationIgnored var previewShownAt: Double?
     /// This video moved to the other engine by itself, because its own couldn't play it (the next one
     /// isn't, for that).
     @ObservationIgnored var movedItself = false
