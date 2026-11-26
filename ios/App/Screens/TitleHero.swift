@@ -69,11 +69,6 @@ struct TitleHero<Ratings: View>: View {
                 .fullScreenArtwork(backdrop, title: name, aspect: 16.0 / 9.0)
                 // The trailer, over the cover art exactly: the screen's width, from the top of the screen.
                 .overlay(alignment: .topLeading) { if let trailer { trailerView(trailer) } }
-                .overlay(alignment: .bottomTrailing) {
-                    if trailerKey != nil {
-                        trailerButton.padding(.bottom, 20)
-                    }
-                }
         VStack(alignment: .leading, spacing: 20) {
             // Keep the identity down in the darkened lower artwork. The column is at least the
             // poster's height with its text at the bottom, so short names sit low beside the
@@ -134,7 +129,16 @@ struct TitleHero<Ratings: View>: View {
                 synopsisWidth = width; measureSynopsis()
             }
         }
-        }.onChange(of: synopsisText) { _, _ in measureSynopsis() }
+        }
+        // The trailer's button at the cover's foot, laid over the whole header rather than the cover
+        // strip: that strip carries the press-and-hold layer (a UIKit context menu), and taps on a
+        // button inside it sometimes never reached the button (owner's video, several taps).
+        .overlay(alignment: .topTrailing) {
+            if trailerKey != nil {
+                trailerButton.padding(.top, max(0, coverStrip - 20 - 46))
+            }
+        }
+        .onChange(of: synopsisText) { _, _ in measureSynopsis() }
         .task(id: tmdbID) { await loadOtherSynopses() }
         .task(id: tmdbID) { await loadTrailer() }
         .onDisappear { stopTrailer() }
@@ -177,9 +181,12 @@ struct TitleHero<Ratings: View>: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .frame(width: 46, height: 46).glassEffect(.regular.interactive(), in: Circle())
+            .frame(width: 30, height: 30)
         }
-        .buttonStyle(.plain)
+        // iOS's own glass button: an "interactive" glass on a plain button's label tracked the touch
+        // itself (it lit up) and sometimes kept the tap from the button.
+        .buttonStyle(.glass).buttonBorderShape(.circle).controlSize(.large)
+        .contentShape(Circle())
         .accessibilityLabel(trailer == nil ? "Play trailer" : "Close trailer")
         .accessibilityIdentifier("title-trailer")
     }
