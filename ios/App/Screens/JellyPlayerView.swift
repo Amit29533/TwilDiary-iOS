@@ -56,8 +56,6 @@ struct JellyPlayerView: View {
     /// Upscaling: Off, Auto (not 50/60 fps) or Always. It only acts on SDR below 1080p, on iOS 26 GPUs
     /// that can, with Apple's super resolution and MetalFX (as Infuse does).
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscaleMode = JellyUpscale.initial
-    /// 1080p upscaled too (Lanczos), while Upscaling applies.
-    @AppStorage(JellyPrefs.upscaleFullHDKey) private var upscaleFullHD = false
     /// The last episode's picture held over the video while the next one loads (fades as it shows).
     @State private var stillShown = false
     // Sound (Settings → JellySpace, and the gear menu): kept for every video.
@@ -1132,7 +1130,8 @@ struct JellyPlayerView: View {
             }
             options.upscalesLowResolutionVideo = upscaleWanted
             options.upscaleScaler = .automatic
-            options.upscalesFullHDVideo = upscaleWanted && upscaleFullHD
+            // 1080p too on Always (JellyUpscale.upscalesFullHD).
+            options.upscalesFullHDVideo = upscaleWanted && upscaleMode.upscalesFullHD
             // Picture subtitles read as text on the phone, to be drawn in your look (Settings → Subtitles).
             options.recognizesBitmapSubtitleText = subtitleLook.pictures == "mine"
             options.preferredDecodePath = decodePath
@@ -2041,7 +2040,7 @@ struct JellyPlayerView: View {
         JellyMenuState(subtitles: subtitleTracks.map { JellyTrackChoice(id: $0.id, label: Self.label($0, audio: false)) },
                        audio: audioTracks.count > 1 ? audioTracks.map { JellyTrackChoice(id: $0.id, label: Self.label($0, audio: true)) } : [],
                        subtitle: activeSubtitle ?? -1, audioTrack: activeAudio ?? -1, sleep: sleepChoice, speed: Double(speed),
-                       upscale: upscaleMode, upscaleFullHD: upscaleFullHD, episode: current.item.kind == "Episode",
+                       upscale: upscaleMode, episode: current.item.kind == "Episode",
                        dialogue: dialogueBoost, night: nightMode, boost: volumeBoost,
                        fill: fill, pictures: pictureChoices, rotationLocked: rotationLocked, info: showsInfo,
                        chapters: current.item.kind == "Episode" && chapters.count > 1,
@@ -2060,7 +2059,6 @@ struct JellyPlayerView: View {
             sleep: { choice in me.view.menuUsed(); me.view.setSleep(choice < 0 ? nil : choice) },
             speed: { value in me.view.menuUsed(); me.view.speed = Float(value); me.view.engineRate(Float(value)) },
             upscale: { mode in me.view.menuUsed(); me.view.setUpscale(mode) },
-            upscaleFullHD: { on in me.view.menuUsed(); me.view.setUpscaleFullHD(on) },
             subtitle: { id in me.view.pickSubtitle(id) },
             audio: { id in me.view.pickAudio(id) },
             download: { me.view.openPanel(.subtitleSearch) },
@@ -2363,11 +2361,12 @@ struct JellyPlayerView: View {
     private func setUpscale(_ mode: JellyUpscale) {
         guard mode != upscaleMode else { return }
         let before = upscaleAllowed(upscaleMode), after = upscaleAllowed(mode)
+        let fullHDBefore = before && upscaleMode.upscalesFullHD, fullHD = after && mode.upscalesFullHD
         upscaleMode = mode
         show(mode == .auto && !after ? "Upscaling: Auto (not for this video now)" : "Upscaling: " + mode.title)
-        // Only a change that turns it on or off for this video reloads it.
-        guard before != after, let engine, state != .idle, state != .loading else { return }
-        let fullHD = after && upscaleFullHD
+        // Only a change that turns it on or off for this video reloads it (for a 1080p video, Always
+        // and Auto differ too: Always upscales it).
+        guard before != after || (fullHDBefore != fullHD && Self.isFullHD(videoSize)), let engine, state != .idle, state != .loading else { return }
         Task {
             _ = try? await engine.reloadAtCurrentPosition { options in
                 options.upscalesLowResolutionVideo = after
@@ -2375,14 +2374,6 @@ struct JellyPlayerView: View {
                 options.upscalesFullHDVideo = fullHD
             }
         }
-    }
-    /// 1080p upscaling on or off: a 1080p video playing with Upscaling on reloads where it is.
-    private func setUpscaleFullHD(_ on: Bool) {
-        guard on != upscaleFullHD else { return }
-        upscaleFullHD = on
-        show(on ? "Upscale 1080p: On" : "Upscale 1080p: Off")
-        guard upscaleWanted, Self.isFullHD(videoSize), let engine, state != .idle, state != .loading else { return }
-        Task { _ = try? await engine.reloadAtCurrentPosition { $0.upscalesFullHDVideo = on } }
     }
     /// The sizes AetherEngine's 1080p upscaling takes: bigger than 720p, at most 1920x1080 (cropped rips too).
     static func isFullHD(_ size: CGSize) -> Bool {
@@ -3740,7 +3731,6 @@ private struct JellyMenuState: Equatable, Sendable {
     var sleep: Int
     var speed: Double
     var upscale: JellyUpscale
-    var upscaleFullHD: Bool
     var episode: Bool
     var dialogue: Int
     var night: Bool
@@ -3765,7 +3755,6 @@ private struct JellyMenuActions {
     let sleep: (Int) -> Void
     let speed: (Double) -> Void
     let upscale: (JellyUpscale) -> Void
-    let upscaleFullHD: (Bool) -> Void
     let subtitle: (Int) -> Void
     let audio: (Int) -> Void
     let download: () -> Void
@@ -3840,12 +3829,6 @@ private struct JellyMoreMenu: View, Equatable {
                         Picker(selection: Binding(get: { state.upscale }, set: { actions.upscale($0) })) {
                             ForEach(JellyUpscale.allCases, id: \.self) { Text($0.title).tag($0) }
                         } label: { Label("Upscaling", systemImage: "sparkles") }.pickerStyle(.menu)
-                        // On and Off as a submenu, like the rows around it (a toggle's tick sits on the left).
-                        Picker(selection: Binding(get: { state.upscaleFullHD }, set: { actions.upscaleFullHD($0) })) {
-                            Text("On").tag(true)
-                            Text("Off").tag(false)
-                        } label: { Label("Upscale 1080p", systemImage: "arrow.up.left.and.arrow.down.right") }.pickerStyle(.menu)
-                            .disabled(state.upscale == .off)
                     }
                     Picker(selection: Binding(get: { state.decoder }, set: { actions.decoder($0) })) {
                         ForEach(JellyDecoder.allCases, id: \.self) { Text($0.title).tag($0) }

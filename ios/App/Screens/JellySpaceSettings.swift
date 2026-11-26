@@ -50,8 +50,6 @@ enum JellyPrefs {
     static let mpvCompositeKey = "jellyspace.mpv.compositeOSD"
     static let upscaleKey = "jellyspace.upscale"
     static let upscaleModeKey = "jellyspace.upscaleMode"
-    /// 1080p upscaled too (AetherEngine's Lanczos), while Upscaling is on.
-    static let upscaleFullHDKey = "jellyspace.upscale1080"
     static let skipDelayKey = "jellyspace.skip.delay"
     static let batteryKey = "jellyspace.battery"
     /// The Cast and AirPlay buttons at the top of the player (both shown unless turned off).
@@ -134,6 +132,9 @@ enum JellyUpscale: String, CaseIterable {
         case .always: "Always"
         }
     }
+    /// Always also upscales 1080p videos (AetherEngine's Lanczos); Auto leaves them as they are. (It was
+    /// a switch of its own, Upscale 1080p: owner's request to fold it into Always.)
+    var upscalesFullHD: Bool { self == .always }
     /// Before there were three choices it was on or off: on becomes Auto.
     static var initial: JellyUpscale {
         UserDefaults.standard.bool(forKey: JellyPrefs.upscaleKey) ? .auto : .off
@@ -1088,7 +1089,6 @@ struct JellyEnginesGroups: View {
     @AppStorage("theme") private var theme = DiaryTheme.twilight
     @AppStorage(JellyPrefs.engineKey) private var engine = JellyDecoder.auto.rawValue
     @AppStorage(JellyPrefs.upscaleModeKey) private var upscale = JellyUpscale.initial
-    @AppStorage(JellyPrefs.upscaleFullHDKey) private var upscaleFullHD = false
     @AppStorage(JellyPrefs.dialogueKey) private var dialogue = 0
     @AppStorage(JellyPrefs.nightKey) private var night = false
     @AppStorage(JellyPrefs.boostKey) private var boost = 0
@@ -1115,9 +1115,6 @@ struct JellyEnginesGroups: View {
             JellyDecoderNote(text: "Auto: AetherEngine with the phone's hardware decoder where it can. AetherEngine: its own decoder for everything. A video you moved to the other engine in the player stays on it.")
             SettingsGroup(label: "AetherEngine") {
                 JellySettingsRows.choice("Upscaling", $upscale, Self.upscales)
-                SettingsDivider()
-                JellySettingsRows.toggle("Upscale 1080p", $upscaleFullHD, accent: accent)
-                    .disabled(upscale == .off).opacity(upscale == .off ? 0.45 : 1)
                 SettingsDivider()
                 JellySettingsRows.choice("Dialogue boost", $dialogue, JellySound.dialogue)
                 SettingsDivider()
