@@ -20,6 +20,8 @@ import UIKit.UIGestureRecognizerSubclass
     @MainActor final class Opening {
         weak var source: UIView?
         let rect: CGRect
+        /// When it was set up (a push that never showed its page doesn't play on a later one).
+        let at = CACurrentMediaTime()
         /// The still of the screen it left, behind the card while it grows (let go after: it's a
         /// screen-sized picture).
         var backdrop: UIView?
@@ -74,6 +76,8 @@ import UIKit.UIGestureRecognizerSubclass
     static func open(page: UIViewController, navigation: UINavigationController) -> Opening? {
         guard let opening = pending else { return nil }
         pending = nil
+        // Only for the page just asked for (a page appearing much later, say on a tab switch, isn't it).
+        guard CACurrentMediaTime() - opening.at < 1 else { return nil }
         if let coordinator = page.transitionCoordinator, coordinator.isAnimated { return nil }
         guard let container = page.view.superview else { return nil }
         let pageView: UIView = page.view

@@ -192,13 +192,15 @@ private struct CineGlowRing<S: InsettableShape>: ViewModifier {
                 ring(width: lineWidth * 5, turning: active).blur(radius: 9).opacity(active ? 0.55 : 0)
             }
             .overlay { ring(width: active ? lineWidth * 1.6 : lineWidth, turning: true).opacity(active ? 1 : 0.65) }
+            // A calm ring is thin and turns slowly: 15 frames a second is enough (a conversation's chips
+            // each carry one, dozens at once).
             .animation(.smooth(duration: 0.35), value: active)
     }
     private func ring(width: CGFloat, turning: Bool) -> some View {
         GeometryReader { proxy in
             let side = max(proxy.size.width, proxy.size.height) * 1.6
             // A turn every 6 s, from the clock (CineGlow.turn), at most 30 times a second.
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !turning)) { context in
+            TimelineView(.animation(minimumInterval: active ? 1 / 30 : 1 / 15, paused: reduceMotion || !turning)) { context in
                 AngularGradient(colors: CineGlow.colours + [CineGlow.colours[0]], center: .center, angle: .zero)
                     .frame(width: side, height: side)
                     .rotationEffect(.degrees(reduceMotion ? 0 : CineGlow.turn(context.date, period: 6)))
