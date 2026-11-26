@@ -2,45 +2,6 @@ import SwiftUI
 import UIKit
 import OSLog
 
-/// A title page on its way back to its tab's top page (UIKit's pop, until it has ended). UIKit doesn't
-/// push during a transition, and the zoom back looks finished well before it is (it ends about 0.86 s
-/// after Back, the plain slide at 0.52 s: NavigationRoundTripProbe), so a title tapped in that last
-/// part was lost and had to be tapped again (owner's video). The push is held and made as the pop
-/// ends instead.
-@MainActor enum NavigationGate {
-    private(set) static var popping = false
-    private static var held: (@MainActor () -> Void)?
-    private static var generation = 0
-    static func popStarted() {
-        popping = true
-        generation += 1
-        let mine = generation
-        // Never held for long, whatever becomes of the transition.
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            if popping, generation == mine { popEnded() }
-        }
-    }
-    static func popEnded() {
-        guard popping else { return }
-        popping = false
-        guard let push = held else { return }
-        held = nil
-        // A moment later: UIKit finishes the transition after its completion handlers.
-        Task { @MainActor in push() }
-    }
-    /// Whether `push` is held for the pop under way (false: none is, push now).
-    static func hold(_ push: @escaping @MainActor () -> Void) -> Bool {
-        #if DEBUG
-        if popping { NavigationTiming.pushAskedDuringPop() }
-        if ProcessInfo.processInfo.arguments.contains("--ui-no-push-hold") { return false }
-        #endif
-        guard popping else { return false }
-        held = push
-        return true
-    }
-}
-
 /// SwiftUI onAppear can run during an interactive transition. Publish shell
 /// visibility only once UIKit finishes presenting the owning destination.
 @MainActor private struct NativeNavigationAppearance: UIViewControllerRepresentable {
@@ -117,18 +78,16 @@ import OSLog
                   coordinator.viewController(forKey: appearing ? .from : .to) === root else { return }
             let bar = navigation.navigationBar
             if appearing { bar.alpha = 0 }
-            if !appearing { NavigationGate.popStarted() }
             #if DEBUG
             if !appearing { NavigationTiming.popStarted() }
             #endif
-            let registered = coordinator.animate(alongsideTransition: { _ in
+            coordinator.animate(alongsideTransition: { _ in
                 MainActor.assumeIsolated { bar.alpha = appearing ? 1 : 0 }
             }, completion: { context in
                 MainActor.assumeIsolated {
                     #if DEBUG
                     if !appearing { NavigationTiming.popEnded(cancelled: context.isCancelled) }
                     #endif
-                    if !appearing { NavigationGate.popEnded() }
                     if appearing || context.isCancelled { bar.alpha = 1; return }
                     // Back on the main tab: keep the bar invisible until UIKit has hidden it, then
                     // restore it for the next page (at most a second later).
@@ -140,8 +99,6 @@ import OSLog
                     }
                 }
             })
-            // No transition to follow after all: nothing to wait for.
-            if !registered, !appearing { NavigationGate.popEnded() }
         }
         private func owningNavigation() -> UINavigationController? {
             if let navigationController { return navigationController }

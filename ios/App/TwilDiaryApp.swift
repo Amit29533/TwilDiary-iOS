@@ -380,11 +380,7 @@ struct RootView: View {
         }
     }
     private func diaryStack<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
-        NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { path in
-            // A page opened while another is still going back is opened as that ends (NavigationGate).
-            if path.count > (router.paths[tab]?.count ?? 0), NavigationGate.hold({ router.paths[tab] = path }) { return }
-            router.paths[tab] = path
-        })) {
+        NavigationStack(path: Binding(get: { router.paths[tab] ?? NavigationPath() }, set: { router.paths[tab] = $0 })) {
             // Tab pages draw their own pinned header and status-bar shade. Without this, the bar of a page
             // sliding away dimmed the header (iOS 26's scroll-edge effect) until the slide finished.
             content().scrollEdgeEffectHidden(true, for: .top).background(tab == .library ? Color(themed: "#0e0d13") : .clear).background { if tab != .library { DiaryScreenBackground() } }.toolbar(.hidden, for: .navigationBar).diaryPageChrome(detail: false)

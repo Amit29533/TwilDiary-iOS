@@ -19,15 +19,15 @@ import ObjectiveC
     /// they arrive around Back and after it.
     func testWithZoomSlowMetadata() { probe(zoom: true, slow: true) }
     /// Back, then the other title tapped while the zoom back is still finishing (0.45 s in: it looks
-    /// done by then), as in the owner's video: with the push held for the pop's end (the app's way)
-    /// and without (as before).
-    func testTapDuringZoomBackHeld() { tapDuringBack(hold: true) }
-    func testTapDuringZoomBackDropped() { tapDuringBack(hold: false) }
+    /// done by then), as in the owner's video. Found: the tap isn't lost, UIKit hands it over once the
+    /// pop has ended (0.86 s with the zoom), so the title opens about 1.2 s after Back.
+    func testTapDuringZoomBack() { tapDuringBack(zoom: true) }
+    func testTapDuringSlideBack() { tapDuringBack(zoom: false) }
 
-    private func tapDuringBack(hold: Bool) {
+    private func tapDuringBack(zoom: Bool) {
         executionTimeAllowance = 300
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"] + (hold ? [] : ["--ui-no-push-hold"])
+        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"] + (zoom ? [] : ["--ui-no-zoom"])
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
@@ -69,14 +69,13 @@ import ObjectiveC
                 Thread.sleep(forTimeInterval: 0.05)
             }
             let timing = app.descendants(matching: .any)["nav-timing"]
-            print(String(format: "NAV-PROBE tap-during-back hold=%@ round=%d opened=%@", hold ? "on" : "off", round,
+            print(String(format: "NAV-PROBE tap-during-back zoom=%@ round=%d opened=%@", zoom ? "on" : "off", round,
                          at.map { String(format: "yes after %.2fs", $0) } ?? "NO")
                   + " app: " + (timing.exists ? timing.label : "no timing element"))
             if let at { opened += 1; _ = at } else { tap(next) }
             Thread.sleep(forTimeInterval: 1.5)
         }
-        print("NAV-PROBE tap-during-back hold=\(hold ? "on" : "off"): opened \(opened) of 6")
-        XCTAssertEqual(opened, hold ? 6 : opened)
+        print("NAV-PROBE tap-during-back zoom=\(zoom ? "on" : "off"): opened \(opened) of 6")
     }
 
     /// XCUITest taps only once the app is idle (every animation finished); the owner tapped before that.

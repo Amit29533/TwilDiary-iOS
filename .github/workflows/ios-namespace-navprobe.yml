@@ -72,8 +72,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
             -parallel-testing-enabled NO -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 1200 -maximum-test-execution-time-allowance 1500 \
-            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testTapDuringZoomBackDropped \
-            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testTapDuringZoomBackHeld \
+            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testTapDuringZoomBack \
+            -only-testing:TwilDiaryUITests/NavigationRoundTripProbe/testTapDuringSlideBack \
             -derivedDataPath "$PWD/ios/.derived/simulator" \
             -resultBundlePath ios/.artifacts/NavProbe.xcresult 2>&1 | tee ios/.artifacts/logs/nav-probe.log
       - name: Probe results

@@ -11,9 +11,6 @@ import QuartzCore
     static let enabled = ProcessInfo.processInfo.arguments.contains("--ui-nav-timing")
     private static var backAt: CFTimeInterval = 0
     private static var popMS: Int?
-    /// Pages asked for while a page was going back (a tap during the pop).
-    private static var pushes = 0
-    static func pushAskedDuringPop() { pushes += 1 }
     static func popStarted() {
         guard enabled else { return }
         backAt = CACurrentMediaTime()
@@ -27,7 +24,7 @@ import QuartzCore
     static var report: String {
         guard backAt > 0 else { return "none" }
         let held = MainThreadStalls.shared.summary(from: backAt, to: backAt + 2.5)
-        return "pop=\(popMS.map { String($0) } ?? "?")ms pushes-during-pops=\(pushes) stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
+        return "pop=\(popMS.map { String($0) } ?? "?")ms stalls=\(held.count) total=\(Int(held.total))ms longest=\(Int(held.longest))ms"
     }
 }
 
