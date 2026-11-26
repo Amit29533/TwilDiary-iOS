@@ -184,6 +184,10 @@ import WebKit
           w.__cinesFrame=true;
           var css='SELECTORS{display:none!important}'+
             '.html5-video-player>:not(.html5-video-container){display:none!important}'+
+            // Whatever the player is made of (iPhones get YouTube's mobile player, whose play/pause
+            // and Share have other names, so they still showed): nothing in the frame is drawn but
+            // the video itself (a hidden box's child can still be shown, so the video stays).
+            'body *{visibility:hidden!important}video{visibility:visible!important}'+
             '.html5-video-container{width:100%!important;height:100%!important}'+
             'video.html5-main-video{width:100%!important;height:100%!important;left:0!important;top:0!important;object-fit:contain!important}';
           function add(){
