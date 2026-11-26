@@ -1496,8 +1496,12 @@ struct JellyGrid: View {
             canvas
         } else {
             let columns = Array(repeating: GridItem(.flexible(), spacing: captions ? 12 : 6, alignment: .top), count: layout == .landscape ? 2 : 3)
+            // Worked out once a redraw: each poster coming on screen asked for `live` again, filtering
+            // the whole list once anything had been deleted (scrolling stuttered in a big library).
+            let shown = live
+            let lastID = shown.last?.Id
             LazyVGrid(columns: columns, alignment: .leading, spacing: captions ? 18 : 6) {
-                ForEach(live, id: \.Id) { item in
+                ForEach(shown, id: \.Id) { item in
                     VStack(alignment: .leading, spacing: 3) {
                         JellyTile(item: item, client: client, playing: $playing, wide: layout == .landscape)
                         if let note = notes[item.Id], !note.isEmpty {
@@ -1505,7 +1509,7 @@ struct JellyGrid: View {
                                 .accessibilityLabel("Why: " + note)
                         }
                     }
-                    .onAppear { if item.Id == live.last?.Id { reachedEnd?() } }
+                    .onAppear { if item.Id == lastID { reachedEnd?() } }
                 }
             }
         }

@@ -232,22 +232,25 @@ import WebKit
         """#.replacingOccurrences(of: "SELECTORS", with: selectors)
     }
 
+    /// The page: YouTube's player, its events sent to the app, and its place in the video every
+    /// 0.4 s while it plays (only then: the timer ran all the time, also in the trailer player kept
+    /// loaded behind every title page).
     private static var html: String {
         """
         <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
         <style>html,body{margin:0;padding:0;background:transparent;width:100%;height:100%;overflow:hidden}#player{position:absolute;top:0;left:0;width:100%;height:100%}</style>
         </head><body><div id="player"></div><script>
-        var player,ready=false;
+        var player,ready=false,tick=null;
         function send(m){try{window.webkit.messageHandlers.cines.postMessage(m)}catch(e){}}
         var tag=document.createElement('script');tag.src="https://www.youtube.com/iframe_api";tag.onerror=function(){send({e:'apiFailed'})};document.head.appendChild(tag);
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{width:'100%',height:'100%',
             playerVars:{playsinline:1,controls:0,rel:0,fs:0,iv_load_policy:3,disablekb:1,enablejsapi:1,autoplay:1,mute:1,origin:'\(origin)'},
             events:{onReady:function(){ready=true;send({e:'ready'})},
-                    onStateChange:function(ev){send({e:'state',v:ev.data})},
+                    onStateChange:function(ev){send({e:'state',v:ev.data});if(ev.data==1){if(!tick)tick=setInterval(report,400)}else if(tick){clearInterval(tick);tick=null}},
                     onError:function(ev){send({e:'error',v:ev.data})}}});
         }
-        setInterval(function(){if(ready&&player.getDuration&&player.getPlayerState()==1){var d=player.getDuration();if(d>0)send({e:'time',t:player.getCurrentTime(),d:d})}},400);
+        function report(){if(ready&&player.getDuration&&player.getPlayerState()==1){var d=player.getDuration();if(d>0)send({e:'time',t:player.getCurrentTime(),d:d})}}
         </script></body></html>
         """
     }

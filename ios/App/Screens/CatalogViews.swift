@@ -645,7 +645,11 @@ struct CatalogDetailView: View {
                         InListsSection(route: route, title: details.details.name)
                         RelatedCollectionsSection(route: route, title: details.details.name, anime: anime, genres: details.details.genres)
                         ParentalGuideSection(extras: extras)
-                    } else if loading { DiaryLoadingPlaceholder(height: 320, label: "Loading title").padding(16) }
+                    } else if loading {
+                        // Shaped as the page that's coming (a grey block, then the cover, poster and
+                        // ratings all appeared at once).
+                        DiaryLoadingPlaceholder(label: "Loading title", layout: .titlePage(coverStrip: TitleCover.strip(width: geometry.size.width, safeTop: geometry.safeAreaInsets.top)))
+                    }
                     if let failure { RetryNotice(message: failure) { Task { await load() } } }
                 }.padding(.horizontal, 16).padding(.bottom, 32)
                     .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: extras == nil)

@@ -141,7 +141,10 @@ struct StatsView: View {
             .task {
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                    if DiaryDate.day(clock) != DiaryDate.day(store.now) { selectedBucket = nil }
+                    // Only a new day changes anything here: setting the time every minute redrew the
+                    // whole page (its charts too) for nothing.
+                    guard DiaryDate.day(clock) != DiaryDate.day(store.now) else { continue }
+                    selectedBucket = nil
                     clock = store.now
                 }
             }

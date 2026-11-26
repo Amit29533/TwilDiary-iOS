@@ -42,6 +42,9 @@ struct TitleDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var resetConfirmation = false
     @State private var card: WatchCard?
+    /// The card's height under its status row when last shown (for the placeholder while another
+    /// season's card loads).
+    @State private var cardHeight: CGFloat?
     @State private var cardRequest = UUID()
     @State private var cardError: String?
     @AppStorage("episodesGrid") private var episodesGrid = false
@@ -380,65 +383,69 @@ struct TitleDetailView: View {
             }.padding(.bottom, 22)
             // A cached card paints on the first frame instead of a 290 pt placeholder swap.
             if let card = card ?? store.cachedCard(title, season: title.isSeries ? season : nil) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    // Before the first episode: "Not started · 10 episodes" ("Episode 0 of 10" read oddly).
-                    let notStarted = title.isSeries && displayedWatched == 0
-                    // Quiet numbers (an unwatched title shouted "0" and a big blue "0%"); they roll when they change.
-                    Text(!title.isSeries ? "\(movieViewings.count)" : notStarted ? "Not started" : "Episode \(displayedWatched)").font(.app(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.primary)
-                        .contentTransition(.numericText()).animation(.smooth, value: displayedWatched)
-                    Text(!title.isSeries ? (movieViewings.count == 1 ? "view logged" : "views logged")
-                         : notStarted ? "· \(card.progress.total) " + (card.progress.total == 1 ? "episode" : "episodes") : "of \(card.progress.total)").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
-                    Spacer(minLength: 0)
-                    Text("\(displayedPercent)%").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
-                        .contentTransition(.numericText()).animation(.smooth, value: displayedPercent)
-                }.frame(minHeight: 29).padding(.bottom, 14)
-                    // A film's views: tap to see each one's date and change it.
-                    .contentShape(Rectangle())
-                    .onTapGesture { if !title.isSeries, !movieViewings.isEmpty, store.canChangeWatchDates { showingViewDates = true } }
-                    .accessibilityAddTraits(!title.isSeries && !movieViewings.isEmpty && store.canChangeWatchDates ? .isButton : [])
-                if title.isSeries {
-                    episodeSlider(title, card: card)
-                } else {
-                    ProgressView(value: Double(percent), total: 100)
-                        .accessibilityIdentifier("movie-progress")
-                        .frame(height: 44)
-                        .overlay {
-                            EpisodeRangeInput(value: Double(percent) / 100, maximum: 1, enabled: !store.busy && store.canMutate, label: "Movie watched", valueText: percent > 0 ? "Watched" : "Not watched", identifier: "movie-watch-input", scope: title.id + ":movie", onChange: { _ in }, onCommit: { value in
-                                Task {
-                                    if value < 1, let previous = card.previous { await store.removeLatest(title, expected: previous) }
-                                    else if value >= 1, card.progress.watched == 0 { await store.recordViewing(title, watchedAt: watchInstant) }
-                                    await loadCard(title)
-                                }
-                            }, onCancel: {})
-                        }
-                }
-                if let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { nextPreview(title, episode: episode).padding(.top, 8).padding(.bottom, 12) }
-                else if title.isSeries { Text(seasonCanEdit(title) ? "You’re caught up with available episodes." : "Load the season to see what’s next.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 12) }
-                // Your rating, the community's, then the main action on one line.
-                HStack(alignment: .top, spacing: 10) {
-                    RatingCircles(mine: title.score, community: communityAverage(title), onRate: { openRating(title) }, onCommunity: { showInformation = true })
-                    Button { Task {
-                        var recorded = false
-                        if title.isSeries, let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { recorded = await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
-                        else if !title.isSeries { recorded = await store.recordViewing(title, rewatch: !movieViewings.isEmpty, watchedAt: watchInstant) }
-                        if recorded { markSparks += 1 }
-                        await loadCard(title)
-                    } } label: {
-                        Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
-                            .font(.app(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
-                            // The label changes in place when a watch is logged, not with a jump.
-                            .contentTransition(.interpolate)
-                            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: title.isSeries ? card.next?.number ?? -1 : movieViewings.count)
-                    }.modifier(StudioWatchButtonStyle()).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
-                        .haptic(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
-                }.padding(.top, 4)
-                if let watchDate, DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
-                    Button { choosingWatchDate = true } label: {
-                        HStack(spacing: 6) { DiaryIcon(name: "calendar-days", size: 14).foregroundStyle(theme.accent); Text("Logging as " + watchDate.formatted(.dateTime.day().month(.abbreviated).year())) }
-                            .font(.app(size: 13)).foregroundStyle(Color(themed: "#c5c0cf")).frame(maxWidth: .infinity, minHeight: 36)
-                    }.buttonStyle(.plain).accessibilityIdentifier("watch-date")
-                }
-                if showRating { ratingPanel(title).padding(.top, 10) }
+                // Measured, so the placeholder another season shows while it loads keeps this room (it
+                // was a set 290 pt: the episodes below jumped up or down, then back).
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        // Before the first episode: "Not started · 10 episodes" ("Episode 0 of 10" read oddly).
+                        let notStarted = title.isSeries && displayedWatched == 0
+                        // Quiet numbers (an unwatched title shouted "0" and a big blue "0%"); they roll when they change.
+                        Text(!title.isSeries ? "\(movieViewings.count)" : notStarted ? "Not started" : "Episode \(displayedWatched)").font(.app(size: 18, weight: .semibold)).foregroundStyle(HomeStyle.primary)
+                            .contentTransition(.numericText()).animation(.smooth, value: displayedWatched)
+                        Text(!title.isSeries ? (movieViewings.count == 1 ? "view logged" : "views logged")
+                             : notStarted ? "· \(card.progress.total) " + (card.progress.total == 1 ? "episode" : "episodes") : "of \(card.progress.total)").font(.app(size: 15, weight: .medium)).foregroundStyle(HomeStyle.secondary)
+                        Spacer(minLength: 0)
+                        Text("\(displayedPercent)%").font(.app(size: 15)).foregroundStyle(HomeStyle.secondary).monospacedDigit()
+                            .contentTransition(.numericText()).animation(.smooth, value: displayedPercent)
+                    }.frame(minHeight: 29).padding(.bottom, 14)
+                        // A film's views: tap to see each one's date and change it.
+                        .contentShape(Rectangle())
+                        .onTapGesture { if !title.isSeries, !movieViewings.isEmpty, store.canChangeWatchDates { showingViewDates = true } }
+                        .accessibilityAddTraits(!title.isSeries && !movieViewings.isEmpty && store.canChangeWatchDates ? .isButton : [])
+                    if title.isSeries {
+                        episodeSlider(title, card: card)
+                    } else {
+                        ProgressView(value: Double(percent), total: 100)
+                            .accessibilityIdentifier("movie-progress")
+                            .frame(height: 44)
+                            .overlay {
+                                EpisodeRangeInput(value: Double(percent) / 100, maximum: 1, enabled: !store.busy && store.canMutate, label: "Movie watched", valueText: percent > 0 ? "Watched" : "Not watched", identifier: "movie-watch-input", scope: title.id + ":movie", onChange: { _ in }, onCommit: { value in
+                                    Task {
+                                        if value < 1, let previous = card.previous { await store.removeLatest(title, expected: previous) }
+                                        else if value >= 1, card.progress.watched == 0 { await store.recordViewing(title, watchedAt: watchInstant) }
+                                        await loadCard(title)
+                                    }
+                                }, onCancel: {})
+                            }
+                    }
+                    if let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { nextPreview(title, episode: episode).padding(.top, 8).padding(.bottom, 12) }
+                    else if title.isSeries { Text(seasonCanEdit(title) ? "You’re caught up with available episodes." : "Load the season to see what’s next.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 12) }
+                    // Your rating, the community's, then the main action on one line.
+                    HStack(alignment: .top, spacing: 10) {
+                        RatingCircles(mine: title.score, community: communityAverage(title), onRate: { openRating(title) }, onCommunity: { showInformation = true })
+                        Button { Task {
+                            var recorded = false
+                            if title.isSeries, let next = card.next, let episode = episodes.first(where: { $0.id == next.id }) { recorded = await store.recordViewing(title, episode: episode, watchedAt: watchInstant) }
+                            else if !title.isSeries { recorded = await store.recordViewing(title, rewatch: !movieViewings.isEmpty, watchedAt: watchInstant) }
+                            if recorded { markSparks += 1 }
+                            await loadCard(title)
+                        } } label: {
+                            Label(title.isSeries ? card.next.map { "Mark E\($0.number) watched" } ?? "Season caught up" : movieViewings.isEmpty ? "Log a watch" : "Rewatch", systemImage: !title.isSeries && !movieViewings.isEmpty ? "arrow.counterclockwise" : "checkmark")
+                                .font(.app(size: 15, weight: .bold)).frame(maxWidth: .infinity).frame(minHeight: 48)
+                                // The label changes in place when a watch is logged, not with a jump.
+                                .contentTransition(.interpolate)
+                                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: title.isSeries ? card.next?.number ?? -1 : movieViewings.count)
+                        }.modifier(StudioWatchButtonStyle()).disabled(store.writesBlocked || (title.isSeries && card.next == nil)).starBurst(trigger: markSparks)
+                            .haptic(.success, trigger: markSparks).accessibilityIdentifier("mark-title-watch")
+                    }.padding(.top, 4)
+                    if let watchDate, DiaryDate.day(watchDate) != DiaryDate.day(store.now) {
+                        Button { choosingWatchDate = true } label: {
+                            HStack(spacing: 6) { DiaryIcon(name: "calendar-days", size: 14).foregroundStyle(theme.accent); Text("Logging as " + watchDate.formatted(.dateTime.day().month(.abbreviated).year())) }
+                                .font(.app(size: 13)).foregroundStyle(Color(themed: "#c5c0cf")).frame(maxWidth: .infinity, minHeight: 36)
+                        }.buttonStyle(.plain).accessibilityIdentifier("watch-date")
+                    }
+                    if showRating { ratingPanel(title).padding(.top, 10) }
+                }.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in if height > 0 { cardHeight = height } }
             } else if let cardError {
                 VStack(alignment: .leading, spacing: 12) {
                     if title.isSeries {
@@ -448,7 +455,7 @@ struct TitleDetailView: View {
                     }
                     RetryNotice(message: cardError) { Task { await loadCard(title) } }
                 }.padding(.vertical, 12)
-            } else { DiaryLoadingPlaceholder(height: title.isSeries ? 290 : 210, label: "Loading watch progress") }
+            } else { DiaryLoadingPlaceholder(height: cardHeight ?? (title.isSeries ? 290 : 160), label: "Loading watch progress") }
         }.padding(19)
             // Design: a 28 pt card in rgba(18 16 26 / .58) with a white 8 % hairline.
             .modifier(TitleProgressSurface())

@@ -30,13 +30,63 @@ import TwilDiaryCore
     var cineMovies = Feed<CatalogItem>()
     var cineShows = Feed<CatalogItem>()
     var loved = Feed<CatalogItem>()
-    var lovedSeed: MediaTitle?
+    /// The title Because you loved is for (kept with the row on the phone).
+    struct LovedSeed: Codable, Hashable { let name: String; let tmdb: Int; let series: Bool }
+    var lovedSeed: LovedSeed?
     var trending = Feed<CatalogItem>()
     var seasonal = Feed<SeasonalAnime>()
     var comingMovies = Feed<Upcoming>()
     var comingShows = Feed<Upcoming>()
 
     private func day(_ store: DiaryStore) -> String { DiaryDate.day(store.now) }
+
+    // MARK: Kept on the phone
+
+    /// Because you loved and Trending from your Planned as last read, with the day: on the next launch
+    /// they're there at once (a stand-in showed, then the row, or nothing when the read failed and
+    /// the page jumped up by a row). Read again on a new day; a failed read keeps them.
+    private struct SavedItem: Codable {
+        let id: Int; let movie: Bool; let name: String; let year: Int?; let rating: Double?
+        let library: String?; let poster: String?; let backdrop: String?
+        init(_ item: CatalogItem) {
+            id = item.id; movie = item.mediaType == .movie; name = item.name; year = item.year; rating = item.rating
+            library = item.inLibraryId; poster = item.artwork; backdrop = item.backdrop ?? CatalogTools.image(item.backdropPath)
+        }
+        var item: CatalogItem {
+            CatalogItem(id: id, mediaType: movie ? .movie : .tv, name: name, year: year, rating: rating, inLibraryId: library, poster: poster, backdrop: backdrop)
+        }
+    }
+    private struct SavedRow: Codable { let day: String; let seed: LovedSeed?; let items: [SavedItem] }
+    private static let lovedKey = "explore.loved.v1"
+    private static let trendingKey = "explore.trending.v1"
+    /// The days the rows on the phone were read (nil: none kept).
+    @ObservationIgnored private var lovedSavedDay: String?
+    @ObservationIgnored private var trendingSavedDay: String?
+
+    private init() {
+        if let saved = Self.savedRow(Self.lovedKey), saved.seed != nil, !saved.items.isEmpty {
+            loved.items = saved.items.map(\.item); lovedSeed = saved.seed; lovedSavedDay = saved.day
+        }
+        if let saved = Self.savedRow(Self.trendingKey), !saved.items.isEmpty {
+            trending.items = saved.items.map(\.item); trendingSavedDay = saved.day
+        }
+    }
+    private static func savedRow(_ key: String) -> SavedRow? {
+        UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(SavedRow.self, from: $0) }
+    }
+    private static func save(_ key: String, day: String, seed: LovedSeed? = nil, items: [CatalogItem]) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(SavedRow(day: day, seed: seed, items: items.prefix(20).map { SavedItem($0) })), forKey: key)
+    }
+
+    /// Whether Because you loved can show at all (a finished title rated 7 or more): its stand-in
+    /// only then (it showed for everyone, then went).
+    static func lovedPossible(_ store: DiaryStore) -> Bool {
+        store.activeTitles.contains { $0.status == "completed" && $0.tmdbId != nil && ($0.score ?? 0) >= 7 }
+    }
+    /// Whether Trending from your Planned can show at all (TMDB set up, something planned).
+    static func trendingPossible(_ store: DiaryStore) -> Bool {
+        TMDBDirect.token(store) != nil && store.activeTitles.contains { $0.status == "planned" && $0.tmdbId != nil }
+    }
 
     // MARK: CineMind
 
@@ -88,18 +138,30 @@ import TwilDiaryCore
     func loadLoved(store: DiaryStore) async {
         let today = day(store)
         guard loved.loadedFor != today, !loved.loading else { return }
+        // Read today already (kept on the phone): as it is.
+        if lovedSavedDay == today { loved.loadedFor = today; return }
         loved.loading = true
         defer { loved.loading = false; loved.loadedFor = today }
         let best = store.workspace.activeTitles.filter { $0.status == "completed" && $0.tmdbId != nil && ($0.score ?? 0) >= 7 }
             .sorted { ($0.score ?? 0) > ($1.score ?? 0) }.prefix(10)
-        guard !best.isEmpty else { return }
+        // Nothing rated highly enough any more: no row (nor the one kept on the phone).
+        guard !best.isEmpty else {
+            loved.items = []; lovedSeed = nil; lovedSavedDay = nil
+            UserDefaults.standard.removeObject(forKey: Self.lovedKey)
+            return
+        }
         let start = (Int(today.filter(\.isNumber)) ?? 0) % best.count
         let order = Array(best.dropFirst(start)) + Array(best.prefix(start))
         for candidate in order.prefix(3) {
             guard let tmdb = candidate.tmdbId,
                   let related = try? await store.related(CatalogRoute(kind: candidate.isSeries ? .tv : .movie, id: tmdb)) else { continue }
             let found = related.items.filter { store.libraryIdentity($0) == nil }
-            if found.count >= 3 { lovedSeed = candidate; loved.items = found; return }
+            if found.count >= 3 {
+                let seed = LovedSeed(name: candidate.name, tmdb: tmdb, series: candidate.isSeries)
+                lovedSeed = seed; loved.items = found; lovedSavedDay = today
+                Self.save(Self.lovedKey, day: today, seed: seed, items: found)
+                return
+            }
         }
     }
 
@@ -112,7 +174,13 @@ import TwilDiaryCore
         // stand-in waited for ever.
         guard let token = TMDBDirect.token(store) else { trending.loadedFor = "no TMDB key"; return }
         let planned = store.workspace.activeTitles.filter { $0.status == "planned" && $0.tmdbId != nil }
-        guard !planned.isEmpty else { trending.loadedFor = today; return }
+        guard !planned.isEmpty else {
+            trending.loadedFor = today; trending.items = []; trendingSavedDay = nil
+            UserDefaults.standard.removeObject(forKey: Self.trendingKey)
+            return
+        }
+        // Read today already (kept on the phone): as it is.
+        if trendingSavedDay == today { trending.loadedFor = today; return }
         trending.loading = true
         defer { trending.loading = false; trending.loadedFor = today }
         var ranks: [String: Int] = [:]
@@ -125,11 +193,15 @@ import TwilDiaryCore
                 if ranks[key] == nil { ranks[key] = (page - 1) * 20 + offset + 1 }
             }
         }
+        // TMDB didn't answer: the row as it was (it was emptied, and the page jumped up by a row).
+        guard !ranks.isEmpty else { return }
         trending.items = planned.compactMap { title -> (CatalogItem, Int)? in
             guard let tmdb = title.tmdbId, let rank = ranks[(title.isSeries ? "tv:" : "movie:") + String(tmdb)] else { return nil }
             return (CatalogItem(id: tmdb, mediaType: title.isSeries ? .tv : .movie, name: title.name, year: title.year, rating: title.communityScore,
                                 inLibraryId: title.id, poster: title.poster, backdrop: title.backdrop), rank)
         }.sorted { $0.1 < $1.1 }.map(\.0)
+        trendingSavedDay = today
+        Self.save(Self.trendingKey, day: today, items: trending.items)
     }
 
     // MARK: This season's anime
@@ -488,14 +560,14 @@ struct BecauseYouLovedRow: View {
     private var feeds: ExploreFeeds { .shared }
     var body: some View {
         Group {
-            if let seed = feeds.lovedSeed, let tmdb = seed.tmdbId, !feeds.loved.items.isEmpty {
+            if let seed = feeds.lovedSeed, !feeds.loved.items.isEmpty {
                 VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "Because you loved " + seed.name,
-                                value: ShowPageRoute.related(CatalogRoute(kind: seed.isSeries ? .tv : .movie, id: tmdb), title: seed.name),
+                                value: ShowPageRoute.related(CatalogRoute(kind: seed.series ? .tv : .movie, id: seed.tmdb), title: seed.name),
                                 identifier: "explore-more-loved")
                     FeedTrack(items: feeds.loved.items.prefix(15).map(Keyed.init)) { CatalogTile(item: $0.item) }
                 }
-            } else if feeds.loved.loading || feeds.loved.loadedFor == nil, feeds.loved.failure == nil {
+            } else if feeds.loved.loading || feeds.loved.loadedFor == nil, feeds.loved.failure == nil, ExploreFeeds.lovedPossible(store) {
                 // While it reads: its shapes where the row will land (it took no room, then pushed Explore down).
                 VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: feeds.lovedSeed.map { "Because you loved " + $0.name } ?? "Because you loved", value: nil as ShowPageRoute?, identifier: "explore-more-loved")
@@ -516,7 +588,7 @@ struct TrendingPlannedRow: View {
                     FeedHeading(title: "Trending from your Planned", value: ExploreFeedRoute(kind: .trending), identifier: "explore-more-trending")
                     FeedTrack(items: feeds.trending.items.map(Keyed.init)) { CatalogTile(item: $0.item) }
                 }
-            } else if feeds.trending.loading || feeds.trending.loadedFor == nil, feeds.trending.failure == nil {
+            } else if feeds.trending.loading || feeds.trending.loadedFor == nil, feeds.trending.failure == nil, ExploreFeeds.trendingPossible(store) {
                 VStack(alignment: .leading, spacing: Gap.heading) {
                     FeedHeading(title: "Trending from your Planned", value: nil as ExploreFeedRoute?, identifier: "explore-more-trending")
                     FeedPlaceholder()

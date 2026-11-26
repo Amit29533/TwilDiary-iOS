@@ -28,6 +28,9 @@ enum PlaceholderLayout {
     case peopleRound
     /// Cards of one height, one under another (related collections).
     case cards(count: Int = 3, height: CGFloat = 132)
+    /// A title's page (`TitleHero`): the cover, the poster beside the name, its year line and chips,
+    /// the ratings bar and the synopsis, each where it will land (`coverStrip` as the page passes it).
+    case titlePage(coverStrip: CGFloat)
 }
 
 /// What shows while something loads: grey shapes laid out like the content that's coming, gently
@@ -65,6 +68,7 @@ struct DiaryLoadingPlaceholder: View {
         case .peopleShelf: peopleShelf
         case .peopleRound: peopleRound
         case .cards(let count, let height): cards(count, height: height)
+        case .titlePage(let coverStrip): titlePage(coverStrip: coverStrip)
         }
     }
 
@@ -227,6 +231,31 @@ struct DiaryLoadingPlaceholder: View {
         // minWidth 0: four posters are wider than the phone's column; without it the shelf took their
         // width and stretched the page past the screen while it loaded.
         }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
+    }
+
+    /// As `TitleHero` lays it out: the cover strip (the screen's width), then 20 pt apart the 112 × 168
+    /// poster with the name 8 pt below its top, the ratings bar and four lines of synopsis.
+    private func titlePage(coverStrip: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(faint).frame(height: max(0, coverStrip - 6)).padding(.horizontal, -16).padding(.bottom, 6)
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top, spacing: 14) {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(fill).frame(width: 112, height: 168)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Capsule().fill(line).frame(width: 170, height: 22)
+                        Capsule().fill(faint).frame(width: 130, height: 12)
+                        HStack(spacing: 6) {
+                            Capsule().fill(faint).frame(width: 70, height: 30)
+                            Capsule().fill(faint).frame(width: 58, height: 30)
+                        }.padding(.top, 2)
+                    }.padding(.top, 8)
+                }
+                RoundedRectangle(cornerRadius: 20, style: .continuous).fill(fill).frame(height: 46)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(0..<4, id: \.self) { index in Capsule().fill(faint).frame(height: 10).padding(.trailing, index == 3 ? 110 : 0) }
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var profile: some View {
