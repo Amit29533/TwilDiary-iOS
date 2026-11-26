@@ -10,7 +10,7 @@ import sys
 
 def main(path, share=0.01):
     lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
-    start = next((i for i, line in enumerate(lines) if "com.apple.main-thread" in line), None)
+    start = next((i for i, line in enumerate(lines) if "Main Thread" in line or "com.apple.main-thread" in line), None)
     if start is None:
         print("no main thread in the sample"); return
     head = lines[start]

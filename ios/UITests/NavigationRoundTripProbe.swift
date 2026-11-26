@@ -14,11 +14,14 @@ import XCTest
 
     func testWithZoom() { probe(zoom: true) }
     func testWithoutZoom() { probe(zoom: false) }
+    /// The title's details, cast and related titles answering 0.7 s late, as a phone's network does:
+    /// they arrive around Back and after it.
+    func testWithZoomSlowMetadata() { probe(zoom: true, slow: true) }
 
-    private func probe(zoom: Bool) {
+    private func probe(zoom: Bool, slow: Bool = false) {
         executionTimeAllowance = 300
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--ui-upcoming"] + (zoom ? [] : ["--ui-no-zoom"])
+        app.launchArguments = ["--ui-testing", "--ui-upcoming"] + (zoom ? [] : ["--ui-no-zoom"]) + (slow ? ["--ui-slow-metadata"] : [])
         app.launchEnvironment["TZ"] = "Asia/Kolkata"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
