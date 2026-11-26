@@ -3,7 +3,7 @@ import SwiftUI
 /// Settings → JellySpace → Server: the Jellyfin server run from the phone. The server's status,
 /// what's playing on it, its tasks and its libraries. It works with the server's API key (which
 /// has every administrator right) or a signed-in administrator.
-enum JellyAdminRoute: Hashable { case tasks, libraries }
+enum JellyAdminRoute: Hashable { case tasks, libraries, users, activity, analytics }
 
 @MainActor enum JellyAdmin {
     /// The server's API key where one is set (a signed-in user may not be an administrator), else
@@ -198,6 +198,12 @@ struct JellyServerGroups: View {
                     JellyAdminLink(title: "Tasks", symbol: "checklist", route: .tasks)
                     SettingsDivider()
                     JellyAdminLink(title: "Libraries", symbol: "books.vertical", route: .libraries)
+                    SettingsDivider()
+                    JellyAdminLink(title: "Analytics", symbol: "chart.bar.xaxis", route: .analytics)
+                    SettingsDivider()
+                    JellyAdminLink(title: "Users", symbol: "person.2", route: .users)
+                    SettingsDivider()
+                    JellyAdminLink(title: "Activity", symbol: "clock.arrow.circlepath", route: .activity)
                 }
                 SettingsGroup {
                     Button { confirmRestart = true } label: {

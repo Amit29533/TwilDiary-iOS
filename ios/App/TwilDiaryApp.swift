@@ -417,6 +417,9 @@ struct RootView: View {
                         switch route {
                         case .tasks: JellyAdminTasksPage()
                         case .libraries: JellyAdminLibrariesPage()
+                        case .users: JellyAdminUsersPage()
+                        case .activity: JellyAdminActivityPage()
+                        case .analytics: JellyAdminAnalyticsPage()
                         }
                     }.diaryPageChrome(detail: false).diaryNavigationAppearance(tab: tab, detail: false, router: router)
                 }
