@@ -245,7 +245,12 @@ struct TitleHero<Ratings: View>: View {
             }
             .frame(width: width, height: height)
             .background(Color.black.opacity(player.playing ? 1 : 0))
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.9), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+            // The lower part fades out gradually into the cover and its wash below (over the last tenth
+            // only, a bright frame ended almost on a line above the wash, owner's screenshot).
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
+                                         .init(color: .black.opacity(0.75), location: 0.72), .init(color: .black.opacity(0.4), location: 0.84),
+                                         .init(color: .black.opacity(0.12), location: 0.94), .init(color: .clear, location: 1)],
+                                 startPoint: .top, endPoint: .bottom))
             .contentShape(Rectangle())
             .onTapGesture { player.toggle() }
             .offset(x: -inset, y: coverStrip - 6 - height)
