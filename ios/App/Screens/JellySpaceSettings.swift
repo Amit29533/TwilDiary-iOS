@@ -316,9 +316,10 @@ enum JellySecrets {
 
 /// The pages under Settings → JellySpace, each holding one kind of setting.
 enum JellySettingsPage: String, Hashable, CaseIterable {
-    case preferences, home, libraries, engines, playback, skipping, subtitles, gestures, requests, musicDiary
+    case preferences, home, libraries, engines, playback, skipping, subtitles, gestures, requests, musicDiary, server
     var title: String {
         switch self {
+        case .server: "Server"
         case .preferences: "Preferences"
         case .home: "Home"
         case .libraries: "Libraries"
@@ -343,6 +344,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
         case .gestures: "hand.draw.fill"
         case .requests: "tray.and.arrow.down.fill"
         case .musicDiary: "music.note"
+        case .server: "server.rack"
         }
     }
     var tint: SettingsView.TileTint {
@@ -357,6 +359,7 @@ enum JellySettingsPage: String, Hashable, CaseIterable {
         case .gestures: .teal
         case .requests: .purple
         case .musicDiary: .green
+        case .server: .purple
         }
     }
 }
@@ -417,6 +420,9 @@ struct JellySpaceSettingsView: View {
                     JellySettingsLink(page: .requests, value: seerrAddress.isEmpty ? "Off" : seerrOn ? "On" : "Not connected")
                     SettingsDivider()
                     JellySettingsLink(page: .musicDiary)
+                }
+                SettingsGroup(label: "Administration") {
+                    JellySettingsLink(page: .server)
                 }
                 JellyStorageGroup(notice: $notice)
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4) }
@@ -517,6 +523,7 @@ struct JellySettingsPageView: View {
                 case .gestures: JellyGesturesGroup()
                 case .requests: JellyRequestsGroup()
                 case .musicDiary: JellyMusicDiaryGroups()
+                case .server: JellyServerGroups()
                 }
             }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 40)
         }
