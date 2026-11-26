@@ -5,11 +5,12 @@ import UIKit.UIGestureRecognizerSubclass
 /// Title pages open as a card from their poster and close back into it, as Netflix's do (owner's
 /// choice). UIKit's own transitions keep the next page or Back waiting until they've ended (the zoom
 /// 0.87 s, the slide 0.52 s: NavigationRoundTripProbe); here the page is pushed and popped without
-/// one, so navigation is free at once, and the card's growing and shrinking is drawn on top:
-/// opening, the page itself grows out of the poster over a still of the screen it left; closing, a
-/// still of the page shrinks into the poster over the screen it returns to, letting every touch
-/// through. A swipe right closes it the same way, the card following the finger (CardSwipe). Off
-/// with Reduce Motion.
+/// one, so navigation is free at once, and the card's growing and shrinking is drawn on top, always
+/// as stills (pictures): opening, a still of the new page grows out of the poster over a still of the
+/// screen it left, the live page loading under them; closing, a still of the page shrinks into the
+/// poster over the screen it returns to, letting every touch through. A swipe right closes it the
+/// same way, the card following the finger (CardSwipe). (The live page grown under a moving rounded
+/// mask was drawn again on every frame, and stuttered on the owner's iPhone.) Off with Reduce Motion.
 @MainActor enum CardTransition {
     /// How long the card grows (a critically damped spring: no tail after it).
     static let duration: TimeInterval = 0.45
@@ -19,20 +20,24 @@ import UIKit.UIGestureRecognizerSubclass
     private static let corner: CGFloat = 12
 
     /// What a page opened as a card keeps for its way back: the poster (weakly: its view stays laid
-    /// out under the page), where it was, and a still of the screen it left (behind the card while it
-    /// grows, and while it's swiped).
+    /// out under the page), where it was, and a still of the screen it left, kept over the page
+    /// (hidden once the card has grown) for the card's growing and its swipe. Hidden rather than taken
+    /// out: a still taken out of the window and put back showed black (owner's recording).
     @MainActor final class Opening {
         weak var source: UIView?
         let rect: CGRect
         /// When it was set up (a push that never showed its page doesn't play on a later one).
         let at = CACurrentMediaTime()
-        let backdrop: UIView?
+        let backdrop: UIView
         /// The navigation it's pushed in, and its top page before (to find the page once pushed).
         weak var navigation: UINavigationController?
         weak var previousTop: UIViewController?
+        /// The page it opened (once shown), and the views of its card still growing.
+        weak var page: UIViewController?
+        var growing: [UIView] = []
         /// The swipe that closes it (held here: the gesture recogniser doesn't keep its target).
         var swipe: CardSwipe?
-        init(source: UIView, rect: CGRect, backdrop: UIView?, navigation: UINavigationController?) {
+        init(source: UIView, rect: CGRect, backdrop: UIView, navigation: UINavigationController?) {
             self.source = source; self.rect = rect; self.backdrop = backdrop
             self.navigation = navigation; previousTop = navigation?.topViewController
         }
@@ -41,6 +46,18 @@ import UIKit.UIGestureRecognizerSubclass
             guard let source, source.window != nil else { return rect }
             let now = source.convert(source.bounds, to: nil)
             return now.width > 1 ? now : rect
+        }
+        /// The screen it left shown over the page (`page`, in `container`).
+        func showBackdrop(over page: UIView, in container: UIView) {
+            if let navigation { backdrop.frame = container.convert(navigation.view.bounds, from: navigation.view) }
+            container.insertSubview(backdrop, aboveSubview: page)
+            backdrop.isHidden = false
+        }
+        /// Everything it put on screen taken away (its page is gone).
+        func clear() {
+            growing.forEach { $0.removeFromSuperview() }
+            growing = []
+            backdrop.removeFromSuperview()
         }
     }
 
@@ -51,8 +68,8 @@ import UIKit.UIGestureRecognizerSubclass
     static var lastTouch: (point: CGPoint, window: UIWindow?, at: CFTimeInterval)?
     /// The opening the next page to appear plays (set as its push is asked for).
     private static var pending: Opening?
-    /// Each page opened as a card, with its opening (for its Back and its swipe).
-    private static let openings = NSMapTable<UIViewController, Opening>.weakToStrongObjects()
+    /// Each page shown as a card, with its opening (until it closes, or its page is found gone).
+    private static var live: [Opening] = []
     /// Stills of pages still shrinking: gone at once if another title opens meanwhile.
     private static var closing: [UIView] = []
 
@@ -71,10 +88,21 @@ import UIKit.UIGestureRecognizerSubclass
         guard let best, let navigation = navigationController(of: best.view) else { return false }
         for still in closing { still.removeFromSuperview() }
         closing = []
+        // Pages that went another way (back to the tab's first page, say): their stills go.
+        live.removeAll { opening in
+            guard opening.page?.navigationController == nil else { return false }
+            opening.clear()
+            return true
+        }
         lastTouch = nil
         // The screen without the tab bar (the window's still had one, which the glass tab bar on top
         // showed as a ghost while the card grew).
-        pending = Opening(source: best.view, rect: best.rect, backdrop: navigation.view.snapshotView(afterScreenUpdates: false), navigation: navigation)
+        let backdrop = navigation.view.snapshotView(afterScreenUpdates: false) ?? {
+            let plain = UIView()
+            plain.backgroundColor = .black
+            return plain
+        }()
+        pending = Opening(source: best.view, rect: best.rect, backdrop: backdrop, navigation: navigation)
         #if DEBUG
         NavigationTiming.cardOpened()
         #endif
@@ -105,30 +133,30 @@ import UIKit.UIGestureRecognizerSubclass
         guard let container = page.view.superview else { return nil }
         pending = nil
         let pageView: UIView = page.view
-        // Behind: the screen it left (exactly what's on screen now), dimming as the card grows.
-        var behind: [UIView] = []
-        if let backdrop = opening.backdrop {
-            backdrop.frame = container.convert(navigation.view.bounds, from: navigation.view)
-            container.insertSubview(backdrop, belowSubview: pageView)
-            behind.append(backdrop)
-        }
+        // Until its card has grown, the screen it left covers the page (which goes on loading under it),
+        // dimming as the card grows.
+        opening.showBackdrop(over: pageView, in: container)
         let dim = UIView(frame: container.bounds)
         dim.backgroundColor = .black
         dim.alpha = 0
-        container.insertSubview(dim, belowSubview: pageView)
-        behind.append(dim)
-        // Hidden until the push has ended: UIKit may still place the page (its frame) after this, which a
-        // scaled page can't take; and SwiftUI pushes without animation with UIKit's animations off (on
-        // the owner's iPhone), so a card started inside the push jumped to full size.
-        pageView.alpha = 0
+        dim.isUserInteractionEnabled = false
+        container.insertSubview(dim, aboveSubview: opening.backdrop)
+        opening.growing = [dim]
         let bar = navigation.navigationBar
         bar.alpha = 0
-        let views = behind
+        // Started once the push has ended: SwiftUI pushes without animation with UIKit's animations off
+        // (on the owner's iPhone), and a card started inside the push jumped to full size.
         Task { @MainActor in
-            guard let container = pageView.superview else {
-                pageView.alpha = 1; bar.alpha = 1; views.forEach { $0.removeFromSuperview() }; return
+            let backdrop = opening.backdrop
+            // The page as it first shows, as a still: the card is that picture.
+            guard let container = pageView.superview, opening.growing.contains(dim),
+                  let still = pageView.snapshotView(afterScreenUpdates: true) else {
+                dim.removeFromSuperview(); backdrop.isHidden = true; bar.alpha = 1; return
             }
             let bounds = pageView.bounds
+            still.bounds = bounds
+            still.center = pageView.center
+            still.isUserInteractionEnabled = false
             let target = container.convert(opening.rect, from: nil)
             let scale = max(0.05, target.width / max(1, bounds.width))
             // From the poster: the page at the poster's width, its top part showing in the poster's shape.
@@ -136,26 +164,28 @@ import UIKit.UIGestureRecognizerSubclass
             mask.backgroundColor = .black
             mask.layer.cornerCurve = .continuous
             mask.layer.cornerRadius = corner / scale
-            pageView.mask = mask
-            pageView.transform = transform(from: pageView, to: target, scale: scale)
-            pageView.alpha = 1
+            still.mask = mask
+            container.insertSubview(still, aboveSubview: dim)
+            opening.growing.append(still)
+            still.transform = transform(from: still, to: target, scale: scale)
             UIView.animate(withDuration: duration, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0,
                            options: [.allowUserInteraction, .beginFromCurrentState]) {
-                pageView.transform = .identity
+                still.transform = .identity
                 mask.frame = bounds
                 mask.layer.cornerRadius = 0
                 dim.alpha = 0.55
                 bar.alpha = 1
             } completion: { _ in
-                pageView.mask = nil
-                pageView.transform = .identity
-                pageView.alpha = 1
+                still.removeFromSuperview()
+                dim.removeFromSuperview()
+                opening.growing.removeAll { $0 === still || $0 === dim }
+                backdrop.isHidden = true
                 bar.alpha = 1
-                views.forEach { $0.removeFromSuperview() }
             }
         }
         // Its way back: Back and a swipe right both close it into the poster.
-        openings.setObject(opening, forKey: page)
+        opening.page = page
+        live.append(opening)
         page.navigationItem.backAction = UIAction { [weak page, weak navigation] _ in
             guard let page, let navigation else { return }
             close(page: page, navigation: navigation, opening: opening)
@@ -170,30 +200,46 @@ import UIKit.UIGestureRecognizerSubclass
     }
 
     /// A page opened as a card closes: it's popped at once (Home answers taps straight away) and a
-    /// still of it shrinks into its poster, letting touches through. `dragged`: from where a swipe
-    /// left it (smaller, rounded, the screen behind dimmed `dimmed`).
-    static func close(page: UIViewController, navigation: UINavigationController, opening: Opening, dragged: Bool = false, dimmed: CGFloat = 0.55) {
+    /// still of it shrinks into its poster, letting touches through. `dragged`: the still a swipe was
+    /// moving, from where the finger left it (smaller, rounded, the screen behind dimmed `dimmed`).
+    static func close(page: UIViewController, navigation: UINavigationController, opening: Opening, dragged: UIView? = nil, dimmed: CGFloat = 0.55) {
+        opening.swipe?.detach()
+        live.removeAll { $0 === opening }
         guard !UIAccessibility.isReduceMotionEnabled, let host = navigation.view.superview else {
+            dragged?.removeFromSuperview(); opening.clear()
             _ = navigation.popViewController(animated: true); return
         }
-        let shown: UIView = dragged ? page.view : navigation.view
-        guard let still = shown.snapshotView(afterScreenUpdates: false) else { _ = navigation.popViewController(animated: true); return }
-        still.bounds = shown.bounds
-        still.center = host.convert(shown.center, from: shown.superview)
-        still.transform = dragged ? page.view.transform : .identity
+        let still: UIView
+        let mask = UIView()
+        if let dragged {
+            let center = host.convert(dragged.center, from: dragged.superview)
+            host.insertSubview(dragged, aboveSubview: navigation.view)
+            dragged.center = center
+            mask.frame = dragged.bounds
+            mask.layer.cornerRadius = dragged.layer.cornerRadius
+            dragged.layer.cornerRadius = 0
+            dragged.layer.masksToBounds = false
+            still = dragged
+        } else {
+            guard let shot = navigation.view.snapshotView(afterScreenUpdates: false) else {
+                opening.clear(); _ = navigation.popViewController(animated: true); return
+            }
+            shot.bounds = navigation.view.bounds
+            shot.center = navigation.view.center
+            host.insertSubview(shot, aboveSubview: navigation.view)
+            mask.frame = shot.bounds
+            still = shot
+        }
         still.isUserInteractionEnabled = false
-        let mask = UIView(frame: still.bounds)
         mask.backgroundColor = .black
         mask.layer.cornerCurve = .continuous
-        mask.layer.cornerRadius = dragged ? page.view.layer.cornerRadius : 0
         still.mask = mask
         let dim = UIView(frame: navigation.view.frame)
         dim.backgroundColor = .black
         dim.alpha = dimmed
         dim.isUserInteractionEnabled = false
-        host.insertSubview(still, aboveSubview: navigation.view)
         host.insertSubview(dim, belowSubview: still)
-        opening.swipe?.detach()
+        opening.clear()
         _ = navigation.popViewController(animated: false)
         navigation.view.layoutIfNeeded()
         navigation.navigationBar.alpha = 1
@@ -240,17 +286,21 @@ import UIKit.UIGestureRecognizerSubclass
     }
 }
 
-/// A swipe right on a page opened as a card: the card follows the finger, smaller and rounded with the
-/// screen it came from dimmed behind, and on letting go shrinks into its poster (or springs back if it
-/// wasn't swiped far). From the left edge anywhere, and across the page except on a sideways list that
-/// can still scroll back. UIKit's own swipe back (a slide) waits for it to fail.
+/// A swipe right on a page opened as a card: a still of the page follows the finger, smaller and
+/// rounded, over the screen it came from (dimmed), and on letting go shrinks into its poster (or
+/// springs back if it wasn't swiped far, the live page under it all along). From the left edge
+/// anywhere, and across the page except on a sideways list that can still scroll back. UIKit's own
+/// swipe back (a slide) waits for it to fail.
 @MainActor final class CardSwipe: NSObject, UIGestureRecognizerDelegate {
     private weak var page: UIViewController?
     private weak var navigation: UINavigationController?
     private let opening: CardTransition.Opening
     private lazy var pan = UIPanGestureRecognizer(target: self, action: #selector(dragged(_:)))
-    private var behind: [UIView] = []
+    /// The card being swiped, and the dark over the screen behind it.
+    private var still: UIView?
     private var dim: UIView?
+    /// The bar's alpha as the swipe began (none while a trailer hides it, say).
+    private var barAlpha: CGFloat = 1
     private var progress: CGFloat = 0
     init(page: UIViewController, navigation: UINavigationController, opening: CardTransition.Opening) {
         self.page = page; self.navigation = navigation; self.opening = opening
@@ -290,50 +340,55 @@ import UIKit.UIGestureRecognizerSubclass
         let width = max(1, container.bounds.width)
         switch gesture.state {
         case .began:
-            if let backdrop = opening.backdrop {
-                backdrop.frame = container.convert(navigation.view.bounds, from: navigation.view)
-                backdrop.alpha = 1
-                container.insertSubview(backdrop, belowSubview: pageView)
-                behind.append(backdrop)
-            }
+            // The page as a still over the screen it came from; the live page stays put under them.
+            guard let still = pageView.snapshotView(afterScreenUpdates: false) else { return }
+            still.bounds = pageView.bounds
+            still.center = pageView.center
+            still.isUserInteractionEnabled = false
+            still.layer.cornerCurve = .continuous
+            still.layer.masksToBounds = true
+            opening.showBackdrop(over: pageView, in: container)
             let dim = UIView(frame: container.bounds)
             dim.backgroundColor = .black
             dim.alpha = 0.55
-            container.insertSubview(dim, belowSubview: pageView)
-            behind.append(dim)
+            dim.isUserInteractionEnabled = false
+            container.insertSubview(dim, aboveSubview: opening.backdrop)
+            container.insertSubview(still, aboveSubview: dim)
+            self.still = still
             self.dim = dim
-            pageView.layer.cornerCurve = .continuous
-            pageView.layer.masksToBounds = true
+            barAlpha = navigation.navigationBar.alpha
         case .changed:
+            guard let still else { return }
             let moved = gesture.translation(in: container)
             progress = min(1, max(0, moved.x / width))
             let scale = 1 - progress * 0.35
-            pageView.transform = CGAffineTransform(translationX: moved.x * 0.45, y: moved.y * 0.25).scaledBy(x: scale, y: scale)
-            pageView.layer.cornerRadius = 40 * min(1, progress * 4)
+            still.transform = CGAffineTransform(translationX: moved.x * 0.45, y: moved.y * 0.25).scaledBy(x: scale, y: scale)
+            still.layer.cornerRadius = 40 * min(1, progress * 4)
             dim?.alpha = 0.55 * (1 - progress)
-            navigation.navigationBar.alpha = max(0, 1 - progress * 3)
+            navigation.navigationBar.alpha = barAlpha * max(0, 1 - progress * 3)
         case .ended, .cancelled, .failed:
+            guard let still else { return }
+            let dim = self.dim
+            self.still = nil
+            self.dim = nil
             let speed = gesture.velocity(in: container).x
             if gesture.state == .ended, progress > 0.22 || speed > 700 {
                 let dimmed = dim?.alpha ?? 0
-                behind.forEach { $0.removeFromSuperview() }
-                behind = []
-                CardTransition.close(page: page, navigation: navigation, opening: opening, dragged: true, dimmed: dimmed)
-                pageView.transform = .identity
-                pageView.layer.cornerRadius = 0
-                pageView.layer.masksToBounds = false
+                dim?.removeFromSuperview()
+                CardTransition.close(page: page, navigation: navigation, opening: opening, dragged: still, dimmed: dimmed)
             } else {
-                let views = behind
-                behind = []
+                let backdrop = opening.backdrop
+                let bar = barAlpha
                 UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0,
                                options: [.allowUserInteraction, .beginFromCurrentState]) {
-                    pageView.transform = .identity
-                    pageView.layer.cornerRadius = 0
-                    self.dim?.alpha = 0.55
-                    navigation.navigationBar.alpha = 1
+                    still.transform = .identity
+                    still.layer.cornerRadius = 0
+                    dim?.alpha = 0.55
+                    navigation.navigationBar.alpha = bar
                 } completion: { _ in
-                    pageView.layer.masksToBounds = false
-                    views.forEach { $0.removeFromSuperview() }
+                    still.removeFromSuperview()
+                    dim?.removeFromSuperview()
+                    backdrop.isHidden = true
                 }
             }
             progress = 0
