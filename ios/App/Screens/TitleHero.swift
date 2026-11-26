@@ -194,6 +194,9 @@ struct TitleHero<Ratings: View>: View {
                 guard trailer === player, !player.playing, !player.paused, !player.ended else { return }
                 player.play(trailerKey)
             }
+            // Still nothing after that: the cover back (a spinner that a tap can't close helps no one).
+            try? await Task.sleep(for: .seconds(4))
+            if trailer === player, !player.playing, !player.paused { stopTrailer() }
         }
     }
     private func stopTrailer() {
