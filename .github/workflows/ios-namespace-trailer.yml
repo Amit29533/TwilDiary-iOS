@@ -1,0 +1,85 @@
+# The trailer probe on the Namespace Apple Silicon runner: how reliably a YouTube video starts in
+# the app's own player (CinesTrailerStartProbe) in the iPhone Simulator. Start it by pushing a tag
+# (`git tag namespace-trailer-<short sha> && git push origin namespace-trailer-<short sha>`).
+# Read-only: no signing, no release, no deploy. The log is the run's artifact.
+name: iOS trailer probe (Namespace)
+run-name: namespace trailer probe ${{ github.ref_name }}
+
+on:
+  push:
+    tags: ['namespace-trailer-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-namespace-trailer-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  trailer-probe:
+    runs-on: namespace-profile-mac
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Choose Xcode 26.6 and an iPhone simulator
+        run: |
+          set -euo pipefail
+          dev=""
+          for app in /Applications/Xcode_26.6.app $(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V -r) /Applications/Xcode.app; do
+            if [ -x "$app/Contents/Developer/usr/bin/xcodebuild" ]; then dev="$app/Contents/Developer"; break; fi
+          done
+          [ -n "$dev" ] || dev="$(xcode-select -p)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          mkdir -p ios/.artifacts/logs
+          DEVELOPER_DIR="$dev" xcrun simctl list devices available -j > ios/.artifacts/devices.json
+          python3 - <<'PY'
+          import json, os, re
+          devices = json.load(open('ios/.artifacts/devices.json'))['devices']
+          options = [(runtime, d) for runtime, items in devices.items() if 'iOS-26' in runtime
+                     for d in items if d['name'].startswith('iPhone') and d.get('isAvailable', True)]
+          if not options: raise SystemExit('No iPhone simulator available')
+          runtime, device = max(options, key=lambda o: (tuple(map(int, re.findall(r'\d+', o[0]))), 'Pro' in o[1]['name']))
+          print('Simulator:', device['name'], runtime)
+          open(os.environ['GITHUB_ENV'], 'a').write('SIMULATOR_ID=' + device['udid'] + '\n')
+          PY
+      - name: Cache Swift packages
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ios/.spm
+          key: spm-namespace-${{ runner.arch }}-${{ hashFiles('ios/**/Package.resolved', 'ios/**/Package.swift', 'ios/project.yml') }}
+      - name: Generate Xcode project
+        run: bash ios/scripts/xcodegen.sh
+      - name: Build for testing
+        run: |
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          bash ios/scripts/ci.sh build-simulator
+      - name: Trailer probe
+        run: |
+          set -o pipefail
+          TEST_RUNNER_TRAILER_PROBE=1 xcodebuild test-without-building -project ios/TwilDiary.xcodeproj -scheme TwilDiary \
+            -clonedSourcePackagesDirPath "$PWD/ios/.spm" CODE_SIGNING_ALLOWED=NO \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=$(uname -m)" \
+            -parallel-testing-enabled NO -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 1200 -maximum-test-execution-time-allowance 1500 \
+            -only-testing:TwilDiaryTests/CinesTrailerStartProbe -derivedDataPath "$PWD/ios/.derived/simulator" \
+            -resultBundlePath ios/.artifacts/TrailerProbe.xcresult 2>&1 | tee ios/.artifacts/logs/trailer-probe.log
+      - name: Probe results
+        if: always()
+        run: grep -E 'TRAILER-PROBE' ios/.artifacts/logs/trailer-probe.log || echo "no probe lines"
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: TwilDiary-trailer-probe
+          path: |
+            ios/.artifacts/logs
+            ios/.artifacts/TrailerProbe.xcresult
+          include-hidden-files: true
+          retention-days: 7
