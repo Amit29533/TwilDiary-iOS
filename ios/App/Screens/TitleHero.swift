@@ -141,6 +141,8 @@ struct TitleHero<Ratings: View>: View {
             }
         }
         .onChange(of: synopsisText) { _, _ in measureSynopsis() }
+        // Another source found (or gone): the last line makes room for More, or stops giving it.
+        .onChange(of: synopsisSources.count > 1) { _, _ in measureSynopsis() }
         .task(id: tmdbID) { await loadOtherSynopses() }
         .task(id: tmdbID) { await loadTrailer() }
         .onDisappear { stopTrailer() }
@@ -287,16 +289,13 @@ struct TitleHero<Ratings: View>: View {
                 .lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("title-synopsis-text")
                 .overlay(alignment: .bottomTrailing) {
-                    if !expanded && hasOverflow {
+                    // At the end of the last line, also for a synopsis that fits but has another source
+                    // (its last line keeps room for it, or ends "… More": SynopsisTextLayout).
+                    if !expanded && (hasOverflow || synopsisSources.count > 1) {
                         Button("More") { setExpanded(true) }.font(.app(size: 15, weight: .semibold))
                             .frame(width: 52, height: 44).offset(y: 10)
                     }
                 }
-            // A synopsis that fits but has another source: More on a line of its own (its last line
-            // has no room kept for it).
-            if !expanded && !hasOverflow && synopsisSources.count > 1 {
-                Button("More") { setExpanded(true) }.font(.app(size: 15, weight: .semibold)).frame(minHeight: 36)
-            }
         }
     }
     private func setExpanded(_ value: Bool) {
@@ -305,7 +304,7 @@ struct TitleHero<Ratings: View>: View {
     private func measureSynopsis() {
         guard synopsisWidth > 36 else { return }
         // Full-width lines; only the last one leaves room for "… More".
-        synopsisParts = SynopsisTextLayout.split(synopsisText, width: synopsisWidth, lastLineReserve: 76)
+        synopsisParts = SynopsisTextLayout.split(synopsisText, width: synopsisWidth, lastLineReserve: 76, moreAlways: synopsisSources.count > 1)
     }
 
 }

@@ -9,19 +9,40 @@ import UIKit
     }
     /// The first three lines use the whole `width`; only the fourth stops `lastLineReserve` short,
     /// leaving room for "… More". Expanded, the same three lines stay exactly where they were.
-    static func split(_ text: String, width: CGFloat, lastLineReserve: CGFloat = 0) -> Parts {
+    /// `moreAlways`: More shows even when all of the text fits (another source has a synopsis too). It
+    /// sits at the end of the last line when that line leaves `moreRoom` for it; else that line stops
+    /// short with "… More", as a longer synopsis's fourth line does (More had a line of its own under
+    /// the text: owner's screenshots).
+    static func split(_ text: String, width: CGFloat, lastLineReserve: CGFloat = 0, moreAlways: Bool = false, moreRoom: CGFloat = 60) -> Parts {
         guard !text.isEmpty, width > 0 else { return Parts(leading: text, continuation: "") }
         let total = text.utf16.count
         let first = fitting(text, width: width, lines: 3)
-        guard first < total else { return Parts(leading: text, continuation: "") }
+        if first >= total {
+            // Three lines or fewer: all of it (its last line making room for More when it shows).
+            guard moreAlways else { return Parts(leading: text, continuation: "") }
+            let lines = fitting(text, width: width, lines: 1) >= total ? 1 : fitting(text, width: width, lines: 2) >= total ? 2 : 3
+            return lastLine(text, from: lines == 1 ? 0 : fitting(text, width: width, lines: lines - 1), width: width,
+                            reserve: lastLineReserve, room: moreRoom)
+        }
         let start = text.indices.last { $0.utf16Offset(in: text) <= first } ?? text.startIndex
         let rest = String(text[start...]), base = start.utf16Offset(in: text)
-        // The rest fits on one full line: four lines show it all, no More.
+        // The rest fits on one full line: four lines show it all, no More (or More beside it).
         if fitting(rest, width: width, lines: 1) >= rest.utf16.count {
-            return Parts(leading: text, continuation: "")
+            guard moreAlways else { return Parts(leading: text, continuation: "") }
+            return lastLine(text, from: base, width: width, reserve: lastLineReserve, room: moreRoom)
         }
         let offset = min(total, base + fitting(rest, width: max(40, width - lastLineReserve), lines: 1))
         // Round back to a whole Character: UTF-16 offsets can land inside a composed glyph.
+        let split = text.indices.last { $0.utf16Offset(in: text) <= offset } ?? text.startIndex
+        return Parts(leading: String(text[..<split]), continuation: String(text[split...]))
+    }
+    /// The text's last line, from UTF-16 offset `base`: all of it when it leaves `room` for More beside
+    /// it, else cut `reserve` short for "… More".
+    private static func lastLine(_ text: String, from base: Int, width: CGFloat, reserve: CGFloat, room: CGFloat) -> Parts {
+        let start = text.indices.last { $0.utf16Offset(in: text) <= base } ?? text.startIndex
+        let rest = String(text[start...]), from = start.utf16Offset(in: text)
+        if fitting(rest, width: max(40, width - room), lines: 1) >= rest.utf16.count { return Parts(leading: text, continuation: "") }
+        let offset = min(text.utf16.count, from + fitting(rest, width: max(40, width - reserve), lines: 1))
         let split = text.indices.last { $0.utf16Offset(in: text) <= offset } ?? text.startIndex
         return Parts(leading: String(text[..<split]), continuation: String(text[split...]))
     }
