@@ -1,4 +1,5 @@
 import XCTest
+import ObjectiveC
 
 /// How soon the next title opens after coming back from one (owner's video: after going back, taps
 /// seemed ignored for a second or more). Runs only with TEST_RUNNER_NAV_PROBE=1
@@ -17,6 +18,83 @@ import XCTest
     /// The title's details, cast and related titles answering 0.7 s late, as a phone's network does:
     /// they arrive around Back and after it.
     func testWithZoomSlowMetadata() { probe(zoom: true, slow: true) }
+    /// Back, then the other title tapped while the zoom back is still finishing (0.45 s in: it looks
+    /// done by then), as in the owner's video: with the push held for the pop's end (the app's way)
+    /// and without (as before).
+    func testTapDuringZoomBackHeld() { tapDuringBack(hold: true) }
+    func testTapDuringZoomBackDropped() { tapDuringBack(hold: false) }
+
+    private func tapDuringBack(hold: Bool) {
+        executionTimeAllowance = 300
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-upcoming", "--ui-nav-timing"] + (hold ? [] : ["--ui-no-push-hold"])
+        app.launchEnvironment["TZ"] = "Asia/Kolkata"
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["Library"].tap()
+        let posters = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'title-'"))
+        guard posters.element(boundBy: 1).waitForExistence(timeout: 10), posters.element(boundBy: 1).isHittable else {
+            XCTFail("Library has fewer than two posters on screen"); return
+        }
+        let ids = [posters.element(boundBy: 0).identifier, posters.element(boundBy: 1).identifier]
+        let frames = ids.map { app.buttons[$0].frame }
+        let heroes = app.staticTexts.matching(identifier: "title-hero-name")
+        func showing(_ name: String) -> Bool { heroes.allElementsBoundByIndex.contains { $0.exists && $0.label == name } }
+        // Each title's name as its page shows it (the ordinary way, waiting as XCUITest does).
+        var names: [String] = []
+        for id in ids {
+            app.buttons[id].tap()
+            XCTAssertTrue(heroes.firstMatch.waitForExistence(timeout: 8))
+            names.append(heroes.firstMatch.label)
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+        Self.stopWaitingForIdle()
+        func tap(_ index: Int) {
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: frames[index].midX, dy: frames[index].midY)).tap()
+        }
+        tap(0)
+        Thread.sleep(forTimeInterval: 1.5)
+        var opened = 0
+        for round in 0..<6 {
+            let next = (round + 1) % 2
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            let back = Date()
+            Thread.sleep(forTimeInterval: 0.45)
+            tap(next)
+            var at: Double?
+            let deadline = Date().addingTimeInterval(3)
+            while Date() < deadline {
+                if showing(names[next]) { at = Date().timeIntervalSince(back); break }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            let timing = app.descendants(matching: .any)["nav-timing"]
+            print(String(format: "NAV-PROBE tap-during-back hold=%@ round=%d opened=%@", hold ? "on" : "off", round,
+                         at.map { String(format: "yes after %.2fs", $0) } ?? "NO")
+                  + " app: " + (timing.exists ? timing.label : "no timing element"))
+            if let at { opened += 1; _ = at } else { tap(next) }
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+        print("NAV-PROBE tap-during-back hold=\(hold ? "on" : "off"): opened \(opened) of 6")
+        XCTAssertEqual(opened, hold ? 6 : opened)
+    }
+
+    /// XCUITest taps only once the app is idle (every animation finished); the owner tapped before that.
+    private static func stopWaitingForIdle() {
+        guard let process = NSClassFromString("XCUIApplicationProcess") else { print("NAV-PROBE no XCUIApplicationProcess"); return }
+        var replaced: [String] = []
+        if let method = class_getInstanceMethod(process, NSSelectorFromString("waitForQuiescenceIncludingAnimationsIdle:isPreEvent:")) {
+            let skip: @convention(block) (AnyObject, Bool, Bool) -> Void = { _, _, _ in }
+            method_setImplementation(method, imp_implementationWithBlock(skip))
+            replaced.append("isPreEvent")
+        }
+        if let method = class_getInstanceMethod(process, NSSelectorFromString("waitForQuiescenceIncludingAnimationsIdle:")) {
+            let skip: @convention(block) (AnyObject, Bool) -> Void = { _, _ in }
+            method_setImplementation(method, imp_implementationWithBlock(skip))
+            replaced.append("plain")
+        }
+        print("NAV-PROBE idle waits off: " + (replaced.isEmpty ? "NONE FOUND" : replaced.joined(separator: ", ")))
+    }
 
     private func probe(zoom: Bool, slow: Bool = false) {
         executionTimeAllowance = 300
